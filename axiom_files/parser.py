@@ -363,9 +363,19 @@ def detect_concepts(task: str, parsed: dict) -> list:
 
 
 def get_prompt_with_concepts(agent_name: str, task: str) -> str:
-    """Load .axiom, filter concepts whose APPLIES WHEN matches the task, return system prompt."""
+    """Load .axiom + shared concepts library, filter by task relevance, return system prompt."""
     parsed = load_axiom(agent_name)
-    # Keep only concepts that are active for this task; remove the rest
+
+    # Merge in the shared concept library if it exists (and is distinct from the agent file)
+    concepts_path = os.path.join(AXIOM_DIR, "concepts.axiom")
+    if agent_name.lower() != "concepts" and os.path.exists(concepts_path):
+        library = load_axiom("concepts")
+        existing_names = {c["name"] for c in parsed["concepts"]}
+        for c in library["concepts"]:
+            if c["name"] not in existing_names:
+                parsed["concepts"].append(c)
+
+    # Keep only concepts whose APPLIES WHEN matches this task
     parsed["concepts"] = [
         c for c in parsed["concepts"]
         if c["name"] in detect_concepts(task, parsed)
