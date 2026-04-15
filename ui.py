@@ -368,16 +368,24 @@ with tab_dsl:
     # Show current .axiom definitions
     with st.expander("Current .axiom definitions", expanded=False):
         from axiom_files.validator import validate_file
+        from axiom_files.parser import get_prompt
+        status_icon = {"valid": "✅", "warning": "⚠️", "invalid": "❌"}
         for role in ("worker", "evaluator", "rewriter"):
             try:
-                from axiom_files.parser import get_prompt
                 result = validate_file(role)
-                icon = {"valid": "✅", "warning": "⚠️", "invalid": "❌"}.get(result["status"], "?")
-                st.markdown(f"**{icon} {role}.axiom**")
+                icon = status_icon.get(result["status"], "?")
+                st.markdown(f"**{icon} {role}.axiom** — `{result['status'].upper()}`")
                 if result["issues"]:
                     with st.expander(f"{len(result['issues'])} validator issue(s)"):
                         for issue in result["issues"]:
-                            st.caption(f"[{issue['level']}] [{issue['phase']}] {issue['message']}")
+                            level_color = "red" if issue["level"] == "error" else "orange"
+                            st.markdown(
+                                f":{level_color}[{issue['level'].upper()}] "
+                                f"`{issue['phase']}` · **{issue['field']}** — {issue['message']}"
+                            )
+                        st.divider()
+                        for s in result["suggestions"]:
+                            st.caption(f"→ {s}")
                 st.code(get_prompt(role), language=None)
             except Exception as e:
                 st.warning(f"{role}.axiom: {e}")
