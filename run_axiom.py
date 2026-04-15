@@ -59,22 +59,16 @@ console.print(Panel.fit(
 for role in ("worker", "evaluator", "rewriter"):
     try:
         prompt = get_prompt(role)
-        console.print(f"\n[bold cyan]{role.upper()}.axiom[/] → system prompt preview:")
+        console.print(f"\n[bold cyan]{role.upper()}.axiom[/] -> system prompt preview:")
         console.print(f"[dim]{prompt[:200]}{'...' if len(prompt) > 200 else ''}[/]")
 
         # ── Validator badge ───────────────────────────────────────────────────
-        vresult = validate_file(role)
-        vstatus = vresult["status"]
-        badge_color = {"valid": "green", "warning": "yellow", "invalid": "red"}.get(vstatus, "white")
-        badge_label = {"valid": "✓ VALID", "warning": "⚠ WARNING", "invalid": "✗ INVALID"}.get(vstatus, vstatus)
-        console.print(f"  Validator: [{badge_color}]{badge_label}[/]", end="")
-        if vresult["issues"]:
-            console.print(f"  ({len(vresult['issues'])} issue(s))")
-            for issue in vresult["issues"]:
-                prefix = "[red][error][/]" if issue["level"] == "error" else "[yellow][warn][/]"
-                console.print(f"    {prefix} [{issue['phase']}] {issue['field']}: {issue['message']}")
-        else:
-            console.print("")
+        result = validate_file(role)
+        icon = {"valid": "[green]OK[/]", "warning": "[yellow]WARN[/]", "invalid": "[red]INVALID[/]"}.get(result["status"], result["status"])
+        console.print(f"  Validator: {icon}")
+        if result["issues"]:
+            for issue in result["issues"]:
+                console.print(f"    [{issue['level']}] [{issue['phase']}] {issue['message']}")
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/]")
         sys.exit(1)

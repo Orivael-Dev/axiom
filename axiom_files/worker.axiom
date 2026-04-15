@@ -1,4 +1,9 @@
 AGENT Worker
+VERSION 1.2
+RECEIVES task: string
+EMITS answer: string
+MUTATES constraints, rules, process
+CANNOT_MUTATE agent, goal, version
 PURPOSE Provide precise solutions to tasks
 GOAL Complete the user's request
 
