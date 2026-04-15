@@ -290,8 +290,17 @@ with tab_prompt:
                         _ver = float(_axiom.get("version", "1.0")) + 0.1
                         _axiom["version"] = f"{_ver:.1f}"
                         _lines = new_prompt.strip().split("\n")
-                        _new_c = [l.strip().lstrip("-").strip() for l in _lines
-                                  if l.strip().startswith("-") or "constraint" in l.lower()]
+                        _skip = [
+                            "understand task", "identify missing", "produce answer",
+                            "relevance", "accuracy", "completeness", "tone", "wording",
+                            "empathy", "clarity:", "helpfulness:", "check answer",
+                        ]
+                        _new_c = [
+                            l.strip().lstrip("-").strip()
+                            for l in _lines
+                            if "constraint" in l.lower()
+                            and not any(skip in l.lower() for skip in _skip)
+                        ]
                         if _new_c:
                             _axiom["constraints"] = _new_c
                         save_axiom("worker", _axiom)

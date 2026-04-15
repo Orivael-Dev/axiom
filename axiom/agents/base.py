@@ -54,13 +54,11 @@ class BaseAgent:
         self,
         user_message: str,
         temperature: float = 0.7,
-        json_mode: bool = False,
     ) -> str:
         return client.chat(
             system_prompt=self.system_prompt,
             user_message=user_message,
             temperature=temperature,
-            json_mode=json_mode,
         )
 
     def _call_json(self, user_message: str, temperature: float = 0.3) -> dict:

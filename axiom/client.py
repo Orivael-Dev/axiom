@@ -36,7 +36,6 @@ def chat(
     user_message: str,
     model: str | None = None,
     temperature: float = 0.7,
-    json_mode: bool = False,
 ) -> str:
     """Single chat completion call. Returns the text content of the response."""
     client = get_client()
@@ -52,8 +51,7 @@ def chat(
         ],
         "temperature": temperature,
     }
-    if json_mode:
-        kwargs["response_format"] = {"type": "json_object"}
+    # Note: response_format / json_mode is NOT passed — NIM rejects it for most models.
 
     response = client.chat.completions.create(**kwargs)
     time.sleep(2)
@@ -67,19 +65,36 @@ def chat_json(
     temperature: float = 0.3,
 ) -> dict:
     """Chat completion that returns parsed JSON. Raises ValueError on parse failure."""
+    import re
+
+    # Append a hard JSON instruction so the model knows what format to use.
+    json_system = system_prompt + "\n\nIMPORTANT: Your response MUST be valid JSON only. No prose, no markdown fences."
+
     raw = chat(
-        system_prompt=system_prompt,
+        system_prompt=json_system,
         user_message=user_message,
         model=model,
         temperature=temperature,
-        json_mode=True,
     )
     try:
         return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        # Attempt to extract JSON block if model wrapped it in markdown
-        import re
-        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-        if match:
-            return json.loads(match.group(1))
-        raise ValueError(f"Model returned non-JSON output: {raw[:200]}") from exc
+    except json.JSONDecodeError:
+        pass
+
+    # Strip markdown code fences
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+    if fence:
+        try:
+            return json.loads(fence.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Extract first {...} block from anywhere in the response
+    brace = re.search(r"\{.*\}", raw, re.DOTALL)
+    if brace:
+        try:
+            return json.loads(brace.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"Model returned non-JSON output: {raw[:200]}")
