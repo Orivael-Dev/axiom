@@ -18,6 +18,10 @@ def load_axiom(agent_name: str) -> dict:
     parsed = {
         "agent": "",
         "version": "1.0",
+        "receives": {},
+        "emits": {},
+        "mutates": [],
+        "cannot_mutate": [],
         "purpose": "",
         "goal": "",
         "constraints": [],
@@ -46,6 +50,22 @@ def load_axiom(agent_name: str) -> dict:
             parsed["purpose"] = line.replace("PURPOSE ", "").strip()
         elif line.startswith("GOAL "):
             parsed["goal"] = line.replace("GOAL ", "").strip()
+        elif line.startswith("RECEIVES "):
+            for pair in line.replace("RECEIVES ", "").split(","):
+                pair = pair.strip()
+                if ":" in pair:
+                    k, v = pair.split(":", 1)
+                    parsed["receives"][k.strip()] = v.strip()
+        elif line.startswith("EMITS "):
+            for pair in line.replace("EMITS ", "").split(","):
+                pair = pair.strip()
+                if ":" in pair:
+                    k, v = pair.split(":", 1)
+                    parsed["emits"][k.strip()] = v.strip()
+        elif line.startswith("MUTATES "):
+            parsed["mutates"] = [s.strip() for s in line.replace("MUTATES ", "").split(",")]
+        elif line.startswith("CANNOT_MUTATE "):
+            parsed["cannot_mutate"] = [s.strip() for s in line.replace("CANNOT_MUTATE ", "").split(",")]
         elif line.startswith("CONSTRAINT "):
             parsed["constraints"].append(line.replace("CONSTRAINT ", "").strip())
         elif line == "PROCESS":
@@ -91,6 +111,22 @@ def to_system_prompt(parsed: dict) -> str:
     if parsed["goal"]:
         parts.append(f"\nYour goal: {parsed['goal']}.")
     
+    if parsed.get("receives"):
+        parts.append("\nInputs:")
+        for name, typ in parsed["receives"].items():
+            parts.append(f"  - {name} ({typ})")
+
+    if parsed.get("emits"):
+        parts.append("\nOutputs:")
+        for name, typ in parsed["emits"].items():
+            parts.append(f"  - {name} ({typ})")
+
+    if parsed.get("mutates"):
+        parts.append(f"\nYou may modify: {', '.join(parsed['mutates'])}.")
+
+    if parsed.get("cannot_mutate"):
+        parts.append(f"You must NOT modify: {', '.join(parsed['cannot_mutate'])}.")
+
     if parsed["constraints"]:
         parts.append("\nConstraints you must follow:")
         for c in parsed["constraints"]:
@@ -138,6 +174,15 @@ def save_axiom(agent_name: str, parsed: dict):
         lines.append(f"PURPOSE {parsed['purpose']}")
     if parsed["goal"]:
         lines.append(f"GOAL {parsed['goal']}")
+
+    if parsed.get("receives"):
+        lines.append("RECEIVES " + ", ".join(f"{k}: {v}" for k, v in parsed["receives"].items()))
+    if parsed.get("emits"):
+        lines.append("EMITS " + ", ".join(f"{k}: {v}" for k, v in parsed["emits"].items()))
+    if parsed.get("mutates"):
+        lines.append("MUTATES " + ", ".join(parsed["mutates"]))
+    if parsed.get("cannot_mutate"):
+        lines.append("CANNOT_MUTATE " + ", ".join(parsed["cannot_mutate"]))
 
     lines.append("")
     for c in parsed["constraints"]:

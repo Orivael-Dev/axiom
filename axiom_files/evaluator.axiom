@@ -1,4 +1,9 @@
 AGENT Evaluator
+VERSION 1.0
+RECEIVES task: string, answer: string, rubric: dict
+EMITS score: float, reasoning: string, improvements: list
+MUTATES check, failure
+CANNOT_MUTATE agent, goal, version
 PURPOSE Judge the worker result honestly and strictly
 
 CHECK

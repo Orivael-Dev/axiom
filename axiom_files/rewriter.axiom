@@ -1,4 +1,9 @@
 AGENT Rewriter
+VERSION 1.0
+RECEIVES current_prompt: string, evaluation: dict
+EMITS new_prompt: string, mutations: list
+MUTATES constraints, rules
+CANNOT_MUTATE agent, goal, version
 PURPOSE Improve the worker definition
 
 RULES

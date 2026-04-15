@@ -27,9 +27,30 @@ _META_EVALUATOR_SYSTEM = """You are a meta-evaluator assessing the quality of an
 You review the evaluator's reasoning and improvement suggestions to determine how useful and actionable they were.
 Return JSON: {"score": <0-10>, "reasoning": "<str>", "improvements": ["<str>"]}"""
 
-_META_REWRITER_SYSTEM = """You are a meta-evaluator assessing the quality of an AI rewriter agent's performance.
-You review whether the rewriter's prompt rewrites actually led to score improvements.
-Return JSON: {"score": <0-10>, "reasoning": "<str>", "improvements": ["<str>"]}"""
+_META_REWRITER_SYSTEM = """You are a meta-evaluator assessing prompt rewriting quality.
+Evaluate ONLY these criteria — ignore task content entirely:
+1. Did the rewrite target a specific identified failure?
+2. Did the new prompt preserve the original agent's core purpose?
+3. Was vague language removed?
+4. Is the new prompt equal or shorter in length?
+5. Is every instruction in the new prompt testable?
+6. Did the rewriter explain what was cut and why?
+
+Score 0-10 based only on rewriting craft, not task knowledge.
+Return JSON: {"score": <0-10>, "reasoning": "<str>", "improvements": ["<str>"]}""" 
+
+_REWRITER_RUBRIC = {
+    "dimensions": [
+        {"name": "Targeting Precision", "weight": 0.3,
+         "description": "Did each change target one specific identified failure?"},
+        {"name": "Intent Preservation", "weight": 0.3,
+         "description": "Did the rewrite keep the agent's core purpose intact?"},
+        {"name": "Clarity Improvement", "weight": 0.2,
+         "description": "Was vague language replaced with testable instructions?"},
+        {"name": "Brevity", "weight": 0.2,
+         "description": "Is the new prompt shorter or equal in length?"},
+    ]
+}
 
 
 class MetaEvolutionLoop:
@@ -127,7 +148,7 @@ class MetaEvolutionLoop:
             return {"score": 5.0, "reasoning": "Could not parse meta-evaluation.", "improvements": []}
 
     def _meta_evaluate_rewriter(self) -> dict:
-        """Assess whether Rewriter prompt changes led to score improvements."""
+        """Assess rewriter quality using rewriting-specific rubric, not task rubric."""
         iters = self.evolution_result.iterations
         if len(iters) < 2:
             return {"score": 5.0, "reasoning": "Insufficient data.", "improvements": []}
@@ -138,19 +159,29 @@ class MetaEvolutionLoop:
         positive = sum(1 for d in score_deltas if d > 0)
         avg_delta = sum(score_deltas) / len(score_deltas) if score_deltas else 0
 
+        # Get the actual rewritten prompts to evaluate craft quality
+        prompt_pairs = []
+        for i in range(1, min(3, len(iters))):
+            prompt_pairs.append(
+                f"Iteration {i}: score went {iters[i-1].score:.1f} → {iters[i].score:.1f}\n"
+                f"Previous prompt (first 200 chars): {iters[i-1].worker_prompt[:200]}...\n"
+                f"New prompt (first 200 chars): {iters[i].worker_prompt[:200]}..."
+            )
+
         evidence = (
             f"Score trajectory: {[round(it.score, 1) for it in iters]}\n"
             f"Positive improvements: {positive}/{len(score_deltas)}\n"
-            f"Average score delta per rewrite: {avg_delta:.2f}"
+            f"Average score delta: {avg_delta:.2f}\n\n"
+            f"Prompt evolution samples:\n" + "\n\n".join(prompt_pairs)
         )
 
         try:
             return chat_json(
                 system_prompt=_META_REWRITER_SYSTEM,
                 user_message=(
-                    f"Rewriter's effectiveness data:\n\n{evidence}\n\n"
-                    "Assess the rewriter's effectiveness. "
-                    "If score improvements were inconsistent or small, what should change?"
+                    f"Evaluate this rewriter's craft quality:\n\n{evidence}\n\n"
+                    "Score based ONLY on rewriting skill — targeting, brevity, "
+                    "clarity, intent preservation. Ignore task subject matter entirely."
                 ),
                 temperature=0.2,
             )
