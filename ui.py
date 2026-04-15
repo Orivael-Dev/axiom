@@ -370,7 +370,23 @@ with tab_dsl:
         for role in ("worker", "evaluator", "rewriter"):
             try:
                 from axiom_files.parser import get_prompt
-                st.markdown(f"**{role}.axiom**")
+                from axiom_files.validator import validate_file
+                vresult = validate_file(role)
+                vstatus = vresult["status"]
+                badge = {"valid": "🟢 VALID", "warning": "🟡 WARNING", "invalid": "🔴 INVALID"}.get(vstatus, vstatus)
+                st.markdown(f"**{role}.axiom** &nbsp; {badge}")
+                if vresult["issues"]:
+                    issue_lines = []
+                    for issue in vresult["issues"]:
+                        prefix = "❌" if issue["level"] == "error" else "⚠️"
+                        issue_lines.append(f"{prefix} `[{issue['phase']}]` **{issue['field']}**: {issue['message']}")
+                    with st.expander(f"{len(vresult['issues'])} validator issue(s)", expanded=False):
+                        for il in issue_lines:
+                            st.markdown(il)
+                        if vresult["suggestions"]:
+                            st.markdown("**Suggestions:**")
+                            for s in vresult["suggestions"]:
+                                st.markdown(f"→ {s}")
                 st.code(get_prompt(role), language=None)
             except Exception as e:
                 st.warning(f"{role}.axiom: {e}")

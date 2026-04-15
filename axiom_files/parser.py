@@ -31,16 +31,57 @@ def load_axiom(agent_name: str) -> dict:
         "failure": [],
         "output": [],
         "success": {},
-        "tools": []
+        "tools": [],
+        "concepts": []
     }
-    
+
     current_section = None
+    current_concept = None
     
+    def _flush_concept():
+        """Flush the in-progress concept into parsed['concepts']."""
+        if current_concept and current_concept.get("name"):
+            parsed["concepts"].append(dict(current_concept))
+
     for line in lines:
         line = line.rstrip()
         if not line:
             continue
-        
+
+        # ── CONCEPT sub-field parsing (runs before top-level detection) ──────
+        if current_section == "concept" and current_concept is not None:
+            if line.startswith("PURPOSE "):
+                current_concept["purpose"] = line.replace("PURPOSE ", "").strip()
+                continue
+            elif line.startswith("APPLIES WHEN "):
+                current_concept["applies_when"] = line.replace("APPLIES WHEN ", "").strip()
+                continue
+            elif line.startswith("REQUIRES "):
+                current_concept["requires"] = line.replace("REQUIRES ", "").strip()
+                continue
+            elif line.startswith("EFFECT "):
+                current_concept["effect"] = line.replace("EFFECT ", "").strip()
+                continue
+            # Any unrecognised top-level keyword ends the concept block;
+            # fall through to the main parser below.
+            else:
+                _flush_concept()
+                current_concept = None
+                current_section = None
+
+        # ── Top-level section headers ─────────────────────────────────────────
+        if line.startswith("CONCEPT "):
+            _flush_concept()
+            current_concept = {
+                "name": line.replace("CONCEPT ", "").strip(),
+                "purpose": "",
+                "applies_when": "",
+                "requires": "",
+                "effect": "",
+            }
+            current_section = "concept"
+            continue
+
         # Detect section headers
         if line.startswith("AGENT "):
             parsed["agent"] = line.replace("AGENT ", "").strip()
@@ -90,6 +131,9 @@ def load_axiom(agent_name: str) -> dict:
         elif ":" in line and current_section == "success":
             key, val = line.split(":", 1)
             parsed["success"][key.strip()] = float(val.strip())
+
+    # Flush any CONCEPT still open at EOF
+    _flush_concept()
 
     # Deduplicate all list sections
     parsed["check"] = list(dict.fromkeys(parsed["check"]))
@@ -151,7 +195,16 @@ def to_system_prompt(parsed: dict) -> str:
         parts.append("\nSuccess is weighted by:")
         for metric, weight in parsed["success"].items():
             parts.append(f"  - {metric}: {int(weight*100)}%")
-    
+
+    active_concepts = [c for c in parsed.get("concepts", []) if c.get("effect")]
+    if active_concepts:
+        parts.append("\nActive Concepts:")
+        for c in active_concepts:
+            line = f"  - CONCEPT {c['name']}: {c['effect']}"
+            if c.get("applies_when"):
+                line += f" (applies when: {c['applies_when']})"
+            parts.append(line)
+
     return "\n".join(parts)
 
 
@@ -223,7 +276,19 @@ def save_axiom(agent_name: str, parsed: dict):
         lines.append("SUCCESS")
         for metric, weight in parsed["success"].items():
             lines.append(f"{metric}: {weight}")
-    
+
+    for concept in parsed.get("concepts", []):
+        lines.append("")
+        lines.append(f"CONCEPT {concept['name']}")
+        if concept.get("purpose"):
+            lines.append(f"PURPOSE {concept['purpose']}")
+        if concept.get("applies_when"):
+            lines.append(f"APPLIES WHEN {concept['applies_when']}")
+        if concept.get("requires"):
+            lines.append(f"REQUIRES {concept['requires']}")
+        if concept.get("effect"):
+            lines.append(f"EFFECT {concept['effect']}")
+
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     
@@ -280,3 +345,29 @@ def get_prompt_with_overlays(agent_name: str, overlays: list) -> str:
             overlay = load_axiom(overlay_name)
             base = merge_axiom(base, overlay)
     return to_system_prompt(base)
+
+
+def detect_concepts(task: str, parsed: dict) -> list:
+    """Return concept names whose APPLIES WHEN text has keyword overlap with the task."""
+    task_lower = task.lower()
+    matched = []
+    for concept in parsed.get("concepts", []):
+        applies = concept.get("applies_when", "").lower()
+        if not applies:
+            continue
+        # Tokenise the APPLIES WHEN phrase into words (min length 4 to skip stop words)
+        keywords = [w.strip(".,;:'\"") for w in applies.split() if len(w.strip(".,;:'\"")) >= 4]
+        if any(kw in task_lower for kw in keywords):
+            matched.append(concept["name"])
+    return matched
+
+
+def get_prompt_with_concepts(agent_name: str, task: str) -> str:
+    """Load .axiom, filter concepts whose APPLIES WHEN matches the task, return system prompt."""
+    parsed = load_axiom(agent_name)
+    # Keep only concepts that are active for this task; remove the rest
+    parsed["concepts"] = [
+        c for c in parsed["concepts"]
+        if c["name"] in detect_concepts(task, parsed)
+    ]
+    return to_system_prompt(parsed)

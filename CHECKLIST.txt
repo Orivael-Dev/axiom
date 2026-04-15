@@ -72,6 +72,11 @@ NEXT / IDEAS
 ────────────
 [x] evaluator.axiom upgrades (GOAL, RULES, PROCESS, FAILURE, SUCCESS, sharper CONSTRAINTS)
 [x] rewriter.axiom upgrades (GOAL, PROCESS, CHECK, FAILURE, OUTPUT, SUCCESS, sharper CONSTRAINTS)
+[x] AXIOM v1.3 — CONCEPT construct: parser support (load/save/render), detect_concepts(), get_prompt_with_concepts()
+[x] AXIOM v1.3 — concepts.axiom seed file (UncertaintyBound, RewardGuard from spec)
+[x] AXIOM v1.3 — Language Validator (validator.py): syntax + purity + semantic phases, STATUS/ISSUES/SUGGESTIONS output
+[x] AXIOM v1.3 — Validator wired into run_axiom.py (STATUS badges per agent at startup)
+[x] AXIOM v1.3 — Validator wired into ui.py DSL tab (badge + issue expander per .axiom file)
 [ ] Add .axiom version history (git-style diff log per file)
 [ ] Export best run as a standalone .axiom bundle
 [ ] Ngrok public URL wired into UI launch
