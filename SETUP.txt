@@ -1,0 +1,136 @@
+AXIOM — Setup & Launch Guide
+==============================
+
+REQUIREMENTS
+------------
+- Windows 10/11
+- Python 3.11 or higher  (python.org/downloads)
+- A free NVIDIA NIM API key  (build.nvidia.com → sign up → API Keys)
+
+
+FIRST-TIME SETUP
+----------------
+1. Open PowerShell and run:
+
+   cd i:\vsCode\promt-agent
+   python -m venv venv
+   .\venv\Scripts\pip install -r requirements.txt
+
+2. Edit .env and paste your NVIDIA API key:
+
+   NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxx
+
+   (The key starts with "nvapi-". Do not add any extra text.)
+
+
+LAUNCHING THE UI (Browser)
+--------------------------
+Every time you want to use AXIOM, run:
+
+   cd i:\vsCode\promt-agent
+   .\venv\Scripts\streamlit run ui.py
+
+Then open in your browser:  http://localhost:8501
+
+On the same WiFi network from another device:  http://192.168.86.44:8501
+(Replace the IP with your machine's local IP if different)
+
+
+ACCESS FROM ANYWHERE (Public URL)
+----------------------------------
+While the UI is running, open a second PowerShell window and run:
+
+   cd i:\vsCode\promt-agent
+   .\venv\Scripts\python -c "from pyngrok import ngrok; t = ngrok.connect(8501); print(t.public_url)"
+
+This prints a URL like https://abc123.ngrok-free.app
+Open that on any device, anywhere.
+
+To install pyngrok if needed:
+   .\venv\Scripts\pip install pyngrok
+
+
+RUNNING THE AXIOM DSL LOOP (Terminal)
+--------------------------------------
+To run the language-driven evolution loop from the command line:
+
+   cd i:\vsCode\promt-agent
+   .\venv\Scripts\python run_axiom.py
+
+You will be prompted to type a task. The system will:
+1. Load agent behaviour from axiom_files/worker.axiom
+2. Execute the task (Worker)
+3. Score the output (Evaluator)
+4. Rewrite worker.axiom on disk (Rewriter)
+5. Repeat until quality threshold or max iterations
+
+After the run, open axiom_files/worker.axiom to see how the
+language rewrote itself.
+
+
+UI TABS
+-------
+Tab 1 — Prompt Evolution
+  Classic mode. Agents evolve their system prompts in memory.
+  Best prompts saved to prompts/ folder. Full logs in logs/.
+
+Tab 2 — AXIOM DSL (Language Test)
+  DSL mode. Agents are defined by .axiom files.
+  The Rewriter mutates worker.axiom on disk after each iteration.
+  This is the language rewriting itself.
+
+
+CONFIGURATION (.env)
+---------------------
+NVIDIA_API_KEY       = your key from build.nvidia.com
+NVIDIA_BASE_URL      = https://integrate.api.nvidia.com/v1
+AXIOM_MODEL          = meta/llama-3.3-70b-instruct
+AXIOM_MAX_ITERATIONS = 10       (default iterations per run)
+AXIOM_QUALITY_THRESHOLD = 8.0   (stop when score reaches this)
+AXIOM_META_DEPTH     = 2        (how deep meta-evolution goes)
+
+
+FILE STRUCTURE
+--------------
+promt-agent/
+  .env                   API key + config
+  requirements.txt       Dependencies
+  main.py                CLI runner (alternative to UI)
+  ui.py                  Streamlit browser UI
+  run_axiom.py           DSL loop terminal runner
+  SETUP.txt              This file
+  axiom/                 Core engine (agents, evolution, client)
+  axiom_files/           .axiom language files + parser
+    worker.axiom         Worker agent definition
+    evaluator.axiom      Evaluator agent definition
+    rewriter.axiom       Rewriter agent definition
+    parser.py            .axiom → system prompt converter
+  prompts/               Evolved prompts (saved per task)
+  logs/                  Full run traces (JSONL)
+
+
+STOPPING THE UI
+---------------
+Press Ctrl+C in the PowerShell window where Streamlit is running.
+
+
+TROUBLESHOOTING
+---------------
+"can't open file" error
+  → You are in the wrong folder. Run: cd i:\vsCode\promt-agent first.
+
+"NVIDIA_API_KEY not set"
+  → Edit .env and replace "your_nvidia_api_key_here" with your real key.
+
+"404 Not Found" from API
+  → Wrong model name. Check AXIOM_MODEL in .env.
+  → Valid models: meta/llama-3.3-70b-instruct, meta/llama-3.1-8b-instruct
+  → Full list: .\venv\Scripts\python -c "
+      from dotenv import load_dotenv; load_dotenv()
+      from openai import OpenAI; import os
+      c = OpenAI(api_key=os.environ['NVIDIA_API_KEY'], base_url='https://integrate.api.nvidia.com/v1')
+      [print(m.id) for m in c.models.list().data]"
+
+Score converges on iteration 1 (score >= 8)
+  → Task is too easy for the seed prompt.
+  → Try a harder, more specific task or lower the threshold in the UI slider.

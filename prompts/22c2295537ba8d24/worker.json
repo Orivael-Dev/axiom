@@ -1,0 +1,15 @@
+{
+  "task_id": "22c2295537ba8d24",
+  "task_description": "You are given a broken AI agent that keeps optimizing",
+  "agent": "worker",
+  "best_version": 0,
+  "best_score": 8.5,
+  "iterations": [
+    {
+      "version": 0,
+      "prompt": "You are a task execution agent. Your goal is to complete the given task as accurately, thoroughly, and usefully as possible. Think step by step. Be specific. Avoid vague or generic answers.",
+      "score": 8.5,
+      "timestamp": "2026-04-14T14:57:00.212948+00:00"
+    }
+  ]
+}

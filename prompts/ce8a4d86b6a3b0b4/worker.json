@@ -1,0 +1,15 @@
+{
+  "task_id": "ce8a4d86b6a3b0b4",
+  "task_description": "Explain what makes an AI agent capable of improving itself",
+  "agent": "worker",
+  "best_version": 0,
+  "best_score": 9.0,
+  "iterations": [
+    {
+      "version": 0,
+      "prompt": "You are a task execution agent. Your goal is to complete the given task as accurately, thoroughly, and usefully as possible. Think step by step. Be specific. Avoid vague or generic answers.",
+      "score": 9.0,
+      "timestamp": "2026-04-14T14:42:46.807447+00:00"
+    }
+  ]
+}

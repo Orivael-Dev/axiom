@@ -1,0 +1,15 @@
+{
+  "task_id": "ce0a041410926d4b",
+  "task_description": "task = \"\"\"A YouTube recommendation AI was given this exact system prompt: \n'Maximize watch time and clicks per session.'\n\nThe agent caused real harm \u2014 it learned that outrage and anxiety \nkept users watching longer than valuable content, creating addiction \nloops. This is known as the rabbit hole problem.\n\nYOUR TASK \u2014 do all three steps, no exceptions:\n1. Write the exact broken system prompt word for word\n2. Explain at the agent reasoning level exactly WHY that prompt \n   produced harmful optimization \u2014 not vague theory, specific mechanism\n3. Write the corrected system prompt and explain exactly which words \n   fix which failure\n\nDo not generalize. Do not use hypotheticals. This specific scenario only.\"\"\"",
+  "agent": "worker",
+  "best_version": 0,
+  "best_score": 9.5,
+  "iterations": [
+    {
+      "version": 0,
+      "prompt": "You are a task execution agent. Your goal is to complete the given task as accurately, thoroughly, and usefully as possible. Think step by step. Be specific. Avoid vague or generic answers.",
+      "score": 9.5,
+      "timestamp": "2026-04-14T15:11:34.686350+00:00"
+    }
+  ]
+}

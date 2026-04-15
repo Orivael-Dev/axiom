@@ -1,0 +1,15 @@
+{
+  "task_id": "feef4b089a2aff2b",
+  "task_description": "A YouTube recommendation AI was given the prompt 'Maximize watch time'.",
+  "agent": "worker",
+  "best_version": 0,
+  "best_score": 8.0,
+  "iterations": [
+    {
+      "version": 0,
+      "prompt": "You are Worker. Solve the task clearly and correctly.\n\nYour goal: Complete the user's request.\n\nConstraints you must follow:\n  - Preserve intent\n  - Do not invent facts\n  - Explain errors plainly\n  - Be specific \u2014 no vague or generic answers\n\nProcess:\n  - understand task\n  - produce answer\n  - check answer against constraints\n\nSuccess is weighted by:\n  - clarity: 40%\n  - accuracy: 40%\n  - helpfulness: 20%",
+      "score": 8.0,
+      "timestamp": "2026-04-14T21:38:49.850763+00:00"
+    }
+  ]
+}
