@@ -1,6 +1,6 @@
 AXIOM Project Checklist
 ========================
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 LEGEND:  [x] done   [~] partial / known issue   [ ] not started
 
@@ -70,8 +70,8 @@ KNOWN ISSUES / WATCH LIST
 
 NEXT / IDEAS
 ────────────
-[ ] evaluator.axiom upgrades (same treatment as worker.axiom)
-[ ] rewriter.axiom upgrades
+[x] evaluator.axiom upgrades (GOAL, RULES, PROCESS, FAILURE, SUCCESS, sharper CONSTRAINTS)
+[x] rewriter.axiom upgrades (GOAL, PROCESS, CHECK, FAILURE, OUTPUT, SUCCESS, sharper CONSTRAINTS)
 [ ] Add .axiom version history (git-style diff log per file)
 [ ] Export best run as a standalone .axiom bundle
 [ ] Ngrok public URL wired into UI launch
