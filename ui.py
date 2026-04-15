@@ -154,23 +154,19 @@ with tab_prompt:
     from axiom.agents.rewriter import RewriterAgent
     from axiom.evolution import EvolutionResult, IterationResult, LOGS_DIR
     from axiom import store as prompt_store
+    from axiom_files.parser import get_prompt_with_overlays, detect_overlays
     import uuid, json
     from datetime import datetime, timezone
 
-    # Detect and apply overlays based on task content
-from axiom_files.parser import get_prompt_with_overlays, detect_overlays
-detected = detect_overlays(task)
-if detected:
-    st.caption(f"Overlays detected: {', '.join(detected)}")
+    detected = detect_overlays(task)
+    if detected:
+        st.caption(f"Overlays detected: {', '.join(detected)}")
 
-worker = WorkerAgent(task)
-
-# Override with overlay-merged prompt if overlays detected
-if detected:
-    worker.system_prompt = get_prompt_with_overlays("worker", detected)
     worker = WorkerAgent(task)
+    if detected:
+        worker.system_prompt = get_prompt_with_overlays("worker", detected)
+
     # Apply UI temperature override
-    _orig_execute = worker.execute
     def _execute_with_temp(t):
         from axiom import client as nim
         return nim.chat(worker.system_prompt, f"Task:\n{t}", temperature=temperature)
