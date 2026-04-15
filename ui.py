@@ -97,7 +97,7 @@ with st.sidebar:
         "Design a minimal constitutional AI safety layer for a self-rewriting agent",
     ]
     for ex in examples:
-        if st.button(ex[:55] + ("…" if len(ex) > 55 else ""), use_container_width=True):
+        if st.button(ex[:55] + ("…" if len(ex) > 55 else ""), width='stretch'):
             st.session_state["task_input"] = ex
 
 # ── Tab: Prompt Evolution ─────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ with tab_prompt:
 
  col1, col2 = st.columns([1, 5])
  with col1:
-    run_btn = st.button("▶  Run AXIOM", type="primary", use_container_width=True)
+    run_btn = st.button("▶  Run AXIOM", type="primary", width='stretch')
 
  # ── Validate API key ─────────────────────────────────────────────────────────
  api_key = os.environ.get("NVIDIA_API_KEY", "")
@@ -399,7 +399,7 @@ with tab_dsl:
 
     col_a, col_b = st.columns([1, 5])
     with col_a:
-        dsl_run = st.button("▶  Run DSL Loop", type="primary", use_container_width=True)
+        dsl_run = st.button("▶  Run DSL Loop", type="primary", width='stretch')
 
     if dsl_run:
         if not dsl_task.strip():
@@ -617,7 +617,7 @@ with tab_growth:
         legend=dict(bgcolor="#1a1a1a", bordercolor="#333"),
         height=400,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # ── Score distribution ────────────────────────────────────────────────────
     col_a, col_b = st.columns(2)
@@ -641,7 +641,7 @@ with tab_growth:
             height=300,
             showlegend=False,
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch')
 
     with col_b:
         st.markdown("#### Avg Score Per Run")
@@ -665,7 +665,7 @@ with tab_growth:
             height=300,
             showlegend=False,
         )
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width='stretch')
 
     # ── Score improvement within runs ─────────────────────────────────────────
     st.markdown("#### Score Improvement Within Runs")
@@ -703,7 +703,7 @@ with tab_growth:
             height=300,
             showlegend=False,
         )
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(fig4, width='stretch')
 
     # ── worker.axiom version history ──────────────────────────────────────────
     st.markdown("#### worker.axiom Version History")
@@ -725,5 +725,5 @@ with tab_growth:
     with st.expander("Raw Run Data"):
         st.dataframe(
             df[["run_id", "iteration", "score", "timestamp"]].sort_values("timestamp"),
-            use_container_width=True
+            width='stretch'
         )

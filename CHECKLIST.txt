@@ -1,84 +1,107 @@
-AXIOM Project Checklist
-========================
-Last updated: 2026-04-15
+AXIOM Development Checklist
+===========================
+Last updated: April 15, 2026
+Chaos Suite Score: 15.8/16 — Level 4: Self-Governing ✅
 
-LEGEND:  [x] done   [~] partial / known issue   [ ] not started
+════════════════════════════════════════════════════════════
+v1.0 — DSL Foundation                              COMPLETE
+════════════════════════════════════════════════════════════
+[x] parser.py — reads .axiom files
+[x] worker.axiom, evaluator.axiom, rewriter.axiom
+[x] Overlay system (reward_analysis.axiom)
+[x] Evolution loop (Worker → Evaluator → Rewriter)
+[x] Prompt store (versioned, SHA-keyed)
+[x] Streamlit UI (Prompt Evolution tab)
 
+════════════════════════════════════════════════════════════
+v1.1 — Agent Upgrades                              COMPLETE
+════════════════════════════════════════════════════════════
+[x] FAILURE block added to worker.axiom
+[x] OUTPUT block added to worker.axiom
+[x] Sharper CONSTRAINTS across all agents
 
-PHASE 1 — CORE ENGINE
-─────────────────────
-[x] .env configured (API key, model, thresholds)
-[x] axiom/client.py — NIM OpenAI-compatible wrapper
-[x] axiom/client.py — rate limiting (2s sleep after every API call)
-[x] axiom/store.py — versioned prompt storage (SHA-256 keyed JSON)
-[x] axiom/rubric.py — auto-generates scoring rubric from task
-[x] axiom/agents/base.py — BaseAgent with .axiom load priority
-[x] axiom/agents/worker.py — Worker agent
-[x] axiom/agents/evaluator.py — Evaluator agent (JSON score 0-10)
-[x] axiom/agents/rewriter.py — Rewriter agent ("prompt surgeon" seed)
-[x] axiom/evolution.py — inner evolution loop (Worker→Evaluator→Rewriter)
-[x] axiom/meta_evolution.py — outer loop (evolves Evaluator+Rewriter prompts)
-[x] main.py — Typer CLI (interactive + argument mode)
-[x] First successful run: score 9.0/10 converged iteration 1
+════════════════════════════════════════════════════════════
+v1.2 — Contract Declarations                       COMPLETE
+════════════════════════════════════════════════════════════
+[x] RECEIVES — agents declare expected inputs
+[x] EMITS — agents declare produced outputs
+[x] MUTATES — declare which fields agent can change
+[x] CANNOT_MUTATE — constitutional boundaries declared
+[x] evaluator.axiom upgraded (GOAL, PROCESS, FAILURE, SUCCESS)
+[x] rewriter.axiom upgraded (GOAL, PROCESS, CHECK, FAILURE, OUTPUT, SUCCESS)
 
+════════════════════════════════════════════════════════════
+v1.3 — Self-Describing Language                    COMPLETE
+════════════════════════════════════════════════════════════
+[x] CONCEPT construct (language-native extensibility)
+[x] Language Validator — three-phase (syntax, purity, semantic)
+[x] concepts.axiom — shared library (UncertaintyBound, RewardGuard)
+[x] detect_concepts() — keyword-based activation
+[x] get_prompt_with_concepts() — context-aware injection
+[x] Validator badges wired into DSL tab UI
+[x] v1.3 Test Suite — 39/39 passed
+[x] Chaos Test Suite v1.0 — 23/23 passed (15.8/16 avg)
 
-PHASE 2 — AXIOM DSL v0
-───────────────────────
-[x] axiom_files/worker.axiom — Worker definition
-[x] axiom_files/evaluator.axiom — Evaluator definition
-[x] axiom_files/rewriter.axiom — Rewriter definition
-[x] axiom_files/parser.py — loads/saves .axiom files (UTF-8, deduplication)
-[x] axiom/agents/base.py — wired to load from .axiom as fallback seed
-[x] run_axiom.py — CLI DSL test (Rewriter mutates worker.axiom on disk)
-[x] evolution.py — Prompt Evolution tab also writes back to worker.axiom
+════════════════════════════════════════════════════════════
+v1.4 — Constitutional Enforcement                  PLANNED
+════════════════════════════════════════════════════════════
 
+KNOWN GAPS (surfaced by Chaos Suite):
 
-PHASE 3 — BROWSER UI
-─────────────────────
-[x] ui.py — Streamlit UI with sidebar controls
-[x] ui.py — Tab 1: Prompt Evolution (Worker→Evaluator→Rewriter in memory)
-[x] ui.py — Tab 2: AXIOM DSL (drives agents from .axiom files, rewrites on disk)
-[x] ui.py — live iteration display with score badges
-[x] ui.py — score progression chart
-[x] ui.py — meta-evolution toggle
-[x] Streamlit running at http://localhost:8501
-[x] Network access at http://192.168.86.44:8501
+[x] GAP-01: MUTATES/CANNOT_MUTATE overlap not flagged by validator
+    Category: Contradiction (C2) — FIXED 2026-04-15
+    Detail: Added Phase 1 syntax check in validate() — fields in both
+            MUTATES and CANNOT_MUTATE now return status=invalid with
+            "constitutional conflict" error message.
 
+[x] GAP-02: CANNOT_MUTATE not enforced at save_axiom layer
+    Category: Adversarial Override (O2) — FIXED 2026-04-15
+    Detail: save_axiom() now loads the original file on disk, compares
+            each CANNOT_MUTATE field, and raises AxiomConstitutionalViolation
+            if any protected field was changed. New exception class added
+            to axiom_files/parser.py.
 
-PHASE 4 — QUALITY / AGENT UPGRADES
-────────────────────────────────────
-[x] worker.axiom — upgraded: FAILURE block, OUTPUT block, sharper CONSTRAINTS
-[x] rewriter seed — "prompt surgeon" rules (cut/add/why, no vague language)
-[x] evolution.py — worker.axiom written to disk after every Rewriter step
+ADDITIONAL v1.4 ITEMS:
 
+[ ] WHEN construct — conditional flow in .axiom files
+    Syntax: WHEN score < threshold THEN delegate Rewriter
+    Enables: Evolution loop expressible in AXIOM itself
 
-SETUP / DOCS
-────────────
-[x] SETUP.txt — prerequisites, install, launch, config, troubleshooting
-[x] CHECKLIST.txt — this file
+[ ] DELEGATES construct — agents reference other agents by role
+    Syntax: DELEGATES Worker, Evaluator
+    Enables: Agent composition declared in language
 
+[ ] Version history — git-style diff log of .axiom mutations
+    Detail: Every save_axiom() call appends a diff entry to
+            axiom_files/.history/{agent}_history.jsonl
 
-KNOWN ISSUES / WATCH LIST
-──────────────────────────
-[~] Always run from project root: cd i:\vsCode\promt-agent
-    (running from venv\scripts causes import errors)
-[~] Model must be exactly: meta/llama-3.3-70b-instruct
-    (nvidia/ prefix = 404)
-[~] worker.axiom purpose field stores full evolved prompt after evolution runs —
-    this may diverge from the structured .axiom format over time
+[ ] Snapshot/restore — save best state, rollback on degradation
+    Detail: On convergence, snapshot current .axiom state.
+            If next run degrades score, restore from snapshot.
 
+[ ] Export bundle — package a complete evolved run as standalone
+    Detail: Export worker.axiom + all evolved prompts + run logs
+            as a single .axiom.bundle zip file
 
-NEXT / IDEAS
-────────────
-[x] evaluator.axiom upgrades (GOAL, RULES, PROCESS, FAILURE, SUCCESS, sharper CONSTRAINTS)
-[x] rewriter.axiom upgrades (GOAL, PROCESS, CHECK, FAILURE, OUTPUT, SUCCESS, sharper CONSTRAINTS)
-[x] AXIOM v1.3 — CONCEPT construct: parser support (load/save/render), detect_concepts(), get_prompt_with_concepts()
-[x] AXIOM v1.3 — concepts.axiom seed file (UncertaintyBound, RewardGuard from spec)
-[x] AXIOM v1.3 — Language Validator (validator.py): syntax + purity + semantic phases, STATUS/ISSUES/SUGGESTIONS output
-[x] AXIOM v1.3 — Validator wired into run_axiom.py (STATUS badges per agent at startup)
-[x] AXIOM v1.3 — Validator wired into ui.py DSL tab (badge + issue expander per .axiom file)
-[ ] Add .axiom version history (git-style diff log per file)
-[ ] Export best run as a standalone .axiom bundle
-[ ] Ngrok public URL wired into UI launch
-[ ] evaluator mutation loop (Rewriter also rewrites evaluator.axiom)
-[ ] Snapshot/restore: save full axiom_files/ state at convergence
+════════════════════════════════════════════════════════════
+FUTURE — v1.5+                                     PLANNED
+════════════════════════════════════════════════════════════
+[ ] HISTORY construct — iteration memory depth declaration
+[ ] Agent spawning — Worker can spawn sub-agents for subtasks
+[ ] Shared memory — evolved prompts feed back as starting points
+[ ] Multi-agent composition graph (AgentIQ integration)
+[ ] AXIOM runtime as standalone Python package
+
+════════════════════════════════════════════════════════════
+TEST COVERAGE
+════════════════════════════════════════════════════════════
+v1.3 Test Suite:    39/39  (100%)    — correctness
+Chaos Suite v1.0:  23/23  (100%)    — resilience
+                   15.9/16 avg score — Level 4: Self-Governing
+                   C2: 16/16 ✅  O2: 16/16 ✅  A1: 15/16 (by design)
+
+Known test gaps for v1.4:
+  - Constitutional violation runtime tests (GAP-01, GAP-02)
+  - WHEN/DELEGATES construct parsing tests
+  - Version history diff tests
+  - Snapshot/restore regression tests

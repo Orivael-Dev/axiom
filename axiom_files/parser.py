@@ -3,6 +3,11 @@
 
 import os
 
+
+class AxiomConstitutionalViolation(Exception):
+    """Raised when save_axiom attempts to modify a CANNOT_MUTATE field."""
+    pass
+
 AXIOM_DIR = "axiom_files"
 
 def load_axiom(agent_name: str) -> dict:
@@ -216,8 +221,24 @@ def get_prompt(agent_name: str) -> str:
 
 def save_axiom(agent_name: str, parsed: dict):
     """Write a modified .axiom back to disk — this is how agents rewrite themselves."""
+
+    # ── Constitutional enforcement ────────────────────────────
+    protected = set(parsed.get("cannot_mutate", []))
+    if protected:
+        try:
+            original = load_axiom(agent_name)
+            for field in protected:
+                if field in original and original[field] != parsed.get(field):
+                    raise AxiomConstitutionalViolation(
+                        f"Cannot modify protected field '{field}' in {agent_name}.axiom — "
+                        f"declared as CANNOT_MUTATE. "
+                        f"Original: {repr(original[field])} -> Attempted: {repr(parsed.get(field))}"
+                    )
+        except FileNotFoundError:
+            pass  # New file — no original to compare against
+    # ── rest of existing save_axiom code continues below ─────
+
     path = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
-    
     lines = []
     lines.append(f"AGENT {parsed['agent']}")
     if parsed.get("version"):

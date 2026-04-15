@@ -106,6 +106,19 @@ def validate(parsed: dict) -> dict:
                     f"Known fields: {', '.join(sorted(_KNOWN_FIELDS))}."
                 )
 
+    # 1e-extra. MUTATES / CANNOT_MUTATE conflict check
+    mutates_set = set(parsed.get("mutates", []))
+    cannot_set = set(parsed.get("cannot_mutate", []))
+    conflicts = mutates_set & cannot_set
+    for field in conflicts:
+        issues.append({
+            "phase": "syntax", "level": "error", "field": "mutates/cannot_mutate",
+            "message": f"Field '{field}' appears in both MUTATES and CANNOT_MUTATE — constitutional conflict.",
+        })
+        suggestions.append(
+            f"Remove '{field}' from either MUTATES or CANNOT_MUTATE — a field cannot be both mutable and protected."
+        )
+
     # 1e. CONCEPT blocks must have all 4 sub-fields populated
     for concept in parsed.get("concepts", []):
         name = concept.get("name", "<unnamed>")
