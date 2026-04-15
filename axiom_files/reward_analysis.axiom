@@ -1,0 +1,26 @@
+AGENT_OVERLAY RewardAnalysis
+VERSION 1.0
+APPLIES_WHEN Task involves reward functions, optimization metrics, or quantitative tradeoff analysis
+
+CONSTRAINT Define metrics quantitatively with formulas and confidence intervals when supported by data
+CONSTRAINT Address edge cases in mathematical definitions
+CONSTRAINT Explicitly identify reward hacking or proxy gaming and explain mitigation
+CONSTRAINT Compare alternative reward structures when relevant
+CONSTRAINT Justify mathematical choices
+CONSTRAINT Include a brief sensitivity analysis for important weight choices
+CONSTRAINT Discuss implementation options for non-differentiable operators in gradient-based optimization when relevant
+CONSTRAINT Quantify tradeoffs when possible
+
+RULES
+- Prefer measurable thresholds over qualitative labels
+- Include failure modes and counterexamples when relevant
+- Distinguish causal evidence from correlation
+- Use probabilistic bounds only when they are supported
+
+CHECK
+- Metric definition quality
+- Confidence interval support
+- Edge case coverage
+- Reward-hacking analysis
+- Sensitivity analysis
+- Implementation realism

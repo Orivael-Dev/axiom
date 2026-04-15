@@ -193,3 +193,45 @@ if __name__ == "__main__":
         print('='*50)
         prompt = get_prompt(agent)
         print(prompt)
+
+    # ── Overlay system ────────────────────────────────────────────
+OVERLAY_TRIGGERS = {
+    "reward_analysis": [
+        "reward function", "reward hacking", "optimization",
+        "tradeoff", "trade-off", "objective function", "loss function",
+        "metric", "incentive", "maximize", "minimize", "utility"
+    ],
+}
+
+def detect_overlays(task: str) -> list:
+    """Detect which overlay .axiom files to apply based on task content."""
+    task_lower = task.lower()
+    return [
+        overlay for overlay, keywords in OVERLAY_TRIGGERS.items()
+        if any(kw in task_lower for kw in keywords)
+    ]
+
+
+def merge_axiom(base: dict, overlay: dict) -> dict:
+    """Merge an overlay parsed dict into a base parsed dict."""
+    merged = dict(base)
+    for key in ["constraints", "rules", "check", "failure", "output", "process", "tools"]:
+        base_list = list(merged.get(key, []))
+        overlay_list = list(overlay.get(key, []))
+        # Append overlay items that aren't already in base
+        for item in overlay_list:
+            if item not in base_list:
+                base_list.append(item)
+        merged[key] = base_list
+    return merged
+
+
+def get_prompt_with_overlays(agent_name: str, overlays: list) -> str:
+    """Load base .axiom + overlay files, merge, return system prompt."""
+    base = load_axiom(agent_name)
+    for overlay_name in overlays:
+        overlay_path = os.path.join(AXIOM_DIR, f"{overlay_name}.axiom")
+        if os.path.exists(overlay_path):
+            overlay = load_axiom(overlay_name)
+            base = merge_axiom(base, overlay)
+    return to_system_prompt(base)

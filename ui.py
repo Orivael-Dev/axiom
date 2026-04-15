@@ -62,7 +62,7 @@ st.markdown("**An AI-Native Language for Building Self-Evolving Intelligence** �
 st.divider()
 
 # ── Mode tabs ─────────────────────────────────────────────────────────────────
-tab_prompt, tab_dsl = st.tabs(["🔁 Prompt Evolution", "📄 AXIOM DSL (Language Test)"])
+tab_prompt, tab_dsl, tab_growth = st.tabs(["🔁 Prompt Evolution", "📄 AXIOM DSL (Language Test)", "📈 Growth Dashboard"])
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -70,6 +70,8 @@ with st.sidebar:
 
     max_iterations = st.slider("Max Iterations", 1, 15, 5)
     threshold = st.slider("Quality Threshold", 1.0, 10.0, 8.0, 0.1)
+    force_rewrite = st.toggle("Force Rewrite Every Iteration", value=False,
+                              help="Rewriter runs after every iteration regardless of score. Use this to force evolution even when scores are high.")
     enable_meta = st.toggle("Meta-Evolution", value=True,
                             help="Also evolve the Evaluator and Rewriter prompts")
     temperature = st.slider("Worker Temperature", 0.1, 1.0, 0.7, 0.05)
@@ -155,6 +157,17 @@ with tab_prompt:
     import uuid, json
     from datetime import datetime, timezone
 
+    # Detect and apply overlays based on task content
+from axiom_files.parser import get_prompt_with_overlays, detect_overlays
+detected = detect_overlays(task)
+if detected:
+    st.caption(f"Overlays detected: {', '.join(detected)}")
+
+worker = WorkerAgent(task)
+
+# Override with overlay-merged prompt if overlays detected
+if detected:
+    worker.system_prompt = get_prompt_with_overlays("worker", detected)
     worker = WorkerAgent(task)
     # Apply UI temperature override
     _orig_execute = worker.execute
@@ -259,7 +272,7 @@ with tab_prompt:
                     break
 
                 # Rewriter
-                if i < max_iterations - 1:
+                if i < max_iterations - 1 and (force_rewrite or score < threshold):
                     st.markdown('<span class="tag tag-rewriter">REWRITER</span>', unsafe_allow_html=True)
                     new_prompt = rewriter.rewrite(
                         target_role="worker",
@@ -390,7 +403,8 @@ with tab_dsl:
                 st.stop()
 
         rubric_txt = format_for_prompt(dsl_rubric)
-        worker_p  = get_prompt("worker")
+        from axiom_files.parser import get_prompt_with_overlays, detect_overlays
+        worker_p = get_prompt_with_overlays("worker", detect_overlays(dsl_task))
         eval_p    = get_prompt("evaluator")
         rewrite_p = get_prompt("rewriter")
 
@@ -446,7 +460,7 @@ with tab_dsl:
                     break
 
                 # Rewriter → mutates worker.axiom
-                if i < max_iterations - 1:
+                if i < max_iterations - 1 and (force_rewrite or sc < threshold):
                     st.markdown('<span class="tag tag-rewriter">REWRITER → worker.axiom</span>', unsafe_allow_html=True)
                     cur_axiom = load_axiom("worker")
                     rw_msg = f"""Current worker.axiom (parsed):\n{json.dumps(cur_axiom, indent=2)}\n\nFailures:\n{chr(10).join(f'- {f}' for f in failures)}\n\nSuggested changes:\n{chr(10).join(f'- {s_}' for s_ in suggested)}\n\nReturn updated axiom dict as JSON. Add mutations key: [{{"field":...,"cut":...,"added":...,"why":...}}]"""
@@ -502,3 +516,190 @@ with tab_dsl:
         st.markdown(f'{badge_dsl} Best score: <span class="score-high">{best_score_dsl:.1f}/10</span>', unsafe_allow_html=True)
         st.caption(f"Run ID: `{dsl_run_id}` · worker.axiom updated in `axiom_files/`")
 
+        # ── Tab: Growth Dashboard ─────────────────────────────────────────────────────
+with tab_growth:
+    import json
+    import glob
+    import pandas as pd
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    st.markdown("### AXIOM Growth Dashboard")
+    st.markdown("Evolution history across all runs — how the language and agents improve over time.")
+
+    # ── Load all log files ────────────────────────────────────────────────────
+    log_dir = Path("logs")
+    log_files = sorted(log_dir.glob("*.jsonl")) if log_dir.exists() else []
+
+    if not log_files:
+        st.info("No evolution runs yet. Run a task first.")
+        st.stop()
+
+    # Parse all entries
+    all_entries = []
+    for lf in log_files:
+        with open(lf) as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                    entry["log_file"] = lf.stem
+                    all_entries.append(entry)
+                except:
+                    pass
+
+    df = pd.DataFrame(all_entries)
+    df = df[df["agent_role"] == "worker"].copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp")
+    df["run_label"] = df["run_id"] + " i" + df["iteration"].astype(str)
+
+    # ── Top metrics ───────────────────────────────────────────────────────────
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Runs", df["run_id"].nunique())
+    col2.metric("Total Iterations", len(df))
+    col3.metric("Best Score Ever", f"{df['score'].max():.1f}/10")
+    col4.metric("Avg Score", f"{df['score'].mean():.2f}/10")
+
+    st.divider()
+
+    # ── Score trajectory across all runs ─────────────────────────────────────
+    st.markdown("#### Score Trajectory — All Runs")
+
+    fig = go.Figure()
+    for run_id, group in df.groupby("run_id"):
+        group = group.sort_values("iteration")
+        fig.add_trace(go.Scatter(
+            x=list(range(len(group))),
+            y=group["score"].tolist(),
+            mode="lines+markers",
+            name=run_id,
+            line=dict(width=2),
+            marker=dict(size=8),
+            hovertemplate=f"Run: {run_id}<br>Iter: %{{x}}<br>Score: %{{y:.1f}}<extra></extra>"
+        ))
+
+    fig.add_hline(
+        y=threshold, line_dash="dash",
+        line_color="#f0c040",
+        annotation_text=f"Threshold ({threshold})",
+        annotation_position="right"
+    )
+    fig.update_layout(
+        plot_bgcolor="#0d0d0d",
+        paper_bgcolor="#0d0d0d",
+        font_color="#e0e0e0",
+        xaxis=dict(title="Iteration", gridcolor="#222"),
+        yaxis=dict(title="Score", gridcolor="#222", range=[0, 10]),
+        legend=dict(bgcolor="#1a1a1a", bordercolor="#333"),
+        height=400,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── Score distribution ────────────────────────────────────────────────────
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.markdown("#### Score Distribution")
+        fig2 = go.Figure()
+        fig2.add_trace(go.Histogram(
+            x=df["score"].tolist(),
+            nbinsx=20,
+            marker_color="#7ab648",
+            opacity=0.8,
+            name="Scores"
+        ))
+        fig2.update_layout(
+            plot_bgcolor="#0d0d0d",
+            paper_bgcolor="#0d0d0d",
+            font_color="#e0e0e0",
+            xaxis=dict(title="Score", gridcolor="#222"),
+            yaxis=dict(title="Count", gridcolor="#222"),
+            height=300,
+            showlegend=False,
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+    with col_b:
+        st.markdown("#### Avg Score Per Run")
+        run_avgs = df.groupby("run_id")["score"].mean().reset_index()
+        run_avgs.columns = ["run_id", "avg_score"]
+        run_avgs = run_avgs.sort_values("avg_score")
+
+        fig3 = go.Figure()
+        fig3.add_trace(go.Bar(
+            x=run_avgs["avg_score"].tolist(),
+            y=run_avgs["run_id"].tolist(),
+            orientation="h",
+            marker_color="#5ab4f0",
+        ))
+        fig3.update_layout(
+            plot_bgcolor="#0d0d0d",
+            paper_bgcolor="#0d0d0d",
+            font_color="#e0e0e0",
+            xaxis=dict(title="Avg Score", gridcolor="#222", range=[0, 10]),
+            yaxis=dict(gridcolor="#222"),
+            height=300,
+            showlegend=False,
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+    # ── Score improvement within runs ─────────────────────────────────────────
+    st.markdown("#### Score Improvement Within Runs")
+    improvements = []
+    for run_id, group in df.groupby("run_id"):
+        group = group.sort_values("iteration")
+        scores = group["score"].tolist()
+        if len(scores) > 1:
+            improvements.append({
+                "run_id": run_id,
+                "start_score": scores[0],
+                "end_score": scores[-1],
+                "delta": scores[-1] - scores[0],
+                "iterations": len(scores)
+            })
+
+    if improvements:
+        imp_df = pd.DataFrame(improvements).sort_values("delta", ascending=False)
+        fig4 = go.Figure()
+        fig4.add_trace(go.Bar(
+            x=imp_df["run_id"].tolist(),
+            y=imp_df["delta"].tolist(),
+            marker_color=[
+                "#7ab648" if d >= 0 else "#e05050"
+                for d in imp_df["delta"].tolist()
+            ],
+            name="Score Delta"
+        ))
+        fig4.update_layout(
+            plot_bgcolor="#0d0d0d",
+            paper_bgcolor="#0d0d0d",
+            font_color="#e0e0e0",
+            xaxis=dict(title="Run", gridcolor="#222"),
+            yaxis=dict(title="Score Change", gridcolor="#222"),
+            height=300,
+            showlegend=False,
+        )
+        st.plotly_chart(fig4, use_container_width=True)
+
+    # ── worker.axiom version history ──────────────────────────────────────────
+    st.markdown("#### worker.axiom Version History")
+    axiom_path = Path("axiom_files/worker.axiom")
+    if axiom_path.exists():
+        with open(axiom_path) as f:
+            content = f.read()
+        st.code(content, language=None)
+        lines = content.split("\n")
+        constraints = [l for l in lines if l.startswith("CONSTRAINT")]
+        rules = [l for l in lines if l.startswith("-")]
+        col_x, col_y, col_z = st.columns(3)
+        col_x.metric("Current Version",
+            next((l.split()[-1] for l in lines if l.startswith("VERSION")), "?"))
+        col_y.metric("Constraints", len(constraints))
+        col_z.metric("Rules", len(rules))
+
+    # ── Raw run data ──────────────────────────────────────────────────────────
+    with st.expander("Raw Run Data"):
+        st.dataframe(
+            df[["run_id", "iteration", "score", "timestamp"]].sort_values("timestamp"),
+            use_container_width=True
+        )
