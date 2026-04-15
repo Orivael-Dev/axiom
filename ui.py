@@ -1,6 +1,10 @@
 """
 AXIOM — Phase 1 UI
 Run with: streamlit run ui.py
+
+Author:  Antonio Roberts
+Project: AXIOM — An AI-Native Language for Self-Evolving Intelligence
+License: Copyright (c) 2026 Antonio Roberts. All rights reserved.
 """
 import os
 import time

@@ -2,6 +2,10 @@
 AXIOM DSL v0 — First Language Test
 Runs the evolution loop driven entirely by .axiom files.
 
+Author:  Antonio Roberts
+Project: AXIOM — An AI-Native Language for Self-Evolving Intelligence
+License: Copyright (c) 2026 Antonio Roberts. All rights reserved.
+
 The agents load their system prompts from:
   axiom_files/worker.axiom
   axiom_files/evaluator.axiom

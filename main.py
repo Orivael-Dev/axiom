@@ -2,6 +2,10 @@
 AXIOM — Phase 1 CLI
 Run with: python main.py
 
+Author:  Antonio Roberts
+Project: AXIOM — An AI-Native Language for Self-Evolving Intelligence
+License: Copyright (c) 2026 Antonio Roberts. All rights reserved.
+
 The user describes a task in plain English. AXIOM generates a scoring rubric,
 runs the evolution loop (Worker → Evaluator → Rewriter × N), then triggers
 meta-evolution to improve the evaluation and rewriting machinery itself.
