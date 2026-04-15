@@ -174,6 +174,16 @@ class EvolutionLoop:
                     self.worker.system_prompt = new_prompt
                     self._log(i, "rewriter", self.rewriter.system_prompt, new_prompt, score, {})
 
+                    # Write evolved prompt back to worker.axiom
+                    try:
+                        from axiom_files.parser import load_axiom, save_axiom
+                        current_axiom = load_axiom("worker")
+                        current_axiom["purpose"] = new_prompt
+                        save_axiom("worker", current_axiom)
+                        console.print("  [green]✓ worker.axiom updated on disk[/]")
+                    except Exception as axiom_err:
+                        console.print(f"  [yellow]worker.axiom write skipped: {axiom_err}[/]")
+
                 progress.advance(task)
 
         if not result.converged:
