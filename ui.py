@@ -69,7 +69,7 @@ with st.sidebar:
     st.markdown("### ⚙ Run Configuration")
 
     max_iterations = st.slider("Max Iterations", 1, 15, 5)
-    threshold = st.slider("Quality Threshold", 1.0, 10.0, 8.0, 0.5)
+    threshold = st.slider("Quality Threshold", 1.0, 10.0, 8.0, 0.1)
     enable_meta = st.toggle("Meta-Evolution", value=True,
                             help="Also evolve the Evaluator and Rewriter prompts")
     temperature = st.slider("Worker Temperature", 0.1, 1.0, 0.7, 0.05)
@@ -270,6 +270,22 @@ with tab_prompt:
                     with st.expander("New Worker Prompt"):
                         st.code(new_prompt, language=None)
 
+                    # Write version bump to worker.axiom
+                    try:
+                        from axiom_files.parser import load_axiom, save_axiom
+                        _axiom = load_axiom("worker")
+                        _ver = float(_axiom.get("version", "1.0")) + 0.1
+                        _axiom["version"] = f"{_ver:.1f}"
+                        _lines = new_prompt.strip().split("\n")
+                        _new_c = [l.strip().lstrip("-").strip() for l in _lines
+                                  if l.strip().startswith("-") or "constraint" in l.lower()]
+                        if _new_c:
+                            _axiom["constraints"] = _new_c
+                        save_axiom("worker", _axiom)
+                        st.caption(f"worker.axiom → v{_ver:.1f}")
+                    except Exception as _e:
+                        st.caption(f"axiom write error: {_e}")
+
                 iter_status.update(
                     label=f"Iteration {i+1} — Score {score:.1f}/10",
                     state="complete" if score >= threshold else "running",
@@ -457,11 +473,15 @@ with tab_dsl:
                         if k in valid_keys:
                             cur_axiom[k] = v
 
+                    _dsl_ver = float(cur_axiom.get("version", "1.0")) + 0.1
+                    cur_axiom["version"] = f"{_dsl_ver:.1f}"
+
                     save_axiom("worker", cur_axiom)
                     worker_p = to_system_prompt(cur_axiom)
 
                     with st.expander("Updated worker.axiom prompt"):
                         st.code(worker_p, language=None)
+                    st.caption(f"worker.axiom → v{_dsl_ver:.1f}")
 
                 s.update(label=f"Iteration {i+1} — Score {sc:.1f}/10", state="complete", expanded=False)
 

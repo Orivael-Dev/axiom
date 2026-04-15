@@ -178,11 +178,40 @@ class EvolutionLoop:
                     try:
                         from axiom_files.parser import load_axiom, save_axiom
                         current_axiom = load_axiom("worker")
-                        current_axiom["purpose"] = new_prompt
+                        console.print(f"  [cyan]DEBUG: loaded axiom keys: {list(current_axiom.keys())}[/]")
+
+                        # Parse evolved prompt back into axiom sections
+                        lines = new_prompt.strip().split("\n")
+                        new_constraints = [
+                            l.strip().lstrip("-").strip()
+                            for l in lines
+                            if l.strip().startswith("-") or "constraint" in l.lower()
+                        ]
+                        console.print(f"  [cyan]DEBUG: found {len(new_constraints)} constraints[/]")
+
+                        # Only update constraints if rewriter found new ones
+                        if new_constraints:
+                            current_axiom["constraints"] = new_constraints
+
+                        # Bump version
+                        version = float(current_axiom.get("version", "1.0")) + 0.1
+                        current_axiom["version"] = f"{version:.1f}"
+
                         save_axiom("worker", current_axiom)
-                        console.print("  [green]✓ worker.axiom updated on disk[/]")
+                        console.print(f"  [green]✓ worker.axiom updated → v{version:.1f}[/]")
+
+                        # Log axiom mutation to JSONL
+                        self._log(i, "axiom_mutation", new_prompt, "", score, {
+                            "axiom_version": f"{version:.1f}",
+                            "constraints_updated": bool(new_constraints),
+                            "constraints_count": len(new_constraints),
+                            "axiom_keys": list(current_axiom.keys()),
+                        })
                     except Exception as axiom_err:
-                        console.print(f"  [yellow]worker.axiom write skipped: {axiom_err}[/]")
+                        console.print(f"  [red]DEBUG ERROR: {type(axiom_err).__name__}: {axiom_err}[/]")
+                        self._log(i, "axiom_mutation_error", "", str(axiom_err), score, {
+                            "error_type": type(axiom_err).__name__,
+                        })
 
                 progress.advance(task)
 

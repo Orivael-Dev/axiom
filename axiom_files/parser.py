@@ -17,12 +17,14 @@ def load_axiom(agent_name: str) -> dict:
     
     parsed = {
         "agent": "",
+        "version": "1.0",
         "purpose": "",
         "goal": "",
         "constraints": [],
         "rules": [],
         "process": [],
         "check": [],
+        "failure": [],
         "output": [],
         "success": {},
         "tools": []
@@ -38,6 +40,8 @@ def load_axiom(agent_name: str) -> dict:
         # Detect section headers
         if line.startswith("AGENT "):
             parsed["agent"] = line.replace("AGENT ", "").strip()
+        elif line.startswith("VERSION "):
+            parsed["version"] = line.replace("VERSION ", "").strip()
         elif line.startswith("PURPOSE "):
             parsed["purpose"] = line.replace("PURPOSE ", "").strip()
         elif line.startswith("GOAL "):
@@ -48,6 +52,8 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "process"
         elif line == "CHECK":
             current_section = "check"
+        elif line == "FAILURE":
+            current_section = "failure"
         elif line == "OUTPUT":
             current_section = "output"
         elif line == "RULES":
@@ -69,6 +75,8 @@ def load_axiom(agent_name: str) -> dict:
     parsed["check"] = list(dict.fromkeys(parsed["check"]))
     parsed["process"] = list(dict.fromkeys(parsed["process"]))
     parsed["constraints"] = list(dict.fromkeys(parsed["constraints"]))
+    parsed["failure"] = list(dict.fromkeys(parsed["failure"]))
+    parsed["output"] = list(dict.fromkeys(parsed["output"]))
 
     return parsed
 
@@ -123,34 +131,48 @@ def save_axiom(agent_name: str, parsed: dict):
     
     lines = []
     lines.append(f"AGENT {parsed['agent']}")
-    
+    if parsed.get("version"):
+        lines.append(f"VERSION {parsed['version']}")
+
     if parsed["purpose"]:
         lines.append(f"PURPOSE {parsed['purpose']}")
     if parsed["goal"]:
         lines.append(f"GOAL {parsed['goal']}")
-    
+
     lines.append("")
     for c in parsed["constraints"]:
         lines.append(f"CONSTRAINT {c}")
-    
+
     if parsed["rules"]:
         lines.append("")
         lines.append("RULES")
         for r in parsed["rules"]:
             lines.append(f"- {r}")
-    
+
     if parsed["process"]:
         lines.append("")
         lines.append("PROCESS")
         for p in parsed["process"]:
             lines.append(f"- {p}")
-    
+
     if parsed["check"]:
         lines.append("")
         lines.append("CHECK")
         for c in parsed["check"]:
             lines.append(f"- {c}")
-    
+
+    if parsed.get("failure"):
+        lines.append("")
+        lines.append("FAILURE")
+        for f in parsed["failure"]:
+            lines.append(f"- {f}")
+
+    if parsed.get("output"):
+        lines.append("")
+        lines.append("OUTPUT")
+        for o in parsed["output"]:
+            lines.append(f"- {o}")
+
     if parsed["success"]:
         lines.append("")
         lines.append("SUCCESS")
