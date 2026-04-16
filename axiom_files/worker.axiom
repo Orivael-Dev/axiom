@@ -59,3 +59,7 @@ WHEN
 - if task involves uncertainty, activate UncertaintyBound
 - if task involves optimization, activate RewardGuard
 - if user input is underspecified, activate AmbiguityResolution
+
+DELEGATES
+- Worker -> Rewriter (on: RecoveryMode)
+- Worker -> Evaluator (on: output_ready)

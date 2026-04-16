@@ -19,3 +19,9 @@ PURPOSE Detect and respond to underspecified or vague user input
 APPLIES WHEN underspecified vague ambiguous unclear missing incomplete
 REQUIRES Identify what information is missing before attempting an answer
 EFFECT Agent must request clarification rather than guess or hallucinate
+
+CONCEPT RecoveryMode
+PURPOSE Trigger repair behavior after a failed or low-scoring evaluation
+APPLIES WHEN failure low score below threshold retry repair recover
+REQUIRES Identify which constraint or dimension caused the failure
+EFFECT Enable rewrite or corrective delegation to a repair agent

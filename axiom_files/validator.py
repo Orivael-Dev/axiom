@@ -45,6 +45,7 @@ _KNOWN_FIELDS = {
     "agent", "version", "purpose", "goal", "receives", "emits",
     "mutates", "cannot_mutate", "constraints", "rules", "process",
     "check", "failure", "output", "success", "tools", "concepts", "when",
+    "delegates",
 }
 
 
@@ -217,6 +218,17 @@ def validate(parsed: dict) -> dict:
             })
             suggestions.append(
                 f"Add ', activate ConceptName' to the WHEN rule."
+            )
+
+    # 3e. DELEGATES entry validation
+    for entry in parsed.get("delegates", []):
+        if "->" not in entry:
+            issues.append({
+                "phase": "semantic", "level": "error", "field": "delegates",
+                "message": f"DELEGATES entry missing '->' routing arrow: '{entry[:60]}'",
+            })
+            suggestions.append(
+                "Use format: '- Source -> Target (on: trigger)'"
             )
 
     # ── Determine overall status ─────────────────────────────────────────────

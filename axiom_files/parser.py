@@ -38,7 +38,8 @@ def load_axiom(agent_name: str) -> dict:
         "success": {},
         "tools": [],
         "concepts": [],
-        "when": []
+        "when": [],
+        "delegates": []
     }
 
     current_section = None
@@ -131,6 +132,8 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "success"
         elif line == "WHEN":
             current_section = "when"
+        elif line == "DELEGATES":
+            current_section = "delegates"
         elif line.startswith("- ") and current_section:
             if current_section == "success":
                 pass  # handled below
@@ -319,6 +322,12 @@ def save_axiom(agent_name: str, parsed: dict):
         for rule in parsed["when"]:
             lines.append(f"- {rule}")
 
+    if parsed.get("delegates"):
+        lines.append("")
+        lines.append("DELEGATES")
+        for rule in parsed["delegates"]:
+            lines.append(f"- {rule}")
+
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     
@@ -441,6 +450,53 @@ def apply_decision_table(task: str, table: dict) -> list:
     task_lower = task.lower()
     return [concept for kw, concept in table.items()
             if kw.replace("_", " ") in task_lower]
+
+
+# -- DELEGATES construct -- declarative agent routing ---------------------------
+
+def compile_delegates(parsed: dict) -> list:
+    """
+    Compile DELEGATES block into structured delegation map.
+    Format: "Source -> Target (on: trigger)"
+    Returns: [{"source": str, "target": str, "on": str}]
+    """
+    delegation_map = []
+    for rule in parsed.get("delegates", []):
+        try:
+            if "->" not in rule:
+                continue
+            source, rest = rule.split("->", 1)
+            source = source.strip()
+            if "(on:" in rest:
+                target_part, trigger_part = rest.split("(on:", 1)
+                target = target_part.strip()
+                trigger = trigger_part.rstrip(")").strip()
+            else:
+                target = rest.strip()
+                trigger = "always"
+            delegation_map.append({
+                "source": source,
+                "target": target,
+                "on": trigger,
+            })
+        except Exception:
+            continue
+    return delegation_map
+
+
+def get_delegates_for(agent_name: str, parsed: dict, active_state: str = None) -> list:
+    """
+    Return list of valid delegation targets for agent_name
+    given the current active state (concept or condition name).
+    """
+    delegation_map = compile_delegates(parsed)
+    matches = []
+    for entry in delegation_map:
+        if entry["source"].lower() == agent_name.lower():
+            if active_state is None or entry["on"].lower() == active_state.lower() \
+               or entry["on"] == "always":
+                matches.append(entry["target"])
+    return matches
 
 
 def get_prompt_with_when(agent_name: str, task: str) -> str:
