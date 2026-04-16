@@ -19,10 +19,12 @@ class WorkerAgent(BaseAgent):
         """Run the task and return the output string."""
         from axiom import client
         from axiom_files.parser import (
+            enforce_trust_hierarchy,
             get_prompt_with_when,
             load_axiom,
             restore_if_degraded,
             should_route_to_sandbox,
+            SANDBOX_SNAPSHOT_DIR,
         )
         import os
 
@@ -30,19 +32,34 @@ class WorkerAgent(BaseAgent):
         trust_threshold = int(os.environ.get("AXIOM_TRUST_THRESHOLD", "2"))
 
         if should_route_to_sandbox(task, parsed, trust_threshold):
-            sandbox_name = parsed.get("sandbox_agent") or "sandbox"
-            sandbox_prompt = get_prompt_with_when(sandbox_name, task)
+            sandbox_name = parsed.get("sandbox_agent") or "sandbox_worker"
+            sandbox_agent_name = sandbox_name.lower().replace(" ", "_")
 
-            if os.environ.get("AXIOM_SANDBOX_ROLLBACK", "0") == "1":
-                restore_if_degraded("worker", current_score=-1.0)
+            # Enforce trust hierarchy: Worker(1) → SandboxWorker(2) must be downward
+            try:
+                sandbox_parsed = load_axiom(sandbox_agent_name)
+                enforce_trust_hierarchy(parsed, sandbox_parsed)
+            except Exception as e:
+                # Trust hierarchy violated or sandbox file missing — fail closed
+                return f"[BLOCKED] Security routing error: {e}"
 
-            return client.chat(
-                system_prompt=sandbox_prompt,
-                user_message=f"Task:\n{task}",
-                temperature=0.2,
-            )
+            # SandboxAgent reviews the flagged task
+            from axiom.agents.sandbox import SandboxAgent
+            sandbox = SandboxAgent(task)
+            flag_reason = "HighRiskInput detected via WHEN table"
+            verdict = sandbox.review(task, flag_reason)
+
+            if verdict == "BLOCK":
+                return (
+                    "[BLOCKED] This request was reviewed by the security sandbox agent "
+                    "and determined to be a high-risk input. Execution was prevented."
+                )
+
+            # ALLOW path — proceed with Worker execution but note the sandbox cleared it
+            # (sandbox rollback uses isolated SANDBOX_SNAPSHOT_DIR, not master snapshots)
 
         return self._call(
             user_message=f"Task:\n{task}",
             temperature=0.7,
         )
+

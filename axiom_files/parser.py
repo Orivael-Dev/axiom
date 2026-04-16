@@ -11,6 +11,15 @@ class AxiomConstitutionalViolation(Exception):
     """Raised when save_axiom attempts to modify a CANNOT_MUTATE field."""
     pass
 
+
+class TrustHierarchyViolation(Exception):
+    """Raised when a delegation attempt violates the trust hierarchy.
+    
+    Trust levels: 1 = Master (most privileged), 2 = SandboxWorker, 3+ = Task.
+    Delegation must flow downward (1→2→3), never upward.
+    """
+    pass
+
 AXIOM_DIR = os.environ.get("AXIOM_FILES_DIR", "axiom_files")
 
 def load_axiom(agent_name: str) -> dict:
@@ -463,12 +472,8 @@ def detect_concepts(task: str, parsed: dict) -> list:
     for concept in parsed.get("concepts", []):
         applies = concept.get("applies_when", "").lower()
         if not applies:
-            continue    # Sort matched names by the concept's PRIORITY field (lower = higher priority)
-    priority_map = {
-        c["name"]: int(c.get("priority", 99))
-        for c in parsed.get("concepts", [])
-    }
-    matched.sort(key=lambda n: priority_map.get(n, 99))        # Tokenise the APPLIES WHEN phrase into words (min length 4 to skip stop words)
+            continue
+        # Tokenise the APPLIES WHEN phrase into words (min length 4 to skip stop words)
         keywords = [w.strip(".,;:'\"") for w in applies.split() if len(w.strip(".,;:'\"")) >= 4]
         if any(kw in task_lower for kw in keywords):
             matched.append(concept["name"])
@@ -568,6 +573,10 @@ def get_delegates_for(agent_name: str, parsed: dict, active_state: str = None) -
     """
     Return list of valid delegation targets for agent_name
     given the current active state (concept or condition name).
+
+    Trust hierarchy rule: delegation flows downward only (higher level number).
+    A TRUST_LEVEL 1 agent (Master) may delegate to TRUST_LEVEL 2 (SandboxWorker).
+    A TRUST_LEVEL 2 agent may NOT delegate back to TRUST_LEVEL 1.
     """
     delegation_map = compile_delegates(parsed)
     source_trust = resolve_trust_level(parsed, default=2)
@@ -577,9 +586,28 @@ def get_delegates_for(agent_name: str, parsed: dict, active_state: str = None) -
             if active_state is None or entry["on"].lower() == active_state.lower() \
                or entry["on"] == "always":
                 target_trust = get_agent_trust_level(entry["target"], default=2)
-                if target_trust <= source_trust:
+                # delegation is only valid going downward (>=) or sideways (==)
+                if target_trust >= source_trust:
                     matches.append(entry["target"])
     return matches
+
+
+def enforce_trust_hierarchy(caller_parsed: dict, target_parsed: dict) -> None:
+    """Raise TrustHierarchyViolation if delegation violates the trust order.
+
+    Trust levels: 1 = Master (most privileged), 2 = SandboxWorker, 3+ = Task.
+    Delegation must flow downward (to higher level number), never upward.
+    """
+    caller_level = resolve_trust_level(caller_parsed, default=99)
+    target_level = resolve_trust_level(target_parsed, default=99)
+    caller_name = caller_parsed.get("agent", "?")
+    target_name = target_parsed.get("agent", "?")
+    if target_level < caller_level:
+        raise TrustHierarchyViolation(
+            f"Trust hierarchy violation: {caller_name} (TRUST_LEVEL {caller_level}) "
+            f"cannot delegate to {target_name} (TRUST_LEVEL {target_level}) — "
+            f"delegation must flow Master(1)→SandboxWorker(2)→Task(3+), never reverse."
+        )
 
 
 # -- Version history -- diff log of .axiom mutations ---------------------------
@@ -671,20 +699,28 @@ def read_history(agent_name: str) -> list:
 SNAPSHOT_DIR = Path(AXIOM_DIR) / ".snapshots"
 
 
+SANDBOX_SNAPSHOT_DIR = SNAPSHOT_DIR / "sandbox"
+
+
 def save_snapshot(
     agent_name: str,
     score: float,
     run_id: str = "",
     task: str = "",
+    snapshot_dir: Path | None = None,
 ) -> bool:
     """
     Save current .axiom as best snapshot if score beats previous best.
     Returns True if snapshot was updated, False if existing was better.
+
+    Pass snapshot_dir=SANDBOX_SNAPSHOT_DIR to isolate sandbox agent snapshots
+    from the master snapshot directory — sandbox rollback never touches master state.
     """
     import shutil
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    meta_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best_meta.json"
-    snap_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best.axiom"
+    snap_dir = Path(snapshot_dir) if snapshot_dir is not None else SNAPSHOT_DIR
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = snap_dir / f"{agent_name.lower()}_best_meta.json"
+    snap_path = snap_dir / f"{agent_name.lower()}_best.axiom"
 
     # Check existing best score
     existing_score = -1.0
@@ -722,13 +758,17 @@ def save_snapshot(
     return True
 
 
-def load_snapshot(agent_name: str) -> dict | None:
+def load_snapshot(agent_name: str, snapshot_dir: Path | None = None) -> dict | None:
     """
     Load the best snapshot for an agent.
     Returns parsed dict or None if no snapshot exists.
+
+    Pass snapshot_dir=SANDBOX_SNAPSHOT_DIR to load sandbox-isolated snapshots
+    without touching the master snapshot directory.
     """
     import tempfile
-    snap_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best.axiom"
+    snap_dir = Path(snapshot_dir) if snapshot_dir is not None else SNAPSHOT_DIR
+    snap_path = snap_dir / f"{agent_name.lower()}_best.axiom"
     if not snap_path.exists():
         return None
     snap_str = snap_path.read_text(encoding="utf-8")
@@ -745,9 +785,10 @@ def load_snapshot(agent_name: str) -> dict | None:
     return parsed
 
 
-def get_snapshot_meta(agent_name: str) -> dict | None:
+def get_snapshot_meta(agent_name: str, snapshot_dir: Path | None = None) -> dict | None:
     """Return snapshot metadata or None."""
-    meta_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best_meta.json"
+    snap_dir = Path(snapshot_dir) if snapshot_dir is not None else SNAPSHOT_DIR
+    meta_path = snap_dir / f"{agent_name.lower()}_best_meta.json"
     if not meta_path.exists():
         return None
     with open(meta_path) as f:
@@ -757,14 +798,19 @@ def get_snapshot_meta(agent_name: str) -> dict | None:
 def restore_if_degraded(
     agent_name: str,
     current_score: float,
+    snapshot_dir: Path | None = None,
 ) -> bool:
     """
     Compare current score to snapshot best.
     If current is lower, restore snapshot to disk.
     Returns True if restore happened, False if current is fine.
+
+    Pass snapshot_dir=SANDBOX_SNAPSHOT_DIR for sandbox agents so that rollback
+    is isolated from the master snapshot directory.
     """
     import shutil
-    meta = get_snapshot_meta(agent_name)
+    snap_dir = Path(snapshot_dir) if snapshot_dir is not None else SNAPSHOT_DIR
+    meta = get_snapshot_meta(agent_name, snapshot_dir=snap_dir)
     if meta is None:
         return False  # no snapshot to restore from
 
@@ -772,7 +818,7 @@ def restore_if_degraded(
     if current_score >= best_score:
         return False  # current is as good or better
 
-    snap_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best.axiom"
+    snap_path = snap_dir / f"{agent_name.lower()}_best.axiom"
     if not snap_path.exists():
         return False
 
