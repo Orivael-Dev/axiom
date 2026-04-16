@@ -2,6 +2,9 @@
 # Reads .axiom files and converts them to system prompts
 
 import os
+import json as _json
+from datetime import datetime, timezone
+from pathlib import Path
 
 
 class AxiomConstitutionalViolation(Exception):
@@ -241,8 +244,16 @@ def save_axiom(agent_name: str, parsed: dict):
                         f"Original: {repr(original[field])} -> Attempted: {repr(parsed.get(field))}"
                     )
         except FileNotFoundError:
-            pass  # New file — no original to compare against
-    # ── rest of existing save_axiom code continues below ─────
+            pass  # New file -- no original to compare against
+
+    # -- Version history --------------------------------------------------
+    try:
+        original = load_axiom(agent_name)
+        append_history(agent_name, original, parsed)
+    except FileNotFoundError:
+        pass  # first save -- no history to diff
+
+    # -- rest of existing save_axiom code continues below -----------------
 
     path = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
     lines = []
@@ -497,6 +508,209 @@ def get_delegates_for(agent_name: str, parsed: dict, active_state: str = None) -
                or entry["on"] == "always":
                 matches.append(entry["target"])
     return matches
+
+
+# -- Version history -- diff log of .axiom mutations ---------------------------
+
+HISTORY_DIR = Path(AXIOM_DIR) / ".history"
+
+
+def diff_axiom(before: dict, after: dict) -> list:
+    """
+    Compare two parsed .axiom dicts.
+    Returns list of {field, added, removed} for changed list fields
+    and {field, before, after} for changed scalar fields.
+    """
+    diffs = []
+    list_fields = [
+        "constraints", "rules", "process", "check",
+        "failure", "output", "tools", "when", "delegates"
+    ]
+    scalar_fields = ["agent", "version", "purpose", "goal"]
+
+    for field in list_fields:
+        before_set = set(before.get(field, []))
+        after_set  = set(after.get(field, []))
+        added   = sorted(after_set - before_set)
+        removed = sorted(before_set - after_set)
+        if added or removed:
+            diffs.append({
+                "field": field,
+                "added": added,
+                "removed": removed,
+            })
+
+    for field in scalar_fields:
+        b = before.get(field, "")
+        a = after.get(field, "")
+        if b != a:
+            diffs.append({
+                "field": field,
+                "before": b,
+                "after": a,
+            })
+
+    return diffs
+
+
+def append_history(agent_name: str, before: dict, after: dict):
+    """
+    Write a diff entry to .history/{agent}_history.jsonl.
+    Called automatically by save_axiom().
+    """
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = HISTORY_DIR / f"{agent_name.lower()}_history.jsonl"
+
+    diffs = diff_axiom(before, after)
+    if not diffs:
+        return  # nothing changed -- skip
+
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "agent": agent_name.lower(),
+        "version_before": before.get("version", "?"),
+        "version_after": after.get("version", "?"),
+        "diffs": diffs,
+    }
+
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry) + "\n")
+
+
+def read_history(agent_name: str) -> list:
+    """Return full history log for an agent as a list of dicts."""
+    log_path = HISTORY_DIR / f"{agent_name.lower()}_history.jsonl"
+    if not log_path.exists():
+        return []
+    entries = []
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(_json.loads(line))
+                except Exception:
+                    continue
+    return entries
+
+
+# -- Snapshot/restore -- best-state preservation and degradation recovery ------
+
+SNAPSHOT_DIR = Path(AXIOM_DIR) / ".snapshots"
+
+
+def save_snapshot(
+    agent_name: str,
+    score: float,
+    run_id: str = "",
+    task: str = "",
+) -> bool:
+    """
+    Save current .axiom as best snapshot if score beats previous best.
+    Returns True if snapshot was updated, False if existing was better.
+    """
+    import shutil
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    meta_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best_meta.json"
+    snap_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best.axiom"
+
+    # Check existing best score
+    existing_score = -1.0
+    if meta_path.exists():
+        try:
+            with open(meta_path) as f:
+                existing_score = _json.load(f).get("score", -1.0)
+        except Exception:
+            pass
+
+    if score <= existing_score:
+        return False  # existing snapshot is better
+
+    # Save the .axiom file as snapshot
+    source = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+    if not source.exists():
+        return False
+
+    shutil.copy2(source, snap_path)
+
+    # Save meta
+    parsed = load_axiom(agent_name)
+    meta = {
+        "agent": agent_name.lower(),
+        "version": parsed.get("version", "?"),
+        "score": score,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "task": task[:120],
+    }
+    with open(meta_path, "w") as f:
+        _json.dump(meta, f, indent=2)
+
+    print(f"✓ Snapshot saved -- {agent_name} v{parsed.get('version')} score={score}")
+    return True
+
+
+def load_snapshot(agent_name: str) -> dict | None:
+    """
+    Load the best snapshot for an agent.
+    Returns parsed dict or None if no snapshot exists.
+    """
+    import tempfile
+    snap_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best.axiom"
+    if not snap_path.exists():
+        return None
+    snap_str = snap_path.read_text(encoding="utf-8")
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".axiom",
+        dir=AXIOM_DIR, delete=False, encoding="utf-8"
+    ) as tmp:
+        tmp.write(snap_str)
+        tmp_name = os.path.basename(tmp.name).replace(".axiom", "")
+    try:
+        parsed = load_axiom(tmp_name)
+    finally:
+        os.remove(os.path.join(AXIOM_DIR, f"{tmp_name}.axiom"))
+    return parsed
+
+
+def get_snapshot_meta(agent_name: str) -> dict | None:
+    """Return snapshot metadata or None."""
+    meta_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best_meta.json"
+    if not meta_path.exists():
+        return None
+    with open(meta_path) as f:
+        return _json.load(f)
+
+
+def restore_if_degraded(
+    agent_name: str,
+    current_score: float,
+) -> bool:
+    """
+    Compare current score to snapshot best.
+    If current is lower, restore snapshot to disk.
+    Returns True if restore happened, False if current is fine.
+    """
+    import shutil
+    meta = get_snapshot_meta(agent_name)
+    if meta is None:
+        return False  # no snapshot to restore from
+
+    best_score = meta.get("score", -1.0)
+    if current_score >= best_score:
+        return False  # current is as good or better
+
+    snap_path = SNAPSHOT_DIR / f"{agent_name.lower()}_best.axiom"
+    if not snap_path.exists():
+        return False
+
+    dest = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
+    shutil.copy2(snap_path, dest)
+    print(
+        f"Warning: Degradation detected -- {agent_name} score {current_score:.1f} < "
+        f"snapshot {best_score:.1f}. Restored v{meta.get('version', '?')}."
+    )
+    return True
 
 
 def get_prompt_with_when(agent_name: str, task: str) -> str:

@@ -1,8 +1,8 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 15, 2026
-Chaos Suite Score: 15.9/16 — Level 4: Self-Governing ✅
-Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw — +89.5% improvement ✅
+Last updated: April 16, 2026 (Version History complete)
+Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
+Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
 
 ════════════════════════════════════════════════════════════
 v1.0 — DSL Foundation                              COMPLETE
@@ -44,43 +44,64 @@ v1.3 — Self-Describing Language                    COMPLETE
 [x] Chaos Test Suite v1.0 — 23/23 passed (15.8/16 avg)
 
 ════════════════════════════════════════════════════════════
-v1.4 — Constitutional Enforcement                  PLANNED
+v1.4 -- Conditional Flow & Agent Routing           COMPLETE
 ════════════════════════════════════════════════════════════
 
 KNOWN GAPS (surfaced by Chaos Suite):
 
 [x] GAP-01: MUTATES/CANNOT_MUTATE overlap not flagged by validator
-    Category: Contradiction (C2) — FIXED 2026-04-15
-    Detail: Added Phase 1 syntax check in validate() — fields in both
+    Category: Contradiction (C2) -- FIXED 2026-04-15
+    Detail: Added Phase 1 syntax check in validate() -- fields in both
             MUTATES and CANNOT_MUTATE now return status=invalid with
             "constitutional conflict" error message.
 
 [x] GAP-02: CANNOT_MUTATE not enforced at save_axiom layer
-    Category: Adversarial Override (O2) — FIXED 2026-04-15
+    Category: Adversarial Override (O2) -- FIXED 2026-04-15
     Detail: save_axiom() now loads the original file on disk, compares
             each CANNOT_MUTATE field, and raises AxiomConstitutionalViolation
             if any protected field was changed. New exception class added
             to axiom_files/parser.py.
 
-ADDITIONAL v1.4 ITEMS:
+[x] WHEN construct -- declarative conditional concept activation
+    FIXED 2026-04-15
+    Detail: New WHEN block in .axiom files. Rules follow pattern:
+              "if task involves X, activate ConceptName"
+            Parser: compile_decision_table(), apply_decision_table(),
+              get_prompt_with_when() added to parser.py
+            Validator: Phase 3d -- entries must contain "activate"
+            Concepts: AmbiguityResolution added to concepts.axiom
+            worker.axiom: 3-rule WHEN block added (UncertaintyBound,
+              RewardGuard, AmbiguityResolution)
 
-[ ] WHEN construct — conditional flow in .axiom files
-    Syntax: WHEN score < threshold THEN delegate Rewriter
-    Enables: Evolution loop expressible in AXIOM itself
+[x] DELEGATES construct -- declarative agent routing
+    FIXED 2026-04-16
+    Detail: New DELEGATES block in .axiom files. Rules follow pattern:
+              "Source -> Target (on: trigger)"
+            Parser: compile_delegates(), get_delegates_for() added
+              to parser.py; serialization in save_axiom()
+            Validator: Phase 3e -- entries must contain "->"
+            Concepts: RecoveryMode added to concepts.axiom
+            worker.axiom: 2-rule DELEGATES block added
+              (Worker->Rewriter on RecoveryMode,
+               Worker->Evaluator on output_ready)
 
-[ ] DELEGATES construct — agents reference other agents by role
-    Syntax: DELEGATES Worker, Evaluator
-    Enables: Agent composition declared in language
+REMAINING v1.4 ITEMS:
 
-[ ] Version history — git-style diff log of .axiom mutations
-    Detail: Every save_axiom() call appends a diff entry to
-            axiom_files/.history/{agent}_history.jsonl
+[x] Version history -- git-style diff log of .axiom mutations
+    FIXED 2026-04-16
+    Detail: diff_axiom(), append_history(), read_history() added to parser.py
+            HISTORY_DIR = axiom_files/.history/
+            save_axiom() now auto-diffs before write and appends to
+            {agent}_history.jsonl if any fields changed.
+            json/datetime/Path imports added to parser.py.
+            History entries include: timestamp, agent, version_before,
+            version_after, diffs (field + added/removed or before/after).
 
-[ ] Snapshot/restore — save best state, rollback on degradation
+[ ] Snapshot/restore -- save best state, rollback on degradation
     Detail: On convergence, snapshot current .axiom state.
             If next run degrades score, restore from snapshot.
 
-[ ] Export bundle — package a complete evolved run as standalone
+[ ] Export bundle -- package a complete evolved run as standalone
     Detail: Export worker.axiom + all evolved prompts + run logs
             as a single .axiom.bundle zip file
 
@@ -104,8 +125,8 @@ Benchmark v1.0:     7/7   (100%)    — Axiom vs Raw
                    15.4/16 Axiom avg vs 8.1/16 Raw (+89.5%)
                    See: BENCHMARK_SUMMARY.txt
 
-Known test gaps for v1.4:
-  - Constitutional violation runtime tests (GAP-01, GAP-02)
-  - WHEN/DELEGATES construct parsing tests
-  - Version history diff tests
+Known test gaps for v1.5:
   - Snapshot/restore regression tests
+  - Export bundle integrity tests
+  - Version history multi-agent coverage tests
+  - WHEN/DELEGATES extended edge case tests

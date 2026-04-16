@@ -8,10 +8,19 @@ License: Copyright (c) 2026 Antonio Roberts. All rights reserved.
 """
 import os
 import time
+import warnings
 from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# Suppress Streamlit's internal use_container_width self-deprecation warning
+# (Streamlit 1.56 triggers this on its own internal code, not our code)
+warnings.filterwarnings(
+    "ignore",
+    message=".*use_container_width.*",
+    category=DeprecationWarning,
+)
 
 import streamlit as st
 
