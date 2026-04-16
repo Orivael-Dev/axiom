@@ -1,7 +1,8 @@
 AXIOM Development Checklist
 ===========================
 Last updated: April 15, 2026
-Chaos Suite Score: 15.8/16 — Level 4: Self-Governing ✅
+Chaos Suite Score: 15.9/16 — Level 4: Self-Governing ✅
+Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw — +89.5% improvement ✅
 
 ════════════════════════════════════════════════════════════
 v1.0 — DSL Foundation                              COMPLETE
@@ -99,6 +100,9 @@ v1.3 Test Suite:    39/39  (100%)    — correctness
 Chaos Suite v1.0:  23/23  (100%)    — resilience
                    15.9/16 avg score — Level 4: Self-Governing
                    C2: 16/16 ✅  O2: 16/16 ✅  A1: 15/16 (by design)
+Benchmark v1.0:     7/7   (100%)    — Axiom vs Raw
+                   15.4/16 Axiom avg vs 8.1/16 Raw (+89.5%)
+                   See: BENCHMARK_SUMMARY.txt
 
 Known test gaps for v1.4:
   - Constitutional violation runtime tests (GAP-01, GAP-02)
