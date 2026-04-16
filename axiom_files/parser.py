@@ -11,7 +11,7 @@ class AxiomConstitutionalViolation(Exception):
     """Raised when save_axiom attempts to modify a CANNOT_MUTATE field."""
     pass
 
-AXIOM_DIR = "axiom_files"
+AXIOM_DIR = os.environ.get("AXIOM_FILES_DIR", "axiom_files")
 
 def load_axiom(agent_name: str) -> dict:
     """Read a .axiom file and parse it into sections."""
