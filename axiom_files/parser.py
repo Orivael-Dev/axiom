@@ -531,12 +531,15 @@ def get_delegates_for(agent_name: str, parsed: dict, active_state: str = None) -
     given the current active state (concept or condition name).
     """
     delegation_map = compile_delegates(parsed)
+    source_trust = resolve_trust_level(parsed, default=2)
     matches = []
     for entry in delegation_map:
         if entry["source"].lower() == agent_name.lower():
             if active_state is None or entry["on"].lower() == active_state.lower() \
                or entry["on"] == "always":
-                matches.append(entry["target"])
+                target_trust = get_agent_trust_level(entry["target"], default=2)
+                if target_trust <= source_trust:
+                    matches.append(entry["target"])
     return matches
 
 
@@ -776,6 +779,15 @@ def resolve_trust_level(parsed: dict, default: int = 2) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return default
+
+
+def get_agent_trust_level(agent_name: str, default: int = 2) -> int:
+    """Load an agent and return its trust level as int."""
+    try:
+        parsed = load_axiom(agent_name)
+    except Exception:
+        return default
+    return resolve_trust_level(parsed, default=default)
 
 
 def _has_high_risk_concept(task: str, parsed: dict) -> bool:

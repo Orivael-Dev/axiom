@@ -1,5 +1,6 @@
 AGENT Rewriter
 VERSION 1.2
+TRUST_LEVEL 1
 RECEIVES current_prompt: string, evaluation: dict
 EMITS new_prompt: string, mutations: list
 MUTATES constraints, rules, process

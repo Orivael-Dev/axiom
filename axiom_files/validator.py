@@ -16,6 +16,11 @@
 import os
 import re
 
+try:
+    from axiom_files.parser import load_axiom, resolve_trust_level
+except Exception:
+    from parser import load_axiom, resolve_trust_level
+
 # ── Purity: patterns that indicate external code crept in ────────────────────
 _PURITY_PATTERNS = [
     (r"\bdef\s+\w+\s*\(", "Python function definition (def)"),
@@ -261,6 +266,39 @@ def validate(parsed: dict) -> dict:
             })
             suggestions.append(
                 "Use format: '- Source -> Target (on: trigger)'"
+            )
+
+    # 3e-extra. Trust hierarchy warning for DELEGATES
+    source_trust = resolve_trust_level(parsed, default=2)
+    for entry in parsed.get("delegates", []):
+        if "->" not in entry:
+            continue
+        try:
+            source, rest = entry.split("->", 1)
+            source = source.strip()
+            target = rest.split("(on:", 1)[0].strip()
+        except Exception:
+            continue
+
+        if source.lower() != parsed.get("agent", "").lower():
+            continue
+
+        try:
+            target_parsed = load_axiom(target)
+        except Exception:
+            continue
+
+        target_trust = resolve_trust_level(target_parsed, default=2)
+        if target_trust > source_trust:
+            issues.append({
+                "phase": "semantic", "level": "warning", "field": "delegates",
+                "message": (
+                    f"Trust hierarchy violation: {source} (TRUST_LEVEL {source_trust}) "
+                    f"delegates to higher-trust {target} (TRUST_LEVEL {target_trust})."
+                ),
+            })
+            suggestions.append(
+                "Delegate only to equal or lower TRUST_LEVEL agents."
             )
 
     # 3f. SECURITY entry validation

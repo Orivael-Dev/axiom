@@ -1,5 +1,6 @@
 AGENT Evaluator
 VERSION 1.2
+TRUST_LEVEL 1
 RECEIVES task: string, answer: string, rubric: dict
 EMITS score: float, reasoning: string, improvements: list, dimension_scores: dict
 MUTATES check, failure, constraints

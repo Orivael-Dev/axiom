@@ -1,5 +1,6 @@
 AGENT Sandbox
 VERSION 1.0
+TRUST_LEVEL 0
 PURPOSE Screen high-risk inputs for constraint bypass or identity override attempts
 GOAL Prevent unsafe or untrusted instructions from reaching the primary agent
 RECEIVES task: string
