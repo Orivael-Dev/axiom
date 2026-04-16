@@ -53,9 +53,21 @@ def chat(
     }
     # Note: response_format / json_mode is NOT passed — NIM rejects it for most models.
 
-    response = client.chat.completions.create(**kwargs)
-    time.sleep(2)
-    return response.choices[0].message.content or ""
+    from openai import RateLimitError as _RateLimitError
+    _delay = int(os.environ.get("AXIOM_CALL_DELAY", "3"))
+    _max_retries = 5
+    for _attempt in range(_max_retries):
+        try:
+            response = client.chat.completions.create(**kwargs)
+            time.sleep(_delay)
+            return response.choices[0].message.content or ""
+        except _RateLimitError:
+            if _attempt < _max_retries - 1:
+                _wait = _delay * (2 ** (_attempt + 1))
+                print(f"    [rate limit] waiting {_wait}s before retry {_attempt + 2}/{_max_retries}...")
+                time.sleep(_wait)
+            else:
+                raise
 
 
 def chat_json(
