@@ -44,7 +44,7 @@ _PROCEDURAL_DRIFT = [
 _KNOWN_FIELDS = {
     "agent", "version", "purpose", "goal", "receives", "emits",
     "mutates", "cannot_mutate", "constraints", "rules", "process",
-    "check", "failure", "output", "success", "tools", "concepts",
+    "check", "failure", "output", "success", "tools", "concepts", "when",
 }
 
 
@@ -206,6 +206,17 @@ def validate(parsed: dict) -> dict:
             })
             suggestions.append(
                 f"Remove '{rule[:60]}' from either CONSTRAINT or RULES — not both."
+            )
+
+    # 3d. WHEN entry validation
+    for entry in parsed.get("when", []):
+        if "activate" not in entry.lower():
+            issues.append({
+                "phase": "semantic", "level": "error", "field": "when",
+                "message": f"WHEN entry missing activation target: '{entry[:60]}'"
+            })
+            suggestions.append(
+                f"Add ', activate ConceptName' to the WHEN rule."
             )
 
     # ── Determine overall status ─────────────────────────────────────────────

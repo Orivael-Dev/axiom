@@ -54,3 +54,8 @@ SUCCESS
 clarity: 0.4
 accuracy: 0.4
 helpfulness: 0.2
+
+WHEN
+- if task involves uncertainty, activate UncertaintyBound
+- if task involves optimization, activate RewardGuard
+- if user input is underspecified, activate AmbiguityResolution

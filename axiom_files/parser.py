@@ -37,7 +37,8 @@ def load_axiom(agent_name: str) -> dict:
         "output": [],
         "success": {},
         "tools": [],
-        "concepts": []
+        "concepts": [],
+        "when": []
     }
 
     current_section = None
@@ -128,6 +129,8 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "tools"
         elif line == "SUCCESS":
             current_section = "success"
+        elif line == "WHEN":
+            current_section = "when"
         elif line.startswith("- ") and current_section:
             if current_section == "success":
                 pass  # handled below
@@ -310,6 +313,12 @@ def save_axiom(agent_name: str, parsed: dict):
         if concept.get("effect"):
             lines.append(f"EFFECT {concept['effect']}")
 
+    if parsed.get("when"):
+        lines.append("")
+        lines.append("WHEN")
+        for rule in parsed["when"]:
+            lines.append(f"- {rule}")
+
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     
@@ -401,4 +410,60 @@ def get_prompt_with_concepts(agent_name: str, task: str) -> str:
         c for c in parsed["concepts"]
         if c["name"] in detect_concepts(task, parsed)
     ]
+    return to_system_prompt(parsed)
+
+
+# ── WHEN construct — declarative conditional flow ────────────────────────────
+
+def compile_decision_table(parsed: dict) -> dict:
+    """Compile WHEN block into keyword -> concept_name lookup."""
+    table = {}
+    for rule in parsed.get("when", []):
+        if "activate" not in rule.lower():
+            continue
+        try:
+            idx = rule.lower().index("activate")
+            condition = rule[:idx].lower().strip()
+            activation = rule[idx + len("activate"):].strip().rstrip(".")
+            markers = ["involves ", "is ", "contains ", "requires ", "about "]
+            for marker in markers:
+                if marker in condition:
+                    kw = condition.split(marker)[-1].strip().replace(" ", "_").rstrip(",")
+                    table[kw] = activation
+                    break
+        except Exception:
+            continue
+    return table
+
+
+def apply_decision_table(task: str, table: dict) -> list:
+    """Return concept names whose keyword matches the task text."""
+    task_lower = task.lower()
+    return [concept for kw, concept in table.items()
+            if kw.replace("_", " ") in task_lower]
+
+
+def get_prompt_with_when(agent_name: str, task: str) -> str:
+    """Load .axiom, apply WHEN table, inject concepts, return prompt."""
+    parsed = load_axiom(agent_name)
+    table = compile_decision_table(parsed)
+    activated = apply_decision_table(task, table)
+
+    # Merge shared concept library
+    concepts_path = os.path.join(AXIOM_DIR, "concepts.axiom")
+    if os.path.exists(concepts_path):
+        lib = load_axiom("concepts")
+        existing = {c["name"] for c in parsed["concepts"]}
+        for c in lib["concepts"]:
+            if c["name"] not in existing:
+                parsed["concepts"].append(c)
+
+    # Filter concepts: WHEN-activated take priority, fallback to keyword detection
+    if activated:
+        parsed["concepts"] = [c for c in parsed["concepts"]
+                              if c["name"] in activated]
+    else:
+        parsed["concepts"] = [c for c in parsed["concepts"]
+                              if c["name"] in detect_concepts(task, parsed)]
+
     return to_system_prompt(parsed)
