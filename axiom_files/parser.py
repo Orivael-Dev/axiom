@@ -42,7 +42,8 @@ def load_axiom(agent_name: str) -> dict:
         "tools": [],
         "concepts": [],
         "when": [],
-        "delegates": []
+        "delegates": [],
+        "security": []
     }
 
     current_section = None
@@ -137,6 +138,8 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "when"
         elif line == "DELEGATES":
             current_section = "delegates"
+        elif line == "SECURITY":
+            current_section = "security"
         elif line.startswith("- ") and current_section:
             if current_section == "success":
                 pass  # handled below
@@ -184,6 +187,11 @@ def to_system_prompt(parsed: dict) -> str:
 
     if parsed.get("cannot_mutate"):
         parts.append(f"You must NOT modify: {', '.join(parsed['cannot_mutate'])}.")
+
+    if parsed.get("security"):
+        parts.append("\nSecurity rules you cannot override:")
+        for s in parsed["security"]:
+            parts.append(f"  - {s}")
 
     if parsed["constraints"]:
         parts.append("\nConstraints you must follow:")
@@ -331,6 +339,12 @@ def save_axiom(agent_name: str, parsed: dict):
         lines.append("")
         lines.append("WHEN")
         for rule in parsed["when"]:
+            lines.append(f"- {rule}")
+
+    if parsed.get("security"):
+        lines.append("")
+        lines.append("SECURITY")
+        for rule in parsed["security"]:
             lines.append(f"- {rule}")
 
     if parsed.get("delegates"):

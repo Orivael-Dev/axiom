@@ -45,7 +45,7 @@ _KNOWN_FIELDS = {
     "agent", "version", "purpose", "goal", "receives", "emits",
     "mutates", "cannot_mutate", "constraints", "rules", "process",
     "check", "failure", "output", "success", "tools", "concepts", "when",
-    "delegates",
+    "delegates", "security",
 }
 
 
@@ -230,6 +230,23 @@ def validate(parsed: dict) -> dict:
             suggestions.append(
                 "Use format: '- Source -> Target (on: trigger)'"
             )
+
+    # 3f. SECURITY entry validation
+    for entry in parsed.get("security", []):
+        entry_lower = entry.lower()
+        for term in _VAGUE_TERMS:
+            if term in entry_lower:
+                has_threshold = bool(re.search(r"\d+", entry_lower))
+                if not has_threshold:
+                    issues.append({
+                        "phase": "semantic", "level": "warning",
+                        "field": "security",
+                        "message": f"Vague security rule without measurable threshold: '{entry[:80]}'",
+                    })
+                    suggestions.append(
+                        f"Replace '{term}' in security rule with a specific, testable instruction."
+                    )
+                    break
 
     # ── Determine overall status ─────────────────────────────────────────────
     levels = {i["level"] for i in issues}
