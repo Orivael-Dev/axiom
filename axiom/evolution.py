@@ -144,6 +144,16 @@ class EvolutionLoop:
                 if score > result.best_score:
                     result.best_score = score
                     result.best_iteration = len(result.iterations) - 1
+                    try:
+                        from axiom_files.parser import save_snapshot
+                        save_snapshot(
+                            "worker",
+                            score,
+                            run_id=self.run_id,
+                            task=self.task_description,
+                        )
+                    except Exception:
+                        pass
 
                 # Persist prompt + log
                 self.worker.record(self.worker.system_prompt, score)
