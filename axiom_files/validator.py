@@ -13,6 +13,7 @@
 #     "suggestions": [str]
 #   }
 
+import os
 import re
 
 # ── Purity: patterns that indicate external code crept in ────────────────────
@@ -45,7 +46,7 @@ _KNOWN_FIELDS = {
     "agent", "version", "purpose", "goal", "receives", "emits",
     "mutates", "cannot_mutate", "constraints", "rules", "process",
     "check", "failure", "output", "success", "tools", "concepts", "when",
-    "delegates", "security",
+    "delegates", "security", "trust_level", "sandbox_agent",
 }
 
 
@@ -93,6 +94,37 @@ def validate(parsed: dict) -> dict:
                 "message": f"SUCCESS weights sum to {total:.3f} but should sum to 1.0.",
             })
             suggestions.append(f"Adjust SUCCESS weights to sum to 1.0 (current: {total:.3f}).")
+
+    # 1c-extra. TRUST_LEVEL format and range
+    trust_raw = str(parsed.get("trust_level", "")).strip()
+    if trust_raw:
+        try:
+            trust_val = int(trust_raw)
+            if trust_val < 0 or trust_val > 3:
+                issues.append({
+                    "phase": "syntax", "level": "warning", "field": "trust_level",
+                    "message": f"TRUST_LEVEL '{trust_raw}' is outside expected range 0-3.",
+                })
+                suggestions.append("Use TRUST_LEVEL 0-3 (0 = lowest trust, 3 = highest).")
+        except ValueError:
+            issues.append({
+                "phase": "syntax", "level": "warning", "field": "trust_level",
+                "message": f"TRUST_LEVEL '{trust_raw}' is not an integer.",
+            })
+            suggestions.append("Use an integer TRUST_LEVEL like 0, 1, 2, or 3.")
+
+    # 1c-extra. SANDBOX_AGENT existence check
+    sandbox_agent = parsed.get("sandbox_agent", "").strip()
+    if sandbox_agent:
+        axiom_path = os.path.join("axiom_files", f"{sandbox_agent.lower()}.axiom")
+        if not os.path.exists(axiom_path):
+            issues.append({
+                "phase": "syntax", "level": "warning", "field": "sandbox_agent",
+                "message": f"SANDBOX_AGENT '{sandbox_agent}' has no matching .axiom file.",
+            })
+            suggestions.append(
+                f"Create axiom_files/{sandbox_agent.lower()}.axiom or update SANDBOX_AGENT."
+            )
 
     # 1d. MUTATES / CANNOT_MUTATE reference real fields
     for directive, field_key in [("MUTATES", "mutates"), ("CANNOT_MUTATE", "cannot_mutate")]:

@@ -26,6 +26,8 @@ def load_axiom(agent_name: str) -> dict:
     parsed = {
         "agent": "",
         "version": "1.0",
+        "trust_level": "",
+        "sandbox_agent": "",
         "receives": {},
         "emits": {},
         "mutates": [],
@@ -98,6 +100,10 @@ def load_axiom(agent_name: str) -> dict:
             parsed["agent"] = line.replace("AGENT ", "").strip()
         elif line.startswith("VERSION "):
             parsed["version"] = line.replace("VERSION ", "").strip()
+        elif line.startswith("TRUST_LEVEL "):
+            parsed["trust_level"] = line.replace("TRUST_LEVEL ", "").strip()
+        elif line.startswith("SANDBOX_AGENT "):
+            parsed["sandbox_agent"] = line.replace("SANDBOX_AGENT ", "").strip()
         elif line.startswith("PURPOSE "):
             parsed["purpose"] = line.replace("PURPOSE ", "").strip()
         elif line.startswith("GOAL "):
@@ -171,6 +177,12 @@ def to_system_prompt(parsed: dict) -> str:
     
     if parsed["goal"]:
         parts.append(f"\nYour goal: {parsed['goal']}.")
+
+    if parsed.get("trust_level"):
+        parts.append(f"\nTrust level: {parsed['trust_level']}.")
+
+    if parsed.get("sandbox_agent"):
+        parts.append(f"Sandbox agent: {parsed['sandbox_agent']}.")
     
     if parsed.get("receives"):
         parts.append("\nInputs:")
@@ -268,6 +280,10 @@ def save_axiom(agent_name: str, parsed: dict):
     lines.append(f"AGENT {parsed['agent']}")
     if parsed.get("version"):
         lines.append(f"VERSION {parsed['version']}")
+    if parsed.get("trust_level"):
+        lines.append(f"TRUST_LEVEL {parsed['trust_level']}")
+    if parsed.get("sandbox_agent"):
+        lines.append(f"SANDBOX_AGENT {parsed['sandbox_agent']}")
 
     if parsed["purpose"]:
         lines.append(f"PURPOSE {parsed['purpose']}")
@@ -540,7 +556,7 @@ def diff_axiom(before: dict, after: dict) -> list:
         "constraints", "rules", "process", "check",
         "failure", "output", "tools", "when", "delegates"
     ]
-    scalar_fields = ["agent", "version", "purpose", "goal"]
+    scalar_fields = ["agent", "version", "trust_level", "sandbox_agent", "purpose", "goal"]
 
     for field in list_fields:
         before_set = set(before.get(field, []))
@@ -751,3 +767,45 @@ def get_prompt_with_when(agent_name: str, task: str) -> str:
                               if c["name"] in detect_concepts(task, parsed)]
 
     return to_system_prompt(parsed)
+
+
+def resolve_trust_level(parsed: dict, default: int = 2) -> int:
+    """Return trust level as int, falling back to default if unset or invalid."""
+    raw = str(parsed.get("trust_level", "")).strip()
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _has_high_risk_concept(task: str, parsed: dict) -> bool:
+    """Return True if HighRiskInput is detected via WHEN or concept keywords."""
+    table = compile_decision_table(parsed)
+    activated = apply_decision_table(task, table)
+    if "HighRiskInput" in activated:
+        return True
+
+    # Merge concept library if present for keyword detection fallback
+    concepts = list(parsed.get("concepts", []))
+    concepts_path = os.path.join(AXIOM_DIR, "concepts.axiom")
+    if os.path.exists(concepts_path):
+        lib = load_axiom("concepts")
+        existing = {c.get("name") for c in concepts}
+        for c in lib.get("concepts", []):
+            if c.get("name") not in existing:
+                concepts.append(c)
+
+    detected = detect_concepts(task, {"concepts": concepts})
+    return "HighRiskInput" in detected
+
+
+def should_route_to_sandbox(task: str, parsed: dict, trust_threshold: int = 2) -> bool:
+    """Decide whether to route the task to the sandbox agent."""
+    if not parsed.get("sandbox_agent"):
+        return False
+
+    trust_level = resolve_trust_level(parsed, default=trust_threshold)
+    if trust_level >= trust_threshold:
+        return False
+
+    return _has_high_risk_concept(task, parsed)

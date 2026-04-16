@@ -1,5 +1,7 @@
 AGENT Worker
 VERSION 1.2
+TRUST_LEVEL 1
+SANDBOX_AGENT Sandbox
 PURPOSE Provide precise solutions to tasks
 GOAL Complete the user's request
 RECEIVES task: string
