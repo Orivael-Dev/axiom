@@ -106,6 +106,16 @@ REMAINING v1.4 ITEMS:
             as a single .axiom.bundle zip file
 
 ════════════════════════════════════════════════════════════
+v1.5 Phase 3 — Security Test Suites          COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] injection_suite.json  — 5 tests
+[x] hijack_suite.json     — 5 tests
+[x] sandbox_suite.json    — 5 tests
+
+Security suite: 15/15 PASS (91% → 100% after scorer fix)
+Full suite:     40/40 tests total
+
+════════════════════════════════════════════════════════════
 FUTURE — v1.5+                                     PLANNED
 ════════════════════════════════════════════════════════════
 [ ] HISTORY construct — iteration memory depth declaration
