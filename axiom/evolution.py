@@ -170,11 +170,31 @@ class EvolutionLoop:
                         f"\n[bold green]✓ Converged at iteration {i+1} "
                         f"with score {score:.1f}[/]"
                     )
+                    # Delegate to Evaluator on output_ready (via DELEGATES machinery)
+                    try:
+                        from axiom_files.parser import load_axiom, get_delegates_for
+                        _w_parsed = load_axiom("worker")
+                        _targets = get_delegates_for("Worker", _w_parsed, "output_ready")
+                        if _targets:
+                            console.print(f"  [green]→ Worker delegates to {_targets[0]} (on: output_ready)[/]")
+                    except Exception:
+                        pass
                     progress.advance(task)
                     break
 
-                # Step 3: Rewriter improves Worker prompt
-                if i < self.max_iterations - 1:
+                # Step 3: Determine routing via DELEGATES — RecoveryMode when below threshold
+                _delegate_target = None
+                try:
+                    from axiom_files.parser import load_axiom, get_delegates_for
+                    _w_parsed = load_axiom("worker")
+                    _targets = get_delegates_for("Worker", _w_parsed, "RecoveryMode")
+                    if _targets:
+                        _delegate_target = _targets[0]
+                        console.print(f"  [magenta]→ Worker delegates to {_delegate_target} (on: RecoveryMode)[/]")
+                except Exception:
+                    _delegate_target = "Rewriter"  # fallback to direct call
+
+                if i < self.max_iterations - 1 and _delegate_target in (None, "Rewriter"):
                     console.print("  [magenta]✎  Rewriter improving worker prompt...[/]")
                     new_prompt = self.rewriter.rewrite(
                         target_role="worker",
@@ -199,9 +219,22 @@ class EvolutionLoop:
                         ]
                         console.print(f"  [cyan]DEBUG: found {len(new_constraints)} constraints[/]")
 
-                        # Only update constraints if rewriter found new ones
+                        # Only update constraints if rewriter found new ones AND they pass validation
                         if new_constraints:
-                            current_axiom["constraints"] = new_constraints
+                            from axiom_files.validator import validate_parsed
+                            test_axiom = dict(current_axiom)
+                            test_axiom["constraints"] = new_constraints
+                            val_result = validate_parsed(test_axiom)
+                            if val_result["status"] == "invalid":
+                                console.print(
+                                    f"  [red]⚠ Rewriter produced invalid constraints — skipping write[/]"
+                                )
+                                for iss in val_result["issues"]:
+                                    if iss["level"] == "error":
+                                        console.print(f"    [red]→ {iss['message']}[/]")
+                                # do not update — keep existing constraints
+                            else:
+                                current_axiom["constraints"] = new_constraints
 
                         # Bump version
                         version = float(current_axiom.get("version", "1.0")) + 0.1

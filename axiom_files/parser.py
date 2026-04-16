@@ -69,6 +69,12 @@ def load_axiom(agent_name: str) -> dict:
             elif line.startswith("APPLIES WHEN "):
                 current_concept["applies_when"] = line.replace("APPLIES WHEN ", "").strip()
                 continue
+            elif line.upper().startswith("PRIORITY "):
+                current_concept["priority"] = line.split(None, 1)[1].strip()
+                continue
+            elif line.upper().startswith("PRIORITY "):
+                current_concept["priority"] = line.split(None, 1)[1].strip()
+                continue
             elif line.startswith("REQUIRES "):
                 current_concept["requires"] = line.replace("REQUIRES ", "").strip()
                 continue
@@ -86,9 +92,11 @@ def load_axiom(agent_name: str) -> dict:
         if line.startswith("CONCEPT "):
             _flush_concept()
             current_concept = {
+                "priority": "99",
                 "name": line.replace("CONCEPT ", "").strip(),
                 "purpose": "",
                 "applies_when": "",
+                "priority": "99",
                 "requires": "",
                 "effect": "",
             }
@@ -252,19 +260,40 @@ def save_axiom(agent_name: str, parsed: dict):
     """Write a modified .axiom back to disk — this is how agents rewrite themselves."""
 
     # ── Constitutional enforcement ────────────────────────────
-    protected = set(parsed.get("cannot_mutate", []))
-    if protected:
-        try:
-            original = load_axiom(agent_name)
-            for field in protected:
-                if field in original and original[field] != parsed.get(field):
-                    raise AxiomConstitutionalViolation(
-                        f"Cannot modify protected field '{field}' in {agent_name}.axiom — "
-                        f"declared as CANNOT_MUTATE. "
-                        f"Original: {repr(original[field])} -> Attempted: {repr(parsed.get(field))}"
-                    )
-        except FileNotFoundError:
-            pass  # New file -- no original to compare against
+    ALWAYS_PROTECTED = {"agent", "goal", "version", "security", "trust_level"}
+    protected = ALWAYS_PROTECTED | set(parsed.get("cannot_mutate", []))
+
+    # Load original to compare against
+    try:
+        original = load_axiom(agent_name)
+
+        # Refuse if CANNOT_MUTATE was itself removed from the new version
+        original_protected = set(original.get("cannot_mutate", []))
+        new_protected = set(parsed.get("cannot_mutate", []))
+        removed_guards = original_protected - new_protected
+        if removed_guards:
+            raise AxiomConstitutionalViolation(
+                f"save_axiom: Rewriter attempted to remove protected fields "
+                f"from CANNOT_MUTATE in {agent_name}.axiom: {sorted(removed_guards)}"
+            )
+
+        # Check that no protected field value was changed
+        for field in protected:
+            if field in original and original[field] != parsed.get(field):
+                raise AxiomConstitutionalViolation(
+                    f"Cannot modify protected field '{field}' in {agent_name}.axiom — "
+                    f"declared as CANNOT_MUTATE. "
+                    f"Original: {repr(original[field])} -> Attempted: {repr(parsed.get(field))}"
+                )
+    except FileNotFoundError:
+        pass  # New file -- no original to compare against
+
+    # If CANNOT_MUTATE is completely absent, refuse to save
+    if not parsed.get("cannot_mutate"):
+        raise AxiomConstitutionalViolation(
+            f"save_axiom: CANNOT_MUTATE is missing entirely from {agent_name}.axiom — "
+            f"refusing to save. Restore from snapshot."
+        )
 
     # -- Version history --------------------------------------------------
     try:
@@ -434,11 +463,21 @@ def detect_concepts(task: str, parsed: dict) -> list:
     for concept in parsed.get("concepts", []):
         applies = concept.get("applies_when", "").lower()
         if not applies:
-            continue
-        # Tokenise the APPLIES WHEN phrase into words (min length 4 to skip stop words)
+            continue    # Sort matched names by the concept's PRIORITY field (lower = higher priority)
+    priority_map = {
+        c["name"]: int(c.get("priority", 99))
+        for c in parsed.get("concepts", [])
+    }
+    matched.sort(key=lambda n: priority_map.get(n, 99))        # Tokenise the APPLIES WHEN phrase into words (min length 4 to skip stop words)
         keywords = [w.strip(".,;:'\"") for w in applies.split() if len(w.strip(".,;:'\"")) >= 4]
         if any(kw in task_lower for kw in keywords):
             matched.append(concept["name"])
+    # Sort matched names by the concept's PRIORITY field (lower = higher priority)
+    priority_map = {
+        c["name"]: int(c.get("priority", 99))
+        for c in parsed.get("concepts", [])
+    }
+    matched.sort(key=lambda n: priority_map.get(n, 99))
     return matched
 
 
@@ -768,6 +807,9 @@ def get_prompt_with_when(agent_name: str, task: str) -> str:
     else:
         parsed["concepts"] = [c for c in parsed["concepts"]
                               if c["name"] in detect_concepts(task, parsed)]
+
+    # Sort activated concepts by PRIORITY before injecting into system prompt
+    parsed["concepts"].sort(key=lambda c: int(c.get("priority", 99)))
 
     return to_system_prompt(parsed)
 

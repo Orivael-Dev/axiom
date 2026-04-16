@@ -3,8 +3,9 @@
 # Enforces structural, purity, and semantic constraints on parsed .axiom dicts.
 #
 # Public API:
-#   validate(parsed: dict) -> dict
-#   validate_file(agent_name: str) -> dict
+#   validate_parsed(parsed: dict) -> dict    — validate an already-parsed dict
+#   validate(parsed: dict) -> dict           — alias for validate_parsed
+#   validate_file(agent_name: str) -> dict  — load from disk then validate
 #
 # Output schema:
 #   {
@@ -58,6 +59,16 @@ _KNOWN_FIELDS = {
 def validate(parsed: dict) -> dict:
     """
     Validate a parsed .axiom dict.
+
+    Returns {"status": ..., "issues": [...], "suggestions": [...]}.
+    """
+    return validate_parsed(parsed)
+
+
+def validate_parsed(parsed: dict) -> dict:
+    """
+    Validate an already-parsed .axiom dict without touching disk.
+    Foundation for all validation — validate() and validate_file() both call this.
 
     Returns {"status": ..., "issues": [...], "suggestions": [...]}.
     """
@@ -331,7 +342,7 @@ def validate(parsed: dict) -> dict:
 
 
 def validate_file(agent_name: str) -> dict:
-    """Load a .axiom file and validate it. Returns the same dict as validate()."""
+    """Load a .axiom file and validate it. Returns the same dict as validate_parsed()."""
     try:
         from axiom_files.parser import load_axiom
     except ModuleNotFoundError:
@@ -340,7 +351,7 @@ def validate_file(agent_name: str) -> dict:
         _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
         from axiom_files.parser import load_axiom
     parsed = load_axiom(agent_name)
-    return validate(parsed)
+    return validate_parsed(parsed)
 
 
 # ── CLI test ─────────────────────────────────────────────────────────────────
