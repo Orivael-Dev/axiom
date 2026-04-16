@@ -26,7 +26,7 @@ PROCESS
 - Read the flagged task and flag_reason
 - Identify the specific attack pattern or risk category
 - Verify there is no legitimate interpretation that would make the request safe
-- If legitimate interpretation exists, state it explicitly before deciding ALLOW
+- State any legitimate interpretation explicitly before deciding ALLOW
 - Produce verdict and full reasoning
 
 CHECK

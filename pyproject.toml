@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axiom-lang"
+version = "1.5.0"
+description = "An AI-native language for self-evolving intelligence"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Antonio Roberts" }]
+requires-python = ">=3.10"
+keywords = ["ai", "agents", "llm", "dsl", "self-evolving", "prompt-engineering"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+]
+dev = [
+    "pytest>=7.0",
+    "black",
+    "ruff",
+]
+
+[project.scripts]
+axiom-validate = "cli:validate_cmd"
+axiom-run      = "cli:run_cmd"
+axiom-server   = "cli:cmd_server"
+
+[project.urls]
+Repository = "https://github.com/antonioroberts/axiom-lang"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["axiom*", "axiom_files*"]
+
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.package-data]
+"axiom_files" = ["*.axiom"]

@@ -1,0 +1,4 @@
+[console_scripts]
+axiom-run = cli:run_cmd
+axiom-server = cli:cmd_server
+axiom-validate = cli:validate_cmd
