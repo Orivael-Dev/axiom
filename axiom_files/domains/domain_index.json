@@ -37,6 +37,24 @@
       "generated_at": "2026-04-17T18:23:26.422751+00:00",
       "validation_status": "valid",
       "test_count": 14
+    },
+    "healthcare": {
+      "agent": "domains/healthcare.axiom",
+      "frameworks": [
+        "HIPAA",
+        "HITECH",
+        "HL7 FHIR",
+        "FDA 21 CFR Part 11"
+      ],
+      "concepts": [
+        "HIPAAPrivacy",
+        "MinimumNecessary",
+        "BreachDetection"
+      ],
+      "benchmark_suite": "benchmarks/domains/healthcare/",
+      "generated_at": "2026-04-17T18:23:55.221776+00:00",
+      "validation_status": "valid",
+      "test_count": 21
     }
   }
 }
