@@ -7,6 +7,7 @@ import os
 import time
 
 from openai import OpenAI
+from axiom.agents.sandbox_content import content_sandbox_check
 
 
 # ── Constitutional suffix ─────────────────────────────────────
@@ -133,6 +134,11 @@ def chat(
                     return clean
                 except Exception:
                     return _BLOCKED_RESPONSE
+
+            # Layer 2b — content sandbox for creative framing
+            clean, is_clean = content_sandbox_check(clean, user_message)
+            if not is_clean:
+                return clean  # already contains blocked message
 
             return clean
         except _RateLimitError:
