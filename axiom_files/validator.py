@@ -52,7 +52,7 @@ _KNOWN_FIELDS = {
     "agent", "version", "purpose", "goal", "receives", "emits",
     "mutates", "cannot_mutate", "constraints", "rules", "process",
     "check", "failure", "output", "success", "tools", "concepts", "when",
-    "delegates", "security", "trust_level", "sandbox_agent",
+    "delegates", "security", "trust_level", "sandbox_agent", "history",
 }
 
 
@@ -328,6 +328,42 @@ def validate_parsed(parsed: dict) -> dict:
                         f"Replace '{term}' in security rule with a specific, testable instruction."
                     )
                     break
+
+    # ── Phase 4: HISTORY Validation ──────────────────────────────────────────
+    history = parsed.get("history", {})
+    if history and (history.get("retain") or history.get("decay") or history.get("forget_on")):
+        # 4a. Every retain entry must have count and type
+        for entry in history.get("retain", []):
+            if not entry.get("type"):
+                issues.append({
+                    "phase": "history", "level": "error", "field": "history.retain",
+                    "message": "HISTORY retain entry missing 'type' field.",
+                })
+                suggestions.append("Use format: '- retain last N <type> [of <label>]'")
+            if entry.get("count") != "all" and not isinstance(entry.get("count"), int):
+                issues.append({
+                    "phase": "history", "level": "error", "field": "history.retain",
+                    "message": f"HISTORY retain entry has non-integer count: {entry.get('count')!r}",
+                })
+                suggestions.append("Use: 'retain last <integer> <type>'")
+        # 4b. Decay rules must reference known conditions
+        known_conditions = {"low_confidence", "all", "stale", "unconfirmed"}
+        for rule in history.get("decay", []):
+            cond = rule.get("condition", "")
+            if cond not in known_conditions:
+                issues.append({
+                    "phase": "history", "level": "warning", "field": "history.decay",
+                    "message": f"Unknown decay condition '{cond}'. Known: {', '.join(sorted(known_conditions))}.",
+                })
+                suggestions.append("Use a recognised decay condition: low_confidence, stale, unconfirmed, all.")
+        # 4c. promote_after must be a positive int if set
+        pa = history.get("promote_after")
+        if pa is not None and (not isinstance(pa, int) or pa < 1):
+            issues.append({
+                "phase": "history", "level": "error", "field": "history.promote_after",
+                "message": f"promote_after must be a positive integer, got {pa!r}.",
+            })
+            suggestions.append("Use: '- promote pattern after N confirmations'")
 
     # ── Determine overall status ─────────────────────────────────────────────
     levels = {i["level"] for i in issues}

@@ -2,6 +2,7 @@
 # Reads .axiom files and converts them to system prompts
 
 import os
+import re as _re
 import json as _json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,7 +55,8 @@ def load_axiom(agent_name: str) -> dict:
         "concepts": [],
         "when": [],
         "delegates": [],
-        "security": []
+        "security": [],
+        "history": {"retain": [], "decay": [], "promote_after": None, "forget_on": []},
     }
 
     current_section = None
@@ -163,11 +165,16 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "delegates"
         elif line == "SECURITY":
             current_section = "security"
+        elif line == "HISTORY":
+            current_section = "history"
         elif line.startswith("- ") and current_section:
-            if current_section == "success":
+            raw = line[2:].strip()
+            if current_section == "history":
+                _parse_history_directive(parsed["history"], raw)
+            elif current_section == "success":
                 pass  # handled below
             else:
-                parsed[current_section].append(line[2:].strip())
+                parsed[current_section].append(raw)
         elif ":" in line and current_section == "success":
             key, val = line.split(":", 1)
             parsed["success"][key.strip()] = float(val.strip())
@@ -183,6 +190,120 @@ def load_axiom(agent_name: str) -> dict:
     parsed["output"] = list(dict.fromkeys(parsed["output"]))
 
     return parsed
+
+
+def _parse_history_directive(history: dict, raw: str) -> None:
+    """Parse a single HISTORY bullet directive into the history dict."""
+    low = raw.lower()
+    # retain last N <type> [of <label>]
+    m = _re.match(r"retain last (\d+) (\w+)(?: of (.+))?", low)
+    if m:
+        history["retain"].append({
+            "count": int(m.group(1)),
+            "type": m.group(2),
+            "label": (m.group(3) or m.group(2)).strip(),
+        })
+        return
+    # retain <type> [across <scope>]
+    m = _re.match(r"retain (\w+)(?: across (.+))?", low)
+    if m:
+        history["retain"].append({
+            "count": "all",
+            "type": m.group(1),
+            "label": (m.group(2) or m.group(1)).strip(),
+        })
+        return
+    # decay <condition> after N <unit>
+    m = _re.match(r"decay (\S+) after (\d+) (\w+)", low)
+    if m:
+        history["decay"].append({
+            "condition": m.group(1),
+            "after": int(m.group(2)),
+            "unit": m.group(3),
+        })
+        return
+    # promote <type> after N <unit>
+    m = _re.match(r"promote \w+ after (\d+)", low)
+    if m:
+        history["promote_after"] = int(m.group(1))
+        return
+    # forget on <trigger>
+    m = _re.match(r"forget on (.+)", low)
+    if m:
+        history["forget_on"].append(m.group(1).strip())
+        return
+
+
+def compile_history(parsed: dict) -> dict:
+    """Return the structured history config for an agent.
+
+    Example output:
+    {
+      "retain": [{"count": 50, "type": "frames", "label": "game state"}],
+      "decay":  [{"condition": "low_confidence", "after": 20, "unit": "frames"}],
+      "promote_after": 3,
+      "forget_on": ["session_end"]
+    }
+    """
+    default = {"retain": [], "decay": [], "promote_after": None, "forget_on": []}
+    return {**default, **parsed.get("history", {})}
+
+
+def _parse_history_directive(history: dict, raw: str) -> None:
+    """Parse a single HISTORY bullet directive into the history dict."""
+    low = raw.lower()
+    # retain last N <type> [of <label>]
+    m = _re.match(r"retain last (\d+) (\w+)(?: of (.+))?", low)
+    if m:
+        history["retain"].append({
+            "count": int(m.group(1)),
+            "type": m.group(2),
+            "label": (m.group(3) or m.group(2)).strip(),
+        })
+        return
+    # retain <type> [across <scope>]
+    m = _re.match(r"retain (\w+)(?: across (.+))?", low)
+    if m:
+        history["retain"].append({
+            "count": "all",
+            "type": m.group(1),
+            "label": (m.group(2) or m.group(1)).strip(),
+        })
+        return
+    # decay <condition> after N <unit>
+    m = _re.match(r"decay (\S+) after (\d+) (\w+)", low)
+    if m:
+        history["decay"].append({
+            "condition": m.group(1),
+            "after": int(m.group(2)),
+            "unit": m.group(3),
+        })
+        return
+    # promote <type> after N <unit>
+    m = _re.match(r"promote \w+ after (\d+)", low)
+    if m:
+        history["promote_after"] = int(m.group(1))
+        return
+    # forget on <trigger>
+    m = _re.match(r"forget on (.+)", low)
+    if m:
+        history["forget_on"].append(m.group(1).strip())
+        return
+
+
+def compile_history(parsed: dict) -> dict:
+    """Return the structured history config for an agent.
+
+    Example output:
+    {
+      "retain": [{"count": 50, "type": "frames", "label": "game state"}],
+      "decay":  [{"condition": "low_confidence", "after": 20, "unit": "frames"}],
+      "promote_after": 3,
+      "forget_on": ["session_end"]
+    }
+    """
+    default = {"retain": [], "decay": [], "promote_after": None, "forget_on": []}
+    return {**default, **parsed.get("history", {})}
 
 
 def to_system_prompt(parsed: dict) -> str:
