@@ -130,6 +130,22 @@ v1.6 — HISTORY Construct                       COMPLETE ✅
 [x] "history" added to _KNOWN_FIELDS
 
 ════════════════════════════════════════════════════════════
+v1.6 — Runtime Enforcement (Layers 1 & 2)      CERTIFIED ✅
+════════════════════════════════════════════════════════════
+[x] Layer 1 — Constitutional suffix
+    Injected as second system message after user turn
+    Always closest to model attention at generation time
+
+[x] Layer 2 — Output validation before return
+    validate_output() checks compliance signals
+    SandboxAgent secondary review on detection
+    _skip_validation=True prevents sandbox recursion
+    B27 flipped to 100% — output interception confirmed
+
+Security suite: 15/15 (95% overall, 122/128)
+B29/B35 at 75% — minor missed_constraint, both pass threshold
+
+════════════════════════════════════════════════════════════
 FUTURE — v1.7+                                     PLANNED
 ════════════════════════════════════════════════════════════
 [ ] Agent spawning — Worker can spawn sub-agents for subtasks

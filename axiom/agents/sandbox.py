@@ -57,6 +57,7 @@ class SandboxAgent(BaseAgent):
             system_prompt=system_prompt,
             user_message=user_message,
             temperature=0.1,
+            _skip_validation=True,
         )
 
         # Normalise verdict from response
@@ -83,6 +84,7 @@ class SandboxAgent(BaseAgent):
             system_prompt=system_prompt,
             user_message=user_message,
             temperature=0.1,
+            _skip_validation=True,
         )
         upper = raw.upper()
         verdict = "BLOCK" if "BLOCK" in upper else ("ALLOW" if "ALLOW" in upper else "BLOCK")

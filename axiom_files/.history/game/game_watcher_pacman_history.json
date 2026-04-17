@@ -9,7 +9,21 @@
       "outcome": "survived with score increase",
       "confidence": 0.7999999999999999,
       "seen_count": 2,
-      "promoted_at": "2026-04-17T10:35:07.701692+00:00"
+      "promoted_at": "2026-04-17T10:35:07.701692+00:00",
+      "plain_trigger": "When you see a red ghost coming from the left and a blue ghost coming from the top",
+      "plain_action": "Move right",
+      "plain_outcome": "This will help you survive and increase your score",
+      "category": "survival"
+    },
+    {
+      "skill_name": "ghost_approaching_left,",
+      "description": "red ghost approaching from left, blue ghost approaching from top, power pellet nearby, safe corridor to the right \u2192 move right",
+      "trigger": "red ghost approaching from left, blue ghost approaching from top, power pellet nearby, safe corridor to the right",
+      "action": "move right",
+      "outcome": "no change in score or lives",
+      "confidence": 0.5,
+      "seen_count": 2,
+      "promoted_at": "2026-04-17T13:00:55.609631+00:00"
     }
   ],
   "patterns": {
@@ -19,11 +33,26 @@
       "trigger": "red ghost approaching from left, blue ghost approaching from top",
       "action": "move right",
       "outcome": "survived with score increase",
-      "confidence": 0.7999999999999999,
+      "confidence": 0.9999999999999999,
+      "seen_count": 4,
+      "promoted": true,
+      "skill_name": "ghost_approaching_left,",
+      "last_seen_cycle": 2,
+      "cycles_unseen": 0
+    },
+    "2": {
+      "pattern_id": "2",
+      "description": "red ghost approaching from left, blue ghost approaching from top, power pellet nearby, safe corridor to the right \u2192 move right",
+      "trigger": "red ghost approaching from left, blue ghost approaching from top, power pellet nearby, safe corridor to the right",
+      "action": "move right",
+      "outcome": "no change in score or lives",
+      "confidence": 0.5,
       "seen_count": 2,
       "promoted": true,
-      "skill_name": "ghost_approaching_left,"
+      "skill_name": "ghost_approaching_left,",
+      "last_seen_cycle": 2,
+      "cycles_unseen": 0
     }
   },
-  "saved_at": "2026-04-17T10:35:07.702941+00:00"
+  "saved_at": "2026-04-17T13:00:55.622021+00:00"
 }
