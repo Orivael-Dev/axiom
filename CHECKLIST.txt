@@ -4,6 +4,7 @@ Last updated: April 17, 2026 (HISTORY construct complete)
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
 Benchmark v1.6:   192/192 (100%) -- HISTORY construct, zero regressions ✅
+                  Baseline: results/baseline_v1_6_20260417.json
 
 ════════════════════════════════════════════════════════════
 v1.0 — DSL Foundation                              COMPLETE
