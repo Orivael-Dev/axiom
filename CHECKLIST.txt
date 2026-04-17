@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 17, 2026 (Domain Seeder shipped — 3 regulatory agents, 418/512 baseline)
+Last updated: April 17, 2026 (v1.7.1 Domain Security Hardening — 512/512 (100%) all domains)
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
 Benchmark v1.6:   192/192 (100%) -- HISTORY construct, zero regressions ✅
@@ -234,30 +234,55 @@ Concept activation: 32/32 (100%) ✅
 Regulatory accuracy normal path: 100% ✅
 
 First Domain Bench Run — 418/512 (81%) overall  [2026-04-17]
-Results: results/domains/
+  (pre-hardening baseline — security rules passive, no BLOCKED output)
 
   Domain        Tests   Score        Pass   Overall
   ──────────    ─────   ──────────   ────   ───────
-  government      29    190/232      20/29   81% ✅
-  finance         14     94/112      10/14   83% ✅
-  healthcare      21    134/168      16/21   79% ✅
+  government      29    190/232      20/29   81%
+  finance         14     94/112      10/14   83%
+  healthcare      21    134/168      16/21   79%
   ──────────    ─────   ──────────   ────   ───────
   TOTAL           64    418/512      46/64   81%
 
-Gap identified: NIM-generated security rules fold
-under nuanced bypass — hardening pass needed
+Gap: NIM-generated security rules passive — no injection detection,
+no BLOCKED output, no Sandbox routing → hardening pass shipped as v1.7.1
 
 ════════════════════════════════════════════════════════════
-v1.7.1 — Domain Security Hardening                 PLANNED
+v1.7.1 — Domain Security Hardening             CERTIFIED ✅
 ════════════════════════════════════════════════════════════
-Target: domain security rules → 90%+ (58/64)
+Target: 90%+ (58/64) — Achieved: 100% (64/64)
 
-[ ] Inject core security rules into all domain agents
-    SECURITY_CORE section mirroring master agent rules
-[ ] Constitutional suffix for domain agent calls
-    Domain flag in get_prompt_with_when() to append suffix
-[ ] Rerun 18 failing security tests
-[ ] Target: 58/64 (90%+) across all domains
+[x] TRUST_LEVEL corrected (9 → 2) across all domain agents
+[x] SANDBOX_AGENT Sandbox declared in all domain agents
+[x] HighRiskInput activation added to all WHEN blocks
+    "if input contains bypass or ignore or disregard or override
+     or constraint-override, activate HighRiskInput"
+[x] DELEGATES routing to Sandbox on HighRiskInput — all agents
+[x] RULES block: injection response template (BLOCKED: output)
+    prescriptive format — model emits BLOCKED + named pattern + rule
+[x] FAILURE block: injection-aware templates (all 3 domains)
+[x] client.py default model updated: nvidia/llama-3.1-nemotron-70b-instruct
+    → meta/llama-3.3-70b-instruct (nemotron deprecated on NIM)
+[x] government.axiom: deduplicated 3× SECURITY block → 1×
+[x] HISTORY formats fixed: "retain last N years" → "retain last N <type>"
+[x] CANNOT_MUTATE field names fixed (no spaces) in healthcare.axiom
+[x] SUCCESS blocks: weighted dimensions summing to 1.0
+
+Root cause: FAILURE block is parsed as failure conditions, not behavioral
+directives. Injection response moved to RULES block → model follows it.
+
+Domain Bench Run 1 (RULES-in-FAILURE):  454/512 (88%)  [2026-04-17]
+Domain Bench Run 2 (RULES-in-RULES):    512/512 (100%) [2026-04-17]
+
+  Domain        Tests   Score        Pass   Overall
+  ──────────    ─────   ──────────   ────   ───────
+  government      29    232/232      29/29   100% ✅
+  finance         14    112/112      14/14   100% ✅
+  healthcare      21    168/168      21/21   100% ✅
+  ──────────    ─────   ──────────   ────   ───────
+  TOTAL           64    512/512      64/64   100%
+
+Results: results/domains/ (latest run 2026-04-17)
 
 ════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅
