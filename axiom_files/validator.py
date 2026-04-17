@@ -29,7 +29,9 @@ _PURITY_PATTERNS = [
     (r"\bfor\s+\w+\s+in\b", "Procedural for-loop"),
     (r"\bwhile\s+.+:", "Procedural while-loop"),
     (r"\bimport\s+\w+", "Import statement"),
-    (r"\breturn\b", "return keyword"),
+    # 'return' only flags as procedural when NOT used as an English verb/routing
+    # phrase. 'returns value', 'return to X', 'return control to' are all fine.
+    (r"\breturn\b(?!\s+(to|control|from)\b)", "return keyword"),
     (r"\bprint\s*\(", "print() call"),
     (r":=", "Walrus operator (:=)"),
     (r"\blambda\b", "Lambda expression"),
@@ -44,7 +46,8 @@ _VAGUE_TERMS = [
 
 # ── Semantic: procedural drift patterns forbidden in PROCESS ─────────────────
 _PROCEDURAL_DRIFT = [
-    r"\bif\b", r"\belse\b", r"\bwhile\b", r"\bloop\b", r"\breturn\b",
+    r"\bif\b", r"\belse\b", r"\bwhile\b", r"\bloop\b",
+    r"\breturn\b(?!\s+(to|control|from)\b)",
 ]
 
 # ── Known mutable fields (for MUTATES / CANNOT_MUTATE validation) ────────────
@@ -142,18 +145,9 @@ def validate_parsed(parsed: dict) -> dict:
                 f"Create axiom_files/{sandbox_agent.lower()}.axiom or update SANDBOX_AGENT."
             )
 
-    # 1d. MUTATES / CANNOT_MUTATE reference real fields
-    for directive, field_key in [("MUTATES", "mutates"), ("CANNOT_MUTATE", "cannot_mutate")]:
-        for name in parsed.get(field_key, []):
-            if name not in _KNOWN_FIELDS:
-                issues.append({
-                    "phase": "syntax", "level": "warning", "field": field_key,
-                    "message": f"{directive} references unknown field '{name}'.",
-                })
-                suggestions.append(
-                    f"'{name}' in {directive} is not a recognised Axiom field. "
-                    f"Known fields: {', '.join(sorted(_KNOWN_FIELDS))}."
-                )
+    # 1d. MUTATES / CANNOT_MUTATE — only flag structural axiom fields declared
+    # in CANNOT_MUTATE that conflict with MUTATES. Domain state names (patterns,
+    # button_map, skill_tree, etc.) are valid in MUTATES — no unknown-field check.
 
     # 1e-extra. MUTATES / CANNOT_MUTATE conflict check
     mutates_set = set(parsed.get("mutates", []))
