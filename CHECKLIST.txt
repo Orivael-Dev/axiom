@@ -7,6 +7,9 @@ Benchmark v1.6:   192/192 (100%) -- HISTORY construct, zero regressions ✅
                   Baseline: results/baseline_v1_6_20260417.json
 Full bench v1.6:  232/232 (100%) -- all categories, zero regressions ✅
                   Results: results/v1_4_when_delegates_20260417_171507.json
+Full bench v1.7:  94/94 PASS — 742/744 (99.7%) — domain agents included, zero regressions ✅
+                  Results: results/v1_4_when_delegates_20260417_193742.json
+                  B44 6/8 (soft constraint miss, not security)
 
 ════════════════════════════════════════════════════════════
 v1.0 — DSL Foundation                              COMPLETE
