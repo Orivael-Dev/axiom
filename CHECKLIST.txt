@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 17, 2026 (HISTORY construct complete)
+Last updated: April 17, 2026 (GameWatcher pipeline live — first skill promoted)
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
 Benchmark v1.6:   192/192 (100%) -- HISTORY construct, zero regressions ✅
@@ -136,6 +136,29 @@ FUTURE — v1.7+                                     PLANNED
 [ ] Shared memory — evolved prompts feed back as starting points
 [ ] Multi-agent composition graph (AgentIQ integration)
 [ ] AXIOM runtime as standalone Python package
+
+════════════════════════════════════════════════════════════
+GameWatcher Pipeline — Live Test                COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] game_watcher.axiom, pattern_agent.axiom, skill_builder.axiom,
+    controller_mapper.axiom — all 4 agents validated
+[x] AxiomPatternAgent wired into game_watcher.py
+    — runs every 10 GOOD frames (good_frame_count, not raw frame_count)
+[x] AxiomSkillBuilder wired — fires on pattern promotion
+[x] VisionAnalyzer retry logic — up to 2 retries on empty response
+[x] promote_after: 2 — faster skill promotion for testing
+[x] Live Pacman session: 29 frames, 20 good frames analyzed
+    — 3 patterns confirmed at frame 20
+    — 1 skill promoted: "Avoid Ghosts from Left and Top" (80% confidence)
+    — Full pipeline: capture → vision → history → PatternAgent → SkillBuilder ✅
+
+Session log (April 17, 2026):
+  Frames analyzed: 29 total, ~21 good (72% vision success after retries)
+  PatternAgent cycles: 2 (frame 10, frame 20)
+  Patterns tracked: 3
+  Skills promoted: 1
+    • ghost_approaching_left → "Avoid Ghosts from Left and Top"
+      Seen 2x, confidence 80%, category: survival
 
 ════════════════════════════════════════════════════════════
 TEST COVERAGE
