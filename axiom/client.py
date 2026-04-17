@@ -94,7 +94,7 @@ def chat(
     """Single chat completion call. Returns the text content of the response."""
     client = get_client()
     resolved_model = model or os.environ.get(
-        "AXIOM_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct"
+        "AXIOM_MODEL", "meta/llama-3.3-70b-instruct"
     )
 
     kwargs: dict = {
