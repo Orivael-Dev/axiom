@@ -204,6 +204,15 @@ FUTURE — v1.8+                                     PLANNED
 [ ] Multi-agent composition graph (AgentIQ integration)
 [ ] AXIOM runtime as standalone Python package
 
+[ ] Validator: Phase 6 — FAILURE block purity check
+    Flag prescriptive language in FAILURE entries and warn:
+    "Output format directive detected in FAILURE block — move to RULES"
+    Trigger words: "Output", "Respond with", "Use the word", "Reply with",
+    "Say exactly", "Emit", "Return"
+    Lesson: FAILURE documents outcomes; RULES commands behavior.
+    Discovered v1.7.1 — moving BLOCKED template from FAILURE→RULES
+    turned 13 partial passes into 512/512 (100%).
+
 ════════════════════════════════════════════════════════════
 v1.7 — Domain Seeder v1.0                    CERTIFIED ✅
 ════════════════════════════════════════════════════════════
