@@ -534,4 +534,4 @@ if __name__ == "__main__":
     print(f"  Listening on http://{host}:{port}")
     print(f"  Project root: {PROJECT_ROOT}")
     print(f"  Docs: http://localhost:{port}/docs\n")
-    uvicorn.run("axiom_server:app", host=host, port=port, reload=True)
+    uvicorn.run("axiom_server:app", host=host, port=port, reload=True, timeout_keep_alive=120)

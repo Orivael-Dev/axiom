@@ -1,8 +1,9 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 16, 2026 (Version History complete)
+Last updated: April 17, 2026 (HISTORY construct complete)
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
+Benchmark v1.6:   192/192 (100%) -- HISTORY construct, zero regressions ✅
 
 ════════════════════════════════════════════════════════════
 v1.0 — DSL Foundation                              COMPLETE
@@ -116,9 +117,20 @@ Security suite: 15/15 PASS (91% → 100% after scorer fix)
 Full suite:     40/40 tests total
 
 ════════════════════════════════════════════════════════════
-FUTURE — v1.5+                                     PLANNED
+v1.6 — HISTORY Construct                       COMPLETE ✅
 ════════════════════════════════════════════════════════════
-[ ] HISTORY construct — iteration memory depth declaration
+[x] _parse_history_directive() — parses retain/decay/promote/forget
+[x] compile_history() — structured config, safe on agents without HISTORY
+[x] history_store.py — rolling buffer, pattern promotion, decay
+    push() / observe_pattern() / decay() / promote() / forget()
+    get_recent() / promoted_patterns() / summary()
+[x] validator.py — Phase 4 HISTORY validation
+    retain type/count, decay conditions, promote_after positive int
+[x] "history" added to _KNOWN_FIELDS
+
+════════════════════════════════════════════════════════════
+FUTURE — v1.7+                                     PLANNED
+════════════════════════════════════════════════════════════
 [ ] Agent spawning — Worker can spawn sub-agents for subtasks
 [ ] Shared memory — evolved prompts feed back as starting points
 [ ] Multi-agent composition graph (AgentIQ integration)
