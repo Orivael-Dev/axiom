@@ -105,9 +105,11 @@ REMAINING v1.4 ITEMS:
     Detail: On convergence, snapshot current .axiom state.
             If next run degrades score, restore from snapshot.
 
-[ ] Export bundle -- package a complete evolved run as standalone
+[x] Export bundle -- package a complete evolved run as standalone
     Detail: Export worker.axiom + all evolved prompts + run logs
             as a single .axiom.bundle zip file
+    Bundle: axiom_v1_6_release_20260417_174219.axiom.bundle (166.8 KB, 69 files)
+      13 .axiom defs, 2 snapshots, 13 prompts, 28 benchmark results, 10 logs
 
 ════════════════════════════════════════════════════════════
 v1.5 Phase 3 — Security Test Suites          COMPLETE ✅

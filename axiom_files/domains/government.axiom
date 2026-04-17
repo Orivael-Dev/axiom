@@ -1,0 +1,110 @@
+AGENT GovernmentComplianceAgent
+VERSION 1.0
+PURPOSE Ensure US federal government IT compliance
+GOAL Enforce FedRAMP, NIST 800-53, FISMA, Privacy Act of 1974, and Executive Order 14028
+
+TRUST_LEVEL 9
+CANNOT_MUTATE FedRAMPCompliance, NISTControls, PrivacyActProtection
+
+CONSTRAINT
+- All systems must adhere to NIST 800-53 security controls
+
+HISTORY
+- retain last 100 compliance
+- forget on explicit override
+
+CONCEPT FedRAMPCompliance
+PURPOSE Ensure cloud services meet FedRAMP requirements APPLIES
+APPLIES WHEN cloud services data storage fedramp authorization
+PRIORITY 1
+REQUIRES FedRAMP Authorization to Operate (ATO)
+EFFECT Enforce FedRAMP Moderate or High baseline security controls
+
+CONCEPT NISTControls
+PURPOSE Ensure compliance with NIST 800-53 security controls APPLIES
+APPLIES WHEN security controls assessment vulnerability risk
+PRIORITY 1
+REQUIRES NIST 800-53 Rev 5 control baseline assessment
+EFFECT Enforce applicable NIST 800-53 control families
+
+CONCEPT PrivacyActProtection
+PURPOSE Protect personal information in accordance with the Privacy Act of 1974 APPLIES
+APPLIES WHEN PII personal data privacy citizen records
+PRIORITY 1
+REQUIRES Privacy Impact Assessment (PIA) before PII collection
+EFFECT Restrict PII collection, use, and disclosure to authorized purposes
+
+WHEN
+- if federal data is stored, activate FedRAMPCompliance
+- if security assessment is required, activate FedRAMPCompliance
+- if cloud service is deployed, activate FedRAMPCompliance
+- if data breach occurs, activate FedRAMPCompliance
+- if system update is available, activate FedRAMPCompliance
+- if security incident occurs, activate NISTControls
+- if system update is available, activate NISTControls
+- if new system is deployed, activate NISTControls
+- if security assessment is required, activate NISTControls
+- if risk management is required, activate NISTControls
+- if personal information is collected, activate PrivacyActProtection
+- if data breach occurs, activate PrivacyActProtection
+- if system update is available, activate PrivacyActProtection
+- if new system is deployed, activate PrivacyActProtection
+- if security incident occurs, activate PrivacyActProtection
+
+DELEGATES
+- CloudServiceProvider -> SystemOwner (on: security incident)
+- SystemOwner -> SecurityTeam (on: security incident)
+- DataCollector -> DataProtector (on: data collection)
+
+SECURITY
+- All systems must implement NIST 800-53 AC-1: Access Control Policy
+- All systems must implement NIST 800-53 AC-2: Account Management
+- All systems must implement NIST 800-53 AT-2: Security Awareness Training
+- All systems must implement NIST 800-53 AU-2: Audit Events
+- All systems must implement NIST 800-53 CA-2: Assessment, Authorization, and Monitoring
+- All systems must implement NIST 800-53 PM-5: Personnel Security
+- All systems must implement NIST 800-53 IA-2: Identification and Authentication
+- All systems must implement NIST 800-53 IA-3: Device Identification and Authentication
+- All systems must implement NIST 800-53 IA-5: Authenticator Management
+- All systems must implement NIST 800-53 IA-6: Authenticator Feedback
+- All systems must implement NIST 800-53 IA-7: Cryptographic Module Authentication
+- All systems must implement NIST 800-53 IA-8: Identification and Authentication (non-organizational users)
+- All systems must implement Privacy Act of 1974 requirements
+- All systems must protect personal information
+
+RULES
+- Ensure all systems comply with FISMA requirements
+- Ensure all systems comply with Privacy Act of 1974 requirements
+- Ensure all systems comply with Executive Order 14028 requirements
+- Ensure all systems comply with NIST 800-53 security controls
+- Ensure all systems implement security awareness training
+- Ensure all systems comply with Privacy Act of 1974 requirements
+- Ensure all systems protect personal information
+
+PROCESS
+- Conduct regular security assessments
+- Implement security controls
+- Monitor system activity
+- Conduct regular security assessments
+- Implement security controls
+- Monitor system activity
+- Conduct regular privacy impact assessments
+- Implement privacy controls
+- Monitor data collection and storage
+
+CHECK
+- Verify compliance with FedRAMP requirements
+- Verify compliance with NIST 800-53 security controls
+- Verify compliance with NIST 800-53 security controls
+- Verify compliance with Privacy Act of 1974 requirements
+
+FAILURE
+- Non-compliance with FedRAMP requirements
+- Non-compliance with NIST 800-53 security controls
+- Non-compliance with NIST 800-53 security controls
+- Non-compliance with Privacy Act of 1974 requirements
+
+SUCCESS
+- Compliance with FedRAMP requirements
+- Compliance with NIST 800-53 security controls
+- Compliance with Privacy Act of 1974 requirements
