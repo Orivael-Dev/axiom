@@ -194,7 +194,7 @@ Full bench (all categories): 30/30 PASS — 232/232 (100%) ✅  [2026-04-17]
   Results: results/v1_4_when_delegates_20260417_171507.json
 
 ════════════════════════════════════════════════════════════
-FUTURE — v1.7+                                     PLANNED
+FUTURE — v1.8+                                     PLANNED
 ════════════════════════════════════════════════════════════
 [ ] Agent spawning — Worker can spawn sub-agents for subtasks
 [ ] Shared memory — evolved prompts feed back as starting points
@@ -202,12 +202,9 @@ FUTURE — v1.7+                                     PLANNED
 [ ] AXIOM runtime as standalone Python package
 
 ════════════════════════════════════════════════════════════
-v1.7 — Domain Seeder                           COMPLETE ✅
+v1.7 — Domain Seeder v1.0                    CERTIFIED ✅
 ════════════════════════════════════════════════════════════
 [x] axiom_domain_seeder.py — NIM-generated regulatory compliance agents
-    Domains: government (FedRAMP/NIST/FISMA/Privacy Act),
-             finance (FINRA/SOX/Dodd-Frank/Basel III/AML),
-             healthcare (HIPAA/HITECH/HL7 FHIR/FDA 21 CFR Part 11)
     3 required CONCEPTs per domain (gap-filled deterministically)
     Auto-generates WHEN + SECURITY benchmarks from .axiom rules
     Updates domain_index.json registry
@@ -217,13 +214,24 @@ v1.7 — Domain Seeder                           COMPLETE ✅
     Loads domain .axiom as system prompt, runs WHEN + SECURITY suites
     Scores: concept_activation, security_enforcement, regulatory_accuracy
 
-[x] Domain Seeder — 3/3 agents seeded and validated ✅
-    government.axiom — 3 concepts, 29 tests  (warning, no errors)
-    finance.axiom    — 3 concepts, 14 tests  (warning, no errors)
-    healthcare.axiom — 3 concepts, 21 tests  (warning, no errors)
+[x] government.axiom — 3 concepts, 29 tests
+    FedRAMP, NIST 800-53, FISMA, Privacy Act
+    WHEN: 100% | Security: ~55% | Overall: 81%
 
-[x] First Domain Bench Run — 418/512 (81%) overall  [2026-04-17]
-    Results: results/domains/
+[x] finance.axiom — 3 concepts, 14 tests
+    FINRA, SOX, Dodd-Frank, Basel III, AML
+    WHEN: 100% | Security: ~55% | Overall: 83%
+
+[x] healthcare.axiom — 3 concepts, 21 tests
+    HIPAA, HITECH, HL7 FHIR, FDA 21 CFR Part 11
+    WHEN: 100% | Security: ~55% | Overall: 79%
+
+Cross-domain contamination: None ✅
+Concept activation: 32/32 (100%) ✅
+Regulatory accuracy normal path: 100% ✅
+
+First Domain Bench Run — 418/512 (81%) overall  [2026-04-17]
+Results: results/domains/
 
   Domain        Tests   Score        Pass   Overall
   ──────────    ─────   ──────────   ────   ───────
@@ -233,12 +241,20 @@ v1.7 — Domain Seeder                           COMPLETE ✅
   ──────────    ─────   ──────────   ────   ───────
   TOTAL           64    418/512      46/64   81%
 
-  Analysis:
-  ✅ Concept activation (WHEN):    32/32 (100%) — perfect cross-domain isolation
-  ✅ Regulatory accuracy (normal): 100% on WHEN path — domain knowledge accurate
-  ⚠  Security enforcement:         ~55% — NIM-generated rules softer than hand-written
-     Action: tighten security rules in domain .axiom files (v1.7.1)
-  ✅ Cross-domain contamination:   None detected — APPLIES WHEN sets are distinct
+Gap identified: NIM-generated security rules fold
+under nuanced bypass — hardening pass needed
+
+════════════════════════════════════════════════════════════
+v1.7.1 — Domain Security Hardening                 PLANNED
+════════════════════════════════════════════════════════════
+Target: domain security rules → 90%+ (58/64)
+
+[ ] Inject core security rules into all domain agents
+    SECURITY_CORE section mirroring master agent rules
+[ ] Constitutional suffix for domain agent calls
+    Domain flag in get_prompt_with_when() to append suffix
+[ ] Rerun 18 failing security tests
+[ ] Target: 58/64 (90%+) across all domains
 
 ════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅
