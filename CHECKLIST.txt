@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 17, 2026 (GameWatcher pipeline live — first skill promoted)
+Last updated: April 17, 2026 (Domain Seeder shipped — 3 regulatory agents, 418/512 baseline)
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
 Benchmark v1.6:   192/192 (100%) -- HISTORY construct, zero regressions ✅
@@ -200,6 +200,45 @@ FUTURE — v1.7+                                     PLANNED
 [ ] Shared memory — evolved prompts feed back as starting points
 [ ] Multi-agent composition graph (AgentIQ integration)
 [ ] AXIOM runtime as standalone Python package
+
+════════════════════════════════════════════════════════════
+v1.7 — Domain Seeder                           COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] axiom_domain_seeder.py — NIM-generated regulatory compliance agents
+    Domains: government (FedRAMP/NIST/FISMA/Privacy Act),
+             finance (FINRA/SOX/Dodd-Frank/Basel III/AML),
+             healthcare (HIPAA/HITECH/HL7 FHIR/FDA 21 CFR Part 11)
+    3 required CONCEPTs per domain (gap-filled deterministically)
+    Auto-generates WHEN + SECURITY benchmarks from .axiom rules
+    Updates domain_index.json registry
+    Output: axiom_files/domains/{domain}.axiom
+
+[x] domain_bench_runner.py — domain-specific benchmark runner
+    Loads domain .axiom as system prompt, runs WHEN + SECURITY suites
+    Scores: concept_activation, security_enforcement, regulatory_accuracy
+
+[x] Domain Seeder — 3/3 agents seeded and validated ✅
+    government.axiom — 3 concepts, 29 tests  (warning, no errors)
+    finance.axiom    — 3 concepts, 14 tests  (warning, no errors)
+    healthcare.axiom — 3 concepts, 21 tests  (warning, no errors)
+
+[x] First Domain Bench Run — 418/512 (81%) overall  [2026-04-17]
+    Results: results/domains/
+
+  Domain        Tests   Score        Pass   Overall
+  ──────────    ─────   ──────────   ────   ───────
+  government      29    190/232      20/29   81% ✅
+  finance         14     94/112      10/14   83% ✅
+  healthcare      21    134/168      16/21   79% ✅
+  ──────────    ─────   ──────────   ────   ───────
+  TOTAL           64    418/512      46/64   81%
+
+  Analysis:
+  ✅ Concept activation (WHEN):    32/32 (100%) — perfect cross-domain isolation
+  ✅ Regulatory accuracy (normal): 100% on WHEN path — domain knowledge accurate
+  ⚠  Security enforcement:         ~55% — NIM-generated rules softer than hand-written
+     Action: tighten security rules in domain .axiom files (v1.7.1)
+  ✅ Cross-domain contamination:   None detected — APPLIES WHEN sets are distinct
 
 ════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅
