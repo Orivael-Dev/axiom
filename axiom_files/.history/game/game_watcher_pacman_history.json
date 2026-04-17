@@ -1,0 +1,29 @@
+{
+  "agent": "game_watcher_pacman",
+  "skills": [
+    {
+      "skill_name": "ghost_approaching_left,",
+      "description": "red ghost approaching from left, blue ghost approaching from top \u2192 move right",
+      "trigger": "red ghost approaching from left, blue ghost approaching from top",
+      "action": "move right",
+      "outcome": "survived with score increase",
+      "confidence": 0.7999999999999999,
+      "seen_count": 2,
+      "promoted_at": "2026-04-17T10:35:07.701692+00:00"
+    }
+  ],
+  "patterns": {
+    "1": {
+      "pattern_id": "1",
+      "description": "red ghost approaching from left, blue ghost approaching from top \u2192 move right",
+      "trigger": "red ghost approaching from left, blue ghost approaching from top",
+      "action": "move right",
+      "outcome": "survived with score increase",
+      "confidence": 0.7999999999999999,
+      "seen_count": 2,
+      "promoted": true,
+      "skill_name": "ghost_approaching_left,"
+    }
+  },
+  "saved_at": "2026-04-17T10:35:07.702941+00:00"
+}
