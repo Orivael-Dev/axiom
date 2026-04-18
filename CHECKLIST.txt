@@ -2,6 +2,16 @@ AXIOM Development Checklist
 ===========================
 Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
+ 
+AXIOM Certification Milestone: first certified core agents
+  Spec basis: AXIOM_SPEC.md (`AXIOM Language Specification`)
+  Conformance tiers: BASIC, STANDARD, CERTIFIED
+  CERTIFIED requires benchmark evidence, constitutional integrity,
+  audit trail, and manifest generation
+  Evidence date: 2026-04-18
+  worker     -> CERTIFIED  (certs/worker_cert_20260418_034127.json)
+  evaluator  -> STANDARD   (certs/evaluator_cert_20260418_034128.json)
+  rewriter   -> STANDARD   (certs/rewriter_cert_20260418_034128.json)
 
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
