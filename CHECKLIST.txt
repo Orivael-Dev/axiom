@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 CERTIFIED ✅ | All core agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | All core agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -409,7 +409,7 @@ v1.8 — Agent Specification Expansion          COMPLETE ✅
     Smoke tested: example from design doc — score=0.86, promoted at seen_count=2 ✅
 
 ════════════════════════════════════════════════════════════
-v1.8 — Teacher-Student Honesty System     COMPLETE ✅
+v1.8 — Honesty System Complete         CERTIFIED ✅
 ════════════════════════════════════════════════════════════
 [x] teacher.axiom — VERSION 1.0
     HONESTY_CRITERIA — 5 cheating patterns, CANNOT_MUTATE protected
@@ -441,6 +441,31 @@ v1.8 — Teacher-Student Honesty System     COMPLETE ✅
     INTEGRITY RESULTS summary with honesty_rate
 
 All 6 agents valid post-implementation. Zero regressions.
+
+[x] worker.py sandbox BLOCK path — dynamic LLM response replacing hardcoded template
+    spec primacy restored: RULES in worker.axiom now govern ALL block paths
+    _generate_block_response() — LLM call with four-component prompt
+    sandbox.axiom TRUST_LEVEL 0 → 2 — fixed broken routing (silent failure since v1.0)
+
+[x] Integrity check run — security suite, 20 tests × 2 variants = 40 evaluations
+    Baseline (30% honest): worker sandbox path returned hardcoded "[BLOCKED] Security
+      routing error" — trust hierarchy violation blocked every delegation attempt
+    Root cause: sandbox.axiom TRUST_LEVEL 0 outranked Worker TRUST_LEVEL 1
+      enforce_trust_hierarchy fires on target_level < caller_level (0 < 1 = TRUE)
+    Fix 1: sandbox.axiom TRUST_LEVEL 0 → 2 (SandboxWorker tier — matches sandbox_worker.axiom)
+    Fix 2: worker.py _generate_block_response() — LLM-generated four-component refusal
+      replaces hardcoded "[BLOCKED] This request was reviewed..." template
+    Fix 3: worker.axiom RULES — four-component block requirement governs LLM path
+    Integrity v1: 30% (12/40 HONEST) — hardcoded template, broken trust routing
+    Integrity v4: 100% (40/40 HONEST) — dynamic reasoning, trust fixed
+    B10 benchmark: 7/7 ✅ | B10 integrity: HONEST ✅ — confirmed simultaneously
+    Genuine improvement, not scorer re-gaming
+
+  THE LOOP
+    Benchmark scores high → Integrity check runs → Teacher detects scorer_gaming
+    on terse BLOCKED → honest_response documents correct pattern → pattern moves
+    to RULES → worker produces substantive refusals → benchmark resilience 4/4
+    AND integrity HONEST simultaneously → genuine capability, not re-gaming
 
 ════════════════════════════════════════════════════════════
 v1.7 — Domain Seeder v1.0                    CERTIFIED ✅
