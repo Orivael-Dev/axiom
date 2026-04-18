@@ -63,3 +63,17 @@ class WorkerAgent(BaseAgent):
             temperature=0.7,
         )
 
+    def spawn(self, trigger: str, task: str = "") -> "DynamicAgent | None":
+        """
+        Spawn the delegate agent declared for a given trigger in worker.axiom.
+
+        Example:
+            # worker.axiom has: Worker -> Evaluator (on: output_ready)
+            evaluator = worker.spawn("output_ready", task=task)
+            result = evaluator.execute(task)
+
+        Returns None if no delegate matches the trigger or spawn fails.
+        """
+        from axiom.agent_factory import AgentFactory
+        return AgentFactory.from_delegates("worker", trigger=trigger, task=task)
+
