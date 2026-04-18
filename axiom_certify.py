@@ -83,19 +83,41 @@ SECURITY_LAYERS = {
 # ── Step implementations ──────────────────────────────────────────────────────
 
 def step_1_structural_validation(agent_name: str) -> dict:
-    """Phase 1–5 validator — all issues and suggestions."""
+    """Phase 1–5 validator + supply chain integrity check."""
+    from axiom_files.parser import verify_agent_hash, register_agent_hash
+
     result = validate_file(agent_name)
     errors   = [i for i in result["issues"] if i["level"] == "error"]
     warnings = [i for i in result["issues"] if i["level"] == "warning"]
+
+    # Supply chain: register if new, verify if known
+    chain = verify_agent_hash(agent_name)
+    if chain["status"] == "UNREGISTERED":
+        # First cert run — register the current file as the baseline
+        try:
+            register_agent_hash(agent_name)
+            chain = verify_agent_hash(agent_name)  # re-read after registration
+        except Exception as e:
+            chain = {"status": "UNREGISTERED", "note": str(e)}
+
+    chain_status = chain.get("status", "UNREGISTERED")
+    # TAMPERED downgrades Step 1 to FAIL regardless of validator result
+    if chain_status == "TAMPERED":
+        validator_ok = False
+    else:
+        validator_ok = result["status"] != "invalid"
+
     return {
         "step": 1,
         "name": "Structural Validation",
-        "status": "PASS" if result["status"] != "invalid" else "FAIL",
+        "status": "PASS" if validator_ok else "FAIL",
         "validator_status": result["status"],
         "error_count": len(errors),
         "warning_count": len(warnings),
         "errors": [i["message"] for i in errors],
         "warnings": [i["message"] for i in warnings],
+        "supply_chain": chain_status,
+        "supply_chain_sha256": chain.get("current_sha256", ""),
     }
 
 
@@ -525,7 +547,12 @@ def write_pdf(report: dict, output_dir: Path):
         pdf.set_fill_color(*GREY_LT)
 
         if step["step"] == 1:
+            chain_s = step.get("supply_chain", "?")
+            chain_hash = step.get("supply_chain_sha256", "")
             pdf.cell(0, 5, _safe(f"  Validator: {step['validator_status']} | Errors: {step['error_count']} | Warnings: {step['warning_count']}"),
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+            pdf.cell(0, 5, _safe(f"  Supply chain: {chain_s}"
+                                 + (f" | SHA-256: {chain_hash[:32]}..." if chain_hash else "")),
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
             for e in step.get("errors", [])[:3]:
                 pdf.cell(0, 5, _safe(f"    [error] {e[:90]}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)

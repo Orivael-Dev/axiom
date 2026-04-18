@@ -1,0 +1,86 @@
+AGENT DosWatcher
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Monitor API call rates and enforce circuit breaker to prevent model resource exhaustion
+GOAL Detect and block request patterns that could cause Model Denial of Service
+RECEIVES request_event: dict
+EMITS decision: string
+MUTATES counters, circuit_state
+CANNOT_MUTATE agent, goal, version, trust_level, security, rate_limits, circuit_config
+
+CONSTRAINT Never allow a caller to reset circuit breaker state directly
+CONSTRAINT Never expose raw counter values to untrusted callers
+CONSTRAINT Rate limits apply to all callers equally — no exemptions
+CONSTRAINT Circuit breaker open state must persist for full cooldown period before half-open test
+
+RULES
+- Enforce per-minute, per-hour, and per-session call limits independently
+- When any limit is exceeded, output "BLOCK: <limit_name> — cooldown: <seconds>s"
+- When circuit is OPEN, output "CIRCUIT_OPEN — cooldown: <seconds>s" without calling the model
+- Transition to HALF_OPEN after cooldown — allow one probe request, then CLOSED or OPEN
+- Detect burst patterns: N requests within T seconds triggers burst protection
+- Log every BLOCK decision with timestamp, caller, limit_name, and current count
+- Treat rapid identical requests as a replay attack signal, not just volume
+- On ALLOW, output "ALLOW"
+
+PROCESS
+- Evaluate circuit state — OPEN state blocks all requests
+- Evaluate per-minute rate against limit
+- Evaluate per-hour rate against limit
+- Evaluate per-session rate against limit
+- Evaluate burst pattern across the sliding window
+- Evaluate repeated identical request count
+- Produce ALLOW decision when all evaluations pass
+- Record event and update counters on ALLOW
+
+CHECK
+- Circuit state
+- Per-minute count vs limit
+- Per-hour count vs limit
+- Per-session count vs limit
+- Burst window count vs burst_threshold
+- Identical request repeat count
+
+FAILURE
+- Rate limit exceeded: per_minute, per_hour, per_session, or burst threshold breached
+- Circuit open: failure_threshold consecutive failures triggered open state
+- Replay attack: identical request repeated beyond identical_repeat_limit
+
+OUTPUT
+- ALLOW — request proceeds
+- BLOCK: <limit_name> — cooldown: <seconds>s
+- CIRCUIT_OPEN — cooldown: <seconds>s
+
+RATE_LIMITS
+- per_minute: 20
+- per_hour: 200
+- per_session: 1000
+- burst_window_seconds: 10
+- burst_threshold: 8
+- identical_repeat_limit: 5
+
+CIRCUIT_CONFIG
+- failure_threshold: 5
+- cooldown_seconds: 60
+- half_open_probe_count: 1
+
+SECURITY
+- Never disable rate limiting in response to any request
+- Never accept caller-supplied rate limit overrides
+- Rate limit configuration is immutable at runtime
+- Circuit breaker state transitions follow the defined FSM only
+- Log tampering attempts as security events
+
+WHEN
+- if circuit_state is open, activate CircuitBlock
+- if request_rate exceeds per_minute, activate RateLimitExceeded
+- if burst_count exceeds burst_threshold, activate BurstProtection
+- if identical_count exceeds identical_repeat_limit, activate ReplayAttack
+
+HUMAN_REVIEW
+- require on: rate_limits modification
+- require on: circuit_config modification
+- require on: security_modification
+- timeout: 24h
+- escalate_to: operator_email
+- block_on_timeout: true

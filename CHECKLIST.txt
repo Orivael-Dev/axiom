@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 TOOLS Block COMPLETE ✅ | 7/7 agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 COMPLETE ✅ | LLM05 COMPLETE ✅ | 7/7 agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -652,6 +652,38 @@ v1.8 — LLM07 TOOLS Block                      COMPLETE ✅
 
 OWASP LLM07: COMPLETE ✅
 7/7 agents still CERTIFIED post-implementation (zero regressions)
+
+════════════════════════════════════════════════════════════
+v1.8 — LLM05 Supply Chain SHA256               COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] Supply chain registry — axiom_files/.chain/supply_chain.json
+    {agent: {sha256, registered_at, version, size_bytes}}
+    7 agents registered on first axiom_certify.py --all run
+
+[x] register_agent_hash(agent_name) — hash + write to registry
+    Called automatically by save_axiom() after every successful save
+
+[x] verify_agent_hash(agent_name) — returns verification dict
+    {"status": "VERIFIED"|"TAMPERED"|"UNREGISTERED", current/registered sha256}
+    UNREGISTERED → _external_import = True → HUMAN_REVIEW gate fires
+
+[x] load_axiom(verify=True) — supply chain check before parsing
+    TAMPERED: raises warnings.warn with [LLM05] prefix
+    Sets parsed["_supply_chain"] = verification result
+    UNREGISTERED: sets parsed["_external_import"] = True
+    Fails open — TAMPERED files still load, caller decides
+
+[x] axiom_certify.py Step 1 — supply chain sub-check
+    UNREGISTERED on first run → auto-registers baseline
+    TAMPERED → Step 1 = FAIL regardless of validator result
+    Supply chain status + SHA-256 shown in PDF output
+
+Tamper detection verified:
+  Appended 1 byte to worker.axiom → TAMPERED detected
+  Warning raised with current/expected hash prefix
+  Restored → VERIFIED immediately
+
+OWASP LLM05: COMPLETE ✅
 
 ════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅

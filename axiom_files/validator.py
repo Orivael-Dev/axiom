@@ -57,6 +57,7 @@ _KNOWN_FIELDS = {
     "check", "failure", "output", "success", "tools", "concepts", "when",
     "delegates", "security", "trust_level", "sandbox_agent", "history",
     "thresholds", "signals", "drift_levels", "honesty_criteria", "human_review",
+    "rate_limits", "circuit_config",
 }
 
 

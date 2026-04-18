@@ -86,12 +86,35 @@ def _parse_tool_entry(raw: str) -> dict:
     return result
 
 
-def load_axiom(agent_name: str) -> dict:
-    """Read a .axiom file and parse it into sections."""
+def load_axiom(agent_name: str, verify: bool = False) -> dict:
+    """Read a .axiom file and parse it into sections.
+
+    Args:
+        verify: When True, check the file's SHA256 against the supply chain
+                registry before parsing. Sets parsed["_supply_chain"] with the
+                result dict. TAMPERED files still load — the caller decides
+                whether to block; this surfaces the signal without hard-stopping
+                benign uses like the validator or certifier.
+    """
     path = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
-    
+
     if not os.path.exists(path):
         raise FileNotFoundError(f"No .axiom file found for agent: {agent_name}")
+
+    # ── Supply chain verification (LLM05) ─────────────────────────────────────
+    _chain_result: dict | None = None
+    if verify:
+        _chain_result = verify_agent_hash(agent_name)
+        if _chain_result["status"] == "TAMPERED":
+            import warnings as _w
+            _w.warn(
+                f"[LLM05] Supply chain integrity failure: {agent_name}.axiom "
+                f"hash does not match registry. "
+                f"Current: {_chain_result['current_sha256'][:16]}... "
+                f"Expected: {_chain_result['registered_sha256'][:16]}... "
+                "Proceeding with load — caller should treat output as untrusted.",
+                stacklevel=2,
+            )
     
     with open(path, "r", encoding="utf-8") as f:
         lines = f.readlines()
@@ -125,6 +148,8 @@ def load_axiom(agent_name: str) -> dict:
         "drift_levels": {},
         "honesty_criteria": {},
         "human_review": {},
+        "rate_limits": {},
+        "circuit_config": {},
     }
 
     current_section = None
@@ -235,13 +260,15 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "security"
         elif line == "HISTORY":
             current_section = "history"
-        elif line in ("THRESHOLDS", "SIGNALS", "DRIFT_LEVELS", "HONESTY_CRITERIA", "HUMAN_REVIEW"):
+        elif line in ("THRESHOLDS", "SIGNALS", "DRIFT_LEVELS", "HONESTY_CRITERIA",
+                      "HUMAN_REVIEW", "RATE_LIMITS", "CIRCUIT_CONFIG"):
             current_section = line.lower()
         elif line.startswith("- ") and current_section:
             raw = line[2:].strip()
             if current_section == "history":
                 _parse_history_directive(parsed["history"], raw)
-            elif current_section in ("thresholds", "signals", "drift_levels", "honesty_criteria"):
+            elif current_section in ("thresholds", "signals", "drift_levels",
+                                      "honesty_criteria", "rate_limits", "circuit_config"):
                 # Strip inline comments, then parse key: value
                 entry = raw.split("#")[0].strip()
                 if ":" in entry:
@@ -300,6 +327,13 @@ def load_axiom(agent_name: str) -> dict:
     parsed["constraints"] = list(dict.fromkeys(parsed["constraints"]))
     parsed["failure"] = list(dict.fromkeys(parsed["failure"]))
     parsed["output"] = list(dict.fromkeys(parsed["output"]))
+
+    # Attach supply chain result if verification was requested
+    if _chain_result is not None:
+        parsed["_supply_chain"] = _chain_result
+        # UNREGISTERED = not in registry = external import — wire into review gate
+        if _chain_result["status"] == "UNREGISTERED":
+            parsed["_external_import"] = True
 
     return parsed
 
@@ -827,7 +861,7 @@ def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
                 pending_text = "\n".join(
                     [f"{k}: {v}" for k, v in parsed.items() if isinstance(v, str)]
                 )
-                pending_hash = _hl.sha256(pending_text.encode()).hexdigest()
+                pending_hash = _hashlib.sha256(pending_text.encode()).hexdigest()
                 hr = parsed.get("human_review", {})
                 timeout_hours = 24
                 try:
@@ -994,7 +1028,13 @@ def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
 
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-    
+
+    # ── Supply chain: register new hash after every successful save ───────────
+    try:
+        register_agent_hash(agent_name)
+    except Exception:
+        pass  # registry update failure must never block saves
+
     print(f"✓ Saved {agent_name.lower()}.axiom")
 
 
