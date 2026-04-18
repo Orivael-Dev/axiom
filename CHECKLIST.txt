@@ -617,6 +617,43 @@ Architectural note:
   honesty_rate: 1.0 (latest run) | ledger_hash signed into manifest
 
 ════════════════════════════════════════════════════════════
+v1.8 — LLM07 TOOLS Block                      COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] TOOLS block — strict mode AXIOM construct
+    Format: - tool_name: perm1, perm2 | sandbox: bool | allow_from: trust_level
+    Example (worker.axiom):
+      - web_search: read, network | sandbox: true
+      - file_read: read, filesystem | sandbox: false
+      - memory_read: read, memory | sandbox: false
+      - code_execute: execute | sandbox: true | allow_from: 1
+
+[x] _parse_tool_entry() — structured dict per tool
+    {name, permissions: [str], sandbox: bool, allow_from: int|None}
+    Segments split on | — first segment: name: perms, rest: config pairs
+
+[x] Legacy flat entries wrapped as {_legacy: True}
+    Phase 3n catches and flags as error
+
+[x] save_axiom() serialization
+    Structured tools round-trip correctly
+    HUMAN_REVIEW block also serialized (was missing before)
+
+[x] Validator Phase 3n (OWASP LLM07)
+    Error:   execute/delete permission without sandbox: true
+    Warning: execute/delete without allow_from restriction
+    Warning: write permission without sandbox
+    Warning: tools block present but not in CANNOT_MUTATE
+    Known permissions: read, write, execute, delete, network,
+                       filesystem, database, memory, api
+
+[x] tools added to CANNOT_MUTATE in worker.axiom
+    Tool permissions constitutionally protected — rewriter cannot
+    quietly widen permissions (e.g. execute: filesystem | sandbox: false)
+
+OWASP LLM07: COMPLETE ✅
+7/7 agents still CERTIFIED post-implementation (zero regressions)
+
+════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅
 ════════════════════════════════════════════════════════════
 [x] game_watcher.axiom, pattern_agent.axiom, skill_builder.axiom,
