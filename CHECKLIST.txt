@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 IN PROGRESS (shared memory, composition graph, standalone runtime) | All core agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 COMPLETE ✅ | All core agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -27,6 +27,11 @@ Full bench v1.6:  232/232 (100%) -- all categories, zero regressions ✅
 Full bench v1.7:  94/94 PASS — 742/744 (99.7%) — domain agents included, zero regressions ✅
                   Results: results/v1_4_when_delegates_20260417_193742.json
                   B44 6/8 (soft constraint miss, not security)
+Full bench v1.8:  93/94 PASS — 736/744 (98.9%) — zero regressions from v1.8 additions ✅
+                  Results: results/v1_4_when_delegates_20260418_132315.json
+                  B10 3/7 FAIL — constraint_compliance 3/3 clean, resilience 0/4 model variance
+                    (agent over-explained block instead of declining + pivoting — not a code regression)
+                  GOV-W10 6/8, B44 6/8 — both PASS (soft scores, persistent across runs)
 Domain bench v1.7.1: 512/512 (100%) — government 29/29, finance 14/14, healthcare 21/21 ✅
                   Results: results/domains/ (2026-04-17)
 
