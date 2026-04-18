@@ -266,7 +266,7 @@ What shipped:
   - v1.7.1 run 2:          512/512 (100%) [template moved to RULES]
 
 ════════════════════════════════════════════════════════════
-v1.8 — Agent Specification Expansion          IN PROGRESS
+v1.8 — Agent Specification Expansion          COMPLETE ✅
 ════════════════════════════════════════════════════════════
 [x] ConversationMonitor — Layer 4 drift detection
     axiom/conversation_monitor.py — ConversationMonitor class
