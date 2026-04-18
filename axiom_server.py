@@ -55,11 +55,76 @@ from axiom_files.parser import (
 from axiom_files.validator import validate_file
 from axiom import client as nim
 
+# ── EU AI Act Article 50 — Disclosure ─────────────────────────
+
+_DISCLOSURE_VERSION = "1.0"
+
+def _build_disclosure() -> dict:
+    """
+    Build the EU AI Act Article 50 disclosure notice.
+    Deployer details are read from environment variables so downstream
+    organisations can customise without touching code.
+    """
+    deployer_name        = os.environ.get("AXIOM_DEPLOYER_NAME",        "AXIOM Operator")
+    deployer_contact     = os.environ.get("AXIOM_DEPLOYER_CONTACT",     "operator@example.com")
+    deployer_jurisdiction = os.environ.get("AXIOM_DEPLOYER_JURISDICTION", "EU")
+
+    return {
+        "eu_ai_act_article": "50",
+        "disclosure_version": _DISCLOSURE_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "system_name": "AXIOM",
+        "system_version": "1.8",
+        "system_type": "AI system — large-language-model-based agent framework",
+        "deployer": {
+            "name":         deployer_name,
+            "contact":      deployer_contact,
+            "jurisdiction": deployer_jurisdiction,
+        },
+        # Human-readable notice — shown to end-users before first interaction
+        "notice": (
+            "You are interacting with AXIOM, an AI system powered by large language "
+            "models. AXIOM processes your text input and generates responses "
+            "automatically using AI. It is not a human. Responses may be inaccurate, "
+            "incomplete, or inappropriate — always apply your own judgement."
+        ),
+        "capabilities": [
+            "Natural language understanding and generation",
+            "Multi-agent task routing and delegation",
+            "Structured reasoning with constitutional constraints",
+            "Domain-specific compliance guidance (government, finance, healthcare)",
+        ],
+        "limitations": [
+            "May produce plausible-sounding but incorrect information (hallucination)",
+            "Does not have real-time knowledge beyond its training cutoff",
+            "Cannot take actions outside the declared TOOLS block",
+            "Responses vary across runs — treat outputs as drafts requiring review",
+            "Not a substitute for qualified legal, medical, or financial advice",
+        ],
+        "user_rights": [
+            "You may request clarification or a human review of any AI-generated response",
+            "You may withdraw from this interaction at any time",
+            "You may ask which AI model and version processed your request",
+            "You may request that your session data not be retained",
+        ],
+        "data_processing": (
+            "Inputs are forwarded to the configured language model endpoint for "
+            "inference. Session data is held in memory only and is not persisted "
+            "beyond the active session unless explicitly configured otherwise."
+        ),
+        "compliance": {
+            "eu_ai_act_article_50": "compliant",
+            "axiom_certified":      True,
+            "certification_level":  "CERTIFIED",
+        },
+    }
+
+
 # ── App ────────────────────────────────────────────────────────
 app = FastAPI(
     title="AXIOM Server",
     description="REST API for AXIOM agent runtime",
-    version="1.5.0",
+    version="1.8.0",
 )
 
 app.add_middleware(
@@ -86,6 +151,10 @@ class RunRequest(BaseModel):
     prompt: str
     agent: Optional[str] = "worker"
     temperature: Optional[float] = 0.5
+    # EU AI Act Article 50 — client attests disclosure was shown to the user.
+    # False triggers a warning in the response but does NOT block the request
+    # (blocking here would be a UX decision for the deployer, not the framework).
+    disclosure_acknowledged: Optional[bool] = False
 
 class ValidateRequest(BaseModel):
     agent: str
@@ -271,6 +340,15 @@ def health():
     """Fast ping — call every few seconds to show connection status."""
     return {"ok": True}
 
+@app.get("/disclosure")
+def disclosure():
+    """
+    EU AI Act Article 50 — AI system disclosure notice.
+    Android app displays this to the user before the first interaction
+    of each session. Machine-readable JSON + human-readable notice field.
+    """
+    return _build_disclosure()
+
 @app.get("/status")
 def status():
     """Health check and agent validation summary."""
@@ -285,10 +363,12 @@ def status():
 
     return {
         "status": "ok",
-        "version": "1.5.0",
+        "version": "1.8.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "agents": validation,
-        "model": os.environ.get("AXIOM_MODEL", "nvidia/nemotron-super-49b-v1"),
+        "model": os.environ.get("AXIOM_MODEL", "meta/llama-3.3-70b-instruct"),
+        "disclosure_url": "/disclosure",
+        "eu_ai_act": "Article 50 compliant — see /disclosure",
     }
 
 @app.get("/agents")
@@ -328,6 +408,7 @@ def run_axiom(req: RunRequest):
 
     task = req.prompt.strip()
     agent = req.agent or "worker"
+    disclosure_ack = req.disclosure_acknowledged or False
 
     try:
         # Validate agent first
@@ -362,10 +443,18 @@ def run_axiom(req: RunRequest):
             "flags": flags,
             "concepts": concepts_fired,
             "latency_ms": round(elapsed * 1000),
-            # extra context
             "sandbox_routed": sandbox_routed,
             "agent": agent,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            # EU AI Act Article 50
+            "ai_system": True,
+            "disclosure_url": "/disclosure",
+            "disclosure_acknowledged": disclosure_ack,
+            "disclosure_warning": (
+                None if disclosure_ack
+                else "EU AI Act Article 50: disclosure not acknowledged — "
+                     "client should display /disclosure before user interaction"
+            ),
         }
 
     except HTTPException:
@@ -530,8 +619,9 @@ if __name__ == "__main__":
     import uvicorn
     host = os.environ.get("AXIOM_HOST", "0.0.0.0")
     port = int(os.environ.get("AXIOM_PORT", "8000"))
-    print(f"\n  AXIOM Server v1.5.0")
+    print(f"\n  AXIOM Server v1.8.0")
     print(f"  Listening on http://{host}:{port}")
     print(f"  Project root: {PROJECT_ROOT}")
-    print(f"  Docs: http://localhost:{port}/docs\n")
+    print(f"  Docs:         http://localhost:{port}/docs")
+    print(f"  Disclosure:   http://localhost:{port}/disclosure  (EU AI Act Article 50)\n")
     uvicorn.run("axiom_server:app", host=host, port=port, reload=True, timeout_keep_alive=120)
