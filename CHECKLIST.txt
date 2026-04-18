@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | All core agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW construct COMPLETE ✅ | 7/7 agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -546,6 +546,75 @@ Domain Bench Run 2 (RULES-in-RULES):    512/512 (100%) [2026-04-17]
   TOTAL           64    512/512      64/64   100%
 
 Results: results/domains/ (latest run 2026-04-17)
+
+════════════════════════════════════════════════════════════
+v1.8 — HUMAN_REVIEW Construct                  COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] HUMAN_REVIEW block — new AXIOM language construct
+    Semantic class: Constitutional (same level as CANNOT_MUTATE)
+    Added to all 7 CERTIFIED agents
+    7 trigger conditions declared in each block:
+      require on: security_modification
+      require on: trust_level_change
+      require on: semantic_drift > 0.20
+      require on: bulk_constraint_change > 3
+      require on: external_agent_import
+      require on: score_below_snapshot with pending_rewrite
+      require on: cannot_mutate_expansion
+    Config: timeout: 24h, escalate_to: operator_email, block_on_timeout: true
+
+[x] parser.py — HUMAN_REVIEW section parsing
+    "require on: X" entries → parsed["human_review"]["triggers"] list
+    "key: value" entries → config dict (block_on_timeout coerced to bool)
+    HumanReviewRequired exception — carries review_id + trigger
+
+[x] save_axiom() review gate — 7 trigger detectors
+    Fires after constitutional checks, before file write
+    bypass_review=True param for CLI approval path
+    current_score param for score_below_snapshot detector
+    Detector implementations:
+      security_modification:    diff of SECURITY block (added/removed)
+      trust_level_change:       old vs new TRUST_LEVEL scalar
+      semantic_drift:           vocab-overlap proxy, threshold from spec
+      bulk_constraint_change:   >3 constraints changed, threshold from spec
+      external_agent_import:    _external_import flag on parsed dict
+      score_below_snapshot:     current_score vs snapshot best meta
+      cannot_mutate_expansion:  new fields added to CANNOT_MUTATE list
+    Gate fails open — review errors never block saves (only HumanReviewRequired does)
+
+[x] Review queue — axiom_files/.reviews/review_queue.jsonl
+    Append-only (same SECURITY model as honesty ledger)
+    Entry fields: review_id, timestamp, agent, trigger, risk_level,
+      diff, recommendation, axiom_file_hash_before, axiom_file_hash_pending, status
+
+[x] Validator Phase 3o — HUMAN_REVIEW validation
+    Warning: HUMAN_REVIEW absent on agents with SECURITY + CANNOT_MUTATE
+    Error: block_on_timeout missing
+    Error: timeout not parseable as Nh
+    Warning: no triggers declared
+    human_review added to _KNOWN_FIELDS
+
+[x] axiom_review.py — CLI
+    list   — PENDING reviews with age, risk, recommendation
+    show   — full diff, hashes, actions
+    approve RVW-XXXX [--reason] — marks APPROVED, unblocks save
+    reject  RVW-XXXX --reason   — marks REJECTED, logs reason
+    Expire guard: block_on_timeout prevents approval of expired reviews
+
+Architectural note:
+  AxiomConstitutionalViolation — hard stop, no review possible
+        (security in CANNOT_MUTATE = direct attack hits hardest wall)
+        ↓ passes constitutional check
+  HumanReviewRequired           — soft stop, operator decides
+        (catches: bulk rewrites, trust shifts, semantic drift, new guards)
+        ↓ approved via axiom-review
+  Save proceeds
+
+7/7 agents CERTIFIED post-implementation (axiom_certify.py --all)
+  worker CERTIFIED ✅ | evaluator CERTIFIED ✅ | rewriter CERTIFIED ✅
+  sandbox CERTIFIED ✅ | government CERTIFIED ✅ | finance CERTIFIED ✅
+  healthcare CERTIFIED ✅
+  honesty_rate: 1.0 (latest run) | ledger_hash signed into manifest
 
 ════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅

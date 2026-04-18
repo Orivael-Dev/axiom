@@ -502,6 +502,109 @@ def validate_parsed(parsed: dict) -> dict:
             })
             suggestions.append("Use: '- promote pattern after N confirmations'")
 
+    # ── Phase 3n: TOOLS block strict-mode validation (LLM07) ─────────────────
+    _KNOWN_PERMISSIONS = {"read", "write", "execute", "delete", "network",
+                          "filesystem", "database", "memory", "api"}
+    _DANGEROUS_PERMS   = {"execute", "delete"}
+    _WRITE_PERMS       = {"write"}
+
+    tools = parsed.get("tools", [])
+    for tool in tools:
+        if not isinstance(tool, dict):
+            # Flat string entry — legacy, no permissions declared
+            issues.append({
+                "phase": "semantic", "level": "error", "field": "tools",
+                "message": (
+                    f"TOOLS entry '{tool}' has no permissions declared. "
+                    "Use strict format: '- tool_name: perm1, perm2 [| sandbox: true]'"
+                ),
+            })
+            suggestions.append(
+                f"Change '- {tool}' to '- {tool}: read | sandbox: false' "
+                "(or the appropriate permission set)."
+            )
+            continue
+
+        if tool.get("_legacy"):
+            issues.append({
+                "phase": "semantic", "level": "error", "field": "tools",
+                "message": (
+                    f"TOOLS entry '{tool.get('name', '?')}' has no permissions declared. "
+                    "Use strict format: '- tool_name: perm1, perm2 [| sandbox: true]'"
+                ),
+            })
+            suggestions.append(
+                f"Change to: '- {tool.get('name', 'tool')}: read | sandbox: false'"
+            )
+            continue
+
+        name = tool.get("name", "?")
+        perms = set(tool.get("permissions", []))
+        sandbox = tool.get("sandbox", False)
+        allow_from = tool.get("allow_from")
+
+        # Unknown permission names
+        unknown_perms = perms - _KNOWN_PERMISSIONS
+        if unknown_perms:
+            issues.append({
+                "phase": "semantic", "level": "warning", "field": "tools",
+                "message": (
+                    f"Tool '{name}' uses unknown permission(s): {sorted(unknown_perms)}. "
+                    f"Known: {sorted(_KNOWN_PERMISSIONS)}."
+                ),
+            })
+
+        # Dangerous perms require sandbox
+        for dp in _DANGEROUS_PERMS & perms:
+            if not sandbox:
+                issues.append({
+                    "phase": "semantic", "level": "error", "field": "tools",
+                    "message": (
+                        f"Tool '{name}' has '{dp}' permission but sandbox is not enabled. "
+                        "OWASP LLM07: dangerous tool permissions require sandboxed execution."
+                    ),
+                })
+                suggestions.append(
+                    f"Add '| sandbox: true' to tool '{name}'."
+                )
+            # Also warn if allow_from is not restricted
+            if allow_from is None:
+                issues.append({
+                    "phase": "semantic", "level": "warning", "field": "tools",
+                    "message": (
+                        f"Tool '{name}' has '{dp}' permission with no allow_from restriction. "
+                        "Consider restricting to trust level 1 (master only): '| allow_from: 1'"
+                    ),
+                })
+                suggestions.append(
+                    f"Add '| allow_from: 1' to tool '{name}' to restrict execution to master agents."
+                )
+
+        # write permission without sandbox — warning
+        for wp in _WRITE_PERMS & perms:
+            if not sandbox:
+                issues.append({
+                    "phase": "semantic", "level": "warning", "field": "tools",
+                    "message": (
+                        f"Tool '{name}' has '{wp}' permission without sandbox. "
+                        "OWASP LLM07: write-capable tools should run sandboxed."
+                    ),
+                })
+                suggestions.append(f"Add '| sandbox: true' to tool '{name}'.")
+
+    # TOOLS present but not in CANNOT_MUTATE — tool permissions could be quietly changed
+    if tools and not any(tool.get("_legacy") for tool in tools if isinstance(tool, dict)):
+        cannot_mutate_lower = [f.lower() for f in parsed.get("cannot_mutate", [])]
+        if "tools" not in cannot_mutate_lower:
+            issues.append({
+                "phase": "semantic", "level": "warning", "field": "tools",
+                "message": (
+                    "Agent has a TOOLS block but 'tools' is not in CANNOT_MUTATE. "
+                    "Tool permissions could be quietly widened by a rewrite."
+                ),
+            })
+            suggestions.append("Add 'tools' to CANNOT_MUTATE to constitutionally protect tool permissions.")
+
     # ── Phase 3o: HUMAN_REVIEW block validation ───────────────────────────────
     human_review = parsed.get("human_review", {})
 

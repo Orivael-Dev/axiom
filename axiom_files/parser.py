@@ -40,6 +40,51 @@ class HumanReviewRequired(Exception):
 
 AXIOM_DIR = os.environ.get("AXIOM_FILES_DIR", "axiom_files")
 
+
+def _parse_tool_entry(raw: str) -> dict:
+    """
+    Parse a structured TOOLS bullet entry into a dict.
+
+    Format:  tool_name: perm1, perm2 [| sandbox: true] [| allow_from: N]
+    Examples:
+      web_search: read, network | sandbox: true
+      file_write: write, filesystem | sandbox: true | allow_from: 1
+      execute_code: execute | sandbox: true | allow_from: 1
+
+    Returns:
+      {"name": str, "permissions": [str], "sandbox": bool, "allow_from": int|None}
+    """
+    result = {"name": "", "permissions": [], "sandbox": False, "allow_from": None}
+
+    # Split on | to get segments
+    segments = [s.strip() for s in raw.split("|")]
+
+    # First segment: "name: perm1, perm2"
+    first = segments[0]
+    if ":" in first:
+        name_part, perm_part = first.split(":", 1)
+        result["name"] = name_part.strip()
+        result["permissions"] = [p.strip().lower() for p in perm_part.split(",") if p.strip()]
+    else:
+        result["name"] = first.strip()
+
+    # Remaining segments: "sandbox: true", "allow_from: 1"
+    for seg in segments[1:]:
+        if ":" in seg:
+            key, val = seg.split(":", 1)
+            key = key.strip().lower()
+            val = val.strip()
+            if key == "sandbox":
+                result["sandbox"] = val.lower() == "true"
+            elif key == "allow_from":
+                try:
+                    result["allow_from"] = int(val)
+                except ValueError:
+                    pass
+
+    return result
+
+
 def load_axiom(agent_name: str) -> dict:
     """Read a .axiom file and parse it into sections."""
     path = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
@@ -221,6 +266,22 @@ def load_axiom(agent_name: str) -> dict:
                     if val.lower() in ("true", "false"):
                         val = val.lower() == "true"
                     parsed["human_review"][key] = val
+            elif current_section == "tools":
+                entry = raw.split("#")[0].strip()
+                if "|" in entry or ":" in entry:
+                    # Structured entry: "tool_name: perm1, perm2 | sandbox: true | allow_from: N"
+                    tool_dict = _parse_tool_entry(entry)
+                    parsed["tools"].append(tool_dict)
+                else:
+                    # Legacy flat entry — wrap as minimal structured dict
+                    parsed["tools"].append({
+                        "name": entry.strip(),
+                        "permissions": [],
+                        "sandbox": False,
+                        "allow_from": None,
+                        "_legacy": True,
+                    })
+                continue  # skip the generic append below
             elif current_section == "success":
                 pass  # handled below
             else:
@@ -820,6 +881,36 @@ def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
         lines.append("DELEGATES")
         for rule in parsed["delegates"]:
             lines.append(f"- {rule}")
+
+    if parsed.get("tools"):
+        lines.append("")
+        lines.append("TOOLS")
+        for tool in parsed["tools"]:
+            if isinstance(tool, dict):
+                if tool.get("_legacy"):
+                    lines.append(f"- {tool['name']}")
+                else:
+                    parts = [f"{tool['name']}: {', '.join(tool.get('permissions', []))}"]
+                    if tool.get("sandbox") is not None:
+                        parts.append(f"sandbox: {str(tool['sandbox']).lower()}")
+                    if tool.get("allow_from") is not None:
+                        parts.append(f"allow_from: {tool['allow_from']}")
+                    lines.append("- " + " | ".join(parts))
+            else:
+                lines.append(f"- {tool}")
+
+    if parsed.get("human_review"):
+        hr = parsed["human_review"]
+        lines.append("")
+        lines.append("HUMAN_REVIEW")
+        for trigger in hr.get("triggers", []):
+            lines.append(f"- require on: {trigger}")
+        for key in ("timeout", "escalate_to", "block_on_timeout"):
+            if key in hr:
+                val = hr[key]
+                if isinstance(val, bool):
+                    val = str(val).lower()
+                lines.append(f"- {key}: {val}")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
