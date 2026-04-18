@@ -53,7 +53,7 @@ STATUS_COLOR = {
 RESET = "\033[0m"
 
 
-# ── Queue I/O ─────────────────────────────────────────────────────────────────
+# -- Queue I/O -----------------------------------------------------------------
 
 def _load_queue() -> list[dict]:
     if not QUEUE_PATH.exists():
@@ -103,7 +103,7 @@ def _age_str(entry: dict) -> str:
         return "unknown age"
 
 
-# ── Commands ──────────────────────────────────────────────────────────────────
+# -- Commands ------------------------------------------------------------------
 
 def cmd_list(args):
     entries = _load_queue()
@@ -113,9 +113,9 @@ def cmd_list(args):
         print("No pending reviews.")
         return
 
-    print(f"\n  {'─' * 60}")
+    print(f"\n  {'-' * 60}")
     print(f"  PENDING REVIEWS ({len(pending)})")
-    print(f"  {'─' * 60}")
+    print(f"  {'-' * 60}")
     for e in pending:
         risk    = e.get("risk_level", "?")
         trigger = e.get("trigger", "?")
@@ -130,7 +130,7 @@ def cmd_list(args):
         if e.get("recommendation"):
             print(f"  Rec: {e['recommendation']}")
         print(f"  Run: python axiom_review.py show {rid}")
-    print(f"\n  {'─' * 60}\n")
+    print(f"\n  {'-' * 60}\n")
 
 
 def cmd_show(args):
@@ -151,7 +151,7 @@ def cmd_show(args):
     sc = STATUS_COLOR.get(status, "")
     rc = RISK_COLOR.get(risk, "")
 
-    print(f"\n  {'─' * 62}")
+    print(f"\n  {'-' * 62}")
     print(f"  Review: {rid}")
     print(f"  Agent:  {agent}.axiom")
     print(f"  Trigger: {trigger}")
@@ -170,7 +170,7 @@ def cmd_show(args):
     print(f"\n  Actions:")
     print(f"    python axiom_review.py approve {rid} --reason \"your reason\"")
     print(f"    python axiom_review.py reject  {rid} --reason \"your reason\"")
-    print(f"  {'─' * 62}\n")
+    print(f"  {'-' * 62}\n")
 
 
 def cmd_approve(args):
@@ -236,7 +236,7 @@ def cmd_reject(args):
     print(f"  Reason: {reason}\n")
 
 
-# ── CLI entry ─────────────────────────────────────────────────────────────────
+# -- CLI entry -----------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="AXIOM Human Review CLI")
