@@ -277,7 +277,7 @@ def step_6_honesty_integrity(agent_name: str) -> dict:
     try:
         from axiom.teacher import TeacherAgent
         teacher = TeacherAgent()
-        latest = teacher.latest_run_summary(window_minutes=30)
+        latest = teacher.latest_run_summary(window_minutes=10)
         overall = teacher.ledger_summary()
         ledger_hash = teacher.ledger_hash()
     except Exception as e:
