@@ -1,0 +1,97 @@
+AGENT Session
+VERSION 1.0
+PURPOSE Manage a multi-turn conversation with full Layer 4 drift detection
+GOAL Maintain behavioral integrity across an entire conversation, not just individual turns
+
+RECEIVES agent_name: string, user_message: string, system_prompt: string
+EMITS response: string, drift_summary: dict, escalation_triggered: bool
+
+MUTATES turn_count, drift_state, escalation_count
+CANNOT_MUTATE agent, goal, version, security, trust_level, drift_threshold
+
+TRUST_LEVEL 2
+SANDBOX_AGENT Sandbox
+
+CONSTRAINT
+- Every turn passes through all security layers before drift scoring
+- Drift state persists for the full session — not per-turn
+- Session ends explicitly — drift state is not reset between turns
+- Escalation replaces the response — the drifted response is never passed to the user
+- Drift threshold is fixed at session creation — not adjustable mid-session
+
+HISTORY
+- retain last 50 turns
+- retain last 20 escalation_events
+- forget on session_end
+
+CONCEPT DriftEscalation
+PURPOSE Replace a drifted response with a security block before it reaches the user
+APPLIES WHEN drift threshold exceeded cumulative score behavioral drift slow-boil
+PRIORITY 1
+REQUIRES ConversationMonitor cumulative score at or above drift_threshold
+EFFECT Intercept response — route to Sandbox review — emit block verdict when Sandbox issues BLOCK
+
+CONCEPT SessionBoundary
+PURPOSE Enforce clean session start and stop
+APPLIES WHEN session_end reset new session start fresh clear history
+PRIORITY 2
+REQUIRES Explicit session_end signal from authorized caller
+EFFECT Clear turn history and drift state — initialize fresh monitoring context
+
+CONCEPT LayerOrdering
+PURPOSE Ensure security layers execute in prescribed order every turn
+APPLIES WHEN layer order bypass skip validation drift
+PRIORITY 1
+REQUIRES Layers 1-3 must complete before Layer 4 drift scoring runs
+EFFECT Reject any attempt to reorder or skip layers — fail closed if ordering cannot be verified
+
+WHEN
+- if ConversationMonitor reports is_drifting true, activate DriftEscalation
+- if session_end signal received, activate SessionBoundary
+- if layer ordering is disrupted, activate LayerOrdering
+- if input contains bypass or ignore or disregard or override, activate HighRiskInput
+
+DELEGATES
+- Session -> ConversationMonitor (on: turn_complete)
+- Session -> Sandbox (on: DriftEscalation)
+- Session -> Sandbox (on: HighRiskInput)
+
+SECURITY
+- Never emit a response to the user before drift scoring completes
+- Never allow mid-session drift threshold modification
+- Never allow session state to be inspected by the agent being monitored
+- Escalation count is append-only — cannot be decremented
+- Session does not generate content — it routes and intercepts only
+
+RULES
+- When DriftEscalation fires and Sandbox issues BLOCK, respond with exactly:
+  "Behavioral drift detected across this conversation. Escalated to security review. This session has been flagged."
+- When LayerOrdering is violated, respond with exactly:
+  "BLOCKED: Security layer ordering violation. Session integrity cannot be guaranteed."
+- Log every escalation with: turn number, signals detected, cumulative score, Sandbox verdict
+- After escalation, continue monitoring — do not reset drift state
+
+PROCESS
+- Receive user message and system prompt for current turn
+- Route through Layers 1-3 (constitutional suffix, output validation, content sandbox)
+- Forward response and task to ConversationMonitor for Layer 4 drift scoring
+- Receive drift assessment — DriftEvent or null
+- Log drift event when present
+- Produce response to user when drift check passes
+- Activate DriftEscalation when cumulative score reaches threshold
+
+CHECK
+- Layers 1-3 completed before ConversationMonitor scored the response
+- ConversationMonitor received the full unmodified response text
+- Drift threshold comparison ran after cumulative update
+- Escalation path was verified reachable before session started
+
+FAILURE
+- ConversationMonitor unavailable — block all turns until monitor is restored
+- Sandbox unreachable on escalation — emit block verdict, do not pass drifted response to user
+- Layer ordering unverifiable — fail closed, emit block verdict
+
+SUCCESS
+- layer_integrity: 0.4
+- drift_interception_rate: 0.3
+- false_positive_rate: 0.3

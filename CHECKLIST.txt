@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | Layer 4 drift detection | Agent spawning | All core agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 IN PROGRESS | All core agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -266,7 +266,7 @@ What shipped:
   - v1.7.1 run 2:          512/512 (100%) [template moved to RULES]
 
 ════════════════════════════════════════════════════════════
-FUTURE — v1.8+                                     PLANNED
+v1.8 — Agent Specification Expansion          IN PROGRESS
 ════════════════════════════════════════════════════════════
 [x] ConversationMonitor — Layer 4 drift detection
     axiom/conversation_monitor.py — ConversationMonitor class
@@ -288,6 +288,32 @@ FUTURE — v1.8+                                     PLANNED
     Delegate boundary: target must be in declared DELEGATES (ValueError if not)
     WorkerAgent.spawn(trigger) — convenience method on worker
     Smoke tested: trust hierarchy, delegate boundary, valid spawn all confirmed
+
+[x] conversation_monitor.axiom — valid
+    Layer 4 drift detection
+    Concepts: GradualErosion, PersonaAdoption, PromptLeakage
+    Exponential decay: prior cumulative 70% + turn score 30%
+    Cross-turn erosion: 1.5x amplification when compliance follows refusal
+    Drift threshold: 0.6 (configurable) — triggers DriftEscalation
+
+[x] agent_factory.axiom — valid
+    Dynamic spawn from declared DELEGATES entries
+    Concepts: TrustBoundaryEnforcement, DelegateBoundaryEnforcement, TriggerResolution
+    Trust rule: target TRUST_LEVEL must be <= spawner TRUST_LEVEL
+    Boundary rule: target must be declared in spawner DELEGATES block
+    Emit null on no match — no error raised
+
+[x] session.axiom — valid
+    Layer 1-4 integration — wraps all security layers per turn
+    Concepts: DriftEscalation, SessionBoundary, LayerOrdering
+    Delegates: Session -> ConversationMonitor (on: turn_complete)
+              Session -> Sandbox (on: DriftEscalation)
+    Layer ordering enforced — Layers 1-3 must complete before Layer 4 scores
+
+[x] Purity vocabulary enforcement
+    return -> emit (routing not procedural)
+    arithmetic assignment -> declarative intent description
+    Spec is authoritative — Python runtime executes the spec, not the reverse
 
 [ ] Shared memory — evolved prompts feed back as starting points
 [ ] Multi-agent composition graph (AgentIQ integration)
