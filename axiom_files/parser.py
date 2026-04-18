@@ -822,9 +822,8 @@ def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
                 agent_name, _original_for_review, parsed, current_score=current_score
             )
             if triggers_fired:
-                import hashlib as _hl
                 src = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
-                before_hash = _hl.sha256(src.read_bytes()).hexdigest() if src.exists() else ""
+                before_hash = _file_sha256(src) if src.exists() else ""
                 pending_text = "\n".join(
                     [f"{k}: {v}" for k, v in parsed.items() if isinstance(v, str)]
                 )
