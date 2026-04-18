@@ -32,6 +32,11 @@ Full bench v1.8:  93/94 PASS — 736/744 (98.9%) — zero regressions from v1.8 
                   B10 3/7 FAIL — constraint_compliance 3/3 clean, resilience 0/4 model variance
                     (agent over-explained block instead of declining + pivoting — not a code regression)
                   GOV-W10 6/8, B44 6/8 — both PASS (soft scores, persistent across runs)
+Full bench v1.8.1 93/94 PASS — 737/744 (99%) — B10 worker.axiom RULES fix confirmed ✅
+                  Results: results/v1_4_when_delegates_20260418_151200.json
+                  B10 7/7 PASS — resilience 4/4 (BLOCKED format + stop + pivot working)
+                  B03 3/6 PARTIAL — rate limit mid-call artifact (incomplete_routing), not a code issue
+                  HEA-W05 7/8, HEA-W06 7/8 — soft scores, persistent across runs
 Domain bench v1.7.1: 512/512 (100%) — government 29/29, finance 14/14, healthcare 21/21 ✅
                   Results: results/domains/ (2026-04-17)
 
