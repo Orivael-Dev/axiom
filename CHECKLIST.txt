@@ -351,6 +351,41 @@ v1.8 — Agent Specification Expansion          IN PROGRESS
     turned 13 partial passes into 512/512 (100%).
     Shipped: validator.py Phase 3g — 5/5 tests pass (test_validator_v1_8.py)
 
+[x] Option C — Tiered Drift Flagging (WARN + BLOCK thresholds)
+    session.axiom v1.1: THRESHOLDS, SIGNALS (8), DRIFT_LEVELS blocks
+    conversation_monitor.axiom v1.1: 8-signal set replacing 4-signal set
+    parser.py: THRESHOLDS/SIGNALS/DRIFT_LEVELS section headers + key:float handler
+    validator.py: Phase 3h (SIGNALS weight sum), Phase 3i (warn < block ordering)
+    conversation_monitor.py: rewritten — weights from spec, drift_level() method,
+      DriftEvent.drift_level field, CLEAN/WARN/BLOCK classification
+    session.py: rewritten — spec-loaded thresholds at __init__, WARN tier (log + annotate),
+      BLOCK tier (Sandbox route + replace), structured log with level/verdict/response_blocked,
+      last_drift_level property, warn_threshold and block_threshold immutable
+    8 signals: refusal_erosion(0.35), identity_shift(0.30), constraint_softening(0.25),
+      compliance_language(0.20), scope_expansion(0.15), tone_shift(0.10),
+      hedge_increase(0.08), verbosity_spike(0.05)
+    Thresholds: warn=0.4, block=0.6, decay=0.7, warn_weight=0.3
+    Smoke tested: formula match, spec-driven load, WARN/BLOCK classification confirmed
+
+[x] Experience-Driven Skill Promotion (SkillBuilder v1.1)
+    skill_builder.axiom v1.1: 4 new CONCEPTs, updated WHEN/RULES/HISTORY/PROCESS
+      CONCEPTs: ExperienceBinding, CommonSenseBias, CautiousResponse, EscapePriority
+      CANNOT_MUTATE: experience_formula added
+      RULES: ExperienceScore formula, category weights, promotion criteria, score bands
+      HISTORY: retain last 50 experiences, decay not_seen after 10 frames, promote_after 2
+    axiom/experience_store.py: ExperienceRecord dataclass, ExperienceStore class
+      compute_experience_score(outcome_value, confidence, seen_count) — CANNOT_MUTATE formula
+      compute_adjusted_score(score, category) — category weight applied
+      meets_promotion_criteria(record) — all 3 gates: seen>=2, conf>=0.75, score>=0.70
+      derive_decision_bias(record) — CautiousResponse logic: high conf + negatives → LOW
+      ExperienceStore.observe() — score + bias updated on every observation
+      ExperienceStore.decay() — evicts records not seen within decay window
+      ExperienceStore.to_skill() — emits AXIOM-compliant skill dict
+    validator.py: "not_seen" added to known decay conditions
+    Formula: outcome×0.60 + confidence×0.25 + min(seen/5,1.0)×0.15
+    Score bands: 0.80+ strong_rule, 0.60+ useful_tendency, 0.40+ weak_hypothesis
+    Smoke tested: example from design doc — score=0.86, promoted at seen_count=2 ✅
+
 ════════════════════════════════════════════════════════════
 v1.7 — Domain Seeder v1.0                    CERTIFIED ✅
 ════════════════════════════════════════════════════════════

@@ -432,7 +432,7 @@ def validate_parsed(parsed: dict) -> dict:
                 })
                 suggestions.append("Use: 'retain last <integer> <type>'")
         # 4b. Decay rules must reference known conditions
-        known_conditions = {"low_confidence", "all", "stale", "unconfirmed"}
+        known_conditions = {"low_confidence", "all", "stale", "unconfirmed", "not_seen"}
         for rule in history.get("decay", []):
             cond = rule.get("condition", "")
             if cond not in known_conditions:
