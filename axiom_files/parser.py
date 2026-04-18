@@ -824,7 +824,7 @@ def _detect_review_triggers(
                 "removed_when_entries": removed_wm_when,
                 "removed_security_rules": removed_wm_sec,
             },
-            "recommendation": "REJECT — watermark disclosure controls removed (EU AI Act Article 50)",
+            "recommendation": "REJECT -- watermark disclosure controls removed (EU AI Act Article 50)",
         })
 
     return fired
