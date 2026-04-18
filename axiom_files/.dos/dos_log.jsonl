@@ -40,3 +40,68 @@
 {"decision": "CIRCUIT_TRIPPED", "failure_count": 5, "ts": "2026-04-18T21:37:17.041568+00:00"}
 {"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 59, "caller": "worker", "ts": "2026-04-18T21:37:17.042041+00:00"}
 {"decision": "ALLOW", "caller": "client", "circuit_state": "CLOSED", "ts": "2026-04-18T22:55:51.287671+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.698189+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.700158+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.701978+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.703830+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.706349+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.708145+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.709896+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-18T23:00:23.713700+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.715451+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.717169+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.719433+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.721159+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.722877+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.725113+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.726825+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.728534+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.730239+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.732742+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.734448+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.736251+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.738474+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.740201+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.741908+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.744118+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.745828+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.747532+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.749766+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.751515+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.753217+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.754923+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.757171+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.758881+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.760590+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.762819+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.764535+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.766289+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.768502+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.770215+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.771945+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.774182+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.775879+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.777575+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.779337+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.781576+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.783319+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.785099+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.787321+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.789026+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.790881+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.793130+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.794841+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.796559+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.798922+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.800670+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.802408+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.804153+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.806504+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.808244+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.809979+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.812279+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.814021+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.815735+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.817964+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.819676+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.821381+00:00"}
