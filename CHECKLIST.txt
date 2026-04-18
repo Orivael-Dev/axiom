@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 COMPLETE ✅ | LLM05 COMPLETE ✅ | LLM04 COMPLETE ✅ | EU AI Act Art.50 COMPLETE ✅ | 7/7 agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 COMPLETE ✅ | LLM05 COMPLETE ✅ | LLM04 COMPLETE ✅ | EU AI Act Art.50 COMPLETE ✅ | FRIA COMPLETE ✅ | 7/7 agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -746,6 +746,95 @@ Smoke tested — all 6 checks verified:
   CIRCUIT_OPEN:       5× record_failure() → check → decision=CIRCUIT_OPEN
 
 OWASP LLM04: COMPLETE ✅
+
+════════════════════════════════════════════════════════════
+v1.8 — EU AI Act: Article 50 Disclosure        COMPLETE ✅
+════════════════════════════════════════════════════════════
+Requirement: EU AI Act Article 50 — users must be informed they are
+  interacting with an AI system before doing so.
+
+[x] GET /disclosure endpoint — axiom_server.py
+    Returns machine-readable + human-readable disclosure notice
+    Fields: eu_ai_act_article, system_name, system_version, system_type,
+            deployer (name, contact, jurisdiction), notice (human text),
+            capabilities, limitations, user_rights, data_processing, compliance
+
+[x] Deployer configuration via environment variables
+    AXIOM_DEPLOYER_NAME        — deploying organisation (default: "AXIOM Operator")
+    AXIOM_DEPLOYER_CONTACT     — contact address (default: "operator@example.com")
+    AXIOM_DEPLOYER_JURISDICTION — jurisdiction (default: "EU")
+    Downstream organisations set these in .env without touching code
+
+[x] /status response updated
+    disclosure_url: "/disclosure" added
+    eu_ai_act: "Article 50 compliant — see /disclosure" added
+    version bumped 1.5.0 → 1.8.0
+
+[x] /run_axiom request + response updated
+    RunRequest.disclosure_acknowledged: Optional[bool] = False
+      — Android app sets True after showing the disclosure screen
+    Response includes: ai_system: true, disclosure_url, disclosure_acknowledged,
+      disclosure_warning (populated when disclosure_acknowledged is False)
+    Warning is logged but does NOT block the request (deployer UX decision)
+
+[x] Startup banner — prints disclosure URL on server start
+    "Disclosure:   http://localhost:{port}/disclosure  (EU AI Act Article 50)"
+
+Android integration contract:
+  1. On session start: GET /disclosure → display notice to user
+  2. User taps "I understand" → set disclosure_acknowledged: true in all /run_axiom calls
+  3. /status always includes disclosure_url for re-display if needed
+
+EU AI Act Article 50: COMPLETE ✅
+
+════════════════════════════════════════════════════════════
+v1.8 — EU AI Act: FRIA Template                COMPLETE ✅
+════════════════════════════════════════════════════════════
+Requirement: EU AI Act Article 27 — deployers of high-risk AI systems
+  must conduct a Fundamental Rights Impact Assessment before deployment.
+
+[x] generate_fria(agent_name, parsed, steps, domain) — axiom_certify.py
+    Auto-populated from certification data:
+      system_description:  purpose, domain, trust_level, decision_type
+      risk_classification: EU AI Act risk category + Annex III item
+        healthcare -> HIGH | Annex III item 5(a)
+        government -> HIGH | Annex III item 8
+        finance    -> HIGH | Annex III item 5(b)
+        no domain  -> STANDARD | general-purpose (deployer must classify)
+      fundamental_rights_assessment: 6 EU Charter rights
+        Human Dignity (Art. 1), Privacy (Art. 8), Non-Discrimination (Art. 21),
+        Freedom of Expression (Art. 11), Right to Remedy (Art. 47),
+        Presumption of Innocence (Art. 48)
+        Each entry: right, article, inherent_impact, basis, mitigations, residual_risk
+        Mitigations auto-populated from CANNOT_MUTATE, security rules, HUMAN_REVIEW,
+          DoS rate-limiting (LLM04), supply chain integrity (LLM05)
+        residual_risk = PLACEHOLDER — deployer must complete
+      technical_mitigations: constitutional_constraints, security_rules_count,
+        runtime_layers, human_review_triggers, dos_rate_limiting, supply_chain_integrity
+      monitoring_and_logging: all 4 axiom append-only logs
+      human_oversight: HUMAN_REVIEW block + PLACEHOLDER operator escalation
+      residual_risks: PLACEHOLDER — deployer completes for deployment context
+      deployer_attestation: all PLACEHOLDER — deployer signs before regulated deployment
+      regulatory_references: Art. 9, 10, 13, 27, 50 | EU Charter | GDPR
+
+[x] write_fria(fria, output_dir) — writes {agent}_fria_{ts}.json
+    Separate file from cert JSON — deployer takes this document for sign-off
+
+[x] certify() — FRIA wired in after step 7, before write_json/write_pdf
+    fria included in report dict ("fria" key) + written as standalone JSON
+    Print: "  FRIA: {agent}_fria_{ts}.json"
+
+[x] write_pdf() — FRIA summary page added (second page of cert PDF)
+    Risk classification badge (RED=HIGH, AMBER=STANDARD)
+    6 rights with mitigations | Technical mitigations summary
+    Deployer attestation placeholder notice (amber border)
+
+Outputs per cert run:
+  {agent}_cert_{ts}.json  — full cert + fria embedded
+  {agent}_fria_{ts}.json  — standalone FRIA template (deployer completes)
+  {agent}_cert_{ts}.pdf   — cert report + FRIA page 2
+
+EU AI Act Article 27 (FRIA): COMPLETE ✅
 
 ════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅

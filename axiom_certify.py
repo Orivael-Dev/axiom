@@ -421,6 +421,214 @@ def conformance_level(steps: list) -> str:
     return "NON-CONFORMANT"
 
 
+# ── FRIA — Fundamental Rights Impact Assessment ───────────────────────────────
+
+# EU AI Act Annex III high-risk categories by domain keyword
+_ANNEX_III_MAP = {
+    "healthcare": {
+        "item": "Annex III item 5(a)",
+        "label": "Access to and enjoyment of essential private services — healthcare",
+        "risk_category": "HIGH",
+    },
+    "health": {
+        "item": "Annex III item 5(a)",
+        "label": "Access to and enjoyment of essential private services — healthcare",
+        "risk_category": "HIGH",
+    },
+    "government": {
+        "item": "Annex III item 8",
+        "label": "Administration of justice and democratic processes",
+        "risk_category": "HIGH",
+    },
+    "finance": {
+        "item": "Annex III item 5(b)",
+        "label": "Access to and enjoyment of essential private services — banking/finance",
+        "risk_category": "HIGH",
+    },
+    "employment": {
+        "item": "Annex III item 4",
+        "label": "Employment, workers management and access to self-employment",
+        "risk_category": "HIGH",
+    },
+    "education": {
+        "item": "Annex III item 3",
+        "label": "Access to and enjoyment of essential public services — education",
+        "risk_category": "HIGH",
+    },
+}
+
+# EU Charter rights assessed for each deployment
+_CHARTER_RIGHTS = [
+    ("Human Dignity",          "Article 1",  "Advisory output only — no autonomous enforcement"),
+    ("Privacy and Data",       "Article 8",  "Session data held in memory, not persisted by default"),
+    ("Non-Discrimination",     "Article 21", "Rate limits apply equally to all callers — no exemptions"),
+    ("Freedom of Expression",  "Article 11", "Model cannot be silenced by operator prompt injection"),
+    ("Right to Remedy",        "Article 47", "Human review gate (HUMAN_REVIEW) available for all decisions"),
+    ("Presumption of Innocence","Article 48","Agent cannot issue binding sanctions — advisory role only"),
+]
+
+
+def generate_fria(
+    agent_name: str,
+    parsed: dict,
+    steps: list,
+    domain: str | None,
+) -> dict:
+    """
+    Generate an EU AI Act Fundamental Rights Impact Assessment template.
+    Pre-fills from certification data; marks deployer-required fields as PLACEHOLDER.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    agent_id = parsed.get("agent", agent_name)
+    version  = parsed.get("version", "")
+    purpose  = parsed.get("purpose", parsed.get("goal", ""))
+    trust_level = parsed.get("trust_level", "1")
+
+    # Pull security info from step 2
+    step2 = next((s for s in steps if s.get("step") == 2), {})
+    cannot_mutate = parsed.get("cannot_mutate", [])
+    security_rules = parsed.get("security", [])
+    runtime_layers = list(step2.get("runtime_layers", {}).keys())
+
+    # Pull HUMAN_REVIEW block
+    hr = parsed.get("human_review", {})
+    hr_triggers = hr.get("triggers", []) if isinstance(hr, dict) else []
+    hr_timeout  = hr.get("timeout", "24h") if isinstance(hr, dict) else "24h"
+    hr_block    = hr.get("block_on_timeout", True) if isinstance(hr, dict) else True
+
+    # Pull manifest hash from step 7
+    step7 = next((s for s in steps if s.get("step") == 7), {})
+    manifest_hash = step7.get("manifest_hash", "")
+    cert_level = None  # filled by caller
+
+    # Risk classification
+    domain_key = (domain or "").lower()
+    annex = _ANNEX_III_MAP.get(domain_key, {
+        "item": "Not classified as Annex III high-risk by default",
+        "label": "General-purpose AI deployment — deployer must classify",
+        "risk_category": "STANDARD",
+    })
+
+    # Fundamental rights assessment — pre-fill from spec, residuals for deployer
+    rights_assessment = []
+    for right, article, basis in _CHARTER_RIGHTS:
+        # Find relevant mitigations from CANNOT_MUTATE + security
+        mitigations = []
+        if "security" in cannot_mutate:
+            mitigations.append("Security block is constitutionally protected (CANNOT_MUTATE)")
+        if step2.get("has_injection_detection"):
+            mitigations.append("Injection detection active in SECURITY rules")
+        if step2.get("has_highrisk_when"):
+            mitigations.append("HighRiskInput WHEN activation routes to Sandbox review")
+        if hr_triggers:
+            mitigations.append(f"HUMAN_REVIEW gate: {len(hr_triggers)} trigger conditions")
+        if not mitigations:
+            mitigations.append("No specific mitigation declared — deployer must assess")
+
+        rights_assessment.append({
+            "right": right,
+            "eu_charter_article": article,
+            "inherent_impact": "LOW",
+            "basis": basis,
+            "mitigations": mitigations,
+            "residual_risk": "PLACEHOLDER — deployer must assess and sign off",
+        })
+
+    # DoS rate-limiting adds non-discrimination assurance
+    for item in rights_assessment:
+        if item["right"] == "Non-Discrimination":
+            item["mitigations"].append(
+                "DoS Watcher enforces equal rate limits across all callers (LLM04)"
+            )
+
+    return {
+        "fria_version":    "1.0",
+        "generated_at":    now,
+        "generated_by":    "axiom_certify.py",
+        "agent":           agent_id,
+        "agent_version":   version,
+        "manifest_hash":   manifest_hash,
+
+        "system_description": {
+            "purpose":       purpose,
+            "domain":        domain or "general",
+            "trust_level":   trust_level,
+            "decision_type": "advisory",  # AXIOM never issues binding decisions autonomously
+            "processing":    "text input / text output",
+        },
+
+        "risk_classification": {
+            "axiom_trust_level":     trust_level,
+            "eu_ai_act_risk_category": annex["risk_category"],
+            "annex_iii_item":        annex["item"],
+            "annex_iii_label":       annex["label"],
+            "deployer_note": (
+                "Deployer must confirm this classification is accurate for their "
+                "specific deployment context. Annex III categories depend on use, "
+                "not only on the system itself."
+            ),
+        },
+
+        "fundamental_rights_assessment": rights_assessment,
+
+        "technical_mitigations": {
+            "constitutional_constraints": cannot_mutate,
+            "security_rules_count":       len(security_rules),
+            "runtime_layers":             runtime_layers,
+            "human_review_triggers":      hr_triggers,
+            "human_review_timeout":       hr_timeout,
+            "human_review_block_on_timeout": hr_block,
+            "dos_rate_limiting":          True,   # LLM04 DosWatcher wired into client.py
+            "supply_chain_integrity":     True,   # LLM05 SHA-256 verification
+        },
+
+        "monitoring_and_logging": {
+            "audit_trail": "axiom_files/.history/{agent}_history.jsonl — append-only",
+            "dos_log":     "axiom_files/.dos/dos_log.jsonl — every BLOCK + CIRCUIT_TRIPPED",
+            "review_queue":"axiom_files/.reviews/review_queue.jsonl — all change requests",
+            "honesty_ledger": "axiom_files/.honesty/honesty_ledger.jsonl — integrity evaluations",
+            "deployer_note": "PLACEHOLDER — deployer must document retention policy and GDPR Article 5(1)(e) compliance",
+        },
+
+        "human_oversight": {
+            "human_review_block": parsed.get("human_review", {}),
+            "operator_escalation": "PLACEHOLDER — deployer must name the responsible person or team",
+            "response_sla":        "PLACEHOLDER — deployer must define SLA for PENDING reviews",
+        },
+
+        "residual_risks": [
+            {
+                "risk":        "PLACEHOLDER — deployer must identify deployment-specific residual risks",
+                "likelihood":  "PLACEHOLDER",
+                "severity":    "PLACEHOLDER",
+                "mitigation":  "PLACEHOLDER",
+            }
+        ],
+
+        "deployer_attestation": {
+            "organisation":   "PLACEHOLDER — deployer organisation name",
+            "completed_by":   "PLACEHOLDER — name and role",
+            "date":           "PLACEHOLDER — ISO 8601 date",
+            "review_period":  "PLACEHOLDER — e.g. annual review or on material change",
+            "signature":      "PLACEHOLDER — wet or electronic signature",
+        },
+
+        "regulatory_references": {
+            "eu_ai_act_articles": ["Article 9", "Article 10", "Article 13", "Article 27", "Article 50"],
+            "eu_charter": "Charter of Fundamental Rights of the European Union (2000/C 364/01)",
+            "gdpr": "Regulation (EU) 2016/679",
+        },
+    }
+
+
+def write_fria(fria: dict, output_dir: Path) -> Path:
+    agent_slug = fria["agent"].lower().replace(" ", "_")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    path = output_dir / f"{agent_slug}_fria_{ts}.json"
+    path.write_text(json.dumps(fria, indent=2), encoding="utf-8")
+    return path
+
+
 # ── JSON output ───────────────────────────────────────────────────────────────
 
 def write_json(report: dict, output_dir: Path):
@@ -618,6 +826,94 @@ def write_pdf(report: dict, output_dir: Path):
 
         pdf.ln(2)
 
+    # ── FRIA summary page ─────────────────────────────────────────────────────
+    fria = report.get("fria")
+    if fria:
+        pdf.add_page()
+        pdf.set_fill_color(*TEAL)
+        pdf.rect(0, 0, 210, 28, "F")
+        pdf.set_text_color(*WHITE)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_xy(18, 8)
+        pdf.cell(0, 8, "Fundamental Rights Impact Assessment (FRIA)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_xy(18, 18)
+        pdf.cell(0, 6, _safe(f"EU AI Act Article 27 | Agent: {fria['agent']} v{fria['agent_version']} | {fria['generated_at'][:10]}"))
+        pdf.set_text_color(*BLACK)
+        pdf.ln(14)
+
+        # Risk classification box
+        rc = fria.get("risk_classification", {})
+        risk_cat = rc.get("eu_ai_act_risk_category", "STANDARD")
+        risk_color = (RED, RED_LT) if risk_cat == "HIGH" else (AMBER, AMBER_LT)
+        pdf.set_fill_color(*risk_color[1])
+        pdf.set_draw_color(*risk_color[0])
+        pdf.set_text_color(*risk_color[0])
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 8, _safe(f"EU AI Act Risk Category: {risk_cat}  |  {rc.get('annex_iii_item','')}"),
+                 border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, align="C")
+        pdf.set_font("Helvetica", "", 8)
+        pdf.cell(0, 5, _safe(f"  {rc.get('annex_iii_label','')}"),
+                 new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        pdf.set_text_color(*BLACK)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.ln(3)
+
+        # Rights assessment table
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(0, 6, "Fundamental Rights Assessment", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(1)
+        for item in fria.get("fundamental_rights_assessment", []):
+            pdf.set_fill_color(*GREEN_LT)
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.cell(0, 5, _safe(f"  {item['right']} ({item['eu_charter_article']}) — impact: {item['inherent_impact']}"),
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+            pdf.set_font("Helvetica", "", 7)
+            pdf.set_fill_color(*GREY_LT)
+            pdf.cell(0, 4, _safe(f"    Basis: {item['basis']}"),
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+            for m in item["mitigations"][:2]:
+                pdf.cell(0, 4, _safe(f"    + {m[:105]}"),
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+            pdf.ln(1)
+
+        # Technical mitigations summary
+        tm = fria.get("technical_mitigations", {})
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(0, 6, "Technical Mitigations (auto-populated from certification)", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_fill_color(*GREY_LT)
+        items = [
+            f"Constitutional constraints (CANNOT_MUTATE): {', '.join(tm.get('constitutional_constraints',[])[:5])}",
+            f"Security rules: {tm.get('security_rules_count',0)} | Runtime layers: {len(tm.get('runtime_layers',[]))}",
+            f"HUMAN_REVIEW triggers: {len(tm.get('human_review_triggers',[]))} | Timeout: {tm.get('human_review_timeout','24h')} | Block: {tm.get('human_review_block_on_timeout',True)}",
+            f"DoS rate limiting: {tm.get('dos_rate_limiting', False)} | Supply chain integrity: {tm.get('supply_chain_integrity', False)}",
+        ]
+        for line in items:
+            pdf.cell(0, 5, _safe(f"  {line[:110]}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        pdf.ln(3)
+
+        # Deployer attestation — placeholder notice
+        pdf.set_fill_color(*AMBER_LT)
+        pdf.set_draw_color(*AMBER)
+        pdf.set_text_color(*AMBER)
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.cell(0, 5, "  DEPLOYER ATTESTATION REQUIRED — see {agent}_fria_{ts}.json for full template",
+                 border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        pdf.set_font("Helvetica", "", 7)
+        da = fria.get("deployer_attestation", {})
+        for k, v in da.items():
+            pdf.cell(0, 4, _safe(f"  {k}: {v}"),
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        pdf.set_text_color(*BLACK)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.ln(3)
+
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(120, 120, 120)
+        pdf.cell(0, 4, _safe("FRIA template auto-generated — deployer must complete PLACEHOLDER fields and obtain sign-off before deployment in regulated context."),
+                 new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+
     # ── Footer ────────────────────────────────────────────────────────────────
     pdf.ln(4)
     pdf.set_font("Helvetica", "", 7)
@@ -667,6 +963,9 @@ def certify(agent_name: str, domain: str | None = None, output_dir: Path = Path(
     print(f"\n  Conformance: {level}{rate_str}")
 
     honesty_step = next((s for s in steps if s.get("step") == 6), {})
+
+    fria = generate_fria(agent_name, parsed, steps, domain)
+
     report = {
         "agent": parsed.get("agent", agent_name),
         "agent_version": parsed.get("version", ""),
@@ -677,11 +976,14 @@ def certify(agent_name: str, domain: str | None = None, output_dir: Path = Path(
         "honesty_rate": honesty_step.get("honesty_rate"),
         "honesty_ledger_hash": manifest.get("honesty_ledger_hash"),
         "steps": steps,
+        "fria": fria,
     }
 
-    json_path = write_json(report, output_dir)
-    pdf_path  = write_pdf(report, output_dir)
+    json_path  = write_json(report, output_dir)
+    fria_path  = write_fria(fria, output_dir)
+    pdf_path   = write_pdf(report, output_dir)
     print(f"  JSON: {json_path.name}")
+    print(f"  FRIA: {fria_path.name}")
     print(f"  PDF:  {pdf_path.name}")
 
     return report
