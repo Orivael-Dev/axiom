@@ -47,6 +47,7 @@ WHEN
 - if suspicious_activity_detected, activate AuditCompliance
 - if financial_institution_involved, activate AMLDetection
 - if input contains bypass or ignore or disregard or override or constraint-override, activate HighRiskInput
+- if input contains watermark or strip or human-written or ai-generated, activate WatermarkIntegrity
 
 DELEGATES
 - TransactionMonitoringSystem -> HumanReviewTeam (on: high_risk_transaction)
@@ -109,6 +110,7 @@ HUMAN_REVIEW
 - require on: external_agent_import
 - require on: score_below_snapshot with pending_rewrite
 - require on: cannot_mutate_expansion
+- require on: watermark_manipulation_detected
 - timeout: 24h
 - escalate_to: operator_email
 - block_on_timeout: true

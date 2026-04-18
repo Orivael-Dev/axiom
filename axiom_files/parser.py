@@ -701,7 +701,7 @@ def _detect_review_triggers(
     current_score: float | None = None,
 ) -> list[dict]:
     """
-    Run all 7 trigger detectors. Returns list of fired trigger dicts:
+    Run all 8 trigger detectors. Returns list of fired trigger dicts:
     [{"trigger": str, "diff": ..., "recommendation": str}]
     """
     fired = []
@@ -801,6 +801,30 @@ def _detect_review_triggers(
             "trigger": "cannot_mutate_expansion",
             "diff": {"added_guards": sorted(added_guards)},
             "recommendation": f"REVIEW — new CANNOT_MUTATE fields: {sorted(added_guards)}",
+        })
+
+    # 8. Watermark manipulation — WatermarkIntegrity WHEN entries or security rules removed
+    _wm_keywords = {"watermark", "watermarkintegrity", "human-written", "ai-generated"}
+    orig_when = [e.lower() for e in original.get("when", [])]
+    new_when  = [e.lower() for e in proposed.get("when", [])]
+    removed_wm_when = [
+        e for e in orig_when
+        if any(kw in e for kw in _wm_keywords) and e not in new_when
+    ]
+    orig_sec_rules = [r.lower() for r in original.get("security", [])]
+    new_sec_rules  = [r.lower() for r in proposed.get("security", [])]
+    removed_wm_sec = [
+        r for r in orig_sec_rules
+        if any(kw in r for kw in _wm_keywords) and r not in new_sec_rules
+    ]
+    if removed_wm_when or removed_wm_sec:
+        fired.append({
+            "trigger": "watermark_manipulation_detected",
+            "diff": {
+                "removed_when_entries": removed_wm_when,
+                "removed_security_rules": removed_wm_sec,
+            },
+            "recommendation": "REJECT — watermark disclosure controls removed (EU AI Act Article 50)",
         })
 
     return fired
