@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | Language Spec written | Phase 3g shipped | All core agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -10,8 +10,13 @@ AXIOM Certification Milestone: first certified core agents
   audit trail, and manifest generation
   Evidence date: 2026-04-18
   worker     -> CERTIFIED  (certs/worker_cert_20260418_034127.json)
-  evaluator  -> STANDARD   (certs/evaluator_cert_20260418_034128.json)
-  rewriter   -> STANDARD   (certs/rewriter_cert_20260418_034128.json)
+  evaluator  -> CERTIFIED  (certs/evaluator_cert_20260418_061606.json)
+  rewriter   -> CERTIFIED  (certs/rewriter_cert_20260418_061614.json)
+
+  Gaps closed (evaluator + rewriter):
+  - Step 2: Added SECURITY block — injection detection declarations
+  - Step 4: Added security, trust_level to CANNOT_MUTATE
+  - Step 5: PARTIAL acceptable — new agents, no mutations yet
 
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
@@ -268,14 +273,14 @@ FUTURE — v1.8+                                     PLANNED
 [ ] Multi-agent composition graph (AgentIQ integration)
 [ ] AXIOM runtime as standalone Python package
 
-[ ] Validator: Phase 6 — FAILURE block purity check
-    Flag prescriptive language in FAILURE entries and warn:
-    "Output format directive detected in FAILURE block — move to RULES"
-    Trigger words: "Output", "Respond with", "Use the word", "Reply with",
-    "Say exactly", "Emit", "Return"
+[x] Validator: Phase 3g — FAILURE block prescriptive language detection
+    Flag output format directives in FAILURE entries with level=warning.
+    Trigger patterns: "Output", "Respond with", "Use the word", "Reply with",
+    "Say exactly", "Emit", "Return", "blocked:", "respond with exactly", etc.
     Lesson: FAILURE documents outcomes; RULES commands behavior.
     Discovered v1.7.1 — moving BLOCKED template from FAILURE→RULES
     turned 13 partial passes into 512/512 (100%).
+    Shipped: validator.py Phase 3g — 5/5 tests pass (test_validator_v1_8.py)
 
 ════════════════════════════════════════════════════════════
 v1.7 — Domain Seeder v1.0                    CERTIFIED ✅
@@ -396,6 +401,17 @@ Known test gaps for v1.5:
   - Export bundle integrity tests
   - Version history multi-agent coverage tests
   - WHEN/DELEGATES extended edge case tests
+
+Language Specification — COMPLETE
+[x] AXIOM_SPEC.md — formal language specification
+    Section 1: Overview (design principles, core insight, what AXIOM is not)
+    Section 2: Block Reference (all 11 block types, semantics table, CONCEPT construct)
+    Section 3: Validation Requirements (Phases 1–4, 3a–3g, error vs warning)
+    Section 4: Conformance Levels (BASIC/STANDARD/CERTIFIED, 6-step certification)
+    Appendix A: Security stack reference (5 runtime layers)
+    Appendix B: Complete injection resilience pattern (all 5 components)
+    Appendix C: Minimal valid agent + minimal CERTIFIED agent
+    Date: April 18, 2026
 
 Governance Alignment Pack — COMPLETE
 [x] AXIOM_ALIGN_PACK.md — watson-aligned use case map persisted
