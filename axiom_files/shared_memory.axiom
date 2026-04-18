@@ -1,0 +1,87 @@
+AGENT SharedMemory
+VERSION 1.0
+PURPOSE Persist the best evolved prompt per agent role across sessions and tasks
+GOAL Ensure every new session seeds from the best known prompt, not the static default
+
+RECEIVES role: string, prompt: string, score: float, task_id: string
+EMITS best_prompt: string or null, promoted: bool, global_best_score: float
+
+MUTATES global_best_score, best_prompt, promotion_history
+CANNOT_MUTATE agent, goal, version, security, trust_level, promotion_threshold
+
+TRUST_LEVEL 1
+
+CONSTRAINT
+- Promotion threshold is fixed at store creation — not adjustable at runtime
+- Global best is updated only when incoming score strictly exceeds current global best
+- Promotion history is append-only — no entry may be modified or removed
+- Role names are case-normalized before lookup — Worker and worker resolve to the same store
+
+HISTORY
+- retain last 100 promotion_history entries per role
+- promote pattern after 1 confirmations
+- forget on explicit_purge
+
+CONCEPT PromotionGate
+PURPOSE Prevent low-quality prompts from displacing a strong global best
+APPLIES WHEN score threshold promote best evolved improve global
+PRIORITY 1
+REQUIRES Incoming score must strictly exceed current global_best_score for the role
+EFFECT Update global best only on strict improvement — equal scores do not promote
+
+CONCEPT CrossSessionSeed
+PURPOSE Supply the global best prompt as session seed when no task history exists
+APPLIES WHEN seed start new session no history cold start bootstrap
+PRIORITY 2
+REQUIRES No task-specific prompt exists in the task-scoped store for this role
+EFFECT Emit global best prompt as the starting point — fallback to axiom file default when global best is also absent
+
+CONCEPT RoleNormalization
+PURPOSE Ensure role name variants resolve to the same memory slot
+APPLIES WHEN Worker worker WORKER role lookup
+PRIORITY 3
+REQUIRES Role string normalized to lowercase before any read or write
+EFFECT Prevents duplicate stores for the same role under different casings
+
+WHEN
+- if incoming score exceeds global_best_score, activate PromotionGate
+- if session requests seed and no task history exists, activate CrossSessionSeed
+- if role string contains uppercase characters, activate RoleNormalization
+
+DELEGATES
+- SharedMemory -> SharedMemory (on: explicit_purge)
+
+SECURITY
+- Never demote a global best — scores only move upward
+- Promotion history is immutable — no entry may be overwritten or deleted
+- Global best is not visible to the agent whose prompts are stored here
+- Purge requires explicit authorized signal — not triggered by session reset
+
+RULES
+- When promotion occurs, log: role, score, task_id, timestamp, previous_best_score
+- When CrossSessionSeed activates and no global best exists, emit null — do not fabricate a seed
+- When RoleNormalization activates, normalize silently — do not log the normalization
+
+PROCESS
+- Receive role, prompt, score, task_id
+- Normalize role to lowercase
+- Load current global best record for role
+- Compare incoming score to current global_best_score
+- Promote when strictly better — update global best and append to history
+- Emit best_prompt, promoted flag, and current global_best_score
+
+CHECK
+- Role was normalized before any lookup
+- Incoming score compared to current global best before any write
+- Promotion history entry written before global best updated
+- Emitted best_prompt reflects post-promotion state
+
+FAILURE
+- Store file unreadable — emit null, log read failure, do not block session
+- Write failure — emit current in-memory best, log write failure, retry next turn
+- Role not found in store — emit null (no global best yet for this role)
+
+SUCCESS
+- promotion_accuracy: 0.4
+- seed_hit_rate: 0.4
+- store_integrity: 0.2

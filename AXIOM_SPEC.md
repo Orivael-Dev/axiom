@@ -60,6 +60,8 @@ A single `.axiom` file is the *entire* behavioral specification for an agent. Th
 
 **Fail closed.** When in doubt, AXIOM components block. The SandboxContent agent, the validator's ambiguous cases, and the CANNOT_MUTATE enforcement all default to refusal rather than permissiveness.
 
+**Spec primacy.** The `.axiom` file is the authoritative behavioral definition. Python runtime files are execution engines. When the spec and the runtime diverge, the spec wins. This is enforced by the purity checker — arithmetic expressions, procedural keywords, and code constructs in `.axiom` files are validation errors, not style warnings.
+
 ### 1.3 The Core Insight
 
 The most important lesson in AXIOM language design:
@@ -525,6 +527,19 @@ Detects external code patterns that do not belong in AXIOM files.
 | `lambda` | Lambda expression | error |
 
 All string values in the parsed dict are scanned. One error per string value.
+
+**Approved vocabulary substitutions**
+
+When a procedural term is needed to express intent, use its Axiom-native equivalent. The substitution preserves meaning while keeping the spec pure:
+
+| Procedural | Axiom-native | Context |
+|-----------|-------------|---------|
+| `return X` | `emit X` | Routing — agent produces an output |
+| `x * 0.7` | `blend at 70% weight` | Weighting — proportional combination |
+| `if condition` | `when condition` | Conditional — event-driven routing |
+| `loop N times` | `retain last N` | Iteration — memory/buffer sizing |
+
+These substitutions are not cosmetic. `return` reads as a function return to the model; `emit` reads as a routing action. The vocabulary determines how the model interprets the instruction.
 
 ### 3.3 Phase 3 — Semantic
 

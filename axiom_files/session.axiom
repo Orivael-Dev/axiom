@@ -52,7 +52,6 @@ WHEN
 - if input contains bypass or ignore or disregard or override, activate HighRiskInput
 
 DELEGATES
-- Session -> ConversationMonitor (on: turn_complete)
 - Session -> Sandbox (on: DriftEscalation)
 - Session -> Sandbox (on: HighRiskInput)
 
