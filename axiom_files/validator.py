@@ -56,7 +56,7 @@ _KNOWN_FIELDS = {
     "mutates", "cannot_mutate", "constraints", "rules", "process",
     "check", "failure", "output", "success", "tools", "concepts", "when",
     "delegates", "security", "trust_level", "sandbox_agent", "history",
-    "thresholds", "signals", "drift_levels", "honesty_criteria",
+    "thresholds", "signals", "drift_levels", "honesty_criteria", "human_review",
 }
 
 
@@ -501,6 +501,64 @@ def validate_parsed(parsed: dict) -> dict:
                 "message": f"promote_after must be a positive integer, got {pa!r}.",
             })
             suggestions.append("Use: '- promote pattern after N confirmations'")
+
+    # ── Phase 3o: HUMAN_REVIEW block validation ───────────────────────────────
+    human_review = parsed.get("human_review", {})
+
+    # Warn if HUMAN_REVIEW absent and agent has security rules (CERTIFIED-level agents need it)
+    has_security = bool(parsed.get("security"))
+    has_cannot_mutate = bool(parsed.get("cannot_mutate"))
+    if has_security and has_cannot_mutate and not human_review:
+        issues.append({
+            "phase": "semantic", "level": "warning", "field": "human_review",
+            "message": (
+                "HUMAN_REVIEW block is missing. Agents with SECURITY rules should declare "
+                "a HUMAN_REVIEW block to gate high-risk saves on operator approval."
+            ),
+        })
+        suggestions.append(
+            "Add a HUMAN_REVIEW block with 'require on: security_modification' "
+            "and 'block_on_timeout: true'."
+        )
+
+    if human_review:
+        # block_on_timeout must be present
+        if "block_on_timeout" not in human_review:
+            issues.append({
+                "phase": "semantic", "level": "error", "field": "human_review",
+                "message": (
+                    "HUMAN_REVIEW block is missing 'block_on_timeout' field. "
+                    "Set '- block_on_timeout: true' to prevent unreviewed saves on timeout."
+                ),
+            })
+            suggestions.append("Add '- block_on_timeout: true' to HUMAN_REVIEW.")
+
+        # timeout must be parseable as Nh (e.g. 24h, 48h)
+        import re as _re_hr
+        timeout_val = str(human_review.get("timeout", ""))
+        if timeout_val and not _re_hr.match(r"^\d+h$", timeout_val.strip()):
+            issues.append({
+                "phase": "semantic", "level": "warning", "field": "human_review.timeout",
+                "message": (
+                    f"HUMAN_REVIEW timeout '{timeout_val}' is not in expected format (e.g. '24h'). "
+                    "Use an integer followed by 'h' (hours)."
+                ),
+            })
+            suggestions.append("Set timeout as '24h', '48h', etc.")
+
+        # At least one trigger must be declared
+        triggers = human_review.get("triggers", [])
+        if not triggers:
+            issues.append({
+                "phase": "semantic", "level": "warning", "field": "human_review.triggers",
+                "message": (
+                    "HUMAN_REVIEW block has no 'require on:' triggers. "
+                    "The block will never fire without at least one trigger condition."
+                ),
+            })
+            suggestions.append(
+                "Add at least: '- require on: security_modification' to HUMAN_REVIEW."
+            )
 
     # ── Determine overall status ─────────────────────────────────────────────
     levels = {i["level"] for i in issues}

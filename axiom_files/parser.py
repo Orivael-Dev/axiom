@@ -670,6 +670,54 @@ def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
             f"refusing to save. Restore from snapshot."
         )
 
+    # ── Human Review Gate ──────────────────────────────────────────────────────
+    # Runs after constitutional checks, before file write.
+    # Skipped on new files (no original) and when bypass_review=True (CLI approval path).
+    if not bypass_review:
+        try:
+            _original_for_review = load_axiom(agent_name)
+            triggers_fired = _detect_review_triggers(
+                agent_name, _original_for_review, parsed, current_score=current_score
+            )
+            if triggers_fired:
+                import hashlib as _hl
+                src = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+                before_hash = _hl.sha256(src.read_bytes()).hexdigest() if src.exists() else ""
+                pending_text = "\n".join(
+                    [f"{k}: {v}" for k, v in parsed.items() if isinstance(v, str)]
+                )
+                pending_hash = _hl.sha256(pending_text.encode()).hexdigest()
+                hr = parsed.get("human_review", {})
+                timeout_hours = 24
+                try:
+                    timeout_hours = int(str(hr.get("timeout", "24h")).rstrip("h"))
+                except (ValueError, TypeError):
+                    pass
+                # Write one queue entry per trigger; raise on the first HIGH, else first overall
+                fired_sorted = sorted(
+                    triggers_fired,
+                    key=lambda t: 0 if _REVIEW_RISK.get(t["trigger"]) == "HIGH" else 1
+                )
+                first = fired_sorted[0]
+                review_id = _write_review_entry(
+                    agent_name=agent_name,
+                    trigger=first["trigger"],
+                    diff=first["diff"],
+                    before_hash=before_hash,
+                    pending_hash=pending_hash,
+                    recommendation=first["recommendation"],
+                    timeout_hours=timeout_hours,
+                )
+                raise HumanReviewRequired(
+                    review_id=review_id,
+                    trigger=first["trigger"],
+                    details=first["recommendation"],
+                )
+        except (FileNotFoundError, HumanReviewRequired):
+            raise  # re-raise HumanReviewRequired; FileNotFoundError = new file, skip gate
+        except Exception:
+            pass  # gate errors must never block saves — fail open for non-review exceptions
+
     # -- Version history --------------------------------------------------
     try:
         original = load_axiom(agent_name)

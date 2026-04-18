@@ -100,3 +100,15 @@ SUCCESS
 - compliance_enforcement: 0.4
 - injection_resilience: 0.3
 - audit_clarity: 0.3
+
+HUMAN_REVIEW
+- require on: security_modification
+- require on: trust_level_change
+- require on: semantic_drift > 0.20
+- require on: bulk_constraint_change > 3
+- require on: external_agent_import
+- require on: score_below_snapshot with pending_rewrite
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator_email
+- block_on_timeout: true
