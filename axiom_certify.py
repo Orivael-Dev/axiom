@@ -982,7 +982,7 @@ def write_pdf(report: dict, output_dir: Path):
         pdf.set_draw_color(*AMBER)
         pdf.set_text_color(*AMBER)
         pdf.set_font("Helvetica", "B", 8)
-        pdf.cell(0, 5, "  DEPLOYER ATTESTATION REQUIRED — see {agent}_fria_{ts}.json for full template",
+        pdf.cell(0, 5, _safe("  DEPLOYER ATTESTATION REQUIRED -- see {agent}_fria_{ts}.json for full template"),
                  border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
         pdf.set_font("Helvetica", "", 7)
         da = fria.get("deployer_attestation", {})

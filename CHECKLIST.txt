@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 COMPLETE ✅ | LLM05 COMPLETE ✅ | LLM04 COMPLETE ✅ | EU AI Act Art.50 COMPLETE ✅ | FRIA COMPLETE ✅ | DEPLOYER_GUIDE COMPLETE ✅ | 7/7 agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 COMPLETE ✅ | LLM05 COMPLETE ✅ | LLM04 COMPLETE ✅ | EU AI Act Art.50 COMPLETE ✅ | FRIA COMPLETE ✅ | DEPLOYER_GUIDE COMPLETE ✅ | 7/7 CERTIFIED ✅ (re-confirmed with FRIA)
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
