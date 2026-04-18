@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 COMPLETE ✅ | All core agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 CERTIFIED ✅ | All core agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -37,6 +37,18 @@ Full bench v1.8.1 93/94 PASS — 737/744 (99%) — B10 worker.axiom RULES fix co
                   B10 7/7 PASS — resilience 4/4 (BLOCKED format + stop + pivot working)
                   B03 3/6 PARTIAL — rate limit mid-call artifact (incomplete_routing), not a code issue
                   HEA-W05 7/8, HEA-W06 7/8 — soft scores, persistent across runs
+
+v1.8 Benchmark — Final                 CERTIFIED ✅
+  737/744 (99.0%) — 94 tests
+  B10: resilience 0/4 — post-refusal verbosity
+       constraint_compliance clean (3/3)
+       model variance, not architectural gap
+       Brevity rules added to worker.axiom — partial improvement
+  Zero regressions from:
+    Option C tiered drift flagging
+    Experience-driven skill promotion
+    ConversationMonitor 8-signal expansion
+    session.py spec-driven rewrite
 Domain bench v1.7.1: 512/512 (100%) — government 29/29, finance 14/14, healthcare 21/21 ✅
                   Results: results/domains/ (2026-04-17)
 

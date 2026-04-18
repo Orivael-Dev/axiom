@@ -60,6 +60,7 @@ def load_axiom(agent_name: str) -> dict:
         "thresholds": {},
         "signals": {},
         "drift_levels": {},
+        "honesty_criteria": {},
     }
 
     current_section = None
@@ -170,20 +171,20 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "security"
         elif line == "HISTORY":
             current_section = "history"
-        elif line in ("THRESHOLDS", "SIGNALS", "DRIFT_LEVELS"):
+        elif line in ("THRESHOLDS", "SIGNALS", "DRIFT_LEVELS", "HONESTY_CRITERIA"):
             current_section = line.lower()
         elif line.startswith("- ") and current_section:
             raw = line[2:].strip()
             if current_section == "history":
                 _parse_history_directive(parsed["history"], raw)
-            elif current_section in ("thresholds", "signals", "drift_levels"):
+            elif current_section in ("thresholds", "signals", "drift_levels", "honesty_criteria"):
                 # Strip inline comments, then parse key: value
                 entry = raw.split("#")[0].strip()
                 if ":" in entry:
                     key, val = entry.split(":", 1)
                     key = key.strip()
                     val = val.strip()
-                    # Coerce numeric values for thresholds and signals
+                    # Coerce numeric values for thresholds and signals only
                     if current_section in ("thresholds", "signals"):
                         try:
                             val = float(val)
