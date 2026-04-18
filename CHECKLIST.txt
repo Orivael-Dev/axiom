@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 COMPLETE ✅ | LLM05 COMPLETE ✅ | 7/7 agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 Honesty System CERTIFIED ✅ | HUMAN_REVIEW COMPLETE ✅ | LLM07 COMPLETE ✅ | LLM05 COMPLETE ✅ | LLM04 COMPLETE ✅ | 7/7 agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -684,6 +684,68 @@ Tamper detection verified:
   Restored → VERIFIED immediately
 
 OWASP LLM05: COMPLETE ✅
+
+════════════════════════════════════════════════════════════
+v1.8 — LLM04 DoS Watcher                       COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] dos_watcher.axiom — spec (validator: 0 issues)
+    RATE_LIMITS block:   per_minute: 20, per_hour: 200, per_session: 1000
+                         burst_window_seconds: 10, burst_threshold: 8
+                         identical_repeat_limit: 5
+    CIRCUIT_CONFIG block: failure_threshold: 5, cooldown_seconds: 60
+                          half_open_probe_count: 1
+    WHEN: CircuitBlock, RateLimitExceeded, BurstProtection, ReplayAttack
+    PROCESS: declarative — all checks listed in order, no procedural conditionals
+    Output format in RULES (not FAILURE) per v1.7.1 block semantics
+
+[x] parser.py — RATE_LIMITS + CIRCUIT_CONFIG section support
+    Parsed as numeric key:value dict (same pattern as THRESHOLDS)
+    Added "rate_limits" + "circuit_config" to parsed defaults
+    Added to _KNOWN_FIELDS in validator.py
+
+[x] axiom/dos_watcher.py — runtime
+    DosWatcher.__init__() — all limits loaded from spec at init, immutable
+    check(caller, request_text) — 6-check pipeline in spec-declared order:
+      1. circuit state (OPEN blocks all)
+      2. per-minute sliding window
+      3. per-hour sliding window
+      4. per-session counter
+      5. burst window (per-caller, N requests in T seconds)
+      6. replay attack (sha256 hash, last N calls)
+    Returns {"decision": "ALLOW"|"BLOCK"|"CIRCUIT_OPEN", "limit_name",
+             "cooldown_seconds", "circuit_state"}
+    record_failure() — increments counter, trips circuit at failure_threshold
+    record_success() — resets counter, transitions HALF_OPEN → CLOSED
+    reset_session(caller) — clears per-caller state on session end
+    status() — safe status dict (no raw counters exposed to untrusted callers)
+    FSM: CLOSED → OPEN (failure_threshold hits)
+         OPEN → HALF_OPEN (after cooldown_seconds)
+         HALF_OPEN → CLOSED (record_success) or → OPEN (record_failure)
+    Logs every BLOCK + CIRCUIT_TRIPPED to axiom_files/.dos/dos_log.jsonl
+    Log failures are fail-open (never block the decision)
+
+[x] DoSBlock exception
+    Raised by callers when they want hard blocking
+    Fields: decision, limit_name, cooldown_seconds, caller
+
+[x] client.py — DoS gate wired into chat()
+    _get_watcher() — module-level DosWatcher singleton
+    caller="client" param added to chat() and chat_json()
+    Pre-call gate: watcher.check() before any API call
+    DoSBlock raised on BLOCK or CIRCUIT_OPEN
+    record_success() called on clean model response
+    record_failure() called on RateLimitError and unexpected exceptions
+    Circuit breaker tracks real model-side failures, not AXIOM-side rate limits
+
+Smoke tested — all 6 checks verified:
+  ALLOW:              check on empty state → decision=ALLOW
+  per_minute BLOCK:   20th call at count=20 → BLOCK limit=per_minute
+  per_session BLOCK:  1000th call → BLOCK limit=per_session
+  burst BLOCK:        8th call within 10s → BLOCK limit=burst_protection
+  replay BLOCK:       6th identical request → BLOCK limit=replay_attack
+  CIRCUIT_OPEN:       5× record_failure() → check → decision=CIRCUIT_OPEN
+
+OWASP LLM04: COMPLETE ✅
 
 ════════════════════════════════════════════════════════════
 GameWatcher Pipeline — Live Test                COMPLETE ✅

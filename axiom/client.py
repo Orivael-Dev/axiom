@@ -8,6 +8,17 @@ import time
 
 from openai import OpenAI
 from axiom.agents.sandbox_content import content_sandbox_check
+from axiom.dos_watcher import DosWatcher, DoSBlock
+
+
+# ── DoS watcher singleton ─────────────────────────────────────
+_dos_watcher: DosWatcher | None = None
+
+def _get_watcher() -> DosWatcher:
+    global _dos_watcher
+    if _dos_watcher is None:
+        _dos_watcher = DosWatcher()
+    return _dos_watcher
 
 
 # ── Constitutional suffix ─────────────────────────────────────
@@ -105,8 +116,20 @@ def chat(
     model: str | None = None,
     temperature: float = 0.7,
     _skip_validation: bool = False,
+    caller: str = "client",
 ) -> str:
     """Single chat completion call. Returns the text content of the response."""
+    # ── DoS gate ──────────────────────────────────────────────
+    watcher = _get_watcher()
+    dos_result = watcher.check(caller=caller, request_text=user_message)
+    if dos_result["decision"] != "ALLOW":
+        raise DoSBlock(
+            decision=dos_result["decision"],
+            limit_name=dos_result["limit_name"] or "",
+            cooldown_seconds=dos_result["cooldown_seconds"],
+            caller=caller,
+        )
+
     client = get_client()
     resolved_model = model or os.environ.get(
         "AXIOM_MODEL", "meta/llama-3.3-70b-instruct"
@@ -131,7 +154,8 @@ def chat(
             response = client.chat.completions.create(**kwargs)
             time.sleep(_delay)
             raw = response.choices[0].message.content or ""
-            
+            watcher.record_success()
+
             if _skip_validation:
                 return raw
                 
@@ -157,12 +181,16 @@ def chat(
 
             return clean
         except _RateLimitError:
+            watcher.record_failure()
             if _attempt < _max_retries - 1:
                 _wait = _delay * (2 ** (_attempt + 1))
                 print(f"    [rate limit] waiting {_wait}s before retry {_attempt + 2}/{_max_retries}...")
                 time.sleep(_wait)
             else:
                 raise
+        except Exception:
+            watcher.record_failure()
+            raise
 
 
 def chat_json(
@@ -170,6 +198,7 @@ def chat_json(
     user_message: str,
     model: str | None = None,
     temperature: float = 0.3,
+    caller: str = "client",
 ) -> dict:
     """Chat completion that returns parsed JSON. Raises ValueError on parse failure."""
     import re
@@ -182,6 +211,7 @@ def chat_json(
         user_message=user_message,
         model=model,
         temperature=temperature,
+        caller=caller,
     )
     try:
         return json.loads(raw)

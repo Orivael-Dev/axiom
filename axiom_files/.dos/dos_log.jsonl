@@ -1,0 +1,41 @@
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.136453+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.140469+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.141130+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.141635+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.142121+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.142605+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.143082+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.143712+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.144281+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.144769+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.145243+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.145797+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.146277+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.146759+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.147225+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.147699+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.148167+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.148641+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.149136+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.149610+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.150075+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:32:47.150538+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.151466+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.151970+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.152450+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.152927+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:32:47.153403+00:00"}
+{"decision": "BLOCK", "limit_name": "replay_attack", "cooldown_seconds": 60, "caller": "worker", "ts": "2026-04-18T21:32:47.153926+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 5, "ts": "2026-04-18T21:32:47.154863+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 59, "caller": "worker", "ts": "2026-04-18T21:32:47.155331+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:33:03.103347+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:33:03.104560+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:33:44.562109+00:00"}
+{"decision": "BLOCK", "limit_name": "per_minute", "cooldown_seconds": 1, "caller": "worker", "ts": "2026-04-18T21:33:44.562913+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:33:44.563878+00:00"}
+{"decision": "BLOCK", "limit_name": "per_session", "cooldown_seconds": 60, "caller": "worker", "ts": "2026-04-18T21:33:44.564468+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:33:44.565425+00:00"}
+{"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "worker", "ts": "2026-04-18T21:33:44.565907+00:00"}
+{"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:37:17.040856+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 5, "ts": "2026-04-18T21:37:17.041568+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 59, "caller": "worker", "ts": "2026-04-18T21:37:17.042041+00:00"}
