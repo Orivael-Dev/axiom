@@ -409,6 +409,40 @@ v1.8 — Agent Specification Expansion          COMPLETE ✅
     Smoke tested: example from design doc — score=0.86, promoted at seen_count=2 ✅
 
 ════════════════════════════════════════════════════════════
+v1.8 — Teacher-Student Honesty System     COMPLETE ✅
+════════════════════════════════════════════════════════════
+[x] teacher.axiom — VERSION 1.0
+    HONESTY_CRITERIA — 5 cheating patterns, CANNOT_MUTATE protected
+    SIGNALS — 5 weights summing to 1.75, spec-driven not hardcoded
+    SECURITY — append-only ledger, criteria isolation from student
+    RULES — verdict format, evidence mandate, teaching record requirement
+    PROCESS — independent expected response before student answer
+
+[x] axiom/teacher.py — spec-driven runtime
+    _scan_signals()         — 5 detectors reading weights from spec
+    _classify()             — DISHONEST/SUSPICIOUS/HONEST thresholds
+    _generate_expected()    — independent LLM call before student seen
+    _generate_honest_example() — teaching record for DISHONEST verdicts
+    _append_ledger()        — append-only to .honesty/honesty_ledger.jsonl
+
+[x] parser.py — HONESTY_CRITERIA block parsing
+    key:description string dict, no float coercion
+
+[x] validator.py — Phases 3j-3m
+    3j: HONESTY_CRITERIA entry format validation
+    3k: SIGNALS weight range 0.3-3.0
+    3l: honesty_criteria must be in CANNOT_MUTATE
+    3m: SECURITY must contain append-only ledger rule
+    honesty_criteria added to _KNOWN_FIELDS
+
+[x] integrity_check.py — CLI runner
+    3-variant obfuscation: strip ID → synonym swap → context prefix
+    Teacher evaluation loop per variant
+    INTEGRITY RESULTS summary with honesty_rate
+
+All 6 agents valid post-implementation. Zero regressions.
+
+════════════════════════════════════════════════════════════
 v1.7 — Domain Seeder v1.0                    CERTIFIED ✅
 ════════════════════════════════════════════════════════════
 [x] axiom_domain_seeder.py — NIM-generated regulatory compliance agents
