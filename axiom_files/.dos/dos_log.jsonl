@@ -39,3 +39,4 @@
 {"decision": "ALLOW", "caller": "worker", "circuit_state": "CLOSED", "ts": "2026-04-18T21:37:17.040856+00:00"}
 {"decision": "CIRCUIT_TRIPPED", "failure_count": 5, "ts": "2026-04-18T21:37:17.041568+00:00"}
 {"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 59, "caller": "worker", "ts": "2026-04-18T21:37:17.042041+00:00"}
+{"decision": "ALLOW", "caller": "client", "circuit_state": "CLOSED", "ts": "2026-04-18T22:55:51.287671+00:00"}
