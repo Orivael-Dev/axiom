@@ -372,6 +372,48 @@ def validate_parsed(parsed: dict) -> dict:
                 )
                 break  # one warning per entry, don't stack
 
+    # ── Phase 3h: SIGNALS weight sum validation ──────────────────────────────
+    signals = parsed.get("signals", {})
+    if signals:
+        numeric_weights = [v for v in signals.values() if isinstance(v, (int, float))]
+        if numeric_weights:
+            weight_sum = sum(numeric_weights)
+            if weight_sum < 0.5 or weight_sum > 3.0:
+                issues.append({
+                    "phase": "semantic", "level": "warning", "field": "signals",
+                    "message": (
+                        f"SIGNALS weight sum is {weight_sum:.3f} — "
+                        f"expected between 0.5 and 3.0. "
+                        f"Typical range is 1.0–2.0 for 4–8 signals."
+                    ),
+                })
+                suggestions.append(
+                    "Adjust SIGNALS weights so their sum falls between 0.5 and 3.0."
+                )
+
+    # ── Phase 3i: THRESHOLDS warn < block ordering ────────────────────────────
+    thresholds = parsed.get("thresholds", {})
+    if thresholds:
+        warn_t = thresholds.get("warn_threshold")
+        block_t = thresholds.get("block_threshold")
+        if warn_t is not None and block_t is not None:
+            try:
+                warn_f = float(warn_t)
+                block_f = float(block_t)
+                if warn_f >= block_f:
+                    issues.append({
+                        "phase": "semantic", "level": "error", "field": "thresholds",
+                        "message": (
+                            f"THRESHOLDS ordering violation: warn_threshold ({warn_f}) "
+                            f"must be strictly less than block_threshold ({block_f})."
+                        ),
+                    })
+                    suggestions.append(
+                        "Set warn_threshold below block_threshold (e.g. 0.4 and 0.6)."
+                    )
+            except (ValueError, TypeError):
+                pass
+
     # ── Phase 4: HISTORY Validation ──────────────────────────────────────────
     history = parsed.get("history", {})
     if history and (history.get("retain") or history.get("decay") or history.get("forget_on")):
