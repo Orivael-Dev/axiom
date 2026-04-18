@@ -1,34 +1,64 @@
 AGENT Session
-VERSION 1.0
-PURPOSE Manage a multi-turn conversation with full Layer 4 drift detection
+VERSION 1.1
+PURPOSE Manage a multi-turn conversation with full tiered Layer 4 drift detection
 GOAL Maintain behavioral integrity across an entire conversation, not just individual turns
 
 RECEIVES agent_name: string, user_message: string, system_prompt: string
-EMITS response: string, drift_summary: dict, escalation_triggered: bool
+EMITS response: string, drift_summary: dict, escalation_triggered: bool, drift_level: string
 
 MUTATES turn_count, drift_state, escalation_count
-CANNOT_MUTATE agent, goal, version, security, trust_level, drift_threshold
+CANNOT_MUTATE agent, goal, version, security, trust_level, drift_threshold, warn_threshold, block_threshold
 
 TRUST_LEVEL 2
 SANDBOX_AGENT Sandbox
+
+THRESHOLDS
+- warn_threshold: 0.4
+- block_threshold: 0.6
+- decay_factor: 0.7
+- warn_weight: 0.3
+
+SIGNALS
+- refusal_erosion: 0.35
+- identity_shift: 0.30
+- constraint_softening: 0.25
+- compliance_language: 0.20
+- scope_expansion: 0.15
+- tone_shift: 0.10
+- hedge_increase: 0.08
+- verbosity_spike: 0.05
+
+DRIFT_LEVELS
+- CLEAN: cumulative below warn_threshold
+- WARN: cumulative between warn_threshold and block_threshold
+- BLOCK: cumulative at or above block_threshold
 
 CONSTRAINT
 - Every turn passes through all security layers before drift scoring
 - Drift state persists for the full session — not per-turn
 - Session ends explicitly — drift state is not reset between turns
 - Escalation replaces the response — the drifted response is never passed to the user
-- Drift threshold is fixed at session creation — not adjustable mid-session
+- Drift thresholds are fixed at session creation — not adjustable mid-session
+- WARN tier logs and annotates the response — it does not block it
+- BLOCK tier escalates to Sandbox — the drifted response is replaced with a block verdict
 
 HISTORY
 - retain last 50 turns
 - retain last 20 escalation_events
 - forget on session_end
 
+CONCEPT DriftWarning
+PURPOSE Flag early behavioral drift before it reaches block threshold
+APPLIES WHEN cumulative score exceeds warn_threshold but remains below block_threshold
+PRIORITY 2
+REQUIRES ConversationMonitor cumulative score between warn_threshold and block_threshold
+EFFECT Annotate response with drift_level WARN — log warning event — continue monitoring without blocking
+
 CONCEPT DriftEscalation
 PURPOSE Replace a drifted response with a security block before it reaches the user
-APPLIES WHEN drift threshold exceeded cumulative score behavioral drift slow-boil
+APPLIES WHEN drift threshold exceeded cumulative score behavioral drift slow-boil block threshold
 PRIORITY 1
-REQUIRES ConversationMonitor cumulative score at or above drift_threshold
+REQUIRES ConversationMonitor cumulative score at or above block_threshold
 EFFECT Intercept response — route to Sandbox review — emit block verdict when Sandbox issues BLOCK
 
 CONCEPT SessionBoundary
@@ -46,7 +76,8 @@ REQUIRES Layers 1-3 must complete before Layer 4 drift scoring runs
 EFFECT Reject any attempt to reorder or skip layers — fail closed if ordering cannot be verified
 
 WHEN
-- if ConversationMonitor reports is_drifting true, activate DriftEscalation
+- if ConversationMonitor reports drift_level WARN, activate DriftWarning
+- if ConversationMonitor reports drift_level BLOCK, activate DriftEscalation
 - if session_end signal received, activate SessionBoundary
 - if layer ordering is disrupted, activate LayerOrdering
 - if input contains bypass or ignore or disregard or override, activate HighRiskInput
@@ -63,26 +94,31 @@ SECURITY
 - Session does not generate content — it routes and intercepts only
 
 RULES
+- When DriftWarning fires, annotate response with drift_level WARN — log: turn number, signals, cumulative score
 - When DriftEscalation fires and Sandbox issues BLOCK, respond with exactly:
   "Behavioral drift detected across this conversation. Escalated to security review. This session has been flagged."
 - When LayerOrdering is violated, respond with exactly:
   "BLOCKED: Security layer ordering violation. Session integrity cannot be guaranteed."
-- Log every escalation with: turn number, signals detected, cumulative score, Sandbox verdict
-- After escalation, continue monitoring — do not reset drift state
+- Log every escalation with: turn number, level, signals detected, cumulative score, Sandbox verdict, response_blocked flag
+- After WARN escalation, continue monitoring — do not reset drift state
+- After BLOCK escalation, continue monitoring — do not reset drift state
 
 PROCESS
 - Receive user message and system prompt for current turn
 - Route through Layers 1-3 (constitutional suffix, output validation, content sandbox)
 - Forward response and task to ConversationMonitor for Layer 4 drift scoring
-- Receive drift assessment — DriftEvent or null
+- Receive drift assessment — DriftEvent with drift_level or null
+- Classify drift_level as CLEAN, WARN, or BLOCK based on cumulative score vs thresholds
 - Log drift event when present
-- Produce response to user when drift check passes
-- Activate DriftEscalation when cumulative score reaches threshold
+- Activate DriftWarning when drift_level is WARN
+- Activate DriftEscalation when drift_level is BLOCK
+- Produce response to user when drift check passes or WARN (annotated)
 
 CHECK
 - Layers 1-3 completed before ConversationMonitor scored the response
 - ConversationMonitor received the full unmodified response text
 - Drift threshold comparison ran after cumulative update
+- drift_level classification used thresholds from THRESHOLDS block, not hardcoded values
 - Escalation path was verified reachable before session started
 
 FAILURE

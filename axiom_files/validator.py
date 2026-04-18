@@ -56,6 +56,7 @@ _KNOWN_FIELDS = {
     "mutates", "cannot_mutate", "constraints", "rules", "process",
     "check", "failure", "output", "success", "tools", "concepts", "when",
     "delegates", "security", "trust_level", "sandbox_agent", "history",
+    "thresholds", "signals", "drift_levels",
 }
 
 
