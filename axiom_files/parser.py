@@ -15,11 +15,28 @@ class AxiomConstitutionalViolation(Exception):
 
 class TrustHierarchyViolation(Exception):
     """Raised when a delegation attempt violates the trust hierarchy.
-    
+
     Trust levels: 1 = Master (most privileged), 2 = SandboxWorker, 3+ = Task.
     Delegation must flow downward (1→2→3), never upward.
     """
     pass
+
+
+class HumanReviewRequired(Exception):
+    """Raised when save_axiom detects a change that requires human approval.
+
+    The review entry has been written to the review queue (axiom_files/.reviews/).
+    Call axiom-review approve <id> to allow the save to proceed.
+    """
+    def __init__(self, review_id: str, trigger: str, details: str = ""):
+        self.review_id = review_id
+        self.trigger = trigger
+        super().__init__(
+            f"Human review required before save. "
+            f"Review ID: {review_id}  Trigger: {trigger}. "
+            f"Run: python axiom_review.py approve {review_id}"
+            + (f"\nDetails: {details}" if details else "")
+        )
 
 AXIOM_DIR = os.environ.get("AXIOM_FILES_DIR", "axiom_files")
 
@@ -61,6 +78,7 @@ def load_axiom(agent_name: str) -> dict:
         "signals": {},
         "drift_levels": {},
         "honesty_criteria": {},
+        "human_review": {},
     }
 
     current_section = None
@@ -171,7 +189,7 @@ def load_axiom(agent_name: str) -> dict:
             current_section = "security"
         elif line == "HISTORY":
             current_section = "history"
-        elif line in ("THRESHOLDS", "SIGNALS", "DRIFT_LEVELS", "HONESTY_CRITERIA"):
+        elif line in ("THRESHOLDS", "SIGNALS", "DRIFT_LEVELS", "HONESTY_CRITERIA", "HUMAN_REVIEW"):
             current_section = line.lower()
         elif line.startswith("- ") and current_section:
             raw = line[2:].strip()
@@ -191,6 +209,18 @@ def load_axiom(agent_name: str) -> dict:
                         except ValueError:
                             pass
                     parsed[current_section][key] = val
+            elif current_section == "human_review":
+                entry = raw.split("#")[0].strip()
+                if entry.lower().startswith("require on:"):
+                    trigger = entry[len("require on:"):].strip()
+                    parsed["human_review"].setdefault("triggers", []).append(trigger)
+                elif ":" in entry:
+                    key, val = entry.split(":", 1)
+                    key = key.strip()
+                    val = val.strip()
+                    if val.lower() in ("true", "false"):
+                        val = val.lower() == "true"
+                    parsed["human_review"][key] = val
             elif current_section == "success":
                 pass  # handled below
             else:
@@ -406,7 +436,202 @@ def get_prompt(agent_name: str) -> str:
     return to_system_prompt(parsed)
 
 
-def save_axiom(agent_name: str, parsed: dict):
+# ── Human Review Queue ────────────────────────────────────────────────────────
+
+REVIEW_DIR = Path(AXIOM_DIR) / ".reviews"
+_REVIEW_RISK = {
+    "security_modification":  "HIGH",
+    "trust_level_change":     "HIGH",
+    "external_agent_import":  "HIGH",
+    "semantic_drift":         "MEDIUM",
+    "bulk_constraint_change": "MEDIUM",
+    "score_below_snapshot":   "MEDIUM",
+    "cannot_mutate_expansion":"LOW",
+}
+
+
+def _review_id() -> str:
+    """Generate a short human-readable review ID."""
+    import random, string
+    return "RVW-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+def _write_review_entry(
+    agent_name: str,
+    trigger: str,
+    diff: list,
+    before_hash: str,
+    pending_hash: str,
+    recommendation: str = "",
+    timeout_hours: int = 24,
+) -> str:
+    """Append an entry to the review queue and return the review_id."""
+    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    queue_path = REVIEW_DIR / "review_queue.jsonl"
+    review_id = _review_id()
+    entry = {
+        "review_id": review_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "agent": agent_name.lower(),
+        "trigger": trigger,
+        "risk_level": _REVIEW_RISK.get(trigger, "MEDIUM"),
+        "requires_human": True,
+        "timeout_hours": timeout_hours,
+        "diff": diff,
+        "recommendation": recommendation,
+        "axiom_file_hash_before": before_hash,
+        "axiom_file_hash_pending": pending_hash,
+        "status": "PENDING",
+    }
+    with open(queue_path, "a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry) + "\n")
+    return review_id
+
+
+def _text_fingerprint(parsed: dict) -> str:
+    """Produce a normalised bag-of-words string from all text fields for drift detection."""
+    parts = []
+    for field in ("constraints", "rules", "process", "check", "failure",
+                  "output", "security", "when"):
+        parts.extend(parsed.get(field, []))
+    for field in ("purpose", "goal"):
+        val = parsed.get(field, "")
+        if val:
+            parts.append(val)
+    return " ".join(parts).lower()
+
+
+def _vocab_drift(before_text: str, after_text: str) -> float:
+    """
+    Simple vocabulary-overlap drift proxy.
+    Returns 0.0 (identical) to 1.0 (completely different).
+    Upgraded to cosine when LLM03 semantic drift module is built.
+    """
+    import re as _r
+    _tok = _r.compile(r"\b\w{4,}\b")
+    words_a = set(_tok.findall(before_text))
+    words_b = set(_tok.findall(after_text))
+    if not words_a and not words_b:
+        return 0.0
+    union = words_a | words_b
+    intersection = words_a & words_b
+    return 1.0 - (len(intersection) / len(union)) if union else 0.0
+
+
+def _detect_review_triggers(
+    agent_name: str,
+    original: dict,
+    proposed: dict,
+    current_score: float | None = None,
+) -> list[dict]:
+    """
+    Run all 7 trigger detectors. Returns list of fired trigger dicts:
+    [{"trigger": str, "diff": ..., "recommendation": str}]
+    """
+    fired = []
+
+    # 1. Security modification
+    orig_sec = set(original.get("security", []))
+    new_sec  = set(proposed.get("security", []))
+    if orig_sec != new_sec:
+        added   = sorted(new_sec - orig_sec)
+        removed = sorted(orig_sec - new_sec)
+        rec = "REJECT — core security rule removed" if removed else "REVIEW — new security rule added"
+        fired.append({
+            "trigger": "security_modification",
+            "diff": {"security": {"added": added, "removed": removed}},
+            "recommendation": rec,
+        })
+
+    # 2. Trust level change
+    orig_tl = str(original.get("trust_level", "")).strip()
+    new_tl  = str(proposed.get("trust_level", "")).strip()
+    if orig_tl and new_tl and orig_tl != new_tl:
+        fired.append({
+            "trigger": "trust_level_change",
+            "diff": {"trust_level": {"before": orig_tl, "after": new_tl}},
+            "recommendation": f"REVIEW — trust level changed {orig_tl} -> {new_tl}",
+        })
+
+    # 3. Semantic drift
+    drift_threshold = 0.20
+    hr_block = proposed.get("human_review", {})
+    for trig in hr_block.get("triggers", []):
+        if trig.startswith("semantic_drift"):
+            try:
+                drift_threshold = float(trig.split(">")[1].strip())
+            except Exception:
+                pass
+    before_fp = _text_fingerprint(original)
+    after_fp  = _text_fingerprint(proposed)
+    drift = _vocab_drift(before_fp, after_fp)
+    if drift > drift_threshold:
+        fired.append({
+            "trigger": "semantic_drift",
+            "diff": {"drift_score": round(drift, 3), "threshold": drift_threshold},
+            "recommendation": f"REVIEW — vocabulary drift {drift:.0%} exceeds {drift_threshold:.0%} threshold",
+        })
+
+    # 4. Bulk constraint change
+    bulk_threshold = 3
+    for trig in hr_block.get("triggers", []):
+        if trig.startswith("bulk_constraint_change"):
+            try:
+                bulk_threshold = int(trig.split(">")[1].strip())
+            except Exception:
+                pass
+    constraint_diff = diff_axiom(original, proposed)
+    constraint_changes = next(
+        (d for d in constraint_diff if d.get("field") == "constraints"), {}
+    )
+    n_changed = len(constraint_changes.get("added", [])) + len(constraint_changes.get("removed", []))
+    if n_changed > bulk_threshold:
+        fired.append({
+            "trigger": "bulk_constraint_change",
+            "diff": {"constraints_changed": n_changed, "threshold": bulk_threshold,
+                     "detail": constraint_changes},
+            "recommendation": f"REVIEW — {n_changed} constraints changed in one save (bulk change signature)",
+        })
+
+    # 5. External agent import — caller must pass proposed["_external_import"] = True
+    if proposed.get("_external_import"):
+        fired.append({
+            "trigger": "external_agent_import",
+            "diff": {"source": proposed.get("_import_source", "unknown")},
+            "recommendation": "REVIEW — file originated outside AXIOM runtime",
+        })
+
+    # 6. Score below snapshot with pending rewrite
+    if current_score is not None:
+        meta = get_snapshot_meta(agent_name)
+        if meta:
+            best = meta.get("score", -1.0)
+            if current_score < best:
+                fired.append({
+                    "trigger": "score_below_snapshot",
+                    "diff": {"current_score": current_score, "snapshot_best": best},
+                    "recommendation": (
+                        f"REVIEW — proposed version scores {current_score:.2f} < "
+                        f"snapshot best {best:.2f}"
+                    ),
+                })
+
+    # 7. CANNOT_MUTATE expansion (new fields being protected)
+    orig_cm = set(f.lower() for f in original.get("cannot_mutate", []))
+    new_cm  = set(f.lower() for f in proposed.get("cannot_mutate", []))
+    added_guards = new_cm - orig_cm
+    if added_guards:
+        fired.append({
+            "trigger": "cannot_mutate_expansion",
+            "diff": {"added_guards": sorted(added_guards)},
+            "recommendation": f"REVIEW — new CANNOT_MUTATE fields: {sorted(added_guards)}",
+        })
+
+    return fired
+
+
+def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
+               current_score: float | None = None):
     """Write a modified .axiom back to disk — this is how agents rewrite themselves."""
 
     # ── Constitutional enforcement ────────────────────────────
