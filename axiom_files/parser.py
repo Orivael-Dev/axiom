@@ -1278,8 +1278,9 @@ def diff_axiom(before: dict, after: dict) -> list:
     scalar_fields = ["agent", "version", "trust_level", "sandbox_agent", "purpose", "goal"]
 
     for field in list_fields:
-        before_set = set(before.get(field, []))
-        after_set  = set(after.get(field, []))
+        # tools parses to list-of-dicts — skip non-hashable entries
+        before_set = set(e for e in before.get(field, []) if isinstance(e, str))
+        after_set  = set(e for e in after.get(field, []) if isinstance(e, str))
         added   = sorted(after_set - before_set)
         removed = sorted(before_set - after_set)
         if added or removed:
