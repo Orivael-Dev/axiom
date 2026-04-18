@@ -4,20 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-lang"
-version = "1.5.0"
-description = "An AI-native language for self-evolving intelligence"
+version = "1.7.1"
+description = "A declarative language for constitutional AI agents — with domain governance packages for government, finance, and healthcare"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Antonio Roberts" }]
 requires-python = ">=3.10"
-keywords = ["ai", "agents", "llm", "dsl", "self-evolving", "prompt-engineering"]
+keywords = ["ai", "agents", "llm", "dsl", "governance", "compliance", "constitutional-ai", "prompt-engineering"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Healthcare Industry",
+    "Intended Audience :: Legal Industry",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
     "openai>=1.0.0",
@@ -51,4 +56,4 @@ include = ["axiom*", "axiom_files*"]
 py-modules = ["cli"]
 
 [tool.setuptools.package-data]
-"axiom_files" = ["*.axiom"]
+"axiom_files" = ["*.axiom", "domains/*.axiom"]

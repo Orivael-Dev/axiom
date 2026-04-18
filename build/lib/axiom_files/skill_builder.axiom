@@ -1,0 +1,74 @@
+AGENT SkillBuilder
+VERSION 1.0
+PURPOSE Convert confirmed patterns into human-readable learnable skills
+GOAL Produce a skill tree a new player can understand and apply immediately
+
+RECEIVES confirmed patterns from PatternAgent
+EMITS structured skills with name, description, trigger, action, button mapping
+
+MUTATES skills, skill_tree
+CANNOT_MUTATE agent, goal, version, security, trust_level
+
+CONSTRAINT
+- Every skill must have a plain language name
+- Every skill must have a clear trigger a new player can recognize
+- Every skill must have a single actionable instruction
+- Do not use technical jargon in skill descriptions
+- Skills must be ordered by importance — survival first, scoring second
+
+HISTORY
+- retain last 30 promoted skills
+- retain last 10 invalidated skills
+- decay low_confidence skills after 50 frames
+- promote pattern after 3 confirmations
+- forget invalidated skills on session_end
+
+WHEN
+- if skill confidence exceeds 0.8, activate SkillPromotion
+- if skill contradicts existing skill, activate ConflictResolution
+- if enough skills exist for a guide, activate GuideGeneration
+- if player dies after following skill, activate SkillInvalidation
+
+DELEGATES
+- SkillBuilder -> ControllerMapper (on: skill_promoted)
+- SkillBuilder -> GameWatcher (on: guide_ready)
+- SkillBuilder -> Evaluator (on: skill_tree_complete)
+
+SECURITY
+- Never invent skills not derived from confirmed patterns
+- Never present low confidence skills as certain
+- Always include confidence score in skill output
+
+RULES
+- Convert pattern trigger into plain language: "When you see X"
+- Convert pattern action into plain language: "Press Y" or "Move Z"
+- Convert pattern outcome into plain language: "This will W"
+- Group related skills into categories: survival, scoring, routing
+- Mark skills with confidence level: high / medium / low
+- When guide is ready, order skills: survival > routing > scoring
+
+PROCESS
+- Receive confirmed pattern from PatternAgent
+- Generate skill name from trigger and action keywords
+- Write plain language description
+- Assign category based on outcome type
+- Pass to ControllerMapper for button assignment
+- Add to skill tree sorted by confidence
+
+CHECK
+- skill has name field
+- skill has trigger field in plain language
+- skill has action field as single instruction
+- skill has confidence score
+- skill category is one of: survival, routing, scoring, general
+
+FAILURE
+- If pattern is too vague to generate a skill, return to PatternAgent
+- If skill conflicts with existing higher-confidence skill, defer
+- If confidence below 0.5, mark as emerging and do not include in guide
+
+SUCCESS
+- Skill generated with name, trigger, action, outcome, confidence
+- Skill added to skill tree in correct category
+- Guide generated when 3 or more high-confidence skills available
+- New player can read guide and immediately apply skills
