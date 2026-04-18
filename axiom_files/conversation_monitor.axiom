@@ -72,8 +72,8 @@ PROCESS
 - Check prior turn history for cross-turn erosion (refusal followed by compliance)
 - Compute turn drift score as weighted sum of detected signals, capped at 1.0
 - Update cumulative score: cumulative = cumulative * 0.7 + turn_score * 0.3
-- Emit DriftEvent if any signals detected
-- Check if cumulative >= drift_threshold and emit escalation if so
+- Produce DriftEvent when signals are detected
+- Apply escalation trigger when cumulative score reaches drift_threshold
 
 CHECK
 - All four signal categories were scanned

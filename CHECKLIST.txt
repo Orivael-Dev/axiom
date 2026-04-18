@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | Language Spec written | Phase 3g shipped | All core agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | Layer 4 drift detection | Agent spawning | All core agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -268,7 +268,27 @@ What shipped:
 ════════════════════════════════════════════════════════════
 FUTURE — v1.8+                                     PLANNED
 ════════════════════════════════════════════════════════════
-[ ] Agent spawning — Worker can spawn sub-agents for subtasks
+[x] ConversationMonitor — Layer 4 drift detection
+    axiom/conversation_monitor.py — ConversationMonitor class
+    axiom_files/conversation_monitor.axiom — agent spec (validator: valid)
+    Signals: persona_adoption (0.40), constraint_erosion (0.30),
+             prompt_leakage (0.50), role_drift (0.25)
+    Decay: cumulative = cumulative * 0.7 + turn_score * 0.3
+    Cross-turn erosion: amplify 1.5x when compliance follows prior refusal
+    Threshold: 0.6 (configurable) — triggers sandbox escalation
+    Session: axiom/session.py wraps client.chat() with monitor + auto-escalation
+    Smoke tested: signal detection, decay, cumulative accumulation confirmed
+
+[x] Agent spawning — Worker can spawn sub-agents for subtasks
+    axiom/agent_factory.py — AgentFactory + DynamicAgent
+    AgentFactory.spawn(target, spawner_trust, spawner_delegates) — explicit spawn
+    AgentFactory.from_delegates(spawner, trigger) — DELEGATES-driven spawn
+    AgentFactory.declared_delegates(agent) — introspect DELEGATES block
+    Trust enforcement: target TL must be <= spawner TL (PermissionError on violation)
+    Delegate boundary: target must be in declared DELEGATES (ValueError if not)
+    WorkerAgent.spawn(trigger) — convenience method on worker
+    Smoke tested: trust hierarchy, delegate boundary, valid spawn all confirmed
+
 [ ] Shared memory — evolved prompts feed back as starting points
 [ ] Multi-agent composition graph (AgentIQ integration)
 [ ] AXIOM runtime as standalone Python package
