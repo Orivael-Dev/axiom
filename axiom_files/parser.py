@@ -1,6 +1,7 @@
 # axiom/parser.py
 # Reads .axiom files and converts them to system prompts
 
+import hashlib as _hashlib
 import os
 import re as _re
 import json as _json
@@ -499,7 +500,87 @@ def get_prompt(agent_name: str) -> str:
 
 # ── Human Review Queue ────────────────────────────────────────────────────────
 
-REVIEW_DIR = Path(AXIOM_DIR) / ".reviews"
+REVIEW_DIR  = Path(AXIOM_DIR) / ".reviews"
+CHAIN_DIR   = Path(AXIOM_DIR) / ".chain"
+_CHAIN_FILE = CHAIN_DIR / "supply_chain.json"
+
+
+# ── Supply Chain SHA256 Registry (LLM05) ──────────────────────────────────────
+
+def _file_sha256(path: Path) -> str:
+    return _hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_chain() -> dict:
+    """Load supply_chain.json, return {} if missing or corrupt."""
+    if not _CHAIN_FILE.exists():
+        return {}
+    try:
+        return _json.loads(_CHAIN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_chain(chain: dict) -> None:
+    CHAIN_DIR.mkdir(parents=True, exist_ok=True)
+    _CHAIN_FILE.write_text(_json.dumps(chain, indent=2), encoding="utf-8")
+
+
+def register_agent_hash(agent_name: str) -> str:
+    """
+    Hash the current .axiom file and write it to the supply chain registry.
+    Called automatically by save_axiom() after every successful save.
+    Returns the sha256 hex digest.
+    """
+    src = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+    if not src.exists():
+        raise FileNotFoundError(f"Cannot register: {src} not found")
+    digest = _file_sha256(src)
+    chain = _load_chain()
+    chain[agent_name.lower()] = {
+        "sha256": digest,
+        "registered_at": datetime.now(timezone.utc).isoformat(),
+        "version": "",          # filled in by verify step if parsed
+        "size_bytes": src.stat().st_size,
+    }
+    _save_chain(chain)
+    return digest
+
+
+def verify_agent_hash(agent_name: str) -> dict:
+    """
+    Compare current .axiom file hash against the supply chain registry.
+
+    Returns:
+      {"status": "VERIFIED"|"TAMPERED"|"UNREGISTERED",
+       "agent": str, "current_sha256": str,
+       "registered_sha256": str|None, "registered_at": str|None}
+    """
+    src = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+    if not src.exists():
+        return {
+            "status": "UNREGISTERED", "agent": agent_name.lower(),
+            "current_sha256": None, "registered_sha256": None, "registered_at": None,
+        }
+    current = _file_sha256(src)
+    chain = _load_chain()
+    entry = chain.get(agent_name.lower())
+    if entry is None:
+        return {
+            "status": "UNREGISTERED", "agent": agent_name.lower(),
+            "current_sha256": current, "registered_sha256": None, "registered_at": None,
+        }
+    expected = entry.get("sha256", "")
+    status = "VERIFIED" if current == expected else "TAMPERED"
+    return {
+        "status": status,
+        "agent": agent_name.lower(),
+        "current_sha256": current,
+        "registered_sha256": expected,
+        "registered_at": entry.get("registered_at"),
+    }
+
+
 _REVIEW_RISK = {
     "security_modification":  "HIGH",
     "trust_level_change":     "HIGH",
