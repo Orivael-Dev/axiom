@@ -46,9 +46,17 @@ from axiom_files.validator import validate_file, validate_parsed
 
 AXIOM_DIR = Path(os.environ.get("AXIOM_FILES_DIR", PROJECT_ROOT / "axiom_files"))
 HISTORY_DIR = AXIOM_DIR / ".history"
+
+# Domain results (e.g. healthcare_bench_*.json)
 LAB_RESULTS = Path(os.environ.get(
     "AXIOM_LAB_RESULTS",
     Path.home() / "Desktop/ax/axiom_lab/results/domains"
+))
+
+# Core pipeline results (v1_4_when_delegates_*.json) — all agents run together
+LAB_CORE_RESULTS = Path(os.environ.get(
+    "AXIOM_CORE_RESULTS",
+    Path.home() / "Desktop/ax/axiom_lab/results"
 ))
 
 # ── Security layer definitions ────────────────────────────────────────────────
@@ -180,37 +188,113 @@ def step_2_security_stack(agent_name: str, parsed: dict) -> dict:
     }
 
 
-def step_3_benchmark_evidence(agent_name: str, domain: str | None) -> dict:
-    """Find most recent benchmark results for this agent or domain."""
-    evidence = []
+def _load_core_result(path: Path) -> dict | None:
+    """
+    Parse a lab results file — handles both formats:
+      v1_0:  axiom_wins / total_tests / axiom_avg
+      v1_4+: passes / tests (list) / axiom_avg_pct
+    Returns None if the file has < 10 tests (too small to be evidence).
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
-    # Core benchmark — v1_0 format uses total_tests / axiom_wins
-    core_file = PROJECT_ROOT / "benchmark_results_v1_0.json"
-    if core_file.exists():
-        data   = json.loads(core_file.read_text(encoding="utf-8"))
+    # v1_4+ format
+    if "passes" in data and "tests" in data:
+        total  = len(data["tests"]) if isinstance(data["tests"], list) else data.get("total", 0)
+        passed = data.get("passes", 0)
+        pct    = data.get("axiom_avg_pct", int(100 * passed / total) if total else 0)
+        if total < 10:
+            return None
+        return {
+            "suite":     data.get("run_name", path.stem),
+            "passed":    passed,
+            "total":     total,
+            "pct":       int(pct),
+            "avg_score": round(pct / 10, 2),
+            "source":    path.name,
+        }
+
+    # v1_0 format
+    if "axiom_wins" in data or "total_tests" in data:
         passed = data.get("axiom_wins", data.get("passed", 0))
         total  = data.get("total_tests", data.get("total", 0))
         score  = data.get("axiom_avg", data.get("avg_score", 0))
-        evidence.append({
-            "suite": "core_benchmark_v1_0",
-            "passed": passed,
-            "total": total,
-            "pct": int(100 * passed / total) if total else 0,
+        if total < 10:
+            return None
+        return {
+            "suite":     "core_benchmark_v1_0",
+            "passed":    passed,
+            "total":     total,
+            "pct":       int(100 * passed / total) if total else 0,
             "avg_score": round(score, 2),
-            "source": str(core_file.name),
-        })
+            "source":    path.name,
+        }
+
+    return None
+
+
+def step_3_benchmark_evidence(agent_name: str, domain: str | None) -> dict:
+    """
+    Find the most recent benchmark results for this agent.
+
+    Search order:
+      1. Agent-specific file:  LAB_CORE_RESULTS/{agent_name}*.json
+      2. Any pipeline result:  LAB_CORE_RESULTS/*.json  (most recent with >= 10 tests)
+         — evaluator and rewriter participate in every pipeline run, so the shared
+           results file is valid evidence for all three core agents.
+      3. Legacy v1_0:          PROJECT_ROOT/benchmark_results_v1_0.json
+      4. Domain evidence:      LAB_RESULTS/{domain}_bench_*.json
+    """
+    evidence = []
+
+    if LAB_CORE_RESULTS.exists():
+        base = agent_name.split("/")[-1]  # strip domains/
+
+        # Option B path: agent-specific file preferred (populated by dedicated runs)
+        agent_files = sorted(
+            LAB_CORE_RESULTS.glob(f"*{base}*.json"),
+            key=lambda p: p.stat().st_mtime, reverse=True
+        )
+        chosen = next((f for f in agent_files if _load_core_result(f)), None)
+
+        # Option A fallback: any pipeline result file
+        if chosen is None:
+            all_files = sorted(
+                (f for f in LAB_CORE_RESULTS.glob("*.json")
+                 if f.is_file() and not f.name.startswith("baseline")),
+                key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            chosen = next((f for f in all_files if _load_core_result(f)), None)
+
+        if chosen:
+            rec = _load_core_result(chosen)
+            if rec:
+                evidence.append(rec)
+
+    # Legacy v1_0 file (only used if nothing found above)
+    if not evidence:
+        core_file = PROJECT_ROOT / "benchmark_results_v1_0.json"
+        if core_file.exists():
+            rec = _load_core_result(core_file)
+            if rec:
+                evidence.append(rec)
 
     # Domain benchmark
     if domain and LAB_RESULTS.exists():
         pattern = f"{domain}_bench_*.json"
-        domain_files = sorted(LAB_RESULTS.glob(pattern), reverse=True)
+        domain_files = sorted(
+            LAB_RESULTS.glob(pattern),
+            key=lambda p: p.stat().st_mtime, reverse=True
+        )
         if domain_files:
             data = json.loads(domain_files[0].read_text(encoding="utf-8"))
             evidence.append({
-                "suite": f"domain_{domain}",
+                "suite":  f"domain_{domain}",
                 "passed": data.get("passed", 0),
-                "total": data.get("total", 0),
-                "pct": data.get("overall_pct", 0),
+                "total":  data.get("total", 0),
+                "pct":    data.get("overall_pct", 0),
                 "source": domain_files[0].name,
             })
 
