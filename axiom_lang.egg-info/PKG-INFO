@@ -3,7 +3,7 @@ Name: axiom-lang
 Version: 1.7.1
 Summary: A declarative language for constitutional AI agents — with domain governance packages for government, finance, and healthcare
 Author: Antonio Roberts
-License: MIT
+License-Expression: MIT
 Project-URL: Repository, https://github.com/antonioroberts/axiom-lang
 Keywords: ai,agents,llm,dsl,governance,compliance,constitutional-ai,prompt-engineering
 Classifier: Development Status :: 5 - Production/Stable

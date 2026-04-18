@@ -1,0 +1,36 @@
+# AXIOM bundle exports
+*.axiom.bundle
+
+# Evolution logs and run history
+logs/
+axiom_files/.history/
+axiom_files/.snapshots/
+
+# Lab results — internal benchmark runs
+axiom_lab/results/
+axiom_lab/benchmarks/domains/*/results/
+
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+*.egg-info/
+dist/
+build/
+*.whl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

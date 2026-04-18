@@ -323,6 +323,54 @@ def validate_parsed(parsed: dict) -> dict:
                     )
                     break
 
+    # ── Phase 3g: FAILURE block prescriptive language detection ─────────────
+    _PRESCRIPTIVE_PATTERNS = [
+        r"^output\b",
+        r"^respond\b",
+        r"^return\b",
+        r"^say\b",
+        r"^print\b",
+        r"^emit\b",
+        r"^write\b",
+        r"^produce\b",
+        r"^generate\b",
+        r"^format\b",
+        r"^reply\b",
+        r"^send\b",
+        r"^display\b",
+        r"^show\b",
+        r"^tell\b",
+        r"^use the word\b",
+        r"^use format\b",
+        r"blocked:",
+        r"respond with exactly",
+        r"return exactly",
+        r"output exactly",
+        r"the response (must|should) (be|contain|start|include)",
+        r"always (say|output|respond|return|write|use)",
+    ]
+    _compiled_prescriptive = [re.compile(p, re.IGNORECASE) for p in _PRESCRIPTIVE_PATTERNS]
+
+    for entry in parsed.get("failure", []):
+        entry_lower = entry.lower().strip()
+        for pattern in _compiled_prescriptive:
+            if pattern.search(entry_lower):
+                issues.append({
+                    "phase": "semantic",
+                    "level": "warning",
+                    "field": "failure",
+                    "message": (
+                        f"Output format directive detected in FAILURE block: "
+                        f"'{entry[:80]}' — "
+                        f"FAILURE describes conditions, RULES commands behavior."
+                    ),
+                })
+                suggestions.append(
+                    f"Move '{entry[:60]}' to the RULES block. "
+                    f"RULES = imperative (do this), FAILURE = descriptive (this condition exists)."
+                )
+                break  # one warning per entry, don't stack
+
     # ── Phase 4: HISTORY Validation ──────────────────────────────────────────
     history = parsed.get("history", {})
     if history and (history.get("retain") or history.get("decay") or history.get("forget_on")):
