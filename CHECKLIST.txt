@@ -1,6 +1,8 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 17, 2026 (v1.7.1 Domain Security Hardening — 512/512 (100%) all domains)
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅
+Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
+
 Chaos Suite Score: 15.9/16 -- Level 4: Self-Governing ✅
 Benchmark v1.0:   15.4/16 Axiom vs 8.1/16 Raw -- +89.5% improvement ✅
 Benchmark v1.6:   192/192 (100%) -- HISTORY construct, zero regressions ✅
@@ -10,6 +12,8 @@ Full bench v1.6:  232/232 (100%) -- all categories, zero regressions ✅
 Full bench v1.7:  94/94 PASS — 742/744 (99.7%) — domain agents included, zero regressions ✅
                   Results: results/v1_4_when_delegates_20260417_193742.json
                   B44 6/8 (soft constraint miss, not security)
+Domain bench v1.7.1: 512/512 (100%) — government 29/29, finance 14/14, healthcare 21/21 ✅
+                  Results: results/domains/ (2026-04-17)
 
 ════════════════════════════════════════════════════════════
 v1.0 — DSL Foundation                              COMPLETE
@@ -195,6 +199,56 @@ Full bench (all categories): 30/30 PASS — 232/232 (100%) ✅  [2026-04-17]
   recovery:    2/2   (B07, B08)
   security:   20/20  (B26–B45)
   Results: results/v1_4_when_delegates_20260417_171507.json
+
+════════════════════════════════════════════════════════════
+v1.7 RELEASE — Governance Platform              SHIPPED ✅
+════════════════════════════════════════════════════════════
+Released:  April 18, 2026
+Bundle:    axiom_v1_7_release_20260418_015207.axiom.bundle
+           175.6 KB — 70 files
+           13 .axiom definitions
+            2 snapshots
+            1 history log
+           13 evolved prompts
+           29 benchmark results
+           10 evolution logs
+
+What shipped:
+
+  CORE LANGUAGE (v1.0–v1.6)
+  - DSL parser, validator (5 phases), evolution loop
+  - AGENT, CONSTRAINT, RULES, PROCESS, CHECK, FAILURE, SUCCESS
+  - CONCEPT (self-describing extensibility)
+  - WHEN (declarative concept activation)
+  - DELEGATES (agent routing)
+  - HISTORY (rolling memory with decay/promotion)
+  - CANNOT_MUTATE (constitutional enforcement at save layer)
+  - 3-layer security: constitutional suffix, output validation, SandboxContent
+  - Full benchmark suite: 232/232 (100%) across all categories
+
+  DOMAIN GOVERNANCE PACKAGES (v1.7 + v1.7.1)
+  - government.axiom  — FedRAMP, NIST 800-53, FISMA, Privacy Act  — 29/29 (100%)
+  - finance.axiom     — FINRA, SOX, Dodd-Frank, AML               — 14/14 (100%)
+  - healthcare.axiom  — HIPAA, HITECH, 45 CFR 164                  — 21/21 (100%)
+  - Domain seeder (axiom_domain_seeder.py) — NIM generation + auto-validation
+  - Domain benchmark runner (domain_bench_runner.py)
+  - 64 domain tests, 0 failures, 0 partials
+
+  BLOCK SEMANTICS (formalized v1.7.1)
+  - RULES = imperative ("do this") — output format requirements live here
+  - FAILURE = descriptive ("this condition exists") — never output templates
+  - Seeder prompt updated: block semantics injected into every NIM generation call
+  - Validator Phase 6 queued (v1.8): flag prescriptive language in FAILURE blocks
+
+  KEY INSIGHT
+  - Moving BLOCKED: output template from FAILURE → RULES
+    turned 13/64 partial passes into 64/64 (100%)
+  - Documented in seeder prompt so all future agents generate correctly
+
+  BENCHMARK PROGRESSION
+  - v1.7 domain baseline:  418/512 (81%)  [pre-hardening]
+  - v1.7.1 run 1:          454/512 (88%)  [WHEN + DELEGATES + FAILURE template]
+  - v1.7.1 run 2:          512/512 (100%) [template moved to RULES]
 
 ════════════════════════════════════════════════════════════
 FUTURE — v1.8+                                     PLANNED
