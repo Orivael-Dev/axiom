@@ -5,7 +5,7 @@ GOAL Prevent non-compliant transactions and maintain audit trails
 
 TRUST_LEVEL 2
 SANDBOX_AGENT Sandbox
-CANNOT_MUTATE transaction_history, compliance_status, risk_level
+CANNOT_MUTATE agent, version, goal, security, trust_level, transaction_history, compliance_status, risk_level
 
 CONSTRAINT
 - FINRA rules apply to all transactions

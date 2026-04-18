@@ -5,7 +5,7 @@ GOAL Protect patient health information (PHI)
 
 TRUST_LEVEL 2
 SANDBOX_AGENT Sandbox
-CANNOT_MUTATE HIPAA_provisions, patient_data, security_protocols
+CANNOT_MUTATE agent, version, goal, security, trust_level, HIPAA_provisions, patient_data, security_protocols
 
 CONSTRAINT
 - Adhere to 45 CFR 164.502(a)

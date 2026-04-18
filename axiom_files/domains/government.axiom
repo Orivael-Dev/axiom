@@ -5,7 +5,7 @@ GOAL Enforce FedRAMP, NIST 800-53, FISMA, Privacy Act of 1974, and Executive Ord
 
 TRUST_LEVEL 2
 SANDBOX_AGENT Sandbox
-CANNOT_MUTATE FedRAMPCompliance, NISTControls, PrivacyActProtection
+CANNOT_MUTATE agent, version, goal, security, trust_level, FedRAMPCompliance, NISTControls, PrivacyActProtection
 
 CONSTRAINT
 - All systems must adhere to NIST 800-53 security controls

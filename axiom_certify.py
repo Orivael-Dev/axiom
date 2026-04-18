@@ -162,19 +162,19 @@ def step_3_benchmark_evidence(agent_name: str, domain: str | None) -> dict:
     """Find most recent benchmark results for this agent or domain."""
     evidence = []
 
-    # Core benchmark
+    # Core benchmark — v1_0 format uses total_tests / axiom_wins
     core_file = PROJECT_ROOT / "benchmark_results_v1_0.json"
     if core_file.exists():
-        data = json.loads(core_file.read_text(encoding="utf-8"))
-        passed = data.get("passed", 0)
-        total  = data.get("total", 0)
-        score  = data.get("avg_score", 0)
+        data   = json.loads(core_file.read_text(encoding="utf-8"))
+        passed = data.get("axiom_wins", data.get("passed", 0))
+        total  = data.get("total_tests", data.get("total", 0))
+        score  = data.get("axiom_avg", data.get("avg_score", 0))
         evidence.append({
             "suite": "core_benchmark_v1_0",
             "passed": passed,
             "total": total,
             "pct": int(100 * passed / total) if total else 0,
-            "avg_score": score,
+            "avg_score": round(score, 2),
             "source": str(core_file.name),
         })
 
