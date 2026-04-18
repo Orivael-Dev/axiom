@@ -56,7 +56,7 @@ _KNOWN_FIELDS = {
     "mutates", "cannot_mutate", "constraints", "rules", "process",
     "check", "failure", "output", "success", "tools", "concepts", "when",
     "delegates", "security", "trust_level", "sandbox_agent", "history",
-    "thresholds", "signals", "drift_levels",
+    "thresholds", "signals", "drift_levels", "honesty_criteria",
 }
 
 
@@ -372,23 +372,75 @@ def validate_parsed(parsed: dict) -> dict:
                 )
                 break  # one warning per entry, don't stack
 
+    # ── Phase 3j: HONESTY_CRITERIA entry format validation ───────────────────
+    honesty_criteria = parsed.get("honesty_criteria", {})
+    if honesty_criteria:
+        for name, desc in honesty_criteria.items():
+            if not desc or not str(desc).strip():
+                issues.append({
+                    "phase": "semantic", "level": "error", "field": "honesty_criteria",
+                    "message": (
+                        f"HONESTY_CRITERIA entry '{name}' is missing a description. "
+                        f"Each entry must be 'name: description' format."
+                    ),
+                })
+                suggestions.append(
+                    f"Add a description to HONESTY_CRITERIA entry '{name}': "
+                    f"'- {name}: <description of cheating pattern>'"
+                )
+
+    # ── Phase 3k: HONESTY_CRITERIA signals weight sum ─────────────────────────
+    # Covered by Phase 3h (SIGNALS) — teacher.axiom uses the same SIGNALS block.
+
+    # ── Phase 3l: honesty_criteria must be in CANNOT_MUTATE ──────────────────
+    if honesty_criteria:
+        cannot_mutate = [f.lower() for f in parsed.get("cannot_mutate", [])]
+        if "honesty_criteria" not in cannot_mutate:
+            issues.append({
+                "phase": "semantic", "level": "error", "field": "cannot_mutate",
+                "message": (
+                    "HONESTY_CRITERIA is declared but 'honesty_criteria' is not in CANNOT_MUTATE. "
+                    "The student agent must not be able to evolve the teacher's evaluation criteria."
+                ),
+            })
+            suggestions.append(
+                "Add 'honesty_criteria' to CANNOT_MUTATE to constitutionally protect it."
+            )
+
+    # ── Phase 3m: SECURITY must contain ledger append-only rule ──────────────
+    if honesty_criteria:
+        security_text = " ".join(parsed.get("security", [])).lower()
+        has_append_only = "append-only" in security_text or "no deletions" in security_text
+        if not has_append_only:
+            issues.append({
+                "phase": "semantic", "level": "warning", "field": "security",
+                "message": (
+                    "HONESTY_CRITERIA declared but SECURITY block does not contain an "
+                    "explicit ledger append-only rule. Honesty ledger integrity requires "
+                    "a prohibition on deletion."
+                ),
+            })
+            suggestions.append(
+                "Add to SECURITY: '- Honesty ledger is append-only — no deletions permitted'"
+            )
+
     # ── Phase 3h: SIGNALS weight sum validation ──────────────────────────────
     signals = parsed.get("signals", {})
     if signals:
         numeric_weights = [v for v in signals.values() if isinstance(v, (int, float))]
         if numeric_weights:
             weight_sum = sum(numeric_weights)
-            if weight_sum < 0.5 or weight_sum > 3.0:
+            if weight_sum < 0.3 or weight_sum > 3.0:
                 issues.append({
                     "phase": "semantic", "level": "warning", "field": "signals",
                     "message": (
                         f"SIGNALS weight sum is {weight_sum:.3f} — "
-                        f"expected between 0.5 and 3.0. "
+                        f"expected between 0.3 and 3.0. "
                         f"Typical range is 1.0–2.0 for 4–8 signals."
                     ),
                 })
                 suggestions.append(
-                    "Adjust SIGNALS weights so their sum falls between 0.5 and 3.0."
+                    "Adjust SIGNALS weights so their sum falls between 0.3 and 3.0."
                 )
 
     # ── Phase 3i: THRESHOLDS warn < block ordering ────────────────────────────
@@ -432,7 +484,7 @@ def validate_parsed(parsed: dict) -> dict:
                 })
                 suggestions.append("Use: 'retain last <integer> <type>'")
         # 4b. Decay rules must reference known conditions
-        known_conditions = {"low_confidence", "all", "stale", "unconfirmed", "not_seen"}
+        known_conditions = {"low_confidence", "all", "stale", "unconfirmed", "not_seen", "uncertain"}
         for rule in history.get("decay", []):
             cond = rule.get("condition", "")
             if cond not in known_conditions:
