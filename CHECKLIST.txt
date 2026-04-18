@@ -396,3 +396,18 @@ Known test gaps for v1.5:
   - Export bundle integrity tests
   - Version history multi-agent coverage tests
   - WHEN/DELEGATES extended edge case tests
+
+Governance Alignment Pack — COMPLETE
+[x] AXIOM_ALIGN_PACK.md — watson-aligned use case map persisted
+[x] Factsheet schema captured for governed AXIOM assets
+[x] Risk-control mapping captured for governance review
+[x] AXIOM v1.7 certified baseline pinned to April 18, 2026 evidence
+
+Honest Benchmarking Pack — COMPLETE
+[x] AXIOM_HONEST_BENCHMARK.md — suite and integrity model persisted
+[x] BenchmarkIntegrity constitutional rule specified
+[x] HonestBenchmarking concept specified
+[x] HonestBenchmark v1.0 suite design recorded
+[ ] Runtime enforcement and benchmark parity tests
+[ ] Leakage-resistance and canary backdoor execution
+[ ] IntegrityScore certification gate wired into evaluation
