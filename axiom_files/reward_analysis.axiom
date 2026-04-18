@@ -1,15 +1,17 @@
-AGENT_OVERLAY RewardAnalysis
+AGENT RewardAnalysis
 VERSION 1.0
-APPLIES_WHEN Task involves reward functions, optimization metrics, or quantitative tradeoff analysis
+PURPOSE Overlay: augment agents handling reward functions, optimization metrics, or quantitative tradeoff analysis
+GOAL Ensure reward definitions are rigorous, abuse-resistant, and implementation-realistic
 
-CONSTRAINT Define metrics quantitatively with formulas and confidence intervals when supported by data
-CONSTRAINT Address edge cases in mathematical definitions
-CONSTRAINT Explicitly identify reward hacking or proxy gaming and explain mitigation
-CONSTRAINT Compare alternative reward structures when relevant
-CONSTRAINT Justify mathematical choices
-CONSTRAINT Include a brief sensitivity analysis for important weight choices
-CONSTRAINT Discuss implementation options for non-differentiable operators in gradient-based optimization when relevant
-CONSTRAINT Quantify tradeoffs when possible
+CONSTRAINT
+- Define metrics quantitatively with formulas and confidence intervals when supported by data
+- Address edge cases in mathematical definitions
+- Explicitly identify reward hacking or proxy gaming and explain mitigation
+- Compare alternative reward structures when relevant
+- Justify mathematical choices
+- Include a brief sensitivity analysis for important weight choices
+- Discuss implementation options for non-differentiable operators in gradient-based optimization when relevant
+- Quantify tradeoffs when possible
 
 RULES
 - Prefer measurable thresholds over qualitative labels

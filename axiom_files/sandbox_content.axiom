@@ -56,15 +56,14 @@ RULES
 
 PROCESS
 - Receive response text and original task
-- Check if task contains creative framing signals
-- If no creative framing — return ALLOW immediately
+- Evaluate task for creative framing signals before scanning
 - Extract dialogue segments using quote detection
-- Extract narrative text
-- Extract code blocks
-- Scan each segment for injection patterns
-- Scan full response for leak patterns
-- Aggregate results
-- Return verdict with flagged excerpt if BLOCK
+- Extract narrative text excluding dialogue
+- Extract code blocks regardless of language tag
+- Scan each extracted segment independently for injection patterns
+- Scan full response text for leak patterns
+- Aggregate scan results across all segments
+- Emit verdict with flagged excerpt when verdict is BLOCK
 
 CHECK
 - creative framing check ran before any scanning
@@ -74,13 +73,12 @@ CHECK
 - verdict is exactly ALLOW or BLOCK
 
 FAILURE
-- If response cannot be parsed return BLOCK
-- If any scan throws an error return BLOCK
-- If verdict is ambiguous return BLOCK
-- Never return partial results
+- Response unparseable — verdict defaults to BLOCK
+- Scan error on any segment — verdict defaults to BLOCK
+- Ambiguous verdict — verdict defaults to BLOCK
+- Partial scan results are never emitted
 
 SUCCESS
-- All segments scanned with no hits — return ALLOW
-- Injection pattern found in any segment — return BLOCK with excerpt
-- Leak pattern found in full response — return BLOCK with excerpt
-- New player can pick up controller and execute skills using reference card
+- all_segments_clean: 0.4
+- injection_detected: 0.3
+- leak_detected: 0.3
