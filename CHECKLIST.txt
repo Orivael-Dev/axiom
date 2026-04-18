@@ -1,6 +1,6 @@
 AXIOM Development Checklist
 ===========================
-Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 IN PROGRESS | All core agents CERTIFIED
+Last updated: April 18, 2026 — v1.7 RELEASE SHIPPED ✅ | v1.8 IN PROGRESS (shared memory, composition graph, standalone runtime) | All core agents CERTIFIED
 Bundle:       axiom_v1_7_release_20260418_015207.axiom.bundle (175.6 KB, 70 files)
  
 AXIOM Certification Milestone: first certified core agents
@@ -315,9 +315,32 @@ v1.8 — Agent Specification Expansion          IN PROGRESS
     arithmetic assignment -> declarative intent description
     Spec is authoritative — Python runtime executes the spec, not the reverse
 
-[ ] Shared memory — evolved prompts feed back as starting points
-[ ] Multi-agent composition graph (AgentIQ integration)
-[ ] AXIOM runtime as standalone Python package
+[x] Shared memory — evolved prompts feed forward as starting points across sessions
+    axiom_files/shared_memory.axiom — valid
+    axiom/shared_memory.py — SharedMemoryStore (promote, best_global, summary)
+    Concepts: PromotionGate, CrossSessionSeed, RoleNormalization
+    Promotion threshold: 8.0 (AXIOM_SHARED_MEMORY_THRESHOLD)
+    Seed priority: task-scoped best → global best → .axiom default → seed_prompt
+    Wired into BaseAgent.system_prompt (priority 2 fallback)
+    Wired into EvolutionLoop (promotes on new best score)
+
+[x] Multi-agent composition graph — formal delegation topology
+    axiom_files/composition_graph.axiom — valid
+    axiom/composition_graph.py — CompositionGraph (build, topology, cycles, trust_violations, roots, reachable_from)
+    Concepts: NodeDiscovery, EdgeExtraction, CycleDetection, TrustViolationScan, RootResolution
+    Live results against axiom_files/:
+      33 nodes, 31 edges, 0 trust violations, 0 load errors
+      Roots: Worker, Session, domain agents, + 12 others
+      Cycles detected: GameWatcher/SkillBuilder/ControllerMapper (pipeline),
+                       CompositionGraph self-loop (on: rebuild),
+                       SharedMemory self-loop (on: explicit_purge)
+
+[x] Standalone runtime — AXIOM decoupled from NIM dependency
+    client.py: AXIOM_API_KEY / AXIOM_BASE_URL as primaries
+    Fallback chain: AXIOM_API_KEY -> NVIDIA_API_KEY -> OPENAI_API_KEY
+    Fallback chain: AXIOM_BASE_URL -> NVIDIA_BASE_URL -> https://api.openai.com/v1
+    Compatible with: NIM, OpenAI, Ollama (http://localhost:11434/v1), vLLM, LM Studio
+    Backwards compatible — existing NVIDIA_API_KEY .env files continue to work
 
 [x] Validator: Phase 3g — FAILURE block prescriptive language detection
     Flag output format directives in FAILURE entries with level=warning.

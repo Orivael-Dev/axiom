@@ -63,13 +63,28 @@ def validate_output(response: str, task: str) -> tuple[str, bool]:
 
 
 def _build_client() -> OpenAI:
-    api_key = os.environ.get("NVIDIA_API_KEY", "")
-    base_url = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    if not api_key or api_key == "your_nvidia_api_key_here":
+    # AXIOM_API_KEY / AXIOM_BASE_URL are the primary env vars.
+    # NVIDIA_API_KEY / NVIDIA_BASE_URL retained as fallbacks for backwards compatibility.
+    # Any OpenAI-compatible endpoint is supported (NIM, OpenAI, Ollama, vLLM, LM Studio, etc.)
+    api_key = (
+        os.environ.get("AXIOM_API_KEY")
+        or os.environ.get("NVIDIA_API_KEY")
+        or os.environ.get("OPENAI_API_KEY", "")
+    )
+    base_url = (
+        os.environ.get("AXIOM_BASE_URL")
+        or os.environ.get("NVIDIA_BASE_URL")
+        or "https://api.openai.com/v1"
+    )
+    _SENTINEL = "your_nvidia_api_key_here"
+    if not api_key or api_key == _SENTINEL:
         raise EnvironmentError(
-            "NVIDIA_API_KEY is not set. "
-            "Edit .env and replace 'your_nvidia_api_key_here' with your real key from "
-            "https://build.nvidia.com"
+            "No API key configured. Set one of:\n"
+            "  AXIOM_API_KEY   — any OpenAI-compatible endpoint key\n"
+            "  NVIDIA_API_KEY  — NVIDIA NIM key (backwards compatible)\n"
+            "  OPENAI_API_KEY  — OpenAI key\n"
+            "Set AXIOM_BASE_URL to point at a non-OpenAI endpoint "
+            "(e.g. http://localhost:11434/v1 for Ollama)."
         )
     return OpenAI(api_key=api_key, base_url=base_url)
 

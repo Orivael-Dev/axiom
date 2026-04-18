@@ -78,7 +78,7 @@ CHECK
 
 FAILURE
 - Store file unreadable — emit null, log read failure, do not block session
-- Write failure — emit current in-memory best, log write failure, retry next turn
+- Store persistence failure — in-memory best remains active, failure logged, retry on next turn
 - Role not found in store — emit null (no global best yet for this role)
 
 SUCCESS

@@ -1,0 +1,102 @@
+AGENT CompositionGraph
+VERSION 1.0
+PURPOSE Build and validate the directed delegation topology across all loaded agents
+GOAL Provide a queryable graph of agent-to-agent routing for inspection, cycle detection, and topology export
+
+RECEIVES agent_directory: string, agent_names: list or null
+EMITS topology: dict, cycles: list, roots: list, reachable: dict
+
+MUTATES graph_state, cycle_log
+CANNOT_MUTATE agent, goal, version, security, trust_level
+
+TRUST_LEVEL 1
+
+CONSTRAINT
+- Graph is rebuilt from disk on each invocation — no stale cached topology
+- Every loaded .axiom file contributes its DELEGATES entries as edges
+- Cycle detection is exhaustive — partial detection is not acceptable
+- Trust hierarchy violations in the graph are reported alongside structural cycles
+- An agent with no DELEGATES block contributes a leaf node with no outgoing edges
+
+CONCEPT NodeDiscovery
+PURPOSE Load all agents from the axiom_files directory and register them as graph nodes
+APPLIES WHEN load agents discover nodes registry all agents scan directory
+PRIORITY 1
+REQUIRES axiom_files directory readable and at least one .axiom file present
+EFFECT Register each agent name as a graph node — include agents with no DELEGATES block as isolated leaf nodes
+
+CONCEPT EdgeExtraction
+PURPOSE Parse DELEGATES entries into typed directed edges
+APPLIES WHEN delegates routing parse edges source target trigger
+PRIORITY 1
+REQUIRES Each DELEGATES entry in the format: Source -> Target (on: trigger)
+EFFECT Produce edge tuple: (source_agent, target_agent, trigger) for each valid entry — skip malformed entries and log them
+
+CONCEPT CycleDetection
+PURPOSE Identify cycles in the delegation graph that could cause infinite routing loops
+APPLIES WHEN cycle loop circular delegation infinite routing
+PRIORITY 1
+REQUIRES Complete edge list from all loaded agents
+EFFECT Report each cycle as an ordered list of agent names — an empty list means no cycles found
+
+CONCEPT TrustViolationScan
+PURPOSE Flag delegation edges where target TRUST_LEVEL exceeds source TRUST_LEVEL
+APPLIES WHEN trust hierarchy violation elevated privilege upward delegation
+PRIORITY 1
+REQUIRES TRUST_LEVEL resolved for both source and target of each edge
+EFFECT Report trust violations as a separate list — these are graph-level constitutional warnings
+
+CONCEPT RootResolution
+PURPOSE Identify agents that receive no incoming delegation edges
+APPLIES WHEN root entry point source-only no incoming edges
+PRIORITY 2
+REQUIRES Complete edge list
+EFFECT Emit root nodes — agents with no incoming edges are conversation entry points
+
+WHEN
+- if graph build requested, activate NodeDiscovery
+- if nodes registered, activate EdgeExtraction
+- if edges extracted, activate CycleDetection
+- if edges extracted, activate TrustViolationScan
+- if edges extracted, activate RootResolution
+
+DELEGATES
+- CompositionGraph -> CompositionGraph (on: rebuild)
+
+SECURITY
+- Never execute agent code during graph construction — read .axiom files only
+- Graph output is read-only — cannot be used to modify agent DELEGATES blocks
+- Cycle reports are informational only — do not automatically modify agent files
+
+RULES
+- When CycleDetection finds a cycle, report it as: "CYCLE: [AgentA -> AgentB -> AgentC -> AgentA]"
+- When TrustViolationScan finds a violation, report it as: "TRUST VIOLATION: [source (TL N) -> target (TL M)] on trigger"
+- When a malformed DELEGATES entry is found, log it as: "MALFORMED: [entry text] in [agent_name]"
+- Always emit root nodes — an empty roots list means every agent has an incoming edge (possible cycle)
+
+PROCESS
+- Receive agent_directory path
+- Discover all .axiom files in directory and subdirectories
+- Load each agent and register as graph node
+- Extract DELEGATES entries from each agent as directed edges
+- Run cycle detection across the full edge list
+- Run trust violation scan across all edges
+- Resolve root nodes from edge list
+- Compute reachable sets from each root node
+- Emit topology, cycles, trust_violations, roots, reachable
+
+CHECK
+- All .axiom files in directory were loaded — none skipped silently
+- Cycle detection ran on complete edge list — not a partial scan
+- Every edge has both source and target resolved to registered nodes
+- Trust levels were resolved for both endpoints of every edge
+
+FAILURE
+- axiom_files directory unreadable — emit empty topology, log error
+- Agent file parse failure — skip agent, log failure, continue with remaining agents
+- Trust level unresolvable for an edge endpoint — skip trust check for that edge, log skip
+
+SUCCESS
+- cycle_detection_completeness: 0.4
+- topology_accuracy: 0.4
+- trust_scan_coverage: 0.2

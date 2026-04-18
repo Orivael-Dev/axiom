@@ -154,6 +154,19 @@ class EvolutionLoop:
                         )
                     except Exception:
                         pass
+                    # Promote to shared memory when score meets global threshold
+                    try:
+                        from axiom.shared_memory import promote
+                        promoted = promote(
+                            role="worker",
+                            prompt=self.worker.system_prompt,
+                            score=score,
+                            task_id=self.run_id,
+                        )
+                        if promoted:
+                            console.print(f"  [cyan]↑ Shared memory promoted — worker global best: {score:.1f}[/]")
+                    except Exception:
+                        pass
 
                 # Persist prompt + log
                 self.worker.record(self.worker.system_prompt, score)

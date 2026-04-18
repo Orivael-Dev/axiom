@@ -28,13 +28,22 @@ class BaseAgent:
     @property
     def system_prompt(self) -> str:
         if self._current_prompt is None:
-            # Priority: 1) evolved prompt from store  2) .axiom file  3) hardcoded seed
+            # Priority:
+            #   1) Task-scoped evolved prompt  (store.best_prompt)
+            #   2) Global best across sessions (shared_memory.best_global)
+            #   3) .axiom file default         (get_prompt)
+            #   4) Hardcoded seed_prompt
             saved = prompt_store.best_prompt(self.task_description, self.role)
             if saved is not None:
                 self._current_prompt = saved
             else:
-                axiom = _load_axiom_prompt(self.role)
-                self._current_prompt = axiom if axiom is not None else self.seed_prompt
+                from axiom.shared_memory import best_global
+                global_best = best_global(self.role)
+                if global_best is not None:
+                    self._current_prompt = global_best
+                else:
+                    axiom = _load_axiom_prompt(self.role)
+                    self._current_prompt = axiom if axiom is not None else self.seed_prompt
         return self._current_prompt
 
     @system_prompt.setter
