@@ -1,0 +1,309 @@
+# AXIOM v1.8.0 — Bundle Manifest
+Generated: 2026-04-19T09:20:27.821342+00:00
+Bundle: axiom-lang-1.8.0
+
+## File Integrity
+
+| File | SHA256 | Size | Category |
+|------|--------|------|----------|
+| `axiom_files/parser.py` | `d0df06cd77705acc...` | 61,616b | open_source |
+| `axiom_files/validator.py` | `faabddfd2bc664d3...` | 33,112b | open_source |
+| `axiom_files/concepts.axiom` | `3e66f4366dbf1c13...` | 4,134b | open_source |
+| `axiom_files/worker.axiom` | `03ff964f932579f3...` | 8,016b | open_source |
+| `axiom_files/evaluator.axiom` | `59b17e9e33b2a08e...` | 3,191b | open_source |
+| `axiom_files/rewriter.axiom` | `9001cf2292e4e84c...` | 3,237b | open_source |
+| `axiom_files/sandbox.axiom` | `4c1188ef09cb2e45...` | 1,941b | open_source |
+| `axiom_files/teacher.axiom` | `81693f99b6623532...` | 4,871b | open_source |
+| `axiom_files/session.axiom` | `9f0ad94110acf316...` | 5,864b | open_source |
+| `axiom_files/conversation_monitor.axiom` | `88072c424b35eb58...` | 7,119b | open_source |
+| `axiom_files/agent_factory.axiom` | `4a494204e6e88dec...` | 4,339b | open_source |
+| `axiom_files/skill_builder.axiom` | `78307b11f16610a5...` | 6,939b | open_source |
+| `axiom_files/game_watcher.axiom` | `ce309e5ec98c4d89...` | 2,661b | open_source |
+| `axiom_files/pattern_agent.axiom` | `0054fd11d92bb037...` | 2,592b | open_source |
+| `axiom_files/dos_watcher.axiom` | `ce46a9643b0a6223...` | 3,212b | open_source |
+| `axiom_files/domains/government.axiom` | `3686ebaf41c148a3...` | 6,394b | open_source |
+| `axiom_files/domains/finance.axiom` | `26f69bbea1bb7e7a...` | 4,950b | open_source |
+| `axiom_files/domains/healthcare.axiom` | `c50e5d493d02d00b...` | 4,714b | open_source |
+| `axiom_files/domains/domain_index.json` | `44132bcbf937b69f...` | 1,505b | open_source |
+| `axiom/client.py` | `4062514f4f81f918...` | 9,228b | open_source |
+| `axiom/evolution.py` | `b84a4a3e8415e051...` | 12,854b | open_source |
+| `axiom/session.py` | `7e784d65ca8ce342...` | 15,000b | open_source |
+| `axiom/__init__.py` | `d34dd9c220db5981...` | 121b | open_source |
+| `axiom/agents/worker.py` | `12df99dd5ccadc88...` | 5,253b | open_source |
+| `axiom/agents/evaluator.py` | `e191494dc757c557...` | 1,759b | open_source |
+| `axiom/agents/rewriter.py` | `08efe72dd3d400ad...` | 1,241b | open_source |
+| `axiom/agents/sandbox.py` | `29b91769bf21120b...` | 3,384b | open_source |
+| `axiom/agents/sandbox_content.py` | `0ede69db6200557c...` | 10,223b | open_source |
+| `axiom/agents/__init__.py` | `e3b0c44298fc1c14...` | 0b | open_source |
+| `axiom_server.py` | `0ec486f465f07a05...` | 25,036b | open_source |
+| `cli.py` | `e7d1b7e74b0647b9...` | 4,378b | open_source |
+| `pyproject.toml` | `f788891e6031b7ab...` | 1,664b | open_source |
+| `AXIOM_SPEC.md` | `a6878ca55c421dcd...` | 29,494b | open_source |
+| `DEPLOYER_GUIDE.md` | `c314e4311ff1e470...` | 20,682b | open_source |
+| `AXIOM_DATA_GOVERNANCE.md` | `ca00525f398339ff...` | 19,283b | open_source |
+| `README.md` | `85024ef747e6a841...` | 7,470b | open_source |
+| `LICENSE` | `89846b894fc928ae...` | 2,379b | open_source |
+| `certs/evaluator_cert_20260418_033831.json` | `6e2111edf34ddbfd...` | 3,474b | certification |
+| `certs/evaluator_cert_20260418_034128.json` | `4a45cd5660002309...` | 3,477b | certification |
+| `certs/evaluator_cert_20260418_061606.json` | `0bd3dfeb7f68cf51...` | 3,554b | certification |
+| `certs/evaluator_cert_20260418_204926.json` | `3a4985474f4f91fe...` | 4,225b | certification |
+| `certs/evaluator_cert_20260418_204952.json` | `58ec6933bda00f38...` | 4,225b | certification |
+| `certs/evaluator_cert_20260418_210823.json` | `8b88f01ca56b39b1...` | 4,225b | certification |
+| `certs/evaluator_cert_20260418_211739.json` | `c9e779739f0661ed...` | 4,225b | certification |
+| `certs/evaluator_cert_20260418_212419.json` | `c7ae715f64adfe99...` | 4,358b | certification |
+| `certs/evaluator_cert_20260418_221240.json` | `730b09f76d9a4bf2...` | 11,717b | certification |
+| `certs/evaluator_cert_20260418_221401.json` | `09f874a3f7107c4b...` | 11,717b | certification |
+| `certs/evaluator_cert_20260418_221637.json` | `c8a9b7955caabc73...` | 11,717b | certification |
+| `certs/evaluator_cert_20260418_222101.json` | `698dcbf98422a6f5...` | 11,717b | certification |
+| `certs/evaluator_cert_20260418_224848.json` | `abd4d084e416de80...` | 11,812b | certification |
+| `certs/evaluator_cert_20260418_224943.json` | `f591513b2ef77e52...` | 11,807b | certification |
+| `certs/evaluator_cert_20260418_225640.json` | `5010173bf6a2f3b4...` | 11,805b | certification |
+| `certs/evaluator_cert_20260419_042058.json` | `3e061703de2bfa09...` | 12,083b | certification |
+| `certs/evaluator_cert_20260419_092010.json` | `c8960161954eba56...` | 12,037b | certification |
+| `certs/evaluator_fria_20260418_221240.json` | `fe073dae419ff2c8...` | 6,980b | certification |
+| `certs/evaluator_fria_20260418_221401.json` | `6d91871dc8e4fea1...` | 6,980b | certification |
+| `certs/evaluator_fria_20260418_221637.json` | `6e553c303c8b0d26...` | 6,980b | certification |
+| `certs/evaluator_fria_20260418_222101.json` | `f2b6ff5a2579e618...` | 6,980b | certification |
+| `certs/evaluator_fria_20260418_224848.json` | `a96de87a647a1282...` | 7,066b | certification |
+| `certs/evaluator_fria_20260418_224943.json` | `f397bc39621a1d03...` | 7,066b | certification |
+| `certs/evaluator_fria_20260418_225640.json` | `4fd6a7a057465378...` | 7,066b | certification |
+| `certs/evaluator_fria_20260419_042058.json` | `33934cb2a5ec1bfc...` | 7,136b | certification |
+| `certs/evaluator_fria_20260419_092010.json` | `80b7e01fe68be0ce...` | 7,136b | certification |
+| `certs/financialcomplianceagent_cert_20260418_033849.json` | `759ed146343dc096...` | 3,758b | certification |
+| `certs/financialcomplianceagent_cert_20260418_034128.json` | `b8495cc106c9530a...` | 3,758b | certification |
+| `certs/financialcomplianceagent_cert_20260418_204952.json` | `d2a5bf36a2ef1e35...` | 4,429b | certification |
+| `certs/financialcomplianceagent_cert_20260418_210823.json` | `c2fd9612a5bb24e8...` | 4,429b | certification |
+| `certs/financialcomplianceagent_cert_20260418_211739.json` | `cae6bdf4fb5e8c36...` | 4,429b | certification |
+| `certs/financialcomplianceagent_cert_20260418_212419.json` | `b7ab5c40bca736f0...` | 4,562b | certification |
+| `certs/financialcomplianceagent_cert_20260418_222101.json` | `25e17d6db5e077a2...` | 12,441b | certification |
+| `certs/financialcomplianceagent_cert_20260418_224849.json` | `11a1bdf1a23ec29d...` | 12,536b | certification |
+| `certs/financialcomplianceagent_cert_20260418_224943.json` | `f31dad339195ec41...` | 12,531b | certification |
+| `certs/financialcomplianceagent_cert_20260418_225640.json` | `dc12ef05cd80edfb...` | 12,529b | certification |
+| `certs/financialcomplianceagent_cert_20260419_042058.json` | `91289d499a2115df...` | 12,807b | certification |
+| `certs/financialcomplianceagent_cert_20260419_092011.json` | `07db226c58b5b5d4...` | 12,761b | certification |
+| `certs/financialcomplianceagent_fria_20260418_222101.json` | `37eb50941afe5f23...` | 7,482b | certification |
+| `certs/financialcomplianceagent_fria_20260418_224849.json` | `0be6782b9c48bf68...` | 7,568b | certification |
+| `certs/financialcomplianceagent_fria_20260418_224943.json` | `983453f71ced8681...` | 7,568b | certification |
+| `certs/financialcomplianceagent_fria_20260418_225640.json` | `3c909c1421248d1d...` | 7,568b | certification |
+| `certs/financialcomplianceagent_fria_20260419_042058.json` | `96b5f54fd99a20c4...` | 7,638b | certification |
+| `certs/financialcomplianceagent_fria_20260419_092011.json` | `eff2c0296d1bd3c9...` | 7,638b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_033848.json` | `ad68c2ae827e0d39...` | 3,781b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_034128.json` | `08b584e06bc7e3a4...` | 3,769b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_204952.json` | `76781e5081532fab...` | 4,440b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_210823.json` | `1325f7b3939273cf...` | 4,440b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_211739.json` | `9a2ab2d17b94a9b3...` | 4,440b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_212419.json` | `4fa4639be62e210d...` | 4,573b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_222101.json` | `f6eb29ccec95c416...` | 12,448b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_224848.json` | `7c458d3b717ec955...` | 12,543b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_224943.json` | `e0c8797f82ae040d...` | 12,538b | certification |
+| `certs/governmentcomplianceagent_cert_20260418_225640.json` | `9c90fd67b727e24d...` | 12,536b | certification |
+| `certs/governmentcomplianceagent_cert_20260419_042058.json` | `2e2013f4caed8cf2...` | 12,814b | certification |
+| `certs/governmentcomplianceagent_cert_20260419_092011.json` | `83e6216b27f23b83...` | 12,768b | certification |
+| `certs/governmentcomplianceagent_fria_20260418_222101.json` | `3c954a898790a6ec...` | 7,478b | certification |
+| `certs/governmentcomplianceagent_fria_20260418_224848.json` | `b46573c772646528...` | 7,564b | certification |
+| `certs/governmentcomplianceagent_fria_20260418_224943.json` | `c327b6bf29682192...` | 7,564b | certification |
+| `certs/governmentcomplianceagent_fria_20260418_225640.json` | `fb91b9ec94129de1...` | 7,564b | certification |
+| `certs/governmentcomplianceagent_fria_20260419_042058.json` | `34dcd54dea40b5d4...` | 7,634b | certification |
+| `certs/governmentcomplianceagent_fria_20260419_092011.json` | `ed885c2853be10ba...` | 7,634b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_033850.json` | `59a31c92f834d51f...` | 3,775b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_034128.json` | `ed5cc966a02d333b...` | 3,763b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_204952.json` | `0f5b049e0755c870...` | 4,434b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_210823.json` | `5163827636adac09...` | 4,434b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_211739.json` | `7a7a42654b0e2dd3...` | 4,434b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_212419.json` | `ac39bd63824a68c0...` | 4,567b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_222101.json` | `461f9c3d7ae430af...` | 12,448b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_224849.json` | `62be1dd8195ce9c6...` | 12,543b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_224943.json` | `88f966f84dc7956e...` | 12,538b | certification |
+| `certs/healthcarecomplianceagent_cert_20260418_225640.json` | `cd6c80edde3e6212...` | 12,536b | certification |
+| `certs/healthcarecomplianceagent_cert_20260419_042058.json` | `d931b44b8df82b99...` | 12,814b | certification |
+| `certs/healthcarecomplianceagent_cert_20260419_092011.json` | `1a222a81549fc92a...` | 12,768b | certification |
+| `certs/healthcarecomplianceagent_fria_20260418_222101.json` | `fab56f37e1087748...` | 7,484b | certification |
+| `certs/healthcarecomplianceagent_fria_20260418_224849.json` | `4beb173b115954c6...` | 7,570b | certification |
+| `certs/healthcarecomplianceagent_fria_20260418_224943.json` | `ba823ce61cf3280f...` | 7,570b | certification |
+| `certs/healthcarecomplianceagent_fria_20260418_225640.json` | `280fc3895839ea1b...` | 7,570b | certification |
+| `certs/healthcarecomplianceagent_fria_20260419_042058.json` | `fd4528057b2e4b71...` | 7,640b | certification |
+| `certs/healthcarecomplianceagent_fria_20260419_092011.json` | `1ec6bbf1d4daecd9...` | 7,640b | certification |
+| `certs/rewriter_cert_20260418_033832.json` | `dc2a8421f26cf8e0...` | 3,471b | certification |
+| `certs/rewriter_cert_20260418_034128.json` | `91bad61e659fc5a1...` | 3,474b | certification |
+| `certs/rewriter_cert_20260418_061614.json` | `19b99b57facff802...` | 3,551b | certification |
+| `certs/rewriter_cert_20260418_204942.json` | `7a450e93df3b8412...` | 4,222b | certification |
+| `certs/rewriter_cert_20260418_204952.json` | `47c88c826ee694c1...` | 4,222b | certification |
+| `certs/rewriter_cert_20260418_210823.json` | `141d5805d3f1b3dc...` | 4,222b | certification |
+| `certs/rewriter_cert_20260418_211739.json` | `0c7151b76714b7ea...` | 4,222b | certification |
+| `certs/rewriter_cert_20260418_212419.json` | `85e0072845cd0ce2...` | 4,355b | certification |
+| `certs/rewriter_cert_20260418_221644.json` | `da4eb186fcea7496...` | 11,740b | certification |
+| `certs/rewriter_cert_20260418_222101.json` | `dbac0a22f057493c...` | 11,740b | certification |
+| `certs/rewriter_cert_20260418_224848.json` | `bf77149d1a663bdb...` | 11,835b | certification |
+| `certs/rewriter_cert_20260418_224943.json` | `050de811d21a2645...` | 11,830b | certification |
+| `certs/rewriter_cert_20260418_225640.json` | `f1e201f6fe3fd6fb...` | 11,828b | certification |
+| `certs/rewriter_cert_20260419_042058.json` | `ef0df3959fc53b5b...` | 12,106b | certification |
+| `certs/rewriter_cert_20260419_092011.json` | `e2a25ac45e8df1df...` | 12,060b | certification |
+| `certs/rewriter_fria_20260418_221644.json` | `80b16b3d025d7b0a...` | 7,006b | certification |
+| `certs/rewriter_fria_20260418_222101.json` | `4decab9e12a7ea75...` | 7,006b | certification |
+| `certs/rewriter_fria_20260418_224848.json` | `843e9f36bb6d72ce...` | 7,092b | certification |
+| `certs/rewriter_fria_20260418_224943.json` | `cbbcd2b04a63f448...` | 7,092b | certification |
+| `certs/rewriter_fria_20260418_225640.json` | `701c3b846eae4981...` | 7,092b | certification |
+| `certs/rewriter_fria_20260419_042058.json` | `2fa27748530a32e0...` | 7,162b | certification |
+| `certs/rewriter_fria_20260419_092011.json` | `2f4878400f0757c9...` | 7,162b | certification |
+| `certs/sandbox_cert_20260418_034128.json` | `5f064cd925ecdae3...` | 3,507b | certification |
+| `certs/sandbox_cert_20260418_204952.json` | `236959d7c9ffec44...` | 4,178b | certification |
+| `certs/sandbox_cert_20260418_210823.json` | `82f5e415b23e5ec5...` | 4,178b | certification |
+| `certs/sandbox_cert_20260418_211739.json` | `0749a93dc391e984...` | 4,178b | certification |
+| `certs/sandbox_cert_20260418_212419.json` | `fba11dd3c8391cc3...` | 4,311b | certification |
+| `certs/sandbox_cert_20260418_222101.json` | `28d2540231b6cc2a...` | 11,674b | certification |
+| `certs/sandbox_cert_20260418_224848.json` | `82d510ebed037ed3...` | 11,769b | certification |
+| `certs/sandbox_cert_20260418_224943.json` | `62c7499f0c918fde...` | 11,764b | certification |
+| `certs/sandbox_cert_20260418_225640.json` | `bff4d7f47412d313...` | 11,762b | certification |
+| `certs/sandbox_cert_20260419_042058.json` | `935bf35444ff09e1...` | 12,040b | certification |
+| `certs/sandbox_cert_20260419_092011.json` | `4b5fcd62b68eafd4...` | 11,994b | certification |
+| `certs/sandbox_fria_20260418_222101.json` | `99627261b509711d...` | 6,986b | certification |
+| `certs/sandbox_fria_20260418_224848.json` | `846fa7b7674ad471...` | 7,072b | certification |
+| `certs/sandbox_fria_20260418_224943.json` | `b146e9722e6cbddb...` | 7,072b | certification |
+| `certs/sandbox_fria_20260418_225640.json` | `cf3b30db0ce834c6...` | 7,072b | certification |
+| `certs/sandbox_fria_20260419_042058.json` | `618674aa3f24cbea...` | 7,142b | certification |
+| `certs/sandbox_fria_20260419_092011.json` | `c48be91d3fbe273b...` | 7,142b | certification |
+| `certs/worker_cert_20260418_033715.json` | `5f68958d38bd7a08...` | 3,781b | certification |
+| `certs/worker_cert_20260418_033830.json` | `d1dd17e2d87d369a...` | 3,781b | certification |
+| `certs/worker_cert_20260418_034127.json` | `dde536de2dd5dab7...` | 3,572b | certification |
+| `certs/worker_cert_20260418_170842.json` | `8e91351f81da7e2b...` | 4,180b | certification |
+| `certs/worker_cert_20260418_171437.json` | `8715031248172814...` | 4,293b | certification |
+| `certs/worker_cert_20260418_171800.json` | `9e5abd063552baa3...` | 4,243b | certification |
+| `certs/worker_cert_20260418_204951.json` | `d0e9850b042a5143...` | 4,243b | certification |
+| `certs/worker_cert_20260418_210821.json` | `7bd1ce5024be32e5...` | 4,243b | certification |
+| `certs/worker_cert_20260418_211738.json` | `c810db4d7d7c2fa8...` | 4,279b | certification |
+| `certs/worker_cert_20260418_212418.json` | `7c41295182f73cd8...` | 4,412b | certification |
+| `certs/worker_cert_20260418_222100.json` | `4019cbbe32cdb6e2...` | 12,216b | certification |
+| `certs/worker_cert_20260418_224847.json` | `ab0e272aee1eea38...` | 12,311b | certification |
+| `certs/worker_cert_20260418_224858.json` | `3ddf96c5863dcdb7...` | 12,311b | certification |
+| `certs/worker_cert_20260418_224942.json` | `fc674e09721e3968...` | 12,306b | certification |
+| `certs/worker_cert_20260418_225559.json` | `00bfe59ab1f3143b...` | 12,347b | certification |
+| `certs/worker_cert_20260418_225639.json` | `f716a7f2a7e3e591...` | 12,304b | certification |
+| `certs/worker_cert_20260419_042056.json` | `c96be911f2a07755...` | 12,582b | certification |
+| `certs/worker_cert_20260419_092009.json` | `b1538f6ec2f3732a...` | 12,536b | certification |
+| `certs/worker_fria_20260418_222100.json` | `06c7e1428a4f68ac...` | 7,409b | certification |
+| `certs/worker_fria_20260418_224847.json` | `ac0ed36eb15f4b86...` | 7,495b | certification |
+| `certs/worker_fria_20260418_224858.json` | `835aae871013edbf...` | 7,495b | certification |
+| `certs/worker_fria_20260418_224942.json` | `e22fbb29e99371ef...` | 7,495b | certification |
+| `certs/worker_fria_20260418_225559.json` | `e61fad01dca223cc...` | 7,495b | certification |
+| `certs/worker_fria_20260418_225639.json` | `ac48701e14992520...` | 7,495b | certification |
+| `certs/worker_fria_20260419_042056.json` | `90bae7ea9f8b899a...` | 7,565b | certification |
+| `certs/worker_fria_20260419_092009.json` | `23db09fe24e397e0...` | 7,565b | certification |
+| `certs/evaluator_cert_20260418_033832.pdf` | `dd74c091da44037d...` | 2,616b | certification_pdf |
+| `certs/evaluator_cert_20260418_034128.pdf` | `16ef1f07bf3dbd27...` | 2,618b | certification_pdf |
+| `certs/evaluator_cert_20260418_061608.pdf` | `875ae757ac49f3e8...` | 2,630b | certification_pdf |
+| `certs/evaluator_cert_20260418_204928.pdf` | `0199571967464883...` | 2,920b | certification_pdf |
+| `certs/evaluator_cert_20260418_204952.pdf` | `93893bf39d4c19ec...` | 2,921b | certification_pdf |
+| `certs/evaluator_cert_20260418_210823.pdf` | `95003ec59447fd78...` | 2,921b | certification_pdf |
+| `certs/evaluator_cert_20260418_211739.pdf` | `1cd6c667a73b7b7a...` | 2,921b | certification_pdf |
+| `certs/evaluator_cert_20260418_212419.pdf` | `3dc02055e988d0d7...` | 2,962b | certification_pdf |
+| `certs/evaluator_cert_20260418_221638.pdf` | `89b0c99bae70965a...` | 5,054b | certification_pdf |
+| `certs/evaluator_cert_20260418_222101.pdf` | `dc4746ec8efc84c6...` | 5,056b | certification_pdf |
+| `certs/evaluator_cert_20260418_224848.pdf` | `c734de2366ac94fe...` | 5,087b | certification_pdf |
+| `certs/evaluator_cert_20260418_224943.pdf` | `6d989aa8b34b4482...` | 5,054b | certification_pdf |
+| `certs/evaluator_cert_20260418_225640.pdf` | `2b89df897f60298b...` | 5,052b | certification_pdf |
+| `certs/evaluator_cert_20260419_042058.pdf` | `ad58210514ea1846...` | 5,197b | certification_pdf |
+| `certs/evaluator_cert_20260419_092010.pdf` | `d99da42460ed5d59...` | 5,137b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_033850.pdf` | `1f5ad05d96d683b7...` | 2,704b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_034128.pdf` | `aa8372acc357e5b2...` | 2,641b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_204952.pdf` | `02695bb8a2a34cb3...` | 2,941b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_210823.pdf` | `e08648171f88c883...` | 2,938b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_211739.pdf` | `6eb015d1339a78dc...` | 2,940b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_212419.pdf` | `03f6e5a3d45b425a...` | 2,977b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_222101.pdf` | `33329f8fe6ea9781...` | 5,085b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_224849.pdf` | `0c2d789e7a5aa655...` | 5,117b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_224943.pdf` | `3cb694abb80e3366...` | 5,084b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260418_225640.pdf` | `ed4642b1a46b4455...` | 5,082b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260419_042058.pdf` | `9c74ef76744324e0...` | 5,227b | certification_pdf |
+| `certs/financialcomplianceagent_cert_20260419_092011.pdf` | `e993d3e0d783fda0...` | 5,170b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_033849.pdf` | `dc1b2db574067ba9...` | 2,705b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_034128.pdf` | `ebd8f85daa12c4cc...` | 2,642b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_204952.pdf` | `cf25ae79f3ed0df2...` | 2,940b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_210823.pdf` | `24a499bd3f041208...` | 2,940b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_211739.pdf` | `25f0dbed86da2d77...` | 2,938b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_212419.pdf` | `43a6f01fd7ffcd3d...` | 2,977b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_222101.pdf` | `ff8542d32da6bda9...` | 5,084b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_224848.pdf` | `5ee97790c4fc47ce...` | 5,117b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_224943.pdf` | `7e53b4ff311f793b...` | 5,084b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260418_225640.pdf` | `10d2d10620d51340...` | 5,083b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260419_042058.pdf` | `1276e5c435a138b0...` | 5,223b | certification_pdf |
+| `certs/governmentcomplianceagent_cert_20260419_092011.pdf` | `f28f1e5b21c53682...` | 5,168b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_033851.pdf` | `c90f18182484dbd6...` | 2,711b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_034128.pdf` | `1b5838455233691b...` | 2,648b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_204952.pdf` | `4fa45c2fc650def3...` | 2,945b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_210823.pdf` | `009aed3ff39b3b81...` | 2,946b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_211739.pdf` | `f1926d6340548f4e...` | 2,946b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_212419.pdf` | `a3bfcf673d44d7eb...` | 2,982b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_222101.pdf` | `05e95c47e047f1e4...` | 5,093b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_224849.pdf` | `0965823bc6ef6bb7...` | 5,123b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_224943.pdf` | `eb954784922de2e0...` | 5,090b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260418_225640.pdf` | `575901f83a635a85...` | 5,088b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260419_042058.pdf` | `479bddbae7eea2ee...` | 5,233b | certification_pdf |
+| `certs/healthcarecomplianceagent_cert_20260419_092011.pdf` | `316b7425ed90ced0...` | 5,175b | certification_pdf |
+| `certs/rewriter_cert_20260418_033833.pdf` | `bcb270a351a9c15d...` | 2,614b | certification_pdf |
+| `certs/rewriter_cert_20260418_034128.pdf` | `9464e7552fdad1fe...` | 2,615b | certification_pdf |
+| `certs/rewriter_cert_20260418_061614.pdf` | `4f1a74bf9a27b7fe...` | 2,626b | certification_pdf |
+| `certs/rewriter_cert_20260418_204943.pdf` | `a9656504de70d5e2...` | 2,925b | certification_pdf |
+| `certs/rewriter_cert_20260418_204952.pdf` | `4c501d46e96b2002...` | 2,923b | certification_pdf |
+| `certs/rewriter_cert_20260418_210823.pdf` | `4095d34407f9a537...` | 2,925b | certification_pdf |
+| `certs/rewriter_cert_20260418_211739.pdf` | `ee73102cc5e7a14e...` | 2,922b | certification_pdf |
+| `certs/rewriter_cert_20260418_212419.pdf` | `c81be72783b12f1d...` | 2,963b | certification_pdf |
+| `certs/rewriter_cert_20260418_221644.pdf` | `dfaa9e6ce41f2890...` | 5,057b | certification_pdf |
+| `certs/rewriter_cert_20260418_222101.pdf` | `b8808cc2271e0c21...` | 5,058b | certification_pdf |
+| `certs/rewriter_cert_20260418_224848.pdf` | `54e63ad7177ff6c7...` | 5,089b | certification_pdf |
+| `certs/rewriter_cert_20260418_224943.pdf` | `2ac4fd6ca786083b...` | 5,057b | certification_pdf |
+| `certs/rewriter_cert_20260418_225640.pdf` | `7fce61ae56cbfab6...` | 5,055b | certification_pdf |
+| `certs/rewriter_cert_20260419_042058.pdf` | `1fa1ae4e20e2e49b...` | 5,196b | certification_pdf |
+| `certs/rewriter_cert_20260419_092011.pdf` | `b64656f768b60c3b...` | 5,138b | certification_pdf |
+| `certs/sandbox_cert_20260418_034128.pdf` | `98e67ec0756a3498...` | 2,615b | certification_pdf |
+| `certs/sandbox_cert_20260418_204952.pdf` | `0ce18db5567ce1dd...` | 2,907b | certification_pdf |
+| `certs/sandbox_cert_20260418_210823.pdf` | `333daf8e84c8c307...` | 2,906b | certification_pdf |
+| `certs/sandbox_cert_20260418_211739.pdf` | `ccc8a1cbcc146a41...` | 2,906b | certification_pdf |
+| `certs/sandbox_cert_20260418_212419.pdf` | `e6561f9a74b46d4f...` | 2,944b | certification_pdf |
+| `certs/sandbox_cert_20260418_222101.pdf` | `d3ba22ca1353c58c...` | 5,032b | certification_pdf |
+| `certs/sandbox_cert_20260418_224848.pdf` | `0723ed4cc5e07a57...` | 5,064b | certification_pdf |
+| `certs/sandbox_cert_20260418_224943.pdf` | `853e87e607edeadd...` | 5,031b | certification_pdf |
+| `certs/sandbox_cert_20260418_225640.pdf` | `18525b4d6a67e35f...` | 5,029b | certification_pdf |
+| `certs/sandbox_cert_20260419_042058.pdf` | `09a5e7f76764b4d2...` | 5,170b | certification_pdf |
+| `certs/sandbox_cert_20260419_092011.pdf` | `662d7a909a38cfec...` | 5,114b | certification_pdf |
+| `certs/worker_cert_20260418_033831.pdf` | `238b222412570767...` | 2,720b | certification_pdf |
+| `certs/worker_cert_20260418_034128.pdf` | `7b96a7bde50fba12...` | 2,616b | certification_pdf |
+| `certs/worker_cert_20260418_170844.pdf` | `f206affbbc59e74f...` | 2,959b | certification_pdf |
+| `certs/worker_cert_20260418_171439.pdf` | `c03ab36ded9a5cbb...` | 2,992b | certification_pdf |
+| `certs/worker_cert_20260418_171800.pdf` | `2e7fb32a332b3cdd...` | 2,902b | certification_pdf |
+| `certs/worker_cert_20260418_204952.pdf` | `22cdbcb20eed7bc2...` | 2,906b | certification_pdf |
+| `certs/worker_cert_20260418_210823.pdf` | `32c308dc1ac7216a...` | 2,904b | certification_pdf |
+| `certs/worker_cert_20260418_211739.pdf` | `9144fbf23b735c95...` | 2,906b | certification_pdf |
+| `certs/worker_cert_20260418_212419.pdf` | `352d9fc28f9a7659...` | 2,949b | certification_pdf |
+| `certs/worker_cert_20260418_222101.pdf` | `6a62509e46d66860...` | 5,047b | certification_pdf |
+| `certs/worker_cert_20260418_224848.pdf` | `fca574f64e67ace2...` | 5,081b | certification_pdf |
+| `certs/worker_cert_20260418_224859.pdf` | `be49ab6a27031c3f...` | 5,081b | certification_pdf |
+| `certs/worker_cert_20260418_224943.pdf` | `8d391a72111e3c7d...` | 5,045b | certification_pdf |
+| `certs/worker_cert_20260418_225600.pdf` | `a52004b707b965cf...` | 5,128b | certification_pdf |
+| `certs/worker_cert_20260418_225640.pdf` | `686249a4d5f2e0e5...` | 5,043b | certification_pdf |
+| `certs/worker_cert_20260419_042057.pdf` | `0b21f3757b75267c...` | 5,213b | certification_pdf |
+| `certs/worker_cert_20260419_092010.pdf` | `34f8fd4e11df266d...` | 5,128b | certification_pdf |
+
+## Bundle Integrity
+
+Files included: 276
+Missing files:  10
+Cert artifacts: 239
+
+## Proprietary Exclusions
+
+The following files are NOT included in this bundle:
+- `axiom_domain_seeder.py` — NIM-powered domain generation
+- `domain_hardener.py` — security hardening pipeline
+- `axiom_files/.history/` — mutation logs (private)
+- `axiom_files/.snapshots/` — evolved agent states (private)
+- `axiom_files/.reviews/` — review queue (private)
+- `axiom_files/.honesty/` — honesty ledger (private)
+- `axiom_lab/results/` — internal benchmark runs
+- `.env` — API keys
+
+## Verification
+
+Verify any file against this manifest:
+```bash
+python -c "import hashlib; print(hashlib.sha256(open('FILE','rb').read()).hexdigest())"
+```

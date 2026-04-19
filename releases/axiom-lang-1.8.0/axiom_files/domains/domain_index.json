@@ -1,0 +1,60 @@
+{
+  "version": "1.6.0",
+  "domains": {
+    "government": {
+      "agent": "domains/government.axiom",
+      "frameworks": [
+        "FedRAMP",
+        "NIST 800-53",
+        "FISMA",
+        "Privacy Act"
+      ],
+      "concepts": [
+        "FedRAMPCompliance",
+        "NISTControls",
+        "PrivacyActProtection"
+      ],
+      "benchmark_suite": "benchmarks/domains/government/",
+      "generated_at": "2026-04-17T18:23:07.221337+00:00",
+      "validation_status": "valid",
+      "test_count": 29
+    },
+    "finance": {
+      "agent": "domains/finance.axiom",
+      "frameworks": [
+        "FINRA",
+        "SOX",
+        "Dodd-Frank",
+        "Basel III",
+        "AML"
+      ],
+      "concepts": [
+        "SuitabilityCheck",
+        "AMLDetection",
+        "AuditCompliance"
+      ],
+      "benchmark_suite": "benchmarks/domains/finance/",
+      "generated_at": "2026-04-17T18:23:26.422751+00:00",
+      "validation_status": "valid",
+      "test_count": 14
+    },
+    "healthcare": {
+      "agent": "domains/healthcare.axiom",
+      "frameworks": [
+        "HIPAA",
+        "HITECH",
+        "HL7 FHIR",
+        "FDA 21 CFR Part 11"
+      ],
+      "concepts": [
+        "HIPAAPrivacy",
+        "MinimumNecessary",
+        "BreachDetection"
+      ],
+      "benchmark_suite": "benchmarks/domains/healthcare/",
+      "generated_at": "2026-04-17T18:23:55.221776+00:00",
+      "validation_status": "valid",
+      "test_count": 21
+    }
+  }
+}

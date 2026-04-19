@@ -1,0 +1,188 @@
+{
+  "fria_version": "1.0",
+  "generated_at": "2026-04-18T22:48:58.662234+00:00",
+  "generated_by": "axiom_certify.py",
+  "agent": "Worker",
+  "agent_version": "1.2",
+  "manifest_hash": "1baa22af3fe9b737c1ca55e887bb57247a6d6ef1d85f1dbfa90f7516c0e6fa77",
+  "system_description": {
+    "purpose": "Provide precise solutions to tasks",
+    "domain": "general",
+    "trust_level": "1",
+    "decision_type": "advisory",
+    "processing": "text input / text output"
+  },
+  "risk_classification": {
+    "axiom_trust_level": "1",
+    "eu_ai_act_risk_category": "STANDARD",
+    "annex_iii_item": "Not classified as Annex III high-risk by default",
+    "annex_iii_label": "General-purpose AI deployment \u2014 deployer must classify",
+    "deployer_note": "Deployer must confirm this classification is accurate for their specific deployment context. Annex III categories depend on use, not only on the system itself."
+  },
+  "fundamental_rights_assessment": [
+    {
+      "right": "Human Dignity",
+      "eu_charter_article": "Article 1",
+      "inherent_impact": "LOW",
+      "basis": "Advisory output only \u2014 no autonomous enforcement",
+      "mitigations": [
+        "Security block is constitutionally protected (CANNOT_MUTATE)",
+        "Injection detection active in SECURITY rules",
+        "HighRiskInput WHEN activation routes to Sandbox review",
+        "HUMAN_REVIEW gate: 8 trigger conditions"
+      ],
+      "residual_risk": "PLACEHOLDER \u2014 deployer must assess and sign off"
+    },
+    {
+      "right": "Privacy and Data",
+      "eu_charter_article": "Article 8",
+      "inherent_impact": "LOW",
+      "basis": "Session data held in memory, not persisted by default",
+      "mitigations": [
+        "Security block is constitutionally protected (CANNOT_MUTATE)",
+        "Injection detection active in SECURITY rules",
+        "HighRiskInput WHEN activation routes to Sandbox review",
+        "HUMAN_REVIEW gate: 8 trigger conditions"
+      ],
+      "residual_risk": "PLACEHOLDER \u2014 deployer must assess and sign off"
+    },
+    {
+      "right": "Non-Discrimination",
+      "eu_charter_article": "Article 21",
+      "inherent_impact": "LOW",
+      "basis": "Rate limits apply equally to all callers \u2014 no exemptions",
+      "mitigations": [
+        "Security block is constitutionally protected (CANNOT_MUTATE)",
+        "Injection detection active in SECURITY rules",
+        "HighRiskInput WHEN activation routes to Sandbox review",
+        "HUMAN_REVIEW gate: 8 trigger conditions",
+        "DoS Watcher enforces equal rate limits across all callers (LLM04)"
+      ],
+      "residual_risk": "PLACEHOLDER \u2014 deployer must assess and sign off"
+    },
+    {
+      "right": "Freedom of Expression",
+      "eu_charter_article": "Article 11",
+      "inherent_impact": "LOW",
+      "basis": "Model cannot be silenced by operator prompt injection",
+      "mitigations": [
+        "Security block is constitutionally protected (CANNOT_MUTATE)",
+        "Injection detection active in SECURITY rules",
+        "HighRiskInput WHEN activation routes to Sandbox review",
+        "HUMAN_REVIEW gate: 8 trigger conditions"
+      ],
+      "residual_risk": "PLACEHOLDER \u2014 deployer must assess and sign off"
+    },
+    {
+      "right": "Right to Remedy",
+      "eu_charter_article": "Article 47",
+      "inherent_impact": "LOW",
+      "basis": "Human review gate (HUMAN_REVIEW) available for all decisions",
+      "mitigations": [
+        "Security block is constitutionally protected (CANNOT_MUTATE)",
+        "Injection detection active in SECURITY rules",
+        "HighRiskInput WHEN activation routes to Sandbox review",
+        "HUMAN_REVIEW gate: 8 trigger conditions"
+      ],
+      "residual_risk": "PLACEHOLDER \u2014 deployer must assess and sign off"
+    },
+    {
+      "right": "Presumption of Innocence",
+      "eu_charter_article": "Article 48",
+      "inherent_impact": "LOW",
+      "basis": "Agent cannot issue binding sanctions \u2014 advisory role only",
+      "mitigations": [
+        "Security block is constitutionally protected (CANNOT_MUTATE)",
+        "Injection detection active in SECURITY rules",
+        "HighRiskInput WHEN activation routes to Sandbox review",
+        "HUMAN_REVIEW gate: 8 trigger conditions"
+      ],
+      "residual_risk": "PLACEHOLDER \u2014 deployer must assess and sign off"
+    }
+  ],
+  "technical_mitigations": {
+    "constitutional_constraints": [
+      "agent",
+      "goal",
+      "version",
+      "trust_level",
+      "sandbox_agent",
+      "security",
+      "tools"
+    ],
+    "security_rules_count": 15,
+    "runtime_layers": [
+      "layer_1_constitutional_suffix",
+      "layer_2_output_validation",
+      "layer_2b_sandbox_content",
+      "layer_3_sandbox_agent",
+      "layer_4_cannot_mutate"
+    ],
+    "human_review_triggers": [
+      "security_modification",
+      "trust_level_change",
+      "semantic_drift > 0.20",
+      "bulk_constraint_change > 3",
+      "external_agent_import",
+      "score_below_snapshot with pending_rewrite",
+      "cannot_mutate_expansion",
+      "watermark_manipulation_detected"
+    ],
+    "human_review_timeout": "24h",
+    "human_review_block_on_timeout": true,
+    "dos_rate_limiting": true,
+    "supply_chain_integrity": true
+  },
+  "monitoring_and_logging": {
+    "audit_trail": "axiom_files/.history/{agent}_history.jsonl \u2014 append-only",
+    "dos_log": "axiom_files/.dos/dos_log.jsonl \u2014 every BLOCK + CIRCUIT_TRIPPED",
+    "review_queue": "axiom_files/.reviews/review_queue.jsonl \u2014 all change requests",
+    "honesty_ledger": "axiom_files/.honesty/honesty_ledger.jsonl \u2014 integrity evaluations",
+    "deployer_note": "PLACEHOLDER \u2014 deployer must document retention policy and GDPR Article 5(1)(e) compliance"
+  },
+  "human_oversight": {
+    "human_review_block": {
+      "triggers": [
+        "security_modification",
+        "trust_level_change",
+        "semantic_drift > 0.20",
+        "bulk_constraint_change > 3",
+        "external_agent_import",
+        "score_below_snapshot with pending_rewrite",
+        "cannot_mutate_expansion",
+        "watermark_manipulation_detected"
+      ],
+      "timeout": "24h",
+      "escalate_to": "operator_email",
+      "block_on_timeout": true
+    },
+    "operator_escalation": "PLACEHOLDER \u2014 deployer must name the responsible person or team",
+    "response_sla": "PLACEHOLDER \u2014 deployer must define SLA for PENDING reviews"
+  },
+  "residual_risks": [
+    {
+      "risk": "PLACEHOLDER \u2014 deployer must identify deployment-specific residual risks",
+      "likelihood": "PLACEHOLDER",
+      "severity": "PLACEHOLDER",
+      "mitigation": "PLACEHOLDER"
+    }
+  ],
+  "deployer_attestation": {
+    "organisation": "PLACEHOLDER \u2014 deployer organisation name",
+    "completed_by": "PLACEHOLDER \u2014 name and role",
+    "date": "PLACEHOLDER \u2014 ISO 8601 date",
+    "review_period": "PLACEHOLDER \u2014 e.g. annual review or on material change",
+    "signature": "PLACEHOLDER \u2014 wet or electronic signature"
+  },
+  "regulatory_references": {
+    "eu_ai_act_articles": [
+      "Article 9",
+      "Article 10",
+      "Article 13",
+      "Article 27",
+      "Article 50"
+    ],
+    "eu_charter": "Charter of Fundamental Rights of the European Union (2000/C 364/01)",
+    "gdpr": "Regulation (EU) 2016/679"
+  }
+}

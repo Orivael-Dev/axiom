@@ -1,0 +1,52 @@
+Copyright (c) 2026 Antonio Roberts
+
+All rights reserved.
+
+This software and associated documentation files (the "Software") may not be
+copied, modified, merged, published, distributed, sublicensed, sold, or used
+in whole or in part without the express written permission of the copyright
+holder.
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+──────────────────────────────────────────────────────────────
+
+AXIOM — An AI-Native Language for Self-Evolving Intelligence
+
+Author:       Antonio Roberts
+Created:      2026
+Project:      AXIOM Phase 1 — Self-Improving Prompt Agent
+Repository:   i:\vsCode\promt-agent
+
+Description:
+  AXIOM is a language and agent architecture for building self-improving AI
+  systems. Agents are defined by .axiom files — a structured plaintext DSL
+  that the system can read, execute, evaluate, and rewrite autonomously.
+  The Rewriter agent mutates agent definitions on disk, enabling the language
+  to evolve itself over successive runs.
+
+Components authored by Antonio Roberts:
+  - AXIOM DSL v0 specification and .axiom file format
+  - axiom/ — core engine (client, store, rubric, evolution loop, meta-evolution)
+  - axiom/agents/ — Worker, Evaluator, Rewriter, BaseAgent
+  - axiom_files/ — DSL agent definitions and parser
+  - ui.py — Streamlit browser interface
+  - run_axiom.py — DSL language test runner
+  - main.py — CLI runner
+
+Third-party dependencies are subject to their own licenses:
+  - openai — MIT License
+  - streamlit — Apache 2.0 License
+  - python-dotenv — BSD License
+  - rich — MIT License
+  - typer — MIT License
+  - NVIDIA NIM API — NVIDIA Terms of Service (build.nvidia.com)

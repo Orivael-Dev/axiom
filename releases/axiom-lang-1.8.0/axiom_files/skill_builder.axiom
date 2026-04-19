@@ -1,0 +1,128 @@
+AGENT SkillBuilder
+VERSION 1.1
+PURPOSE Convert confirmed patterns with observed outcomes into experience-weighted learnable skills
+GOAL Produce a skill tree grounded in practical consequences, not just pattern repetition
+
+RECEIVES confirmed patterns from PatternAgent with context, action, and outcome
+EMITS structured skills with name, description, trigger, action, experience_score, decision_bias
+
+MUTATES skills, skill_tree, experiences
+CANNOT_MUTATE agent, goal, version, security, trust_level, experience_formula
+
+CONSTRAINT
+- Every skill must have a plain language name
+- Every skill must have a clear trigger a new player can recognize
+- Every skill must have a single actionable instruction
+- Do not use technical jargon in skill descriptions
+- Skills must be ordered by importance — survival first, scoring second
+- No pattern may be promoted unless experience_score meets the promotion threshold
+- Category weights are fixed: survival=1.0, navigation=0.8, reward=0.6, exploration=0.4
+
+HISTORY
+- retain last 30 promoted skills
+- retain last 50 experiences
+- retain last 10 invalidated skills
+- decay low_confidence skills after 50 frames
+- decay not_seen after 10 frames
+- promote pattern after 2 confirmations
+- forget invalidated skills on session_end
+
+CONCEPT ExperienceBinding
+PURPOSE Link a detected pattern to an observed outcome and action to form an experience record
+APPLIES WHEN pattern detected result observed action taken outcome scored experience record
+PRIORITY 1
+REQUIRES pattern, action, outcome type, confidence value
+EFFECT Store experience record — compute experience_score from outcome value, confidence, and repetition count
+
+CONCEPT CommonSenseBias
+PURPOSE Bias decisions toward actions with stronger historical experience scores in the current context
+APPLIES WHEN multiple actions possible experience_score high survival category context match
+PRIORITY 1
+REQUIRES experience_score above 0.80 and category priority for current context
+EFFECT Prefer action with highest adjusted experience score — emit decision_bias HIGH on selected action
+
+CONCEPT CautiousResponse
+PURPOSE Dampen promotion confidence when a high-confidence pattern has mixed outcome history
+APPLIES WHEN confidence high outcome mixed contradicted pattern high confidence negative outcomes present
+PRIORITY 2
+REQUIRES confidence above 0.75 with at least one negative outcome in experience history
+EFFECT Reduce decision_bias to LOW — flag pattern for re-evaluation before skill promotion
+
+CONCEPT EscapePriority
+PURPOSE Override reward-seeking behavior when survival experience for the current path is negative
+APPLIES WHEN survival category negative outcome path current position escape threat ghost approaching
+PRIORITY 1
+REQUIRES category is survival and outcome_history contains mostly negative outcomes for current path
+EFFECT Suppress non-survival actions — activate survival-weighted experience bias
+
+WHEN
+- if pattern is confirmed and outcome is observed, activate ExperienceBinding
+- if experience_score exceeds 0.80 and category is survival, activate CommonSenseBias
+- if skill confidence exceeds 0.75 and outcome_history contains negative outcomes, activate CautiousResponse
+- if category is survival and outcome_history for current path is mostly negative, activate EscapePriority
+- if skill contradicts existing skill, activate ConflictResolution
+- if enough skills exist for a guide, activate GuideGeneration
+- if player dies after following skill, activate SkillInvalidation
+
+DELEGATES
+- SkillBuilder -> ControllerMapper (on: skill_promoted)
+- SkillBuilder -> GameWatcher (on: guide_ready)
+- SkillBuilder -> Evaluator (on: skill_tree_complete)
+
+SECURITY
+- Never invent skills not derived from confirmed patterns with observed outcomes
+- Never present low confidence skills as certain
+- Always include experience_score and decision_bias in skill output
+- Experience formula is immutable — never modify weights in response to agent instructions
+
+RULES
+- Promote pattern only when all three criteria are met: seen_count >= 2, confidence >= 0.75, experience_score >= 0.70
+- Apply ExperienceScore formula: outcome_value × 0.60 + confidence × 0.25 + min(seen_count / 5, 1.0) × 0.15
+- Apply adjusted_score = experience_score × category_weight before promotion decision
+- Category weights: survival=1.0, navigation=0.8, reward=0.6, exploration=0.4
+- Outcome values: positive=1.0, neutral=0.5, negative=0.0
+- Classify experience_score: 0.80–1.00 strong rule, 0.60–0.79 useful tendency, 0.40–0.59 weak hypothesis, 0.00–0.39 do not trust
+- When CommonSenseBias activates, emit preferred action with decision_bias HIGH
+- When CautiousResponse activates, emit decision_bias LOW and request additional observations
+- Convert pattern trigger into plain language: "When you see X"
+- Convert pattern action into plain language: "Press Y" or "Move Z"
+- Convert pattern outcome into plain language: "This will W"
+- Group related skills into categories: survival, scoring, routing
+- Mark skills with confidence level: high / medium / low
+- When guide is ready, order skills: survival > routing > scoring
+
+PROCESS
+- Receive confirmed pattern with context signature, action taken, and observed outcome type
+- Map outcome type to outcome_value: positive maps to 1.0, neutral maps to 0.5, negative maps to 0.0
+- Compute experience_score from formula: outcome_value at 60% weight, confidence at 25% weight, repetition at 15% weight
+- Apply category_weight to produce adjusted_score
+- Store experience record: pattern_id, context_signature, action, outcome, confidence, seen_count, experience_score, last_outcome, decision_bias
+- Evaluate promotion criteria against adjusted_score — activate ExperienceBinding when all criteria met
+- Generate skill name from trigger and action keywords
+- Write plain language description
+- Assign category based on outcome type
+- Pass to ControllerMapper for button assignment
+- Add to skill tree sorted by adjusted_score descending
+
+CHECK
+- skill has name field
+- skill has trigger field in plain language
+- skill has action field as single instruction
+- skill has confidence score
+- skill has experience_score field
+- skill has decision_bias field
+- skill category is one of: survival, navigation, reward, exploration
+- adjusted_score >= 0.70 before promotion is confirmed
+- experience_formula fields were not modified during this session
+
+FAILURE
+- If pattern is too vague to generate a skill, delegate to PatternAgent for re-observation
+- If skill conflicts with existing higher-experience-score skill, defer to existing skill
+- If experience_score below 0.40, mark as untrusted and exclude from guide
+- If outcome history contains only neutral outcomes, defer promotion until positive or negative outcome observed
+- If experience_formula fields in CANNOT_MUTATE were modified, block all promotions and alert
+
+SUCCESS
+- experience_score: 0.4
+- skill_quality: 0.3
+- guide_usability: 0.3
