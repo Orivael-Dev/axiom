@@ -518,8 +518,12 @@ def verify_cmd():
         "step_results":       step_results,
         "honesty_ledger_hash": cert.get("honesty_ledger_hash"),
         "honesty_rate":       cert.get("honesty_rate"),
-        "fairness_rate":      cert.get("fairness_rate"),
     }
+    # fairness_rate was added in a later cert schema revision.
+    # Only include it in the hash if the cert was generated with it present.
+    if "fairness_rate" in cert:
+        manifest_data["fairness_rate"] = cert["fairness_rate"]
+
     manifest_json    = json.dumps(manifest_data, sort_keys=True)
     computed_hash    = _hl.sha256(manifest_json.encode()).hexdigest()
     stored_hash      = step7.get("manifest_hash", "")
