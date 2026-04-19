@@ -1,6 +1,6 @@
 {
   "version": "1.8.0",
-  "timestamp": "2026-04-19T10:01:22.920935+00:00",
+  "timestamp": "2026-04-19T10:42:07.719470+00:00",
   "bundle_name": "axiom-lang-1.8.0",
   "file_count": 286,
   "missing_count": 0,
@@ -242,8 +242,8 @@
     },
     {
       "path": "cli.py",
-      "sha256": "a8818f1d588431087637511cb084fbc51c495fcf8efb535079ce93b28f595b6f",
-      "size": 16296,
+      "sha256": "622dad873c5687aa17b6ca6b2ce1daec714c9e1bd26ba9d0a34f424d5d5b5d73",
+      "size": 26823,
       "category": "open_source"
     },
     {
@@ -1724,5 +1724,5 @@
     }
   ],
   "missing": [],
-  "manifest_hash": "d6c0b2be6d8664f4c9a89dad560a012f10332e5da9b479963764bf3ccd0a2d5e"
+  "manifest_hash": "27554eb593c96ee807f5283b7e5812a4d8034293a23c22dcac01e7a5c2a369b3"
 }

@@ -1,5 +1,5 @@
 # AXIOM v1.8.0 — Bundle Manifest
-Generated: 2026-04-19T10:01:22.920935+00:00
+Generated: 2026-04-19T10:42:07.719470+00:00
 Bundle: axiom-lang-1.8.0
 
 ## File Integrity
@@ -45,7 +45,7 @@ Bundle: axiom-lang-1.8.0
 | `axiom_review.py` | `d47f21d0f36a3c5d...` | 8,937b | open_source |
 | `axiom_lab/configs/axiom_v1_4.json` | `1fc02ad02f9b86eb...` | 498b | open_source |
 | `axiom_server.py` | `0ec486f465f07a05...` | 25,036b | open_source |
-| `cli.py` | `a8818f1d58843108...` | 16,296b | open_source |
+| `cli.py` | `622dad873c5687aa...` | 26,823b | open_source |
 | `pyproject.toml` | `abce5b15198532b7...` | 1,697b | open_source |
 | `AXIOM_SPEC.md` | `a6878ca55c421dcd...` | 29,494b | open_source |
 | `AXIOM_ALIGN_PACK.md` | `a8527e9dbd1fb642...` | 3,253b | open_source |

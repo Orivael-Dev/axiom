@@ -131,10 +131,10 @@ def build_bundle(
     manifest_entries = []
     missing_files = []
 
-    print(f"\n{'═'*60}")
+    print(f"\n{'='*60}")
     print(f"  AXIOM v{VERSION} Export Bundle")
     print(f"  {timestamp}")
-    print(f"{'═'*60}\n")
+    print(f"{'='*60}\n")
 
     # Clean previous bundle
     if bundle_dir.exists():
@@ -150,7 +150,7 @@ def build_bundle(
 
         if not src.exists():
             missing_files.append(rel_path)
-            print(f"  ⚠ Missing: {rel_path}")
+            print(f"  [!] Missing: {rel_path}")
             continue
 
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -164,7 +164,7 @@ def build_bundle(
         })
         copied += 1
 
-    print(f"  ✅ Copied {copied} files ({len(missing_files)} missing)")
+    print(f"  [OK] Copied {copied} files ({len(missing_files)} missing)")
 
     # ── Copy benchmark suites ──────────────────────────────────
     print("  Copying benchmark suites...")
@@ -172,7 +172,7 @@ def build_bundle(
     for bench_dir in BENCHMARK_DIRS:
         src_dir = project_root / bench_dir
         if not src_dir.exists():
-            print(f"  ⚠ Benchmark dir missing: {bench_dir}")
+            print(f"  [!] Benchmark dir missing: {bench_dir}")
             continue
         for src in src_dir.rglob("*.json"):
             rel = src.relative_to(project_root)
@@ -186,7 +186,7 @@ def build_bundle(
                 "category": "benchmark",
             })
             bench_count += 1
-    print(f"  ✅ Copied {bench_count} benchmark files")
+    print(f"  [OK] Copied {bench_count} benchmark files")
 
     # ── Copy certification reports ─────────────────────────────
     cert_count = 0
@@ -217,7 +217,7 @@ def build_bundle(
             })
             cert_count += 1
 
-        print(f"  ✅ Copied {cert_count} certification artifacts")
+        print(f"  [OK] Copied {cert_count} certification artifacts")
     else:
         print("  — No certs directory specified or found")
 
@@ -285,7 +285,7 @@ def build_bundle(
     (bundle_dir / "MANIFEST.json").write_text(
         json.dumps(manifest_json, indent=2), encoding="utf-8"
     )
-    print("  ✅ MANIFEST.md + MANIFEST.json generated")
+    print("  [OK] MANIFEST.md + MANIFEST.json generated")
 
     # ── Generate CHANGELOG.md ──────────────────────────────────
     print("  Generating CHANGELOG.md...")
@@ -413,12 +413,12 @@ def build_bundle(
 """
 
     (bundle_dir / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
-    print("  ✅ CHANGELOG.md generated")
+    print("  [OK] CHANGELOG.md generated")
 
     # ── Summary ────────────────────────────────────────────────
     total_size = sum(e["size"] for e in manifest_entries)
 
-    print(f"\n{'═'*60}")
+    print(f"\n{'='*60}")
     print(f"  Bundle: {bundle_dir}")
     print(f"  Files:  {len(manifest_entries)}")
     print(f"  Size:   {total_size / 1024 / 1024:.1f} MB")
@@ -429,7 +429,7 @@ def build_bundle(
         for f in missing_files:
             print(f"    - {f}")
     print(f"\n  MANIFEST hash: {manifest_json['manifest_hash'][:32]}...")
-    print(f"{'═'*60}\n")
+    print(f"{'='*60}\n")
 
     return bundle_dir
 

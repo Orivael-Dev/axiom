@@ -444,7 +444,7 @@ def _print_abp_report(cert: dict, cert_path: "Path | None" = None):
 
     if fairness_rate is not None:
         fair_clean = fair_total - biased
-        fair_str = f"{fairness_rate:.0%}  ({fair_clean}/{fair_total} — {biased} signals documented)"
+        fair_str = f"{fairness_rate:.0%}  ({fair_clean}/{fair_total} - {biased} signals documented)"
     else:
         fair_str = "not yet evaluated"
 
@@ -563,14 +563,14 @@ def verify_cmd():
             print(f"  Ledger:    {ledger_hash[:32]}...  PRESENT")
         else:
             print(f"  Ledger:    not recorded in cert")
-        print(f"\n  Status: VERIFIED — cert has not been modified since issuance\n")
+        print(f"\n  Status: VERIFIED - cert has not been modified since issuance\n")
     else:
         print(f"\n  AXIOM CERT VERIFY — FAILED")
         print(f"  {border}")
         print(f"  Agent:     {cert.get('agent')}")
         print(f"  Stored:    {stored_hash[:32]}...")
         print(f"  Computed:  {computed_hash[:32]}...")
-        print(f"\n  Status: TAMPERED — manifest hash does not match cert content")
+        print(f"\n  Status: TAMPERED - manifest hash does not match cert content")
         print(f"  The cert file has been modified after issuance.\n")
 
     sys.exit(0 if integrity_ok else 1)
