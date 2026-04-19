@@ -1,5 +1,5 @@
 # AXIOM v1.8.0 — Bundle Manifest
-Generated: 2026-04-19T09:20:27.821342+00:00
+Generated: 2026-04-19T10:01:22.920935+00:00
 Bundle: axiom-lang-1.8.0
 
 ## File Integrity
@@ -35,10 +35,20 @@ Bundle: axiom-lang-1.8.0
 | `axiom/agents/sandbox.py` | `29b91769bf21120b...` | 3,384b | open_source |
 | `axiom/agents/sandbox_content.py` | `0ede69db6200557c...` | 10,223b | open_source |
 | `axiom/agents/__init__.py` | `e3b0c44298fc1c14...` | 0b | open_source |
+| `axiom/teacher.py` | `d66110b2cf42fc0e...` | 31,259b | open_source |
+| `axiom/conversation_monitor.py` | `a03280303507bf18...` | 15,510b | open_source |
+| `axiom/agent_factory.py` | `1a86f37e3fce1a2d...` | 8,303b | open_source |
+| `axiom/experience_store.py` | `694bb64db3394460...` | 13,807b | open_source |
+| `axiom/integrity_check.py` | `5823791b61766ff1...` | 10,445b | open_source |
+| `run_axiom.py` | `8a4147a2ab663de3...` | 8,561b | open_source |
+| `axiom_certify.py` | `348e8eba28f33705...` | 53,562b | open_source |
+| `axiom_review.py` | `d47f21d0f36a3c5d...` | 8,937b | open_source |
+| `axiom_lab/configs/axiom_v1_4.json` | `1fc02ad02f9b86eb...` | 498b | open_source |
 | `axiom_server.py` | `0ec486f465f07a05...` | 25,036b | open_source |
-| `cli.py` | `e7d1b7e74b0647b9...` | 4,378b | open_source |
-| `pyproject.toml` | `f788891e6031b7ab...` | 1,664b | open_source |
+| `cli.py` | `a8818f1d58843108...` | 16,296b | open_source |
+| `pyproject.toml` | `abce5b15198532b7...` | 1,697b | open_source |
 | `AXIOM_SPEC.md` | `a6878ca55c421dcd...` | 29,494b | open_source |
+| `AXIOM_ALIGN_PACK.md` | `a8527e9dbd1fb642...` | 3,253b | open_source |
 | `DEPLOYER_GUIDE.md` | `c314e4311ff1e470...` | 20,682b | open_source |
 | `AXIOM_DATA_GOVERNANCE.md` | `ca00525f398339ff...` | 19,283b | open_source |
 | `README.md` | `85024ef747e6a841...` | 7,470b | open_source |
@@ -285,8 +295,8 @@ Bundle: axiom-lang-1.8.0
 
 ## Bundle Integrity
 
-Files included: 276
-Missing files:  10
+Files included: 286
+Missing files:  0
 Cert artifacts: 239
 
 ## Proprietary Exclusions

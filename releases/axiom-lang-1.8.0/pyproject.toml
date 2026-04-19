@@ -41,6 +41,7 @@ dev = [
 ]
 
 [project.scripts]
+axiom          = "cli:axiom_cmd"
 axiom-validate = "cli:validate_cmd"
 axiom-run      = "cli:run_cmd"
 axiom-server   = "cli:cmd_server"

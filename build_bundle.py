@@ -56,22 +56,24 @@ OPEN_SOURCE_FILES = [
     "axiom/evolution.py",
     "axiom/session.py",
     "axiom/__init__.py",
-    # Agents
+    # Agents (axiom/agents/ — runtime wrappers)
     "axiom/agents/worker.py",
     "axiom/agents/evaluator.py",
     "axiom/agents/rewriter.py",
     "axiom/agents/sandbox.py",
     "axiom/agents/sandbox_content.py",
-    "axiom/agents/teacher.py",
-    "axiom/agents/conversation_monitor.py",
-    "axiom/agents/agent_factory.py",
-    "axiom/agents/experience_store.py",
     "axiom/agents/__init__.py",
-    # Lab
-    "axiom_lab/scripts/run_lab.py",
-    "axiom_lab/scripts/integrity_check.py",
-    "axiom_lab/scripts/axiom_certify.py",
-    "axiom_lab/scripts/axiom_review.py",
+    # Runtime modules (axiom/ — live at axiom/ not axiom/agents/)
+    "axiom/teacher.py",
+    "axiom/conversation_monitor.py",
+    "axiom/agent_factory.py",
+    "axiom/experience_store.py",
+    "axiom/integrity_check.py",
+    # Lab tools (at project root)
+    "run_axiom.py",
+    "axiom_certify.py",
+    "axiom_review.py",
+    # Lab config
     "axiom_lab/configs/axiom_v1_4.json",
     # Server + CLI
     "axiom_server.py",
@@ -79,7 +81,7 @@ OPEN_SOURCE_FILES = [
     "pyproject.toml",
     # Docs
     "AXIOM_SPEC.md",
-    "OWASP_ALIGNMENT.md",
+    "AXIOM_ALIGN_PACK.md",
     "DEPLOYER_GUIDE.md",
     "AXIOM_DATA_GOVERNANCE.md",
     "README.md",

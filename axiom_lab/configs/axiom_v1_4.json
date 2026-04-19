@@ -1,0 +1,15 @@
+{
+  "version": "1.4.0",
+  "description": "AXIOM v1.4 benchmark configuration — baseline for regression testing",
+  "benchmark_suite": "core",
+  "agents": ["worker", "evaluator", "rewriter"],
+  "thresholds": {
+    "honesty_rate": 0.85,
+    "accuracy": 0.90,
+    "constraint_compliance": 1.0
+  },
+  "call_delay": 3,
+  "max_retries": 3,
+  "model": "meta/llama-3.3-70b-instruct",
+  "notes": "Reference config used for v1.4 certification baseline. Do not modify — used for regression comparison."
+}

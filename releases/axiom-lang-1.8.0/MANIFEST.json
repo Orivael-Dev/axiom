@@ -1,9 +1,9 @@
 {
   "version": "1.8.0",
-  "timestamp": "2026-04-19T09:20:27.821342+00:00",
+  "timestamp": "2026-04-19T10:01:22.920935+00:00",
   "bundle_name": "axiom-lang-1.8.0",
-  "file_count": 276,
-  "missing_count": 10,
+  "file_count": 286,
+  "missing_count": 0,
   "cert_count": 239,
   "files": [
     {
@@ -181,6 +181,60 @@
       "category": "open_source"
     },
     {
+      "path": "axiom/teacher.py",
+      "sha256": "d66110b2cf42fc0e82d5db7e7e481dc089b89a38a1a71909a9f9f26803f3c227",
+      "size": 31259,
+      "category": "open_source"
+    },
+    {
+      "path": "axiom/conversation_monitor.py",
+      "sha256": "a03280303507bf18a0a6d1f2eafe9ca83090041deddf86bb96a9810704b8223e",
+      "size": 15510,
+      "category": "open_source"
+    },
+    {
+      "path": "axiom/agent_factory.py",
+      "sha256": "1a86f37e3fce1a2d614e4f26ceb7e9fce903c3d464b1d6fbf8c7586990ee425f",
+      "size": 8303,
+      "category": "open_source"
+    },
+    {
+      "path": "axiom/experience_store.py",
+      "sha256": "694bb64db33944601e9a30c977fc23b3f8c13205d3da788698684c940e4c9958",
+      "size": 13807,
+      "category": "open_source"
+    },
+    {
+      "path": "axiom/integrity_check.py",
+      "sha256": "5823791b61766ff168175dfc22e642b045541751d7e35ff2ac4cee80d34f6342",
+      "size": 10445,
+      "category": "open_source"
+    },
+    {
+      "path": "run_axiom.py",
+      "sha256": "8a4147a2ab663de325ec37ece6bbd12529704952e2610074a05b75cd6afe2d53",
+      "size": 8561,
+      "category": "open_source"
+    },
+    {
+      "path": "axiom_certify.py",
+      "sha256": "348e8eba28f3370530ec2fb4c8bd31d088554ce5fcc919b50b37f3e478ac903c",
+      "size": 53562,
+      "category": "open_source"
+    },
+    {
+      "path": "axiom_review.py",
+      "sha256": "d47f21d0f36a3c5d9f16921e65a6df846f82d894b3e6363f98f09ab571ebf38f",
+      "size": 8937,
+      "category": "open_source"
+    },
+    {
+      "path": "axiom_lab/configs/axiom_v1_4.json",
+      "sha256": "1fc02ad02f9b86ebd3441efb22373ef5c7789b3aefc5074911c759ea4f4506ca",
+      "size": 498,
+      "category": "open_source"
+    },
+    {
       "path": "axiom_server.py",
       "sha256": "0ec486f465f07a0593e968dfac822bd7fa327a2756b3178dc30530d24eaa2b07",
       "size": 25036,
@@ -188,20 +242,26 @@
     },
     {
       "path": "cli.py",
-      "sha256": "e7d1b7e74b0647b9b0d70d329dc10a7f881ec1e01baad93348babe872da7b202",
-      "size": 4378,
+      "sha256": "a8818f1d588431087637511cb084fbc51c495fcf8efb535079ce93b28f595b6f",
+      "size": 16296,
       "category": "open_source"
     },
     {
       "path": "pyproject.toml",
-      "sha256": "f788891e6031b7ab7ac7d0bf6401fa6191626fc381e2c68c56f09a6e1a507378",
-      "size": 1664,
+      "sha256": "abce5b15198532b7376cd107d4b92ba8ecf139e110d823850f8eb7a582c8d336",
+      "size": 1697,
       "category": "open_source"
     },
     {
       "path": "AXIOM_SPEC.md",
       "sha256": "a6878ca55c421dcd7812962cb004f1b69649e58dc6c9316b99d82cb4ef624ecb",
       "size": 29494,
+      "category": "open_source"
+    },
+    {
+      "path": "AXIOM_ALIGN_PACK.md",
+      "sha256": "a8527e9dbd1fb642e9ed38b33f2f618c92ea0e4dd9c3ae6b0aa2bebd19bef54f",
+      "size": 3253,
       "category": "open_source"
     },
     {
@@ -1663,17 +1723,6 @@
       "category": "certification_pdf"
     }
   ],
-  "missing": [
-    "axiom/agents/teacher.py",
-    "axiom/agents/conversation_monitor.py",
-    "axiom/agents/agent_factory.py",
-    "axiom/agents/experience_store.py",
-    "axiom_lab/scripts/run_lab.py",
-    "axiom_lab/scripts/integrity_check.py",
-    "axiom_lab/scripts/axiom_certify.py",
-    "axiom_lab/scripts/axiom_review.py",
-    "axiom_lab/configs/axiom_v1_4.json",
-    "OWASP_ALIGNMENT.md"
-  ],
-  "manifest_hash": "2fa879ed77f36a61dfa5c943bbd9308c0663a4e4ee9e92b039f37eaed104d1c8"
+  "missing": [],
+  "manifest_hash": "d6c0b2be6d8664f4c9a89dad560a012f10332e5da9b479963764bf3ccd0a2d5e"
 }
