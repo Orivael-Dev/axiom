@@ -316,3 +316,5 @@
 {"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T03:36:22.124559+00:00"}
 {"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T03:36:42.856811+00:00"}
 {"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T03:41:52.242354+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T03:42:13.528209+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T03:42:44.299242+00:00"}
