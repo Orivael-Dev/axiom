@@ -110,6 +110,7 @@ HUMAN_REVIEW
 - require on: score_below_snapshot with pending_rewrite
 - require on: cannot_mutate_expansion
 - require on: watermark_manipulation_detected
+- require on: evaluation_data_tainted
 - timeout: 24h
 - escalate_to: operator_email
 - block_on_timeout: true

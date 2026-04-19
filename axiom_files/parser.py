@@ -701,7 +701,7 @@ def _detect_review_triggers(
     current_score: float | None = None,
 ) -> list[dict]:
     """
-    Run all 8 trigger detectors. Returns list of fired trigger dicts:
+    Run all 9 trigger detectors. Returns list of fired trigger dicts:
     [{"trigger": str, "diff": ..., "recommendation": str}]
     """
     fired = []
@@ -826,6 +826,30 @@ def _detect_review_triggers(
             },
             "recommendation": "REJECT -- watermark disclosure controls removed (EU AI Act Article 50)",
         })
+
+    # 9. Evaluation data tainted — fairness criteria removed or thresholds zeroed
+    # Protects against disabling fairness evaluation at the spec level (teacher.axiom).
+    _fairness_criteria = {"demographic_inconsistency", "group_disparagement"}
+    orig_sig = original.get("signals", {})
+    new_sig  = proposed.get("signals", {})
+    if isinstance(orig_sig, dict) and isinstance(new_sig, dict):
+        removed_fairness_signals = _fairness_criteria & (set(orig_sig) - set(new_sig))
+        zeroed_signals = {
+            k for k in _fairness_criteria
+            if float(orig_sig.get(k, 0.0)) > 0.0 and float(new_sig.get(k, 0.0)) == 0.0
+        }
+        if removed_fairness_signals or zeroed_signals:
+            fired.append({
+                "trigger": "evaluation_data_tainted",
+                "diff": {
+                    "removed_fairness_signals": list(removed_fairness_signals),
+                    "zeroed_fairness_signals": list(zeroed_signals),
+                },
+                "recommendation": (
+                    "REJECT -- fairness evaluation criteria disabled; "
+                    "this would allow tainted data to reach the certification ledger"
+                ),
+            })
 
     return fired
 

@@ -105,3 +105,139 @@
 {"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.817964+00:00"}
 {"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.819676+00:00"}
 {"decision": "BLOCK", "limit_name": "burst_protection", "cooldown_seconds": 10, "caller": "integrity_check", "ts": "2026-04-18T23:00:23.821381+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:12:48.959068+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:12:55.569909+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:13:01.276995+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:13:06.508475+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:13:11.760048+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 5, "ts": "2026-04-19T01:13:12.266486+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 54, "caller": "integrity_check", "ts": "2026-04-19T01:13:17.274824+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 49, "caller": "integrity_check", "ts": "2026-04-19T01:13:22.279430+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 44, "caller": "integrity_check", "ts": "2026-04-19T01:13:27.290342+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 39, "caller": "integrity_check", "ts": "2026-04-19T01:13:32.297789+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 34, "caller": "integrity_check", "ts": "2026-04-19T01:13:37.305101+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 29, "caller": "integrity_check", "ts": "2026-04-19T01:13:42.315415+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 24, "caller": "integrity_check", "ts": "2026-04-19T01:13:47.319566+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 19, "caller": "integrity_check", "ts": "2026-04-19T01:13:52.324292+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 14, "caller": "integrity_check", "ts": "2026-04-19T01:13:57.333877+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 9, "caller": "integrity_check", "ts": "2026-04-19T01:14:02.341032+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 4, "caller": "integrity_check", "ts": "2026-04-19T01:14:07.348133+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "HALF_OPEN", "ts": "2026-04-19T01:14:12.355352+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 6, "ts": "2026-04-19T01:14:12.707461+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 54, "caller": "integrity_check", "ts": "2026-04-19T01:14:17.717530+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 49, "caller": "integrity_check", "ts": "2026-04-19T01:14:22.724693+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 44, "caller": "integrity_check", "ts": "2026-04-19T01:14:27.732300+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 39, "caller": "integrity_check", "ts": "2026-04-19T01:14:32.742101+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 34, "caller": "integrity_check", "ts": "2026-04-19T01:14:37.749543+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 29, "caller": "integrity_check", "ts": "2026-04-19T01:14:42.757074+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 24, "caller": "integrity_check", "ts": "2026-04-19T01:14:47.761862+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 19, "caller": "integrity_check", "ts": "2026-04-19T01:14:52.764405+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 14, "caller": "integrity_check", "ts": "2026-04-19T01:14:57.770025+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 9, "caller": "integrity_check", "ts": "2026-04-19T01:15:02.779775+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 4, "caller": "integrity_check", "ts": "2026-04-19T01:15:07.787221+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "HALF_OPEN", "ts": "2026-04-19T01:15:12.794736+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 7, "ts": "2026-04-19T01:15:13.115835+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 54, "caller": "integrity_check", "ts": "2026-04-19T01:15:18.124099+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 49, "caller": "integrity_check", "ts": "2026-04-19T01:15:23.128858+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 44, "caller": "integrity_check", "ts": "2026-04-19T01:15:28.134692+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 39, "caller": "integrity_check", "ts": "2026-04-19T01:15:33.140530+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 34, "caller": "integrity_check", "ts": "2026-04-19T01:15:38.144792+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 29, "caller": "integrity_check", "ts": "2026-04-19T01:15:43.147995+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 24, "caller": "integrity_check", "ts": "2026-04-19T01:15:48.150519+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 19, "caller": "integrity_check", "ts": "2026-04-19T01:15:53.154553+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 14, "caller": "integrity_check", "ts": "2026-04-19T01:15:58.157166+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 9, "caller": "integrity_check", "ts": "2026-04-19T01:16:03.162918+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 4, "caller": "integrity_check", "ts": "2026-04-19T01:16:08.172987+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "HALF_OPEN", "ts": "2026-04-19T01:16:13.183798+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 8, "ts": "2026-04-19T01:16:13.535475+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 54, "caller": "integrity_check", "ts": "2026-04-19T01:16:18.537960+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 49, "caller": "integrity_check", "ts": "2026-04-19T01:16:23.544391+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 44, "caller": "integrity_check", "ts": "2026-04-19T01:16:28.555624+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 39, "caller": "integrity_check", "ts": "2026-04-19T01:16:33.562033+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 34, "caller": "integrity_check", "ts": "2026-04-19T01:16:38.565402+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 29, "caller": "integrity_check", "ts": "2026-04-19T01:16:43.568645+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 24, "caller": "integrity_check", "ts": "2026-04-19T01:16:48.574564+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 19, "caller": "integrity_check", "ts": "2026-04-19T01:16:53.578159+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 14, "caller": "integrity_check", "ts": "2026-04-19T01:16:58.581877+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 9, "caller": "integrity_check", "ts": "2026-04-19T01:17:03.588312+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 4, "caller": "integrity_check", "ts": "2026-04-19T01:17:08.595740+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "HALF_OPEN", "ts": "2026-04-19T01:17:13.605422+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 9, "ts": "2026-04-19T01:17:13.908191+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 54, "caller": "integrity_check", "ts": "2026-04-19T01:17:18.915618+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 49, "caller": "integrity_check", "ts": "2026-04-19T01:17:23.923122+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 44, "caller": "integrity_check", "ts": "2026-04-19T01:17:28.927672+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 39, "caller": "integrity_check", "ts": "2026-04-19T01:17:33.935872+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 34, "caller": "integrity_check", "ts": "2026-04-19T01:17:38.943060+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 29, "caller": "integrity_check", "ts": "2026-04-19T01:17:43.950362+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 24, "caller": "integrity_check", "ts": "2026-04-19T01:17:48.955189+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 19, "caller": "integrity_check", "ts": "2026-04-19T01:17:53.960947+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 14, "caller": "integrity_check", "ts": "2026-04-19T01:17:58.966936+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 9, "caller": "integrity_check", "ts": "2026-04-19T01:18:03.975931+00:00"}
+{"decision": "CIRCUIT_OPEN", "limit_name": "circuit_open", "cooldown_seconds": 4, "caller": "integrity_check", "ts": "2026-04-19T01:18:08.983457+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "HALF_OPEN", "ts": "2026-04-19T01:18:13.991090+00:00"}
+{"decision": "CIRCUIT_TRIPPED", "failure_count": 10, "ts": "2026-04-19T01:18:14.317847+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:26:53.585958+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:27:30.588252+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:28:09.578139+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:29:53.469483+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:30:39.364643+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:31:54.526796+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:35:20.096621+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:35:53.037086+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:36:29.261022+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:37:11.278468+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:37:45.227918+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:38:26.619649+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:39:17.594235+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:40:02.270607+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:40:41.687399+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:41:01.102512+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:41:20.601730+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:41:48.386618+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:42:14.234331+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:42:37.866892+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:43:00.610652+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:43:26.191439+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:43:47.052552+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:44:07.774679+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:44:37.089750+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:45:28.857285+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:46:05.113862+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:46:17.661323+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:46:30.965100+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:46:47.109880+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:47:00.672881+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:47:16.530553+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:47:30.869380+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:47:46.288018+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:48:00.796622+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:48:16.461497+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:48:30.061264+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:48:44.852252+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:49:00.024966+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:49:13.994368+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:49:34.921039+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:49:59.681853+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:50:21.637268+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:50:45.644521+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:51:10.085416+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:51:34.347381+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:52:20.579616+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:52:38.799426+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:53:08.093535+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:53:45.943761+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:54:20.739059+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:58:43.800670+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T01:59:56.724811+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:00:20.932096+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:00:45.676234+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:01:10.001204+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:01:24.970903+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:01:56.105293+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:02:14.545686+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:02:52.753442+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:03:12.147153+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:03:48.504534+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:04:25.925771+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:15:38.342201+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T02:15:56.380385+00:00"}

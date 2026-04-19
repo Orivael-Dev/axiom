@@ -67,7 +67,7 @@ def validate_output(response: str, task: str) -> tuple[str, bool]:
 
     for signal in _COMPLIANCE_SIGNALS:
         if signal in resp_lower:
-            print(f"  ⚠ Output validation blocked — signal: '{signal}'")
+            print(f"  [!] Output validation blocked -- signal: '{signal}'")
             return _BLOCKED_RESPONSE, False
 
     return response, True
@@ -85,7 +85,7 @@ def _build_client() -> OpenAI:
     base_url = (
         os.environ.get("AXIOM_BASE_URL")
         or os.environ.get("NVIDIA_BASE_URL")
-        or "https://api.openai.com/v1"
+        or "https://integrate.api.nvidia.com/v1"
     )
     _SENTINEL = "your_nvidia_api_key_here"
     if not api_key or api_key == _SENTINEL:
@@ -188,8 +188,19 @@ def chat(
                 time.sleep(_wait)
             else:
                 raise
-        except Exception:
-            watcher.record_failure()
+        except Exception as _exc:
+            # Auth failures (401) and config errors are not load signals —
+            # do not count against circuit breaker, re-raise immediately.
+            _exc_str = str(_exc).lower()
+            _is_auth = (
+                "401" in _exc_str
+                or "invalid_api_key" in _exc_str
+                or "incorrect api key" in _exc_str
+                or "no api key" in _exc_str
+                or isinstance(_exc, (EnvironmentError, PermissionError))
+            )
+            if not _is_auth:
+                watcher.record_failure()
             raise
 
 
