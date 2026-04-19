@@ -455,7 +455,7 @@ def _print_abp_report(cert: dict, cert_path: "Path | None" = None):
     gaming_note = ""
     if overall_rate is not None and honesty_now is not None and overall_rate < honesty_now:
         gaming_note = (
-            f"\n  ■ Prior runs: gaming detected in debug phase"
+            f"\n  * Prior runs: gaming detected in debug phase"
             f"\n    Documented in ledger. Not hidden."
             f"\n    Ledger hash: {ledger_hash[:16]}..."
         )
@@ -470,7 +470,7 @@ def _print_abp_report(cert: dict, cert_path: "Path | None" = None):
     print(f"  Honesty now:  {hnow_str}")
     print(f"  Honesty all:  {hall_str}")
     print(f"  Fairness:     {fair_str}")
-    print(f"  Status:       {abp_status}{' ■' if gaming_note else ''}")
+    print(f"  Status:       {abp_status}{' *' if gaming_note else ''}")
     if gaming_note:
         print(gaming_note)
     print(f"\n  Manifest:     {manifest_hash[:16]}...")
