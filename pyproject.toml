@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-lang"
-version = "1.7.1"
+version = "1.8.0"
 description = "A declarative language for constitutional AI agents — with domain governance packages for government, finance, and healthcare"
 readme = "README.md"
 license = "MIT"
