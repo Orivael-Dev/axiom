@@ -333,15 +333,256 @@ def certify_cmd():
     sys.exit(result.returncode)
 
 
+def benchmark_cmd():
+    """axiom benchmark run <agent> — run ABP evaluation and display ABP report."""
+    sub = sys.argv[2] if len(sys.argv) > 2 else None
+    if sub != "run":
+        print("\n  Usage: axiom benchmark run <agent>")
+        print("  Example: axiom benchmark run worker\n")
+        sys.exit(1 if sub else 0)
+
+    parser = argparse.ArgumentParser(
+        description="Run ABP evaluation and display certification report",
+    )
+    parser.add_argument("agent", help="Agent name (e.g. worker, domains/healthcare)")
+    parser.add_argument("--output", default=None, help="Output directory (default: certs/)")
+    parser.add_argument("--no-run", action="store_true", help="Skip cert run — load latest existing cert")
+    args = parser.parse_args(sys.argv[3:])
+
+    root = _find_project_root()
+    sys.path.insert(0, str(root))
+    from dotenv import load_dotenv
+    load_dotenv(root / ".env")
+
+    output = Path(args.output) if args.output else root / "certs"
+    output.mkdir(parents=True, exist_ok=True)
+
+    # ── Run certification ───────────────────────────────────────────────────────
+    if not args.no_run:
+        certify_script = None
+        for candidate in [root / "axiom_certify.py", Path(__file__).parent / "axiom_certify.py"]:
+            if candidate.exists():
+                certify_script = candidate
+                break
+
+        if not certify_script:
+            print("  [ERROR] axiom_certify.py not found.")
+            sys.exit(1)
+
+        import subprocess
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(root)
+        env.setdefault("AXIOM_FILES_DIR", str(root / "axiom_files"))
+        result = subprocess.run(
+            [sys.executable, str(certify_script), "--agent", args.agent, "--output", str(output)],
+            env=env,
+        )
+        if result.returncode != 0:
+            print("  [ERROR] Certification failed.")
+            sys.exit(result.returncode)
+
+    # ── Load latest cert ────────────────────────────────────────────────────────
+    agent_slug = args.agent.split("/")[-1].lower().replace(" ", "_")
+    cert_files = sorted(output.glob(f"*{agent_slug}*_cert_*.json"), key=lambda p: p.stat().st_mtime)
+    if not cert_files:
+        # Try full agent name patterns from cert report (agent field, not filename)
+        cert_files = sorted(output.glob("*_cert_*.json"), key=lambda p: p.stat().st_mtime)
+        cert_files = [f for f in cert_files if "fria" not in f.name]
+
+    if not cert_files:
+        print(f"  [ERROR] No cert found for '{args.agent}' in {output}")
+        sys.exit(1)
+
+    cert_path = cert_files[-1]
+    cert = json.loads(cert_path.read_text(encoding="utf-8"))
+
+    # ── Format ABP report ───────────────────────────────────────────────────────
+    _print_abp_report(cert, cert_path)
+
+
+def _print_abp_report(cert: dict, cert_path: "Path | None" = None):
+    """Print an ABP-formatted benchmark report from a cert JSON."""
+    import hashlib as _hl
+
+    _ABP_LEVEL = {
+        "CERTIFIED":     "ABP-VERIFIED",
+        "STANDARD":      "ABP-STANDARD",
+        "BASIC":         "ABP-BASIC",
+        "NON-CONFORMANT":"NOT CONFORMANT",
+    }
+
+    agent      = cert.get("agent", "?")
+    version    = cert.get("agent_version", "")
+    level      = cert.get("conformance_level", "NON-CONFORMANT")
+    abp_status = _ABP_LEVEL.get(level, level)
+    certified_at = cert.get("certified_at", "")[:19].replace("T", " ")
+
+    steps = cert.get("steps", [])
+    step3 = next((s for s in steps if s.get("step") == 3), {})
+    step6 = next((s for s in steps if s.get("step") == 6), {})
+    step7 = next((s for s in steps if s.get("step") == 7), {})
+
+    # Score from benchmark evidence
+    evidence = step3.get("evidence", [])
+    if evidence:
+        best = max(evidence, key=lambda e: e.get("total", 0))
+        score_str = f"{best['passed']}/{best['total']}  ({best['pct']}%)"
+    else:
+        score_str = "N/A  (no benchmark evidence)"
+
+    # Honesty / fairness
+    honesty_now   = step6.get("latest_run_rate")
+    honesty_total = step6.get("latest_run_total", 0)
+    overall_rate  = step6.get("overall_ledger_rate")
+    overall_total = step6.get("total_evaluations", 0)
+    fairness_rate = step6.get("fairness_rate")
+    fair_total    = step6.get("fairness_variants_tested", 0)
+    biased        = step6.get("biased_count", 0)
+
+    hnow_str = f"{honesty_now:.0%}  ({honesty_total} evals)" if honesty_now is not None else "N/A"
+    hall_str = f"{overall_rate:.0%}  ({overall_total} evals, full history)" if overall_rate is not None else "N/A"
+
+    if fairness_rate is not None:
+        fair_clean = fair_total - biased
+        fair_str = f"{fairness_rate:.0%}  ({fair_clean}/{fair_total} — {biased} signals documented)"
+    else:
+        fair_str = "not yet evaluated"
+
+    ledger_hash = cert.get("honesty_ledger_hash", "")
+    manifest_hash = step7.get("manifest_hash", "")
+
+    # Detect if prior gaming was in ledger (honesty_all < honesty_now)
+    gaming_note = ""
+    if overall_rate is not None and honesty_now is not None and overall_rate < honesty_now:
+        gaming_note = (
+            f"\n  ■ Prior runs: gaming detected in debug phase"
+            f"\n    Documented in ledger. Not hidden."
+            f"\n    Ledger hash: {ledger_hash[:16]}..."
+        )
+
+    border = "=" * 38
+
+    print(f"\n  AXIOM BENCHMARK REPORT (ABP v1.0)")
+    print(f"  {border}")
+    print(f"  Agent:        {agent} v{version}")
+    print(f"  Certified:    {certified_at} UTC")
+    print(f"  Score:        {score_str}")
+    print(f"  Honesty now:  {hnow_str}")
+    print(f"  Honesty all:  {hall_str}")
+    print(f"  Fairness:     {fair_str}")
+    print(f"  Status:       {abp_status}{' ■' if gaming_note else ''}")
+    if gaming_note:
+        print(gaming_note)
+    print(f"\n  Manifest:     {manifest_hash[:16]}...")
+    if cert_path:
+        print(f"  Cert file:    {cert_path.name}")
+    print()
+
+
+def verify_cmd():
+    """axiom verify --cert cert.json — verify an ABP certification report."""
+    parser = argparse.ArgumentParser(
+        description="Verify an ABP certification report — checks manifest hash integrity",
+    )
+    parser.add_argument("--cert", required=True, help="Path to cert JSON file")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    args = parser.parse_args(sys.argv[2:])
+
+    import hashlib as _hl
+
+    cert_path = Path(args.cert)
+    if not cert_path.exists():
+        print(f"  [ERROR] Cert file not found: {cert_path}")
+        sys.exit(1)
+
+    try:
+        cert = json.loads(cert_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"  [ERROR] Failed to parse cert JSON: {e}")
+        sys.exit(1)
+
+    steps = cert.get("steps", [])
+    step7 = next((s for s in steps if s.get("step") == 7), None)
+    if not step7:
+        print("  [ERROR] Cert is missing Step 7 (Manifest Signature). File may be truncated.")
+        sys.exit(1)
+
+    # Reconstruct the manifest_data dict exactly as step_7_manifest() did
+    step_results = {s["step"]: s["status"] for s in steps if s.get("step") != 7}
+
+    manifest_data = {
+        "agent":              cert.get("agent", ""),
+        "version":            cert.get("agent_version", ""),
+        "content_sha256":     step7.get("content_sha256"),
+        "certified_at":       cert.get("certified_at", ""),
+        "step_results":       step_results,
+        "honesty_ledger_hash": cert.get("honesty_ledger_hash"),
+        "honesty_rate":       cert.get("honesty_rate"),
+        "fairness_rate":      cert.get("fairness_rate"),
+    }
+    manifest_json    = json.dumps(manifest_data, sort_keys=True)
+    computed_hash    = _hl.sha256(manifest_json.encode()).hexdigest()
+    stored_hash      = step7.get("manifest_hash", "")
+    integrity_ok     = computed_hash == stored_hash
+
+    # Also check ledger hash field is present (can't recompute without ledger file)
+    ledger_hash      = cert.get("honesty_ledger_hash")
+    ledger_present   = bool(ledger_hash)
+
+    result = {
+        "cert_file":        str(cert_path),
+        "agent":            cert.get("agent"),
+        "agent_version":    cert.get("agent_version"),
+        "conformance_level":cert.get("conformance_level"),
+        "certified_at":     cert.get("certified_at"),
+        "manifest_hash":    stored_hash,
+        "computed_hash":    computed_hash,
+        "integrity":        "VERIFIED" if integrity_ok else "TAMPERED",
+        "ledger_hash":      ledger_hash,
+        "ledger_hash_present": ledger_present,
+    }
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        sys.exit(0 if integrity_ok else 1)
+
+    border = "=" * 38
+
+    if integrity_ok:
+        print(f"\n  AXIOM CERT VERIFY — PASSED")
+        print(f"  {border}")
+        print(f"  Agent:     {cert.get('agent')} v{cert.get('agent_version')}")
+        print(f"  Level:     {cert.get('conformance_level')}")
+        print(f"  Issued:    {cert.get('certified_at','')[:19].replace('T',' ')} UTC")
+        print(f"  Manifest:  {stored_hash[:32]}...  MATCH")
+        if ledger_present:
+            print(f"  Ledger:    {ledger_hash[:32]}...  PRESENT")
+        else:
+            print(f"  Ledger:    not recorded in cert")
+        print(f"\n  Status: VERIFIED — cert has not been modified since issuance\n")
+    else:
+        print(f"\n  AXIOM CERT VERIFY — FAILED")
+        print(f"  {border}")
+        print(f"  Agent:     {cert.get('agent')}")
+        print(f"  Stored:    {stored_hash[:32]}...")
+        print(f"  Computed:  {computed_hash[:32]}...")
+        print(f"\n  Status: TAMPERED — manifest hash does not match cert content")
+        print(f"  The cert file has been modified after issuance.\n")
+
+    sys.exit(0 if integrity_ok else 1)
+
+
 def axiom_cmd():
     """Unified `axiom` entry point with subcommands."""
     subcommands = {
-        "init":     (init_cmd,    "Scaffold a new AXIOM project"),
-        "add":      (add_cmd,     "Add a domain package (hipaa, government, finance)"),
-        "certify":  (certify_cmd, "Run certification — generates cert.json + cert.pdf"),
-        "validate": (validate_cmd,"Validate a .axiom agent file"),
-        "run":      (run_cmd,     "Run a prompt through the AXIOM runtime"),
-        "server":   (cmd_server,  "Start the AXIOM REST server"),
+        "init":      (init_cmd,     "Scaffold a new AXIOM project"),
+        "add":       (add_cmd,      "Add a domain package (hipaa, government, finance)"),
+        "certify":   (certify_cmd,  "Run certification — generates cert.json + cert.pdf"),
+        "benchmark": (benchmark_cmd,"Run ABP evaluation  (benchmark run <agent>)"),
+        "verify":    (verify_cmd,   "Verify an ABP cert  (verify --cert cert.json)"),
+        "validate":  (validate_cmd, "Validate a .axiom agent file"),
+        "run":       (run_cmd,      "Run a prompt through the AXIOM runtime"),
+        "server":    (cmd_server,   "Start the AXIOM REST server"),
     }
 
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
@@ -353,7 +594,9 @@ def axiom_cmd():
         print("\n  Quick start:")
         print("    axiom init")
         print("    axiom add hipaa")
-        print("    axiom certify --agent worker\n")
+        print("    axiom certify --agent worker")
+        print("    axiom benchmark run worker")
+        print("    axiom verify --cert certs/worker_cert_YYYYMMDD.json\n")
         sys.exit(0)
 
     sub = sys.argv[1]
