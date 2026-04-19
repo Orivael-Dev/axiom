@@ -380,3 +380,9 @@
 {"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:07:04.946609+00:00"}
 {"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:07:18.256173+00:00"}
 {"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:07:38.445205+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:22:51.157640+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:23:13.245895+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:23:32.018520+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:23:53.453001+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:24:13.424455+00:00"}
+{"decision": "ALLOW", "caller": "integrity_check", "circuit_state": "CLOSED", "ts": "2026-04-19T04:24:34.492596+00:00"}
