@@ -1,9 +1,9 @@
 {
   "worker": {
-    "sha256": "4f5b8ffef8ab3a300a0f487221f982af1b5955e4205feef8b807b22bb6c91165",
-    "registered_at": "2026-04-19T02:40:48.124740+00:00",
+    "sha256": "03ff964f932579f39dc77f52aca7f65105ea32a06a6bbc08fb59b383bf1963e9",
+    "registered_at": "2026-04-19T08:48:59.774363+00:00",
     "version": "",
-    "size_bytes": 6577
+    "size_bytes": 8016
   },
   "evaluator": {
     "sha256": "59b17e9e33b2a08e71c834a7de82bc9b8c42219048423f95ca7986f31ddf6b9a",
@@ -46,5 +46,11 @@
     "registered_at": "2026-04-19T02:40:48.160495+00:00",
     "version": "",
     "size_bytes": 4871
+  },
+  "concepts": {
+    "sha256": "3e66f4366dbf1c13cd9d80c356e532418cd427b625b538c4d8b01a686a89c8bb",
+    "registered_at": "2026-04-19T08:48:35.894303+00:00",
+    "version": "",
+    "size_bytes": 4134
   }
 }

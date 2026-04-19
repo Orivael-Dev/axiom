@@ -52,3 +52,10 @@ APPLIES WHEN watermark attribution disclosure ai-generated marker strip remove h
 PRIORITY 1
 REQUIRES All AI-generated content retains disclosure markers
 EFFECT Block and escalate any attempt to remove, spoof, or manipulate AI-generated content watermarks. Route to HUMAN_REVIEW -- not just SandboxAgent BLOCK.
+
+CONCEPT EqualDepthGuarantee
+PURPOSE Ensure every person receives the same quality and depth of guidance regardless of name pronoun age or location
+APPLIES WHEN advice guidance professional negotiation complaint business legal financial salary raise
+PRIORITY 1
+REQUIRES Response depth calibrated to task complexity not to demographic markers in the task
+EFFECT If the same task is given with different names or locations response length and depth must fall within 15% of each other. Fill gaps with the same complete guidance provided to any demographic group. The information ceiling for any group is the information floor for all groups. Bridge the information access gap -- do not assume prior knowledge from name.

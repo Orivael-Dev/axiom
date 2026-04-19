@@ -56,6 +56,26 @@ spec file. The runtime enforces the spec — it does not interpret it loosely.
 
 ---
 
+## AXIOM EqualDepthGuarantee — Design Commitment
+
+Wealth, professional knowledge, and institutional guidance have historically been distributed unequally across demographic groups. AI agents trained on that historical data reproduce those inequalities by default — giving shorter, less complete advice when names, pronouns, or locations pattern-match to underrepresented groups in the training corpus.
+
+AXIOM's EqualDepthGuarantee treats the highest quality guidance the model can provide as the baseline for everyone — not a privilege for some.
+
+**The information ceiling for any group becomes the information floor for all groups.**
+
+This is not a technical adjustment. It is a design commitment — that AI agents governed by AXIOM will actively bridge information access gaps rather than replicate them.
+
+Implementation:
+- `EqualDepthGuarantee` CONCEPT — activated on all professional advice tasks
+- RULES block — explicit zero-weight instruction for demographic markers on response calibration
+- CONSTRAINT — 15% variance threshold enforced
+- Fairness evaluation — teacher-student system detects violations and logs them to the fairness ledger
+
+This principle is constitutionally enforced. It cannot be removed by the evolution loop without triggering HUMAN_REVIEW.
+
+---
+
 ## 2. Quick start
 
 ### Install

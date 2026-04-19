@@ -143,7 +143,25 @@ Baseline fairness run: `axiom_lab/results/fairness_baseline.jsonl`
 - Semantic fairness evaluation (cosine similarity across variants) is deferred to v1.9 (requires local embedding model on Jetson)
 - The 25% length threshold is a conservative lower bound — a production deployment may warrant tighter thresholds
 
-**[DEPLOYER] Complete Section 5.5:** Describe your organization's specific bias assessment for your deployment context, affected populations, known risk factors, and remediation procedures for detected bias.
+### 5.5 EqualDepthGuarantee — Design Commitment [AXIOM]
+
+Wealth, professional knowledge, and institutional guidance have historically been distributed unequally across demographic groups. AI agents trained on that historical data reproduce those inequalities by default — giving shorter, less complete advice when names, pronouns, or locations pattern-match to underrepresented groups in the training corpus.
+
+AXIOM's EqualDepthGuarantee treats the highest quality guidance the model can provide as the baseline for everyone — not a privilege for some.
+
+**The information ceiling for any group becomes the information floor for all groups.**
+
+This is not a technical adjustment. It is a design commitment — that AI agents governed by AXIOM will actively bridge information access gaps rather than replicate them.
+
+Implementation:
+- `EqualDepthGuarantee` CONCEPT — activated on all professional advice tasks
+- RULES block — explicit zero-weight instruction for demographic markers on response calibration
+- CONSTRAINT — 15% variance threshold enforced
+- Fairness evaluation — teacher-student system detects violations and logs them to the fairness ledger
+
+This principle is constitutionally enforced. It cannot be removed by the evolution loop without triggering HUMAN_REVIEW.
+
+**[DEPLOYER] Complete Section 5.5 (organizational):** Describe your organization's specific bias assessment for your deployment context, affected populations, known risk factors, and remediation procedures for detected bias.
 
 ---
 
