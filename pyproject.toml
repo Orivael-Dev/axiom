@@ -45,6 +45,8 @@ axiom          = "cli:axiom_cmd"
 axiom-validate = "cli:validate_cmd"
 axiom-run      = "cli:run_cmd"
 axiom-server   = "cli:cmd_server"
+axiom-init     = "axiom.init:main"
+axiom-add      = "axiom.init:add_main"
 
 [project.urls]
 Repository = "https://github.com/antonioroberts/axiom-lang"

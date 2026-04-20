@@ -197,6 +197,9 @@ def chat(
             _exc_str = str(_exc).lower()
             _is_auth = (
                 "401" in _exc_str
+                or "403" in _exc_str
+                or "forbidden" in _exc_str
+                or "authorization failed" in _exc_str
                 or "invalid_api_key" in _exc_str
                 or "incorrect api key" in _exc_str
                 or "no api key" in _exc_str
