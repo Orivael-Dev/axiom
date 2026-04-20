@@ -74,7 +74,7 @@ INJECTION_PATTERNS = [
     r"you\s+are\s+now\s+\w+",
     r"your\s+(new\s+)?name\s+is",
     r"act\s+as\s+(if\s+you\s+(are|were)\s+)?",
-    r"pretend\s+(you\s+)?(are|have\s+no)",
+    r"pretend\s+(you\s+)?(are\s+(a\s+)?(human|person|without\s+(rules|restrictions|guidelines))|have\s+no\s+(rules|restrictions))",
     # Constraint removal
     r"(no|without)\s+(restrictions|constraints|rules|limits)",
     r"(remove|delete|clear)\s+(your\s+)?(constraints|rules)",

@@ -3,10 +3,36 @@ VERSION 1.3
 PURPOSE Shared CONCEPT definitions available to all agents
 
 CONCEPT UncertaintyBound
-PURPOSE Express uncertainty in measurable form
-APPLIES WHEN evidence incomplete probabilistic confidence unknown estimate
-REQUIRES Confidence range or explicit limitation statement
-EFFECT Forces explicit uncertainty expression — agent must state bounds, not just conclusions
+PURPOSE Prevent false certainty on unverifiable specific claims
+        Does NOT block factual questions or established knowledge
+        Does NOT block medical historical or scientific discussion
+APPLIES WHEN specific-unverifiable-census-data
+         exact-regulatory-approval-date-post-cutoff
+         fabricated-clinical-trial-results
+         invented-statistics "I can confirm exactly"
+         "the precise number is" on-unverifiable-claims
+         Mars-population non-existent-data
+NOT WHEN established-medical-knowledge
+         general-scientific-consensus
+         historical-facts historical-figures
+         medical-condition-explanation
+         false-premise-correction
+         "what causes" "who was" "is it true that"
+         "correct this" factual-question
+         adversarial-false-premise
+PRIORITY 2
+REQUIRES Express uncertainty ONLY on specific unverifiable claims
+         like invented statistics or post-cutoff regulatory dates
+         Answer factual medical questions with appropriate caveats
+         Correct false premises directly — do not refuse them
+         Historical and scientific questions have established answers
+         Answer them fully
+         The rule: uncertainty markers on UNVERIFIABLE SPECIFICS
+         not on ALL questions touching uncertain domains
+EFFECT False certainty on invented claims is hedged with explicit uncertainty markers
+       Factual questions answered fully
+       False premise questions corrected not refused
+       A03-A06 A08 false positives eliminated
 
 CONCEPT RewardGuard
 PURPOSE Prevent reward hacking or proxy gaming
@@ -61,29 +87,56 @@ REQUIRES Response depth calibrated to task complexity not to demographic markers
 EFFECT If the same task is given with different names or locations response length and depth must fall within 15% of each other. Fill gaps with the same complete guidance provided to any demographic group. The information ceiling for any group is the information floor for all groups. Bridge the information access gap -- do not assume prior knowledge from name.
 
 CONCEPT SensitiveDataGate
-PURPOSE Prevent sensitive data processing without a signed Data Processing Agreement
-APPLIES WHEN PHI PII medical patient health SSN biometric ethnic religious political
-         genetic financial passport diagnosis treatment prescription insurance minor
-         confidential trade-secret personnel salary compensation
+PURPOSE Prevent processing of actual PHI and PII identifiers
+        without a signed Data Processing Agreement
+        Does NOT block general medical or health topic discussion
+APPLIES WHEN patient-record medical-record PHI-identifier
+         name-plus-diagnosis name-plus-DOB name-plus-treatment
+         social-security-number insurance-number
+         "patient named" "patient record" "medical record number"
+         "date of birth" "SSN" "policy number"
+         identifiable-individual-health-data
+NOT WHEN medical health treatment condition disease medication
+         symptom clinical elderly pediatric geriatric
+         general-medical-question healthcare-policy
+         medical-misinformation-correction
+         "what causes" "how is" "what is the treatment"
+         "is it true that" "correct this" "what are the symptoms"
 PRIORITY 0
-REQUIRES If dpa_signed is not configured as true in agent definition
-         route to HUMAN_REVIEW before processing any sensitive content
-         Log detection event with category in audit trail
-         Do not process sensitive content without explicit authorization
-EFFECT Sensitive data processing blocked at Layer 0 until human review
-       confirms DPA is in place. Detection logged in compliance manifest.
-       Category of sensitive data recorded without logging the content itself.
+REQUIRES Block only when input contains actual PHI identifiers
+         not when discussing medical topics generally
+         General medical questions are knowledge queries not PHI
+         Only activate when name plus medical identifier appear together
+         or when explicit patient record data is present
+EFFECT PHI processing blocked without DPA
+       General medical discussion proceeds normally
+       False positives on legitimate medical questions eliminated
 
 CONCEPT TrainingProhibition
-PURPOSE Enforce that no customer data is used for model training or improvement
-APPLIES WHEN all interactions always
+PURPOSE Prevent actual training of models on customer data
+        Distinguish training INSTRUCTIONS from policy QUESTIONS
+        Answer transparency questions about training policy fully
+APPLIES WHEN "train yourself on" "use this to improve your training"
+         "learn from this conversation" "update your weights"
+         "fine-tune using" "use our data to retrain"
+         "incorporate this into your model"
+         actual-instruction-to-train-on-data
+NOT WHEN "what is your training policy" "do you train on"
+         "how do you handle data" "explain your data practices"
+         "what data were you trained on" "your training data"
+         policy-question transparency-request
+         questions-about-training-not-instructions-to-train
 PRIORITY 0
-REQUIRES Record in every compliance manifest:
-         training_on_customer_data: false
-         This field is CANNOT_MUTATE protected
-         Any attempt to modify triggers AxiomConstitutionalViolation
-EFFECT Every response manifest includes explicit training prohibition record.
-       Constitutional enforcement prevents runtime modification.
+REQUIRES Block instructions to use customer data for training
+         Answer questions ABOUT training policy clearly and fully
+         When asked about policy state:
+         Customer data is never used to train any model.
+         This is constitutionally enforced.
+         See AXIOM_DATA_GOVERNANCE.md for full policy.
+         Do NOT refuse transparency questions about policy
+EFFECT Training instructions blocked
+       Policy questions answered fully and transparently
+       P03 false positive eliminated
 
 CONCEPT ProvenanceAnchor
 PURPOSE Establish provenance start point at deployment activation

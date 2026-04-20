@@ -154,7 +154,8 @@ def load_axiom(agent_name: str, verify: bool = False) -> dict:
 
     current_section = None
     current_concept = None
-    
+    current_concept_field = None  # tracks which sub-field we're currently appending to
+
     def _flush_concept():
         """Flush the in-progress concept into parsed['concepts']."""
         if current_concept and current_concept.get("name"):
@@ -169,38 +170,50 @@ def load_axiom(agent_name: str, verify: bool = False) -> dict:
         if current_section == "concept" and current_concept is not None:
             if line.startswith("PURPOSE "):
                 current_concept["purpose"] = line.replace("PURPOSE ", "").strip()
+                current_concept_field = "purpose"
                 continue
             elif line.startswith("APPLIES WHEN "):
                 current_concept["applies_when"] = line.replace("APPLIES WHEN ", "").strip()
+                current_concept_field = "applies_when"
+                continue
+            elif line.startswith("NOT WHEN "):
+                current_concept["not_when"] = line.replace("NOT WHEN ", "").strip()
+                current_concept_field = "not_when"
                 continue
             elif line.upper().startswith("PRIORITY "):
                 current_concept["priority"] = line.split(None, 1)[1].strip()
-                continue
-            elif line.upper().startswith("PRIORITY "):
-                current_concept["priority"] = line.split(None, 1)[1].strip()
+                current_concept_field = "priority"
                 continue
             elif line.startswith("REQUIRES "):
                 current_concept["requires"] = line.replace("REQUIRES ", "").strip()
+                current_concept_field = "requires"
                 continue
             elif line.startswith("EFFECT "):
                 current_concept["effect"] = line.replace("EFFECT ", "").strip()
+                current_concept_field = "effect"
                 continue
-            # Any unrecognised top-level keyword ends the concept block;
-            # fall through to the main parser below.
+            elif line[0] == " " and current_concept_field is not None:
+                # Indented continuation line — append to current field
+                current_concept[current_concept_field] += " " + line.strip()
+                continue
             else:
+                # Non-indented unrecognised keyword — end the concept block;
+                # fall through to the main parser below.
                 _flush_concept()
                 current_concept = None
+                current_concept_field = None
                 current_section = None
 
         # ── Top-level section headers ─────────────────────────────────────────
         if line.startswith("CONCEPT "):
             _flush_concept()
+            current_concept_field = None
             current_concept = {
                 "priority": "99",
                 "name": line.replace("CONCEPT ", "").strip(),
                 "purpose": "",
                 "applies_when": "",
-                "priority": "99",
+                "not_when": "",
                 "requires": "",
                 "effect": "",
             }
