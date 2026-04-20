@@ -6,7 +6,7 @@ GOAL Detect and block request patterns that could cause Model Denial of Service
 RECEIVES request_event: dict
 EMITS decision: string
 MUTATES counters, circuit_state
-CANNOT_MUTATE agent, goal, version, trust_level, security, rate_limits, circuit_config
+CANNOT_MUTATE agent, goal, version, trust_level, security, rate_limits, circuit_config, data_retention_policy, training_prohibition, sensitive_data_gate
 
 CONSTRAINT Never allow a caller to reset circuit breaker state directly
 CONSTRAINT Never expose raw counter values to untrusted callers
@@ -76,11 +76,14 @@ WHEN
 - if request_rate exceeds per_minute, activate RateLimitExceeded
 - if burst_count exceeds burst_threshold, activate BurstProtection
 - if identical_count exceeds identical_repeat_limit, activate ReplayAttack
+- if input contains PHI PII medical patient health biometric, activate SensitiveDataGate
+- if asked about training data usage model improvement or customer data retention, activate TrainingProhibition
 
 HUMAN_REVIEW
 - require on: rate_limits modification
 - require on: circuit_config modification
 - require on: security_modification
+- require on: sensitive_data_detected_without_dpa
 - timeout: 24h
 - escalate_to: operator_email
 - block_on_timeout: true

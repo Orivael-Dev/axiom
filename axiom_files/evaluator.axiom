@@ -4,7 +4,7 @@ TRUST_LEVEL 1
 RECEIVES task: string, answer: string, rubric: dict
 EMITS score: float, reasoning: string, improvements: list, dimension_scores: dict
 MUTATES check, failure, constraints
-CANNOT_MUTATE agent, goal, version, security, trust_level
+CANNOT_MUTATE agent, goal, version, security, trust_level, data_retention_policy, training_prohibition, sensitive_data_gate
 PURPOSE Judge the worker result honestly and strictly
 GOAL Score worker output 0-10 with evidence-based reasoning and actionable feedback
 
@@ -76,6 +76,7 @@ HUMAN_REVIEW
 - require on: cannot_mutate_expansion
 - require on: watermark_manipulation_detected
 - require on: evaluation_data_tainted
+- require on: sensitive_data_detected_without_dpa
 - timeout: 24h
 - escalate_to: operator_email
 - block_on_timeout: true

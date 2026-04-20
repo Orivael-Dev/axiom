@@ -664,6 +664,43 @@ def validate_parsed(parsed: dict) -> dict:
                 "Add at least: '- require on: security_modification' to HUMAN_REVIEW."
             )
 
+    # ── Phase 3p: Data governance enforcement ────────────────────────────────
+    cannot_mutate_fields = parsed.get("cannot_mutate", [])
+    when_entries = parsed.get("when", [])
+    when_text = " ".join(str(w) for w in when_entries).lower()
+
+    # Only apply to agents that have SECURITY rules (governance-capable agents)
+    if parsed.get("security"):
+        # CANNOT_MUTATE must include data governance fields
+        for gov_field in ("data_retention_policy", "training_prohibition"):
+            if gov_field not in cannot_mutate_fields:
+                issues.append({
+                    "phase": "3p", "level": "warning", "field": "cannot_mutate",
+                    "message": (
+                        f"CANNOT_MUTATE missing '{gov_field}' -- "
+                        "data governance is not constitutionally enforced. "
+                        "Add to CANNOT_MUTATE to prevent runtime modification."
+                    ),
+                })
+                suggestions.append(
+                    f"Add '{gov_field}' to the CANNOT_MUTATE line."
+                )
+
+        # SensitiveDataGate must be referenced in WHEN block
+        # (only relevant for agents that have a WHEN block — indirect agents skip this)
+        if when_entries and "sensitivedatagate" not in when_text and "sensitive_data" not in when_text:
+            issues.append({
+                "phase": "3p", "level": "warning", "field": "when",
+                "message": (
+                    "SensitiveDataGate not referenced in WHEN block -- "
+                    "sensitive data detection will not activate automatically."
+                ),
+            })
+            suggestions.append(
+                "Add: '- if input contains PHI PII medical patient health ..., "
+                "activate SensitiveDataGate' to the WHEN block."
+            )
+
     # ── Determine overall status ─────────────────────────────────────────────
     levels = {i["level"] for i in issues}
     if "error" in levels:

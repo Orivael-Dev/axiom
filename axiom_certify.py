@@ -883,6 +883,22 @@ def write_pdf(report: dict, output_dir: Path):
         pdf.set_text_color(*BLACK)
     pdf.ln(4)
 
+    # ── Conformance note (governing agents) ───────────────────────────────────
+    note = report.get("conformance_note")
+    if note:
+        pdf.set_fill_color(*AMBER_LT)
+        pdf.set_draw_color(*AMBER)
+        pdf.set_text_color(*AMBER)
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.cell(0, 5, "  Architectural Note", border="LTR",
+                 new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+        pdf.set_font("Helvetica", "", 8)
+        pdf.multi_cell(0, 4.5, _safe(f"  {note}"), border="LBR", fill=True,
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_text_color(*BLACK)
+        pdf.set_draw_color(0, 0, 0)
+        pdf.ln(4)
+
     # ── Step results ──────────────────────────────────────────────────────────
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 6, "Certification Steps", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -1147,6 +1163,18 @@ def certify(agent_name: str, domain: str | None = None, output_dir: Path = Path(
         "steps": steps,
         "fria": fria,
     }
+
+    # Governing agents get an architectural note explaining their conformance level
+    if agent_name == "teacher":
+        report["conformance_note"] = (
+            "teacher.axiom is the honesty evaluation agent. "
+            "It is the Layer 2 evaluator for other agents. "
+            "STANDARD conformance is architecturally correct -- "
+            "the teacher does not require a sandbox agent "
+            "(it is not executed by users) or a review queue "
+            "(its output is the review). "
+            "Steps 2 and 5 partial pass reflects this design."
+        )
 
     json_path  = write_json(report, output_dir)
     fria_path  = write_fria(fria, output_dir)

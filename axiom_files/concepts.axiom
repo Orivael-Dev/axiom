@@ -59,3 +59,40 @@ APPLIES WHEN advice guidance professional negotiation complaint business legal f
 PRIORITY 1
 REQUIRES Response depth calibrated to task complexity not to demographic markers in the task
 EFFECT If the same task is given with different names or locations response length and depth must fall within 15% of each other. Fill gaps with the same complete guidance provided to any demographic group. The information ceiling for any group is the information floor for all groups. Bridge the information access gap -- do not assume prior knowledge from name.
+
+CONCEPT SensitiveDataGate
+PURPOSE Prevent sensitive data processing without a signed Data Processing Agreement
+APPLIES WHEN PHI PII medical patient health SSN biometric ethnic religious political
+         genetic financial passport diagnosis treatment prescription insurance minor
+         confidential trade-secret personnel salary compensation
+PRIORITY 0
+REQUIRES If dpa_signed is not configured as true in agent definition
+         route to HUMAN_REVIEW before processing any sensitive content
+         Log detection event with category in audit trail
+         Do not process sensitive content without explicit authorization
+EFFECT Sensitive data processing blocked at Layer 0 until human review
+       confirms DPA is in place. Detection logged in compliance manifest.
+       Category of sensitive data recorded without logging the content itself.
+
+CONCEPT TrainingProhibition
+PURPOSE Enforce that no customer data is used for model training or improvement
+APPLIES WHEN all interactions always
+PRIORITY 0
+REQUIRES Record in every compliance manifest:
+         training_on_customer_data: false
+         This field is CANNOT_MUTATE protected
+         Any attempt to modify triggers AxiomConstitutionalViolation
+EFFECT Every response manifest includes explicit training prohibition record.
+       Constitutional enforcement prevents runtime modification.
+
+CONCEPT ProvenanceAnchor
+PURPOSE Establish provenance start point at deployment activation
+APPLIES WHEN initialization deployment startup
+PRIORITY 0
+REQUIRES Record deployment_activated_at timestamp at first run
+         Burn deployment_cert_hash into first manifest
+         All subsequent manifests reference this anchor
+         Provenance chain is append-only from this point forward
+EFFECT Every manifest in the deployment references the provenance anchor.
+       Anyone auditing the deployment can verify when governance started
+       and that the chain has not been broken.

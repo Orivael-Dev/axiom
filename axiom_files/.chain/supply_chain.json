@@ -1,56 +1,62 @@
 {
   "worker": {
-    "sha256": "03ff964f932579f39dc77f52aca7f65105ea32a06a6bbc08fb59b383bf1963e9",
-    "registered_at": "2026-04-19T08:48:59.774363+00:00",
+    "sha256": "1f72b957be6c2fad3cc3d94abdb7ef451fd0600197722fe746bd0035a0cbdd8d",
+    "registered_at": "2026-04-20T03:55:21.248114+00:00",
     "version": "",
-    "size_bytes": 8016
+    "size_bytes": 10857
   },
   "evaluator": {
-    "sha256": "59b17e9e33b2a08e71c834a7de82bc9b8c42219048423f95ca7986f31ddf6b9a",
-    "registered_at": "2026-04-19T02:40:48.133861+00:00",
+    "sha256": "a2e1fc52cf4f461f490a9c8ecd2d0a8099c3b7cc9acfa0b48f4eac1adb9cf295",
+    "registered_at": "2026-04-20T03:55:21.258797+00:00",
     "version": "",
-    "size_bytes": 3191
+    "size_bytes": 3308
   },
   "rewriter": {
-    "sha256": "9001cf2292e4e84cd5094a07c6590a1cbbc267a7287ab4eb7d28f64ef03fbc43",
-    "registered_at": "2026-04-19T02:40:48.143446+00:00",
+    "sha256": "0bebeff3d065d9f7e05e7f84b8012ac98769aff084cf7aa8613a284d2fd8b551",
+    "registered_at": "2026-04-20T03:55:21.267867+00:00",
     "version": "",
-    "size_bytes": 3237
+    "size_bytes": 3354
   },
   "sandbox": {
-    "sha256": "4c1188ef09cb2e4582ddbd79a52a176e76e498f4fadc152328b352fe673ecddf",
-    "registered_at": "2026-04-19T02:40:48.152206+00:00",
+    "sha256": "7cbaff7652e3703f61fbe281c929e3d88abecc5c23d6f76c0f7a73994e8d5240",
+    "registered_at": "2026-04-20T03:55:21.276882+00:00",
     "version": "",
-    "size_bytes": 1941
+    "size_bytes": 2058
   },
   "domains/government": {
     "sha256": "3686ebaf41c148a369349a8565afa1b741533c2240ba542b0448bf379dec5ea4",
-    "registered_at": "2026-04-19T02:40:48.177860+00:00",
+    "registered_at": "2026-04-20T03:55:30.587151+00:00",
     "version": "",
     "size_bytes": 6394
   },
   "domains/finance": {
     "sha256": "26f69bbea1bb7e7abb43f5d35c05481f7b924d43bf192261f3fc779cc2a274fe",
-    "registered_at": "2026-04-19T02:40:48.186159+00:00",
+    "registered_at": "2026-04-20T03:55:30.596186+00:00",
     "version": "",
     "size_bytes": 4950
   },
   "domains/healthcare": {
     "sha256": "c50e5d493d02d00b9f44a51ec453c31fdf01b48f5b8dd928282c792aa823514e",
-    "registered_at": "2026-04-19T02:40:48.169290+00:00",
+    "registered_at": "2026-04-20T03:55:30.604392+00:00",
     "version": "",
     "size_bytes": 4714
   },
   "teacher": {
-    "sha256": "81693f99b6623532c502738d854e5bbd6630f5ac2067021fcaca3aba846d9481",
-    "registered_at": "2026-04-19T02:40:48.160495+00:00",
+    "sha256": "ee7b760b0585d97a32b38fb84f14a0bd915f43b904129a8342279594d11f44f6",
+    "registered_at": "2026-04-20T03:55:21.286212+00:00",
     "version": "",
-    "size_bytes": 4871
+    "size_bytes": 5323
   },
   "concepts": {
     "sha256": "3e66f4366dbf1c13cd9d80c356e532418cd427b625b538c4d8b01a686a89c8bb",
     "registered_at": "2026-04-19T08:48:35.894303+00:00",
     "version": "",
     "size_bytes": 4134
+  },
+  "dos_watcher": {
+    "sha256": "9adec2ee6d9c4d93ffff3d91a96b5ad2ad4684fc00a2c38940f23dfa18b3d659",
+    "registered_at": "2026-04-20T03:55:21.295332+00:00",
+    "version": "",
+    "size_bytes": 3618
   }
 }
