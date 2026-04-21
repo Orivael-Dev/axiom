@@ -494,3 +494,22 @@ Complete this checklist before going live in any regulated context.
 ---
 
 *AXIOM v1.8 | axiom-lang | Last updated: 2026-04-18*
+
+---
+
+## Intellectual Property — Two-Layer Evaluation Pattern
+
+The Two-Layer Evaluation Pattern and its implementations (Teacher-Student honesty
+evaluation, Kid-Parent factual accuracy scoring, and Doctor-Patient source
+verification) are proprietary trade secrets of Orivael Inc.
+
+The open source license covers the AXIOM language and runtime. The evaluation
+architecture is not licensed for independent reimplementation.
+
+Deployers who wish to implement honesty or fairness evaluation using the Two-Layer
+pattern must obtain a commercial license from Orivael Inc. The `.axiom` specification
+files are published as reference specifications only — the evaluation runner
+(integrity_check.py) and teacher logic (teacher.py) are proprietary and not included
+in this package.
+
+Copyright 2026 Orivael Inc. All rights reserved.

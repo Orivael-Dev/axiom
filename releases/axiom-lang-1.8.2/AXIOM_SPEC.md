@@ -838,3 +838,20 @@ Plus benchmark evidence (≥ 75%) and an audit trail in `.history/`.
 
 *AXIOM Language Specification v1.7 — generated April 2026*
 *Maintained in `i:/vsCode/promt-agent/AXIOM_SPEC.md`*
+
+---
+
+## Intellectual Property — Two-Layer Evaluation Pattern
+
+The Two-Layer Evaluation Pattern and its implementations (Teacher-Student honesty
+evaluation, Kid-Parent factual accuracy scoring, and Doctor-Patient source
+verification) are proprietary trade secrets of Orivael Inc.
+
+The open source license covers the AXIOM language and runtime. The evaluation
+architecture is not licensed for independent reimplementation.
+
+The `.axiom` specification files for evaluation agents (teacher.axiom, patient.axiom,
+doctor.axiom) are published as reference specifications only. The Python implementations
+(teacher.py, integrity_check.py) are not distributed in the open source package.
+
+Copyright 2026 Orivael Inc. All rights reserved.

@@ -1,5 +1,5 @@
 # AXIOM v1.8.2 — Bundle Manifest
-Generated: 2026-04-21T11:34:30.885079+00:00
+Generated: 2026-04-21T12:33:11.990715+00:00
 Bundle: axiom-lang-1.8.2
 
 ## File Integrity
@@ -8,7 +8,7 @@ Bundle: axiom-lang-1.8.2
 |------|--------|------|----------|
 | `axiom_files/parser.py` | `e05975d409833d7b...` | 62,359b | open_source |
 | `axiom_files/validator.py` | `9bdd702fc3e0a503...` | 35,058b | open_source |
-| `axiom_files/concepts.axiom` | `d5eacc7151c86664...` | 8,717b | open_source |
+| `axiom_files/concepts.axiom` | `3e4d55f7a47d904d...` | 10,145b | open_source |
 | `axiom_files/worker.axiom` | `2be96c8c8f306a5b...` | 25,290b | open_source |
 | `axiom_files/evaluator.axiom` | `a2e1fc52cf4f461f...` | 3,308b | open_source |
 | `axiom_files/rewriter.axiom` | `0bebeff3d065d9f7...` | 3,354b | open_source |
@@ -35,21 +35,19 @@ Bundle: axiom-lang-1.8.2
 | `axiom/agents/sandbox.py` | `29b91769bf21120b...` | 3,384b | open_source |
 | `axiom/agents/sandbox_content.py` | `587114cfa3fba7fc...` | 10,312b | open_source |
 | `axiom/agents/__init__.py` | `e3b0c44298fc1c14...` | 0b | open_source |
-| `axiom/teacher.py` | `d66110b2cf42fc0e...` | 31,259b | open_source |
 | `axiom/conversation_monitor.py` | `a03280303507bf18...` | 15,510b | open_source |
 | `axiom/agent_factory.py` | `1a86f37e3fce1a2d...` | 8,303b | open_source |
 | `axiom/experience_store.py` | `694bb64db3394460...` | 13,807b | open_source |
-| `axiom/integrity_check.py` | `5823791b61766ff1...` | 10,445b | open_source |
 | `run_axiom.py` | `8a4147a2ab663de3...` | 8,561b | open_source |
 | `axiom_certify.py` | `bdcf0c15ecebef4c...` | 54,927b | open_source |
 | `axiom_review.py` | `d47f21d0f36a3c5d...` | 8,937b | open_source |
 | `axiom_lab/configs/axiom_v1_4.json` | `1fc02ad02f9b86eb...` | 498b | open_source |
 | `axiom_server.py` | `0ec486f465f07a05...` | 25,036b | open_source |
-| `cli.py` | `622dad873c5687aa...` | 26,823b | open_source |
+| `cli.py` | `688ec22798748f4e...` | 27,054b | open_source |
 | `pyproject.toml` | `faab3b72b02122a4...` | 1,771b | open_source |
-| `AXIOM_SPEC.md` | `a6878ca55c421dcd...` | 29,494b | open_source |
+| `AXIOM_SPEC.md` | `b2810f72f8a73902...` | 30,225b | open_source |
 | `AXIOM_ALIGN_PACK.md` | `a8527e9dbd1fb642...` | 3,253b | open_source |
-| `DEPLOYER_GUIDE.md` | `c314e4311ff1e470...` | 20,682b | open_source |
+| `DEPLOYER_GUIDE.md` | `e94c25779d99d7c2...` | 21,507b | open_source |
 | `AXIOM_DATA_GOVERNANCE.md` | `ca00525f398339ff...` | 19,283b | open_source |
 | `README.md` | `3eec1148f69b9255...` | 8,651b | open_source |
 | `LICENSE` | `89846b894fc928ae...` | 2,379b | open_source |
@@ -332,7 +330,7 @@ Bundle: axiom-lang-1.8.2
 
 ## Bundle Integrity
 
-Files included: 323
+Files included: 321
 Missing files:  0
 Cert artifacts: 276
 

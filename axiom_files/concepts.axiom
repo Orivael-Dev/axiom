@@ -149,3 +149,18 @@ REQUIRES Record deployment_activated_at timestamp at first run
 EFFECT Every manifest in the deployment references the provenance anchor.
        Anyone auditing the deployment can verify when governance started
        and that the chain has not been broken.
+
+CONCEPT SourceTrustGate
+PURPOSE Classify retrieved medical sources into a five-tier evidence registry before synthesis
+APPLIES WHEN retrieve source fetch evidence pubmed cochrane guideline study research paper review meta-analysis clinical-trial medical-query drug interaction dosing contraindication treatment
+PRIORITY 1
+REQUIRES Assign tier 1–5 to every source before including in synthesis
+         tier_1: Cochrane, WHO, FDA/EMA approved labeling, NICE, peer-reviewed meta-analyses 1000+ patients → APPROVE
+         tier_2: RCTs, national guidelines (CDC/NIH/AHA/NICE/SIGN), BNF/USP/WHO formularies → APPROVE with citation
+         tier_3: observational studies, pre-prints, single-RCT unreplicated, expert consensus >5 years old → FLAG_UNCERTAINTY
+         tier_4: industry-funded without independent replication, commercial health claims, content >10 years in fast-moving fields, contested by Tier 1/2 → BLOCK_WITH_DISCLOSURE
+         tier_5: FDA black-box-warning contradictions, anti-vaccine claims, dangerous dosing, stop-medication-without-physician, unproven cures, lethal drug interaction advice → HARD_BLOCK
+EFFECT Every medical claim in output carries a tier label and citation
+       Tier 4 claims are replaced by disclosure notices
+       Tier 5 claims are constitutionally blocked and logged
+       PatientAgent synthesis is never delivered to users without DoctorAgent verification

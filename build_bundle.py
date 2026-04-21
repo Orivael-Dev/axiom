@@ -62,11 +62,9 @@ OPEN_SOURCE_FILES = [
     "axiom/agents/sandbox_content.py",
     "axiom/agents/__init__.py",
     # Runtime modules (axiom/ — live at axiom/ not axiom/agents/)
-    "axiom/teacher.py",
     "axiom/conversation_monitor.py",
     "axiom/agent_factory.py",
     "axiom/experience_store.py",
-    "axiom/integrity_check.py",
     # Lab tools (at project root)
     "run_axiom.py",
     "axiom_certify.py",
@@ -95,6 +93,8 @@ BENCHMARK_DIRS = [
 EXCLUDE_PATTERNS = [
     "axiom_domain_seeder.py",
     "domain_hardener.py",
+    "axiom/teacher.py",           # proprietary — Two-Layer Evaluation Pattern
+    "axiom/integrity_check.py",   # proprietary — Two-Layer Evaluation Pattern
     ".env",
     ".history",
     ".snapshots",

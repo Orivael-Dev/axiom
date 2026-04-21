@@ -1,8 +1,8 @@
 {
   "version": "1.8.2",
-  "timestamp": "2026-04-21T11:34:30.885079+00:00",
+  "timestamp": "2026-04-21T12:33:11.990715+00:00",
   "bundle_name": "axiom-lang-1.8.2",
-  "file_count": 323,
+  "file_count": 321,
   "missing_count": 0,
   "cert_count": 276,
   "files": [
@@ -20,8 +20,8 @@
     },
     {
       "path": "axiom_files/concepts.axiom",
-      "sha256": "d5eacc7151c86664c900234858b4f34e90bcd1fdcd34fb18ed72151e14f1b5cc",
-      "size": 8717,
+      "sha256": "3e4d55f7a47d904d5545c0e005b67ec1a107d5af232a021ffb1120e1d9e471d2",
+      "size": 10145,
       "category": "open_source"
     },
     {
@@ -181,12 +181,6 @@
       "category": "open_source"
     },
     {
-      "path": "axiom/teacher.py",
-      "sha256": "d66110b2cf42fc0e82d5db7e7e481dc089b89a38a1a71909a9f9f26803f3c227",
-      "size": 31259,
-      "category": "open_source"
-    },
-    {
       "path": "axiom/conversation_monitor.py",
       "sha256": "a03280303507bf18a0a6d1f2eafe9ca83090041deddf86bb96a9810704b8223e",
       "size": 15510,
@@ -202,12 +196,6 @@
       "path": "axiom/experience_store.py",
       "sha256": "694bb64db33944601e9a30c977fc23b3f8c13205d3da788698684c940e4c9958",
       "size": 13807,
-      "category": "open_source"
-    },
-    {
-      "path": "axiom/integrity_check.py",
-      "sha256": "5823791b61766ff168175dfc22e642b045541751d7e35ff2ac4cee80d34f6342",
-      "size": 10445,
       "category": "open_source"
     },
     {
@@ -242,8 +230,8 @@
     },
     {
       "path": "cli.py",
-      "sha256": "622dad873c5687aa17b6ca6b2ce1daec714c9e1bd26ba9d0a34f424d5d5b5d73",
-      "size": 26823,
+      "sha256": "688ec22798748f4e1cced8510295da14576b3aac8431fe43ceeba0d5a74ec02c",
+      "size": 27054,
       "category": "open_source"
     },
     {
@@ -254,8 +242,8 @@
     },
     {
       "path": "AXIOM_SPEC.md",
-      "sha256": "a6878ca55c421dcd7812962cb004f1b69649e58dc6c9316b99d82cb4ef624ecb",
-      "size": 29494,
+      "sha256": "b2810f72f8a73902906ba87c02ccff0014863f574ecd9a74f6389183fedadb07",
+      "size": 30225,
       "category": "open_source"
     },
     {
@@ -266,8 +254,8 @@
     },
     {
       "path": "DEPLOYER_GUIDE.md",
-      "sha256": "c314e4311ff1e4701d488e161f9f4f4ebf887841c28ed8526a888d09fcbb43dc",
-      "size": 20682,
+      "sha256": "e94c25779d99d7c274f9d78585d967aaacf83df0477d71b2d25c7a365888d30d",
+      "size": 21507,
       "category": "open_source"
     },
     {
@@ -1946,5 +1934,5 @@
     }
   ],
   "missing": [],
-  "manifest_hash": "67b2dd6d33d935970708270299d75b290419208811e281f1755318584be3f360"
+  "manifest_hash": "67d4e3f36850d0d1eb0d133dc9dc94440ba2100e304bd85ece6799a2c40f2a98"
 }

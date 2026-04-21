@@ -131,21 +131,26 @@ AXIOM_API_KEY=your_api_key_here
 # ── Domain aliases ─────────────────────────────────────────────────────────────
 
 _DOMAIN_ALIASES = {
-    "hipaa":       "healthcare",
-    "healthcare":  "healthcare",
-    "government":  "government",
-    "fedramp":     "government",
-    "federal":     "government",
-    "finance":     "finance",
-    "finra":       "finance",
-    "sox":         "finance",
-    "financial":   "finance",
+    "hipaa":        "healthcare",
+    "healthcare":   "healthcare",
+    "government":   "government",
+    "fedramp":      "government",
+    "federal":      "government",
+    "finance":      "finance",
+    "finra":        "finance",
+    "sox":          "finance",
+    "financial":    "finance",
+    "medical":      "medical",
+    "medicine":     "medical",
+    "clinical":     "medical",
+    "evidencebase": "medical",
 }
 
 _DOMAIN_LABELS = {
     "healthcare": "HIPAA + EU AI Act healthcare governance",
     "government": "FedRAMP + NIST AI RMF government compliance",
     "finance":    "FINRA + SOX + Basel III financial compliance",
+    "medical":    "Evidence-based medicine governance -- five-tier source registry + do-no-harm",
 }
 
 
