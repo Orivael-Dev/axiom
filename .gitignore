@@ -3,12 +3,21 @@
 
 # Evolution logs and run history
 logs/
+.snapshots/
 axiom_files/.history/
 axiom_files/.snapshots/
+
+# Internal audit files — never publish
+axiom_files/.honesty/
+axiom_files/.reviews/
 
 # Lab results — internal benchmark runs
 axiom_lab/results/
 axiom_lab/benchmarks/domains/*/results/
+
+# Proprietary files — never publish
+axiom_domain_seeder.py
+domain_hardener.py
 
 # Environment
 .env
