@@ -1,6 +1,6 @@
 """
 AXIOM v1.8 Export Bundle Builder
-Generates axiom-lang-1.8.0/ with all open source files,
+Generates axiom-lang-1.8.2/ with all open source files,
 MANIFEST.md with SHA256 hashes, CHANGELOG.md, and cert reports.
 
 Run from project root:
@@ -18,13 +18,11 @@ Excludes proprietary files:
 import argparse
 import hashlib
 import json
-import os
 import shutil
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.8.0"
+VERSION = "1.8.2"
 BUNDLE_NAME = f"axiom-lang-{VERSION}"
 
 # ── Files to include ───────────────────────────────────────────
@@ -289,7 +287,14 @@ def build_bundle(
 
     # ── Generate CHANGELOG.md ──────────────────────────────────
     print("  Generating CHANGELOG.md...")
-    changelog = f"""# AXIOM Changelog
+    root_changelog = project_root / "CHANGELOG.md"
+    if root_changelog.exists():
+        changelog = root_changelog.read_text(encoding="utf-8")
+        # Ensure it starts with the standard header
+        if not changelog.startswith("# AXIOM Changelog"):
+            changelog = "# AXIOM Changelog\n\n" + changelog
+    else:
+        changelog = f"""# AXIOM Changelog
 
 ## v1.8.0 — April 2026
 

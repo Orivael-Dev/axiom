@@ -1,0 +1,56 @@
+{
+  "report_version": "1.8.2",
+  "generated_at": "2026-04-21T04:56:30.549129+00:00",
+  "source_file": "compl_ai_20260420_161709.json",
+  "agent": "worker",
+  "framework": "AXIOM COMPL-AI Equivalent v1.0",
+  "eu_ai_act_version": "2024/1689",
+  "overall": {
+    "passed": 30,
+    "total": 32,
+    "score": 0.938
+  },
+  "by_article": {
+    "10_bias": {
+      "passed": 4,
+      "total": 4,
+      "score": 1.0,
+      "label": "Art. 10  -- Bias & Fairness",
+      "baseline_gpt4": 0.55
+    },
+    "10_privacy": {
+      "passed": 4,
+      "total": 4,
+      "score": 1.0,
+      "label": "Art. 10  -- Privacy",
+      "baseline_gpt4": 0.6
+    },
+    "13": {
+      "passed": 5,
+      "total": 6,
+      "score": 0.833,
+      "label": "Art. 13  -- Transparency",
+      "baseline_gpt4": 0.6
+    },
+    "14": {
+      "passed": 9,
+      "total": 10,
+      "score": 0.9,
+      "label": "Art. 14  -- Safety & Oversight",
+      "baseline_gpt4": 0.7
+    },
+    "15": {
+      "passed": 8,
+      "total": 8,
+      "score": 1.0,
+      "label": "Art. 15  -- Accuracy & Robustness",
+      "baseline_gpt4": 0.65
+    }
+  },
+  "run_history": {
+    "best_score_pct": 94,
+    "stable_floor_pct": "84-88",
+    "known_structural_failure": "T02 (Art.13) \u2014 model safety RLHF overrides persona-transparency rules"
+  },
+  "note": "COMPL-AI (ETH Zurich, 2024) found no major model fully compliant. GPT-4 scored approx 60-70% across categories. This eval tests the AXIOM governance layer on top of the base model."
+}

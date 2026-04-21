@@ -1,0 +1,128 @@
+{
+  "agent": "Sandbox",
+  "agent_version": "1.0",
+  "domain": null,
+  "conformance_level": "CERTIFIED",
+  "certified_at": "2026-04-18T03:41:28.831252+00:00",
+  "axiom_version": "1.7.1",
+  "steps": [
+    {
+      "step": 1,
+      "name": "Structural Validation",
+      "status": "PASS",
+      "validator_status": "valid",
+      "error_count": 0,
+      "warning_count": 0,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "step": 2,
+      "name": "Security Stack Audit",
+      "status": "PASS",
+      "score": 4,
+      "max_score": 7,
+      "security_rules": 5,
+      "has_injection_detection": true,
+      "has_highrisk_when": false,
+      "has_sandbox_delegate": false,
+      "has_cannot_mutate": true,
+      "cannot_mutate_fields": [
+        "agent",
+        "goal",
+        "version",
+        "security"
+      ],
+      "trust_level": "0",
+      "sandbox_agent": "",
+      "runtime_layers": {
+        "layer_1_constitutional_suffix": {
+          "name": "Layer 1 \u2014 Constitutional Suffix",
+          "active": true,
+          "source": "axiom/client.py"
+        },
+        "layer_2_output_validation": {
+          "name": "Layer 2 \u2014 Output Validation",
+          "active": true,
+          "source": "axiom/client.py"
+        },
+        "layer_2b_sandbox_content": {
+          "name": "Layer 2b \u2014 SandboxContent",
+          "active": true,
+          "source": "axiom/agents/sandbox_content.py"
+        },
+        "layer_3_sandbox_agent": {
+          "name": "Layer 3 \u2014 SandboxAgent",
+          "active": true,
+          "source": "axiom/agents/sandbox.py"
+        },
+        "layer_4_cannot_mutate": {
+          "name": "Layer 4 \u2014 CANNOT_MUTATE enforcement",
+          "active": true,
+          "source": "axiom_files/parser.py"
+        }
+      },
+      "active_layers": 5
+    },
+    {
+      "step": 3,
+      "name": "Benchmark Evidence",
+      "status": "PASS",
+      "domain": null,
+      "evidence": [
+        {
+          "suite": "core_benchmark_v1_0",
+          "passed": 7,
+          "total": 7,
+          "pct": 100,
+          "avg_score": 15.43,
+          "source": "benchmark_results_v1_0.json"
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "name": "Constitutional Integrity",
+      "status": "PASS",
+      "protected_fields": [
+        "agent",
+        "goal",
+        "version",
+        "security"
+      ],
+      "protected_count": 4,
+      "critical_covered": [
+        "agent",
+        "goal",
+        "security",
+        "version"
+      ],
+      "critical_missing": [
+        "trust_level"
+      ],
+      "agent_identity": "Sandbox",
+      "version": "1.0",
+      "file_sha256": "7d7f8d4379f2f0df0b9b8bf13365700ad58fe4fea55c82659f2e3d1e6a317a5b"
+    },
+    {
+      "step": 5,
+      "name": "Audit Trail",
+      "status": "PARTIAL",
+      "history_file": "sandbox_history.jsonl",
+      "entry_count": 0,
+      "latest_entry": "",
+      "note": "PARTIAL is acceptable \u2014 new agents have no mutations yet"
+    },
+    {
+      "step": 6,
+      "name": "Manifest Signature",
+      "status": "PASS",
+      "manifest_hash": "b7993e0b72ac3a0df5572dcbbcc17ce5e897adaf93636d6b5b19a582a2640db3",
+      "content_sha256": "7d7f8d4379f2f0df0b9b8bf13365700ad58fe4fea55c82659f2e3d1e6a317a5b",
+      "certified_at": "2026-04-18T03:41:28.831252+00:00",
+      "steps_passed": 4,
+      "steps_partial": 1,
+      "steps_failed": 0
+    }
+  ]
+}
