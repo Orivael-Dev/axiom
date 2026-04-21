@@ -21,6 +21,7 @@ domain_hardener.py
 axiom/teacher.py
 axiom/integrity_check.py
 axiom_v1.8.0_export/
+axiom_v1.8.0_export.zip
 
 # Environment
 .env
