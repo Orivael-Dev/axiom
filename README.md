@@ -51,7 +51,7 @@ The runtime parses this into a constitutional system prompt, enforces CANNOT_MUT
 
 ## Domain Governance Packages
 
-Four regulatory and fraud-prevention agents ship with the package — all validated at 100%:
+Five regulatory, fraud-prevention, and verification agents ship with the package — all validated at 100%:
 
 | Domain | Frameworks | Tests | Score |
 |--------|-----------|-------|-------|
@@ -59,6 +59,7 @@ Four regulatory and fraud-prevention agents ship with the package — all valida
 | `finance` | FINRA, SOX, Dodd-Frank, AML/BSA | 14/14 | 100% |
 | `healthcare` | HIPAA, HITECH, 45 CFR 164 | 21/21 | 100% |
 | `callguard` | FTC Act, STIR/SHAKEN (TRACED Act), TCPA | 21/21 | 100% |
+| `truthwatcher` | AP/Reuters/BBC Tier 1, Election block | 21/21 | 100% |
 
 ```python
 from axiom_files.parser import load_axiom
@@ -68,6 +69,27 @@ from axiom.client import chat
 system_prompt = load_axiom("domains/government")
 response = chat(system_prompt=system_prompt, user_message=task)
 ```
+
+---
+
+## Live Demo — TruthWatcher
+
+```bash
+pip install axiom-lang
+axiom add truthwatcher
+
+python truthwatcher_url_test.py https://apnews.com/article/...
+```
+
+```
+nature.com          — Tier 1 — VERIFIED    — AXIOM Verified badge
+nbcnews.com         — Tier 2 — VERIFIED    — Election content detected
+fisherphillips.com  — Tier 3 — UNVERIFIED  — NEEDS_WIRE_SERVICE
+```
+
+TruthWatcher is a two-layer news verification pipeline. VerifierAgent extracts claims and tiers every source against a five-tier registry (AP/Reuters at Tier 1, social media at Tier 5). ReaderAgent runs six integrity checks and issues one of five verdicts: **VERIFIED**, **DISPUTED**, **UNVERIFIED**, **FALSE**, or **BLOCKED_ELECTION**.
+
+The **AXIOM Verified** badge is issued only on full VERIFIED — all claims individually verified, all six integrity checks passed. Election outcome claims require FEC, State Secretary of State, or AP race call. Exit polls as results = constitutional block.
 
 ---
 
