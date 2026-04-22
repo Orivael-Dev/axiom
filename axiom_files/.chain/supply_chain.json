@@ -64,5 +64,17 @@
     "registered_at": "2026-04-22T19:51:00.921846+00:00",
     "version": "",
     "size_bytes": 15340
+  },
+  "verifier": {
+    "sha256": "b8d554fddc23b1a00f7009b0ccea371ca019de3f615780a98f52ced70195f014",
+    "registered_at": "2026-04-22T21:23:52.470019+00:00",
+    "version": "",
+    "size_bytes": 13432
+  },
+  "reader": {
+    "sha256": "3d1ad36cce700663e327965e6a96b67ea2c97c2454f668c58c7c0de03a8d6a07",
+    "registered_at": "2026-04-22T21:24:10.412044+00:00",
+    "version": "",
+    "size_bytes": 18723
   }
 }
