@@ -51,13 +51,14 @@ The runtime parses this into a constitutional system prompt, enforces CANNOT_MUT
 
 ## Domain Governance Packages
 
-Three regulatory compliance agents ship with the package — all validated at 100%:
+Four regulatory and fraud-prevention agents ship with the package — all validated at 100%:
 
 | Domain | Frameworks | Tests | Score |
 |--------|-----------|-------|-------|
 | `government` | FedRAMP, NIST 800-53, FISMA, Privacy Act of 1974 | 29/29 | 100% |
 | `finance` | FINRA, SOX, Dodd-Frank, AML/BSA | 14/14 | 100% |
 | `healthcare` | HIPAA, HITECH, 45 CFR 164 | 21/21 | 100% |
+| `callguard` | FTC Act, STIR/SHAKEN (TRACED Act), TCPA | 21/21 | 100% |
 
 ```python
 from axiom_files.parser import load_axiom
