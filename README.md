@@ -1,5 +1,7 @@
 # axiom-lang
 
+> Patent Pending — ORVL-001-PROV | Filed April 22, 2026
+
 **A declarative language for constitutional AI agents.**
 
 AXIOM is an open-source DSL where AI agents define their own behavior, enforce constitutional boundaries, and evolve their own prompts. It ships with domain governance packages for government, finance, and healthcare — all at 100% on their benchmark suites.
@@ -266,9 +268,9 @@ stable floor. Full results and run history are in `certs/compl_ai_report_*.json`
 
 ## License
 
-MIT — Copyright (c) 2026 Antonio Roberts
+Apache 2.0 — Copyright 2026 Orivael Inc.
 
-Patent Pending — ORVL-001-PROV
+Patent Pending — ORVL-001-PROV — Filed April 22, 2026
 
 The Two-Layer Evaluation Pattern (Teacher-Student, Kid-Parent, Doctor-Patient) is proprietary.
 See [TERMS_OF_SERVICE.md](TERMS_OF_SERVICE.md) for licensing terms.
