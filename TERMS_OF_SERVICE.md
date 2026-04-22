@@ -58,10 +58,10 @@ reimplementation without a commercial license from Orivael Inc.:
 
 ### Patent Notice
 
-Patent pending. One or more patent applications covering the Two-Layer Evaluation
-Pattern and its implementations have been or are being filed with the USPTO and/or
-EPO. "Patent pending" status applies to the pattern, its implementations, and
-derivative architectures.
+Patent Pending — ORVL-001-PROV. One or more patent applications covering the
+Two-Layer Evaluation Pattern and its implementations have been or are being filed
+with the USPTO and/or EPO. "Patent pending" status applies to the pattern, its
+implementations, and derivative architectures.
 
 ---
 

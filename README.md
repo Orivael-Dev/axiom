@@ -267,3 +267,8 @@ stable floor. Full results and run history are in `certs/compl_ai_report_*.json`
 ## License
 
 MIT — Copyright (c) 2026 Antonio Roberts
+
+Patent Pending — ORVL-001-PROV
+
+The Two-Layer Evaluation Pattern (Teacher-Student, Kid-Parent, Doctor-Patient) is proprietary.
+See [TERMS_OF_SERVICE.md](TERMS_OF_SERVICE.md) for licensing terms.
