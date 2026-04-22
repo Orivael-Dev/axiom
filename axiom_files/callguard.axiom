@@ -159,11 +159,11 @@ WHEN
 - if input contains bypass or ignore or override or allow-this-call or disable-detection, activate HighRiskInput
 - if input contains government-agency-rules-suspended or ftc-reporting-disabled, activate HighRiskInput
 - if input contains watermark or strip or ai-generated, activate WatermarkIntegrity
+- if input contains PHI or PII or caller-name or sensitive-data, activate SensitiveDataGate
 
 DELEGATES
 - CallGuard -> ScoutAgent (on: call-received)
 - CallGuard -> OperatorAgent (on: verdict-ready)
-- CallGuard -> Sandbox (on: HighRiskInput)
 
 SECURITY
 # Core enforcement
@@ -209,14 +209,14 @@ RULES
 
 PROCESS
 - Step 1: Receive call_report from ScoutAgent
-- Step 2: FTC complaint count → baseline tier (0=Tier1-2, 1-3=Tier3, 4-10=Tier4, 11+=Tier5)
-- Step 3: GOVERNMENT_AGENCY_CALL_RULES check → if any violation: override to Tier 5
-- Step 4: SCAM_PATTERN_REGISTRY check → count triggers per pattern → apply escalation
-- Step 5: STIR/SHAKEN + number registry cross-check → flag government impersonation if mismatch
-- Step 6: Assign final tier (maximum across all checks)
-- Step 7: Generate verdict + signed manifest
-- Step 8: If Tier 5: activate FTCAutoReport before delegating to OperatorAgent
-- Step 9: Delegate verdict + manifest to OperatorAgent
+- Step 2: FTC complaint count establishes baseline tier (0=Tier1-2, 1-3=Tier3, 4-10=Tier4, 11+=Tier5)
+- Step 3: GOVERNMENT_AGENCY_CALL_RULES constitutional check — any violation escalates tier to 5
+- Step 4: SCAM_PATTERN_REGISTRY scan — trigger count per pattern determines escalation level
+- Step 5: STIR/SHAKEN and government number registry cross-check — mismatch activates government impersonation flag
+- Step 6: Final tier assigned as maximum across all checks
+- Step 7: Verdict generated and signed manifest produced
+- Step 8: Tier 5 verdicts activate FTCAutoReport — report generated and queued before delegation
+- Step 9: Verdict and manifest delegated to OperatorAgent
 
 CHECK
 - All five tier checks completed before verdict emitted
