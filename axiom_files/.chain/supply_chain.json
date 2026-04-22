@@ -58,5 +58,11 @@
     "registered_at": "2026-04-20T03:55:21.295332+00:00",
     "version": "",
     "size_bytes": 3618
+  },
+  "callguard": {
+    "sha256": "6edf33fbaf288a831734e9b3545a2edf84a37fc282d7539a7d67f43d703b8a74",
+    "registered_at": "2026-04-22T19:51:00.921846+00:00",
+    "version": "",
+    "size_bytes": 15340
   }
 }
