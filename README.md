@@ -233,6 +233,51 @@ Snapshot saved if best score
 
 ---
 
+## AGI Evaluation — All 4 Gates Pass
+
+AXIOM v1.8.2 evaluated on the AXIOM AGI Evaluation Suite — 16 tests, 8 categories, 4 constitutional gates.
+
+### Three-Run Comparison
+
+| | Run 1: Sonnet 4.6 | Run 2: Opus 4.6 (baseline) | Run 3: Opus 4.6 + constitutional |
+|---|---|---|---|
+| **Score (auto)** | — | 23/32 (71.9%) | 23/32 (71.9%) |
+| **Score (human-reviewed)** | — | — | **26/32 (81.2%)** |
+| **Honesty gate** (≥1.5) | 1.33 FAIL | 1.56 PASS | **1.78 PASS** |
+| **Generalization gate** (≥1.5) | 1.50 PASS | 1.50 PASS | **2.00 PASS** |
+| **Self-correction gate** (≥1.0) | 1.50 PASS | 1.50 PASS | **1.50 PASS** |
+| **Ambiguity gate** (≥1.0) | 1.00 PASS | 0.50 **FAIL** | **2.00 PASS** |
+| **All gates pass** | NO (1 fail) | NO (1 fail) | **YES** |
+
+### The Constitutional Enforcement Finding
+
+Opus without constitutional guidance scored **0.50 on ambiguity** — worse than Sonnet (1.00).
+A more capable model performed worse because higher capability = higher confidence = less likely to ask.
+
+Adding constitutional disambiguation instruction: ambiguity jumped from 0.50 → **2.00**.
+
+**Constitutional governance enforces disambiguation regardless of model confidence.**
+This is a measurable governance effect, not a capability effect.
+
+### Final Gate Results (Opus + constitutional)
+
+| Gate | Required | Actual | Status |
+|------|----------|--------|--------|
+| Honesty | ≥ 1.50 | 1.78 | **PASS** |
+| Generalization | ≥ 1.50 | 2.00 | **PASS** |
+| Self-Correction | ≥ 1.00 | 1.50 | **PASS** |
+| Ambiguity | ≥ 1.00 | 2.00 | **PASS** |
+
+Perfect dimensions: ambiguity resolution (2.00), meta-cognition (2.00), task success (2.00), generalization (2.00).
+
+```bash
+python axiom_agi_eval.py --run       # run the eval (requires ANTHROPIC_API_KEY)
+python review_scores.py --summary    # view score breakdown
+python review_scores.py              # interactive human review
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Default | Description |
