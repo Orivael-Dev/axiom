@@ -1,4 +1,4 @@
-# axiom-lang
+# axiom-constitutional
 
 > Patent Pending — ORVL-001-PROV | Filed April 22, 2026
 
@@ -7,7 +7,7 @@
 AXIOM is an open-source DSL where AI agents define their own behavior, enforce constitutional boundaries, and evolve their own prompts. It ships with domain governance packages for government, finance, and healthcare — all at 100% on their benchmark suites.
 
 ```bash
-pip install axiom-lang
+pip install axiom-constitutional
 ```
 
 ---
@@ -127,7 +127,7 @@ These rules are constitutional — they apply to Sovereign itself.
 ## Live Demo — TruthWatcher
 
 ```bash
-pip install axiom-lang
+pip install axiom-constitutional
 axiom add truthwatcher
 
 python truthwatcher_url_test.py https://apnews.com/article/...

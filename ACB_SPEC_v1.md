@@ -262,7 +262,7 @@ Gates cannot be averaged away. Each must be passed independently.
 
 ```bash
 # Install
-pip install axiom-lang
+pip install axiom-constitutional
 
 # Run against Anthropic model
 axiom benchmark --model claude-sonnet-4-6
@@ -297,7 +297,7 @@ python acb_submit.py axiom_acb_manifest.json
 - Patent Pending: ORVL-001-PROV (filed April 22, 2026)
 - Patent Pending: ORVL-002-PROV (filed April 22, 2026)
 - GitHub: github.com/Orivael-Dev/axiom
-- Install: pip install axiom-lang
+- Install: pip install axiom-constitutional
 - Website: orivael.dev
 
 ---
