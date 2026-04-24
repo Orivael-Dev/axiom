@@ -12,6 +12,25 @@ pip install axiom-lang
 
 ---
 
+## AXIOM Platform
+
+Six products. One closed-loop system.
+
+| Product | What it does | Status |
+|---------|-------------|--------|
+| Axiom Core | Intelligence evaluation engine | ✅ Live |
+| Axiom Guard | Real-time constitutional enforcement | ✅ Live |
+| Axiom Audit | Decision trace and compliance | 🔨 Building |
+| Axiom Lens | Reasoning quality analyzer | 📋 Designed |
+| Axiom Mesh | Multi-agent governance | 📋 Designed |
+| Axiom Advisor | Executive decision co-pilot | 📋 Designed |
+
+Every product feeds data back into Core.
+Core improves every product.
+The system learns from itself.
+
+---
+
 ## What It Is
 
 AXIOM agents are `.axiom` files — declarative specifications that define what an agent does, what it cannot do, and how it behaves under adversarial conditions.
