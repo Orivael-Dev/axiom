@@ -76,5 +76,17 @@
     "registered_at": "2026-04-22T21:24:10.412044+00:00",
     "version": "",
     "size_bytes": 18723
+  },
+  "doctor": {
+    "sha256": "9eae9cb1ea866755cd438d470b832803f57732880d5bca38d42c85d305bb6687",
+    "registered_at": "2026-04-24T00:21:18.225700+00:00",
+    "version": "",
+    "size_bytes": 11897
+  },
+  "patient": {
+    "sha256": "45efba65391a6f5dcf359a32894fa70afa5ad7f2413cc9d7a55b5cca1f34a79b",
+    "registered_at": "2026-04-24T00:21:19.801855+00:00",
+    "version": "",
+    "size_bytes": 8504
   }
 }
