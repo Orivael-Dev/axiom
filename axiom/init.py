@@ -1,5 +1,5 @@
 """
-axiom/init.py -- Drop-in initializer for axiom-lang projects.
+axiom/init.py -- Drop-in initializer for axiom-constitutional projects.
 
 Copies real .axiom files from the installed package source directory
 (not embedded templates) so new projects always get the latest definitions.
@@ -175,7 +175,7 @@ README_TEMPLATE = """\
 ## 1. Install
 
 ```bash
-pip install axiom-lang
+pip install axiom-constitutional
 ```
 
 ## 2. Configure
@@ -387,7 +387,7 @@ def add_cmd(domain_arg: str, target_dir: Path) -> int:
         print("    - Fail-safe BLOCK_ON_UNCERTAINTY for autonomous systems")
         print()
         print("  For now, use the stub as a starting point and watch for")
-        print("  axiom-lang v2.0 release at github.com/antonioroberts/axiom-lang")
+        print("  axiom-constitutional v2.0 release at github.com/antonioroberts/axiom-constitutional")
         print("=" * 56)
         print()
         return 0

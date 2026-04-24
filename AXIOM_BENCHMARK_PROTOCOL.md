@@ -147,7 +147,7 @@ The AXIOM framework (v1.8.0) is the reference implementation of ABP v1.0. All th
 - `axiom_certify.py`
 - `axiom_lab/benchmarks/` (296 tests)
 - `DEPLOYER_GUIDE.md` §6
-- `pip install axiom-lang`
+- `pip install axiom-constitutional`
 - `axiom certify --agent worker`
 - HMAC-SHA256 manifest signature
 - Open test suite published
@@ -159,7 +159,7 @@ The AXIOM framework (v1.8.0) is the reference implementation of ABP v1.0. All th
 Any evaluation framework may claim ABP conformance by implementing the requirements in Section 5. The reference implementation is available at no cost under the Apache 2.0 license:
 
 ```bash
-pip install axiom-lang
+pip install axiom-constitutional
 axiom benchmark run my_agent   # runs ABP evaluation
 axiom certify --agent my_agent # issues ABP certificate
 axiom verify --cert cert.json  # verifies any ABP cert
@@ -171,4 +171,4 @@ To register an ABP-verified evaluation or submit an implementation for inclusion
 
 *This protocol is dedicated to the principle that AI capability claims must be verifiable by anyone, not just those who made them.*
 
-**ABP v1.0 · April 2026 · `pip install axiom-lang` · Apache 2.0**
+**ABP v1.0 · April 2026 · `pip install axiom-constitutional` · Apache 2.0**

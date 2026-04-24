@@ -107,7 +107,7 @@ axiom add government  # government — FedRAMP, NIST 800-53
 - DEPLOYER_GUIDE.md — deployment guide
 - OWASP_ALIGNMENT.md — security alignment
 
-pip install axiom-lang
+pip install axiom-constitutional
 github.com/antonioroberts/promt-agent
 """
 
@@ -283,7 +283,7 @@ def init_project(target_dir: Path, domain: str = None):
 
     print(f"  {'─' * 44}")
     print()
-    print(f"  {green('pip install axiom-lang')}  ·  "
+    print(f"  {green('pip install axiom-constitutional')}  ·  "
           f"{gray('github.com/antonioroberts/promt-agent')}")
     print()
 

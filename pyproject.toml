@@ -3,8 +3,8 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "axiom-lang"
-version = "1.8.2"
+name = "axiom-constitutional"
+version = "1.8.3"
 description = "A declarative language for constitutional AI agents — with domain governance packages for government, finance, and healthcare"
 readme = "README.md"
 license = "MIT"
@@ -49,7 +49,7 @@ axiom-init     = "axiom.init:main"
 axiom-add      = "axiom.init:add_main"
 
 [project.urls]
-Repository = "https://github.com/antonioroberts/axiom-lang"
+Repository = "https://github.com/Orivael-Dev/axiom"
 
 [tool.setuptools.packages.find]
 where = ["."]

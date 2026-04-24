@@ -1,5 +1,5 @@
 """
-AXIOM CLI — command line entry points for axiom-lang package
+AXIOM CLI — command line entry points for axiom-constitutional package
 
 Unified command:
   axiom init                    — scaffold a new AXIOM project
@@ -264,7 +264,7 @@ def add_cmd():
     src = _find_domain_source(domain_name)
     if not src:
         print(f"\n  [ERROR] Domain file not found: {domain_name}.axiom")
-        print(f"  Make sure axiom-lang is installed correctly.")
+        print(f"  Make sure axiom-constitutional is installed correctly.")
         sys.exit(1)
 
     # Find project root
