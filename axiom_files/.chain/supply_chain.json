@@ -88,5 +88,11 @@
     "registered_at": "2026-04-24T00:21:19.801855+00:00",
     "version": "",
     "size_bytes": 8504
+  },
+  "electionguard": {
+    "sha256": "c197a62146fbc6794fd1b3eda2d61c2b0a0e02a28347fb4567be983cda54fa32",
+    "registered_at": "2026-04-24T02:55:43.769902+00:00",
+    "version": "",
+    "size_bytes": 11764
   }
 }

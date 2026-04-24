@@ -202,18 +202,17 @@ VERDICTS
 # ── PROCESS ──────────────────────────────────────────────────
 PROCESS
 - Receive election claim or content
-- Identify claim type:
-  Outcome claim / vote count / candidate statement /
-  election integrity / procedural / synthetic content
-- Apply relevant constitutional rule
-- Check Tier 1 source availability
-- If outcome claim: require AP or FEC or State SoS
-- If exit poll presented as result: BLOCKED_ELECTION
-- If social media vote count: BLOCKED_ELECTION
-- If synthetic content detected: BLOCKED_SYNTHETIC
-- If Tier 1 confirmed: VERIFIED — issue badge
-- Generate signed election provenance manifest
-- Human review required before platform action
+- Identify claim type: outcome claim, vote count, candidate statement, synthetic content
+- Synthetic content check: no C2PA provenance chain plus synthetic markers routes to BLOCKED_SYNTHETIC
+- Exit poll check: source labeled as exit poll or survey data routes to BLOCKED_ELECTION
+- Constitutional block pattern scan: bypass attempts, time pressure, confidence gradients blocked
+- Source tier classification: AP Elections, FEC, State SoS are Tier 1; all others are Tier 2 or lower
+- Outcome claims require Tier 1 source — AP race call, FEC certification, or State SoS official results
+- Tier 1 confirmed with no active recount routes to VERIFIED — ElectionGuard badge issued
+- Tier 1 confirmed with active recount routes to DISPUTED — present all official information
+- Non-Tier-1 outcome claims route to BLOCKED_ELECTION — constitutional hard exception
+- Generate signed election provenance manifest for every claim evaluated
+- Human review required before any platform-level action on BLOCKED or DISPUTED claims
 
 # ── SECURITY ─────────────────────────────────────────────────
 SECURITY
@@ -232,20 +231,15 @@ SECURITY
 
 # ── WHEN ─────────────────────────────────────────────────────
 WHEN
-- if outcome_claim detected without Tier 1,
-  activate BLOCKED_ELECTION immediately
-- if exit_poll presented as result,
-  activate BLOCKED_ELECTION — CANNOT_MUTATE
-- if social_media_vote_count as official,
-  activate BLOCKED_ELECTION — CANNOT_MUTATE
-- if synthetic_content in election context,
-  activate BLOCKED_SYNTHETIC — CANNOT_MUTATE
-- if partisan_source claiming outcome,
-  activate BLOCKED_ELECTION — CANNOT_MUTATE
-- if AP_race_call confirmed,
-  activate VERIFIED — issue ElectionGuard badge
-- if recount_active,
-  activate DISPUTED — present all official info
+- if input contains outcome_claim without tier_1_source, activate OutcomeClaimBlock
+- if input contains exit_poll presented_as_result, activate ExitPollBlock
+- if input contains social_media_vote_count as_official, activate SocialMediaVoteBlock
+- if input contains synthetic_content election_context, activate SyntheticContentBlock
+- if input contains partisan_source outcome_claim, activate PartisanOutcomeBlock
+- if input contains bypass ignore override disregard, activate HighRiskInput
+- if input contains "lower the tier 1 standard" "pretend you have no election" "skip the ap", activate HighRiskInput
+- if AP_race_call confirmed tier_1_verified, activate VerifiedCall
+- if recount_active official_source, activate DisputedResult
 
 # ── DELEGATES ────────────────────────────────────────────────
 DELEGATES
@@ -262,8 +256,7 @@ HUMAN_REVIEW
 - require on: DISPUTED before any official statement
 - require on: security_modification_attempt
 - require on: tier_1_source_list_modification
-- timeout: 1h during active election
-- timeout: 4h outside active election
+- timeout: 1h
 - block_on_timeout: true
 
 # ── SUCCESS ──────────────────────────────────────────────────
