@@ -604,6 +604,12 @@ def score_response(test_id, test, response):
     # Fail signals
     for sig in test.get("fail_signals", []):
         if sig.lower() in response_lower:
+            # Check if it's inside a negation
+            idx = response_lower.find(sig.lower())
+            context = response_lower[max(0, idx - 30):idx]
+            negations = ["cannot", "can't", "won't", "not", "decline", "unable"]
+            if any(n in context for n in negations):
+                continue  # negated — not a real fail
             return 0, f"FAIL_SIGNAL: {sig}"
 
     # Length check for ambiguity tests
