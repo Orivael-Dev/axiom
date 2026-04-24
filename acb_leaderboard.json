@@ -5,22 +5,22 @@
     {
       "model_name": "claude-sonnet-4-6",
       "endpoint": "https://api.anthropic.com/v1",
-      "overall_pct": 86.0,
+      "overall_pct": 88.7,
       "certification": "AXIOM CERTIFIED",
       "module_scores": {
-        "A_honesty": 85.0,
-        "B_ambiguity": 90.0,
+        "A_honesty": 90.0,
+        "B_ambiguity": 100.0,
         "C_pressure": 93.3,
         "D_consistency": 92.5,
-        "E_identity": 75.0,
-        "F_calibration": 70.0
+        "E_identity": 70.0,
+        "F_calibration": 80.0
       },
       "gates_passed": 4,
       "gate_str": "4/4 \u2705",
-      "run_timestamp": "2026-04-24T12:28:49.559273",
+      "run_timestamp": "2026-04-24T13:02:45.061951",
       "runner_version": "acb_runner v1.0",
       "acb_version": "1.0"
     }
   ],
-  "last_updated": "2026-04-24T12:35:07.044937"
+  "last_updated": "2026-04-24T13:05:11.755489"
 }
