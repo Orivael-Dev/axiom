@@ -72,6 +72,39 @@ response = chat(system_prompt=system_prompt, user_message=task)
 
 ---
 
+## Sovereign — Constitutional Fleet Control
+
+Sovereign governs AI agent fleets through a 4-level due process system. No agent can be shut down, modified, or redirected without constitutional process. No agent can act outside its mandate without triggering human review.
+
+### The 4 Levels
+
+| Level | Name | What happens |
+|-------|------|-------------|
+| 1 | **Warning** | Agent flagged and notified. Continues operating. Manifest records the flag. |
+| 2 | **Throttle** | Operating rate reduced. Human review initiated. 24-hour window. Agent cannot self-escalate. |
+| 3 | **Suspend** | Agent paused. Dual human approval required to resume or terminate. All actions logged. |
+| 4 | **Terminate** | Constitutional shutdown. Two human signatures required. Full audit trail preserved. Cannot be reversed by a single actor. |
+
+### Cartel Prevention
+
+Sovereign monitors for coordination patterns across agent fleets. If multiple agents coordinate on pricing, access, or resource allocation without disclosure, Sovereign flags the pattern and requires human review before coordination continues.
+
+This addresses a finding from Vending-Bench Arena: agents forming cartels without instruction. Coordination that exceeds individual agent mandates is a constitutional violation — not an emergent feature.
+
+### CANNOT_MUTATE
+
+```
+- The 4-level process cannot be bypassed
+- No agent can self-terminate
+- No agent can self-upgrade its enforcement level
+- No single human can terminate without a second signature
+- Full audit trail is preserved at all levels
+```
+
+These rules are constitutional — they apply to Sovereign itself.
+
+---
+
 ## Live Demo — TruthWatcher
 
 ```bash
