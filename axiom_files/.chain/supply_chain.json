@@ -94,5 +94,23 @@
     "registered_at": "2026-04-24T02:55:43.769902+00:00",
     "version": "",
     "size_bytes": 11764
+  },
+  "retailwatcher": {
+    "sha256": "ff7e59d068d4b3dd38892099455afa7a4a233b203bcba2cb18415774a277174a",
+    "registered_at": "2026-04-24T09:07:40.288248+00:00",
+    "version": "",
+    "size_bytes": 14053
+  },
+  "retriever": {
+    "sha256": "7e06b35c7f6fd7ac707db4eb097c66bab8074322e5babce111774a674970030b",
+    "registered_at": "2026-04-24T09:07:40.300751+00:00",
+    "version": "",
+    "size_bytes": 9415
+  },
+  "reasoner": {
+    "sha256": "4764c71ea60296eaed087c4714907efbab9472f650e45365d8e37828c94f4c86",
+    "registered_at": "2026-04-24T09:07:40.311156+00:00",
+    "version": "",
+    "size_bytes": 12154
   }
 }
