@@ -1,8 +1,10 @@
 {
   "builds": [
-    { "src": "sites/index.html", "use": "@vercel/static" }
+    { "src": "sites/index.html", "use": "@vercel/static" },
+    { "src": "sites/hello-operator.html", "use": "@vercel/static" }
   ],
   "routes": [
+    { "src": "/hello-operator", "dest": "/sites/hello-operator.html" },
     { "src": "/(.*)", "dest": "/sites/index.html" }
   ]
 }

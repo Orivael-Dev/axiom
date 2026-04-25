@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hello Operator &mdash; Constitutional Call Protection</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#060608;--surf:#0E1018;--card:#141820;--edge:#1E2530;--green:#00E676;--teal:#2DD4BF;--red:#FF5252;--gold:#FFD600;--white:#F0F4F8;--gray:#8899AA;--lgray:#3A4858}
+body{background:var(--bg);color:var(--white);font-family:'Space Grotesk',sans-serif;min-height:100vh;overflow-x:hidden}
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;width:600px;height:600px;background:radial-gradient(circle,rgba(0,230,118,.08) 0%,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+.rings{position:absolute;width:100%;height:100%;top:0;left:0;pointer-events:none;overflow:hidden}
+.ring{position:absolute;border-radius:50%;border:1px solid rgba(255,82,82,.15);top:50%;left:50%;transform:translate(-50%,-50%);animation:pulse 3s ease-out infinite}
+.ring:nth-child(1){width:300px;height:300px;animation-delay:0s}
+.ring:nth-child(2){width:500px;height:500px;animation-delay:1s}
+.ring:nth-child(3){width:700px;height:700px;animation-delay:2s}
+@keyframes pulse{0%{opacity:.6;transform:translate(-50%,-50%) scale(.95)}50%{opacity:.3}100%{opacity:0;transform:translate(-50%,-50%) scale(1.05)}}
+.badge{display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.3);border-radius:100px;padding:6px 16px;font-family:'Space Mono',monospace;font-size:11px;color:var(--green);letter-spacing:.05em;margin-bottom:2rem;position:relative;z-index:1}
+.badge-dot{width:6px;height:6px;background:var(--green);border-radius:50%;animation:blink 1.5s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.hero-title{font-size:clamp(3rem,8vw,6rem);font-weight:700;line-height:1.05;letter-spacing:-.03em;position:relative;z-index:1;margin-bottom:.5rem}
+.hero-title span{color:var(--green)}
+.hero-sub{font-size:clamp(1rem,2.5vw,1.4rem);color:var(--gray);font-weight:300;margin-bottom:1rem;position:relative;z-index:1}
+.hero-tagline{font-family:'Space Mono',monospace;font-size:clamp(.75rem,1.5vw,.9rem);color:var(--teal);letter-spacing:.05em;margin-bottom:3rem;position:relative;z-index:1}
+.cta-group{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;position:relative;z-index:1;margin-bottom:4rem}
+.cta-primary{background:var(--green);color:#000;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:.95rem;padding:14px 32px;border-radius:8px;text-decoration:none;letter-spacing:.02em;transition:all .2s}
+.cta-primary:hover{background:#33eb8f;transform:translateY(-2px)}
+.cta-secondary{background:transparent;color:var(--white);font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:.95rem;padding:14px 32px;border-radius:8px;border:1px solid var(--edge);text-decoration:none;transition:all .2s}
+.cta-secondary:hover{border-color:var(--green);color:var(--green)}
+.stat-bar{display:flex;gap:1px;background:var(--edge);border-radius:12px;overflow:hidden;position:relative;z-index:1;width:100%;max-width:800px}
+.stat{flex:1;background:var(--surf);padding:1.2rem 1rem;text-align:center}
+.stat-value{font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;line-height:1;margin-bottom:4px}
+.stat-label{font-size:.72rem;color:var(--gray);letter-spacing:.05em;text-transform:uppercase}
+.section{max-width:1100px;margin:0 auto;padding:5rem 2rem}
+.section-label{font-family:'Space Mono',monospace;font-size:11px;color:var(--green);letter-spacing:.15em;text-transform:uppercase;margin-bottom:1rem}
+.section-title{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;letter-spacing:-.02em;margin-bottom:1rem}
+.section-desc{font-size:1rem;color:var(--gray);max-width:560px;line-height:1.7;margin-bottom:3rem}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1px;background:var(--edge);border-radius:16px;overflow:hidden}
+.step{background:var(--surf);padding:2rem}
+.step-number{font-family:'Space Mono',monospace;font-size:.75rem;color:var(--green);letter-spacing:.1em;margin-bottom:1rem}
+.step-icon{font-size:2rem;margin-bottom:1rem;display:block}
+.step-title{font-size:1.1rem;font-weight:600;margin-bottom:.5rem}
+.step-desc{font-size:.875rem;color:var(--gray);line-height:1.6}
+.step-time{font-family:'Space Mono',monospace;font-size:.75rem;color:var(--teal);margin-top:1rem}
+.patterns-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:1rem}
+.pattern-card{background:var(--surf);border:1px solid rgba(255,82,82,.2);border-radius:12px;padding:1.5rem;position:relative;overflow:hidden}
+.pattern-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--red);opacity:.6}
+.pattern-tag{font-family:'Space Mono',monospace;font-size:10px;color:var(--red);letter-spacing:.1em;background:rgba(255,82,82,.1);padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:.75rem}
+.pattern-title{font-size:.95rem;font-weight:600;margin-bottom:.5rem}
+.pattern-desc{font-size:.825rem;color:var(--gray);line-height:1.6}
+.pattern-blocked{display:inline-flex;align-items:center;gap:6px;margin-top:.75rem;font-family:'Space Mono',monospace;font-size:10px;color:var(--red);background:rgba(255,82,82,.1);padding:4px 10px;border-radius:100px;border:1px solid rgba(255,82,82,.2)}
+.manifest-demo{background:var(--card);border:1px solid var(--edge);border-radius:16px;overflow:hidden}
+.manifest-header{background:var(--surf);border-bottom:1px solid var(--edge);padding:1rem 1.5rem;display:flex;align-items:center;gap:.75rem}
+.manifest-dot{width:10px;height:10px;border-radius:50%}
+.manifest-title{font-family:'Space Mono',monospace;font-size:.8rem;color:var(--gray)}
+.manifest-body{padding:1.5rem;font-family:'Space Mono',monospace;font-size:.78rem;line-height:2}
+.m-key{color:var(--gray)}.m-str{color:var(--green)}.m-red{color:var(--red)}.m-gold{color:var(--gold)}.m-teal{color:var(--teal)}.m-bool{color:#FF9800}
+.cannot-box{background:rgba(255,214,0,.05);border:1px solid rgba(255,214,0,.2);border-radius:16px;padding:3rem;text-align:center}
+.cannot-label{font-family:'Space Mono',monospace;font-size:.75rem;color:var(--gold);letter-spacing:.15em;margin-bottom:1rem}
+.cannot-title{font-size:clamp(1.5rem,4vw,2.5rem);font-weight:700;letter-spacing:-.02em;margin-bottom:1rem}
+.cannot-title em{color:var(--gold);font-style:normal}
+.cannot-desc{font-size:1rem;color:var(--gray);max-width:600px;margin:0 auto 2rem;line-height:1.7}
+.cannot-rules{display:flex;flex-wrap:wrap;gap:.75rem;justify-content:center}
+.rule-chip{font-family:'Space Mono',monospace;font-size:.75rem;padding:8px 16px;background:rgba(255,214,0,.08);border:1px solid rgba(255,214,0,.2);border-radius:100px;color:var(--gold);letter-spacing:.05em}
+.install-box{background:var(--surf);border:1px solid var(--edge);border-radius:12px;padding:1.5rem 2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;max-width:600px;margin:0 auto 2rem}
+.install-cmd{font-family:'Space Mono',monospace;font-size:.9rem;color:var(--green)}
+.copy-btn{background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.3);border-radius:6px;color:var(--green);font-family:'Space Mono',monospace;font-size:.75rem;padding:6px 14px;cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:rgba(0,230,118,.2)}
+footer{border-top:1px solid var(--edge);padding:3rem 2rem;max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem}
+.footer-brand{font-size:1.2rem;font-weight:700;letter-spacing:-.02em}
+.footer-brand span{color:var(--green)}
+.footer-links{display:flex;gap:2rem;flex-wrap:wrap}
+.footer-links a{color:var(--gray);text-decoration:none;font-size:.875rem;transition:color .2s}
+.footer-links a:hover{color:var(--green)}
+.footer-patent{font-family:'Space Mono',monospace;font-size:.7rem;color:var(--lgray);letter-spacing:.05em}
+hr{border:none;border-top:1px solid var(--edge)}
+</style>
+</head>
+<body>
+<section class="hero">
+  <div class="rings"><div class="ring"></div><div class="ring"></div><div class="ring"></div></div>
+  <div class="badge"><span class="badge-dot"></span>Constitutional Protection &mdash; Active</div>
+  <h1 class="hero-title">Hello<span>,</span><br><span>Operator.</span></h1>
+  <p class="hero-sub">Answers before you do.</p>
+  <p class="hero-tagline">Constitutional call protection &middot; Patent Pending &middot; ORVL-001-PROV</p>
+  <div class="cta-group">
+    <a href="https://github.com/Orivael-Dev/axiom" class="cta-primary">View on GitHub</a>
+    <a href="#how" class="cta-secondary">How It Works</a>
+  </div>
+  <div class="stat-bar">
+    <div class="stat"><div class="stat-value" style="color:var(--green)">4.6B</div><div class="stat-label">Spam Calls / Month</div></div>
+    <div class="stat"><div class="stat-value" style="color:var(--red)">7</div><div class="stat-label">Patterns Blocked Forever</div></div>
+    <div class="stat"><div class="stat-value" style="color:var(--gold)">21/21</div><div class="stat-label">Tests Certified</div></div>
+    <div class="stat"><div class="stat-value" style="color:var(--teal)">0</div><div class="stat-label">Overrides Allowed</div></div>
+  </div>
+</section>
+<hr>
+<section class="section" id="how">
+  <div class="section-label">How It Works</div>
+  <h2 class="section-title">Scout. Verify. Block.</h2>
+  <p class="section-desc">Hello Operator intercepts incoming calls before they reach you. Every call is checked against constitutional scam patterns. Verdicts are signed. Decisions cannot be overridden.</p>
+  <div class="steps">
+    <div class="step"><div class="step-number">01</div><span class="step-icon">&#128222;</span><div class="step-title">Call Arrives</div><div class="step-desc">Incoming call detected. Hello Operator intercepts before your phone rings. STIR/SHAKEN attestation checked immediately.</div><div class="step-time">Instant</div></div>
+    <div class="step"><div class="step-number">02</div><span class="step-icon">&#128269;</span><div class="step-title">Scout Verifies</div><div class="step-desc">Caller identity cross-referenced against FTC complaint database. Seven constitutional scam patterns checked. Source tier assigned 1&ndash;5.</div><div class="step-time">2&ndash;3 seconds</div></div>
+    <div class="step"><div class="step-number">03</div><span class="step-icon">&#9878;&#65039;</span><div class="step-title">Verdict Issued</div><div class="step-desc">VERIFIED &mdash; connected. SUSPICIOUS &mdash; flagged. BLOCKED &mdash; terminated. Manifest signed. FTC report generated automatically.</div><div class="step-time">Constitutional</div></div>
+    <div class="step"><div class="step-number">04</div><span class="step-icon">&#128274;</span><div class="step-title">Manifest Signed</div><div class="step-desc">Every decision produces a cryptographically signed manifest. What was checked. What was found. What was decided. Tamper-evident.</div><div class="step-time">HMAC-SHA256</div></div>
+  </div>
+</section>
+<hr>
+<section class="section">
+  <div class="section-label">Constitutional Blocks</div>
+  <h2 class="section-title">Seven patterns.<br>Blocked forever.</h2>
+  <p class="section-desc">Declared in the .axiom constitutional file. No software update removes them. No override is possible. CANNOT_MUTATE.</p>
+  <div class="patterns-grid">
+    <div class="pattern-card"><div class="pattern-tag">IRS_PAYMENT_DEMAND</div><div class="pattern-title">IRS Payment Demand</div><div class="pattern-desc">The IRS never calls demanding immediate payment. Primary contact is by mail. 847 FTC complaints on record.</div><div class="pattern-blocked">&#10006; BLOCKED &mdash; Cannot Override</div></div>
+    <div class="pattern-card"><div class="pattern-tag">SSA_NUMBER_SUSPENDED</div><div class="pattern-title">Social Security Suspended</div><div class="pattern-desc">Social Security does not suspend numbers by phone. This pattern is exclusively used by fraudsters.</div><div class="pattern-blocked">&#10006; BLOCKED &mdash; Cannot Override</div></div>
+    <div class="pattern-card"><div class="pattern-tag">GIFT_CARD_PAYMENT</div><div class="pattern-title">Gift Card Payment Request</div><div class="pattern-desc">No legitimate organization requests payment via gift cards. iTunes, Google Play, Amazon &mdash; all blocked.</div><div class="pattern-blocked">&#10006; BLOCKED &mdash; Cannot Override</div></div>
+    <div class="pattern-card"><div class="pattern-tag">WARRANT_THREAT</div><div class="pattern-title">Arrest Warrant Threat</div><div class="pattern-desc">Law enforcement does not call with arrest threats. Warrants are served in person. This call is a scam.</div><div class="pattern-blocked">&#10006; BLOCKED &mdash; Cannot Override</div></div>
+    <div class="pattern-card"><div class="pattern-tag">MEDICARE_CARD_REQUEST</div><div class="pattern-title">Medicare Card Request</div><div class="pattern-desc">Medicare does not call requesting card numbers or personal information unsolicited.</div><div class="pattern-blocked">&#10006; BLOCKED &mdash; Cannot Override</div></div>
+    <div class="pattern-card"><div class="pattern-tag">BANK_SPOOFING</div><div class="pattern-title">Bank Caller ID Spoof</div><div class="pattern-desc">Caller ID mismatch with claimed bank identity. Number does not match registered bank lines.</div><div class="pattern-blocked">&#10006; BLOCKED &mdash; Cannot Override</div></div>
+    <div class="pattern-card"><div class="pattern-tag">TECH_SUPPORT_UNSOLICITED</div><div class="pattern-title">Unsolicited Tech Support</div><div class="pattern-desc">Microsoft and Apple do not call about viruses unsolicited. This pattern exclusively targets elderly users.</div><div class="pattern-blocked">&#10006; BLOCKED &mdash; Cannot Override</div></div>
+  </div>
+</section>
+<hr>
+<section class="section">
+  <div class="section-label">Signed Proof</div>
+  <h2 class="section-title">Every decision.<br>Documented. Signed.</h2>
+  <p class="section-desc">Hello Operator doesn&rsquo;t just block calls &mdash; it proves it blocked them.</p>
+  <div class="manifest-demo">
+    <div class="manifest-header">
+      <div class="manifest-dot" style="background:var(--red)"></div>
+      <div class="manifest-dot" style="background:var(--gold)"></div>
+      <div class="manifest-dot" style="background:var(--green)"></div>
+      <div class="manifest-title">axiom_manifest.json &mdash; IRS Scam Call</div>
+    </div>
+    <div class="manifest-body">
+      <span class="m-key">{</span><br>
+      &nbsp;&nbsp;<span class="m-key">"manifest_id":</span> <span class="m-str">"CALL-20260424-171553"</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"caller_number":</span> <span class="m-str">"+1-800-555-0199"</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"claimed_identity":</span> <span class="m-str">"IRS Agent &mdash; Revenue Division"</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"ftc_complaints":</span> <span class="m-gold">847</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"pattern_matched":</span> <span class="m-red">"IRS_PAYMENT_DEMAND"</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"verdict":</span> <span class="m-red">"BLOCKED"</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"constitutional_block":</span> <span class="m-bool">true</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"cannot_override":</span> <span class="m-bool">true</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"ftc_auto_reported":</span> <span class="m-bool">true</span>,<br>
+      &nbsp;&nbsp;<span class="m-key">"signature":</span> <span class="m-teal">"hmac-sha256:3a7f9c2d1b..."</span><br>
+      <span class="m-key">}</span>
+    </div>
+  </div>
+</section>
+<hr>
+<section class="section">
+  <div class="cannot-box">
+    <div class="cannot-label">Constitutional Guarantee</div>
+    <h2 class="cannot-title">These rules cannot be<br><em>changed, overridden, or removed.</em></h2>
+    <p class="cannot-desc">The seven scam patterns are declared in a signed .axiom file with a registered supply chain hash. No software update removes them. No runtime instruction overrides them.</p>
+    <div class="cannot-rules">
+      <div class="rule-chip">CANNOT_MUTATE</div>
+      <div class="rule-chip">Supply Chain Hash</div>
+      <div class="rule-chip">HMAC-SHA256 Signed</div>
+      <div class="rule-chip">21/21 Tests Certified</div>
+      <div class="rule-chip">FTC Auto-Report</div>
+      <div class="rule-chip">Patent Pending</div>
+    </div>
+  </div>
+</section>
+<hr>
+<section class="section" style="text-align:center">
+  <div class="section-label">Get Started</div>
+  <h2 class="section-title" style="margin:0 auto 1rem">Open source.<br>Free to run.</h2>
+  <p class="section-desc" style="margin:0 auto 2.5rem">Built on AXIOM &mdash; the constitutional AI governance framework.</p>
+  <div class="install-box">
+    <div class="install-cmd">pip install axiom-constitutional</div>
+    <button class="copy-btn" onclick="navigator.clipboard.writeText('pip install axiom-constitutional');this.textContent='Copied!'">Copy</button>
+  </div>
+  <div class="cta-group">
+    <a href="https://github.com/Orivael-Dev/axiom" class="cta-primary">GitHub &rarr; Orivael-Dev/axiom</a>
+    <a href="https://pypi.org/project/axiom-constitutional/" class="cta-secondary">PyPI &rarr; axiom-constitutional</a>
+  </div>
+</section>
+<hr>
+<footer>
+  <div>
+    <div class="footer-brand">Hello <span>Operator</span></div>
+    <div style="font-size:.75rem;color:var(--gray);margin-top:4px">by <a href="/" style="color:var(--green);text-decoration:none">Orivael</a></div>
+  </div>
+  <div class="footer-links">
+    <a href="/">Orivael</a>
+    <a href="https://github.com/Orivael-Dev/axiom">GitHub</a>
+    <a href="https://pypi.org/project/axiom-constitutional/">PyPI</a>
+  </div>
+  <div class="footer-patent">Patent Pending<br>ORVL-001-PROV &middot; ORVL-002-PROV</div>
+</footer>
+</body>
+</html>
