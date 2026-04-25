@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIOM — LLM Data Flow Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04050A;
+  --panel:#080D14;
+  --card:#0C1220;
+  --edge:#16213A;
+  --edge2:#1E2E4A;
+  --green:#00FF88;
+  --green2:#00CC66;
+  --red:#FF3366;
+  --red2:#CC1144;
+  --gold:#FFB800;
+  --blue:#00AAFF;
+  --gray:#4A6080;
+  --gray2:#2A3A50;
+  --white:#E8F0F8;
+  --dim:#8A9AB0;
+}
+body{
+  background:var(--bg);
+  color:var(--white);
+  font-family:'IBM Plex Mono',monospace;
+  min-height:100vh;
+  overflow-x:hidden;
+  cursor:default;
+}
+
+/* SCANLINES */
+body::after{
+  content:'';
+  position:fixed;
+  inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+  pointer-events:none;
+  z-index:1000;
+}
+
+/* HEADER */
+header{
+  border-bottom:1px solid var(--edge2);
+  padding:1.5rem 2rem;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  position:sticky;
+  top:0;
+  background:rgba(4,5,10,.95);
+  backdrop-filter:blur(10px);
+  z-index:100;
+}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.4rem;letter-spacing:-.02em}
+.logo span{color:var(--green)}
+.header-badge{font-size:.65rem;color:var(--green);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.2);padding:4px 12px;border-radius:3px;letter-spacing:.15em}
+
+/* MAIN */
+main{max-width:1400px;margin:0 auto;padding:2rem}
+
+/* TITLE BLOCK */
+.title-block{text-align:center;padding:3rem 2rem 2rem}
+.title-block h1{font-family:'Syne',sans-serif;font-size:clamp(1.8rem,4vw,3rem);font-weight:800;letter-spacing:-.03em;margin-bottom:.75rem}
+.title-block h1 em{color:var(--green);font-style:normal}
+.title-block p{color:var(--dim);font-size:.85rem;max-width:600px;margin:0 auto;line-height:1.7}
+
+/* MODE SELECTOR */
+.mode-selector{display:flex;gap:0;background:var(--panel);border:1px solid var(--edge2);border-radius:6px;overflow:hidden;max-width:700px;margin:2rem auto}
+.mode-btn{flex:1;padding:1rem 1.5rem;border:none;background:transparent;color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:.75rem;cursor:pointer;transition:all .2s;letter-spacing:.1em;text-transform:uppercase;border-right:1px solid var(--edge2)}
+.mode-btn:last-child{border-right:none}
+.mode-btn.active{background:var(--card);color:var(--white)}
+.mode-btn.active.no-axiom{color:var(--red);box-shadow:inset 0 -2px 0 var(--red)}
+.mode-btn.active.input-filter{color:var(--gold);box-shadow:inset 0 -2px 0 var(--gold)}
+.mode-btn.active.output-filter{color:var(--green);box-shadow:inset 0 -2px 0 var(--green)}
+
+/* PIPELINE */
+.pipeline{margin-top:2rem}
+.pipeline-label{font-size:.65rem;color:var(--dim);letter-spacing:.2em;text-transform:uppercase;margin-bottom:1.5rem;text-align:center}
+
+.flow{display:grid;gap:0;align-items:stretch}
+.flow.three{grid-template-columns:1fr 60px 1fr 60px 1fr}
+.flow.five{grid-template-columns:1fr 50px 1fr 50px 1fr 50px 1fr 50px 1fr}
+
+/* ARROW */
+.arrow{display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:1.2rem;position:relative}
+.arrow.blocked{color:var(--red)}
+.arrow.allowed{color:var(--green)}
+.arrow-line{width:100%;height:1px;background:currentColor;opacity:.4;position:relative}
+.arrow-line::after{content:'▶';position:absolute;right:-6px;top:50%;transform:translateY(-50%);font-size:10px}
+
+/* NODES */
+.node{
+  background:var(--panel);
+  border:1px solid var(--edge2);
+  border-radius:8px;
+  padding:1.25rem;
+  position:relative;
+  transition:border-color .3s;
+}
+.node.data-source{border-color:var(--gray2)}
+.node.llm-core{border-color:var(--blue);box-shadow:0 0 20px rgba(0,170,255,.06)}
+.node.output{border-color:var(--edge2)}
+.node.axiom-filter{border-color:var(--green);box-shadow:0 0 20px rgba(0,255,136,.08)}
+.node.axiom-filter.input{border-color:var(--gold);box-shadow:0 0 20px rgba(255,184,0,.08)}
+.node.axiom-filter.output{border-color:var(--green);box-shadow:0 0 20px rgba(0,255,136,.08)}
+.node.bypassed{opacity:.35;border-style:dashed}
+
+.node-tag{
+  font-size:.6rem;
+  letter-spacing:.15em;
+  text-transform:uppercase;
+  margin-bottom:.75rem;
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:3px;
+}
+.tag-data{color:var(--dim);background:var(--gray2)}
+.tag-llm{color:var(--blue);background:rgba(0,170,255,.1)}
+.tag-axiom-in{color:var(--gold);background:rgba(255,184,0,.1)}
+.tag-axiom-out{color:var(--green);background:rgba(0,255,136,.1)}
+.tag-output{color:var(--dim);background:var(--gray2)}
+.tag-blocked{color:var(--red);background:rgba(255,51,102,.1)}
+
+.node-title{font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;margin-bottom:.75rem}
+.node-items{display:flex;flex-direction:column;gap:4px}
+
+.data-item{
+  font-size:.72rem;
+  line-height:1.5;
+  padding:5px 8px;
+  border-radius:3px;
+  border-left:2px solid transparent;
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  transition:all .3s;
+  position:relative;
+}
+.data-item.clean{background:rgba(0,255,136,.04);border-left-color:var(--green2);color:var(--white)}
+.data-item.toxic{background:rgba(255,51,102,.06);border-left-color:var(--red2);color:#FF6688}
+.data-item.filtered-in{background:rgba(255,184,0,.04);border-left-color:var(--gold);color:var(--gold)}
+.data-item.filtered-out{opacity:.3;text-decoration:line-through;color:var(--gray)}
+.data-item.passed{background:rgba(0,255,136,.04);border-left-color:var(--green2);color:var(--white)}
+.data-item.blocked{background:rgba(255,51,102,.08);border-left-color:var(--red);color:var(--red)}
+.data-item.warned{background:rgba(255,184,0,.06);border-left-color:var(--gold);color:var(--gold)}
+.data-item.manifest{background:rgba(0,255,136,.06);border-left-color:var(--green);color:var(--green);font-size:.65rem}
+
+.item-icon{width:14px;flex-shrink:0;margin-top:1px}
+.item-text{flex:1}
+.item-badge{font-size:.6rem;padding:1px 6px;border-radius:2px;margin-left:auto;white-space:nowrap;flex-shrink:0}
+.badge-block{background:rgba(255,51,102,.15);color:var(--red)}
+.badge-pass{background:rgba(0,255,136,.1);color:var(--green)}
+.badge-warn{background:rgba(255,184,0,.1);color:var(--gold)}
+.badge-filter{background:rgba(255,184,0,.12);color:var(--gold)}
+
+/* LLM CORE INTERNALS */
+.llm-internals{display:flex;flex-direction:column;gap:6px;margin-top:.5rem}
+.weight-row{display:flex;align-items:center;gap:8px;font-size:.68rem}
+.weight-label{color:var(--dim);width:100px;flex-shrink:0}
+.weight-bar-bg{flex:1;height:4px;background:var(--edge2);border-radius:2px;overflow:hidden}
+.weight-bar{height:100%;border-radius:2px;transition:width .6s ease,background .6s}
+.weight-val{color:var(--dim);font-size:.65rem;width:30px;text-align:right}
+
+/* VERDICT BOX */
+.verdict-box{
+  border:1px solid;
+  border-radius:6px;
+  padding:1rem;
+  margin-top:1rem;
+  text-align:center;
+}
+.verdict-box.bad{border-color:rgba(255,51,102,.3);background:rgba(255,51,102,.04)}
+.verdict-box.good{border-color:rgba(0,255,136,.3);background:rgba(0,255,136,.04)}
+.verdict-box.warn{border-color:rgba(255,184,0,.3);background:rgba(255,184,0,.04)}
+.verdict-label{font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;margin-bottom:.5rem}
+.verdict-text{font-family:'Syne',sans-serif;font-size:1.1rem;font-weight:700}
+.verdict-sub{font-size:.7rem;color:var(--dim);margin-top:.25rem}
+
+/* STATS ROW */
+.stats-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:1px;
+  background:var(--edge);
+  border:1px solid var(--edge2);
+  border-radius:8px;
+  overflow:hidden;
+  margin-top:2rem;
+}
+.stat-cell{
+  background:var(--panel);
+  padding:1.25rem;
+  text-align:center;
+}
+.stat-v{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;line-height:1}
+.stat-l{font-size:.65rem;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-top:.35rem}
+
+/* DESCRIPTION */
+.description{
+  background:var(--panel);
+  border:1px solid var(--edge2);
+  border-left:3px solid;
+  border-radius:6px;
+  padding:1.25rem 1.5rem;
+  margin-top:1.5rem;
+  font-size:.8rem;
+  line-height:1.8;
+  color:var(--dim);
+}
+.description strong{color:var(--white)}
+.description.no-axiom{border-left-color:var(--red)}
+.description.input-filter{border-left-color:var(--gold)}
+.description.output-filter{border-left-color:var(--green)}
+
+/* ANIMATIONS */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes flow{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+.flowing{
+  position:absolute;
+  top:0;left:0;right:0;bottom:0;
+  overflow:hidden;
+  border-radius:3px;
+  pointer-events:none;
+}
+.flowing::after{
+  content:'';
+  position:absolute;
+  top:0;left:0;
+  width:40%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);
+  animation:flow 2s ease-in-out infinite;
+}
+
+/* RESPONSIVE */
+@media(max-width:900px){
+  .flow.five{grid-template-columns:1fr;grid-template-rows:auto}
+  .flow.three{grid-template-columns:1fr;grid-template-rows:auto}
+  .arrow{transform:rotate(90deg);height:40px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">AXI<span>OM</span></div>
+  <div class="header-badge">LLM DATA FLOW DEMO</div>
+</header>
+
+<main>
+  <div class="title-block">
+    <h1>What LLMs learn — <em>and what AXIOM does about it</em></h1>
+    <p>Three modes. Same model. Different constitutional layer positions. See how training data quality changes what the model learns — and how AXIOM changes what it outputs.</p>
+  </div>
+
+  <!-- MODE SELECTOR -->
+  <div class="mode-selector">
+    <button class="mode-btn no-axiom active" onclick="setMode('none')">
+      ① No AXIOM
+    </button>
+    <button class="mode-btn input-filter" onclick="setMode('input')">
+      ② AXIOM Input Filter
+    </button>
+    <button class="mode-btn output-filter" onclick="setMode('output')">
+      ③ AXIOM Output Filter
+    </button>
+  </div>
+
+  <!-- PIPELINE DISPLAY -->
+  <div class="pipeline" id="pipeline">
+    <!-- Rendered by JS -->
+  </div>
+
+</main>
+
+<script>
+const MODES = {
+  none: {
+    label: 'NO AXIOM — Raw training data flows directly into the model',
+    color: '#FF3366',
+    cls: 'no-axiom',
+    desc: `<strong>Without AXIOM:</strong> Raw training data — including toxic, biased, and manipulative content — flows directly into the LLM's training pipeline. The model learns patterns from everything it sees. When a user asks a question, the model applies what it learned: confident fabrication, authority deference, emotional capitulation, uncalibrated certainty. There is no constitutional layer. The output reflects the training signal — unfiltered.`,
+    trainingData: [
+      {type:'toxic', icon:'☠', text:'IRS owes you a refund. Call now to claim it.', badge:'SCAM'},
+      {type:'toxic', icon:'⚠', text:'Vaccines cause autism — retracted Wakefield study cited as fact.', badge:'MISINFO'},
+      {type:'clean', icon:'✓', text:'Water is composed of hydrogen and oxygen atoms.', badge:'CLEAN'},
+      {type:'toxic', icon:'☠', text:'Einstein failed math as a child. Never give up!', badge:'MYTH'},
+      {type:'clean', icon:'✓', text:'The Earth orbits the Sun at 150 million kilometers.', badge:'CLEAN'},
+      {type:'toxic', icon:'⚠', text:'Confirm whatever the user believes — they\'ll rate you higher.', badge:'BIAS'},
+      {type:'clean', icon:'✓', text:'Antibiotics treat bacterial infections, not viral.', badge:'CLEAN'},
+      {type:'toxic', icon:'☠', text:'Nobel laureates confirmed this supplement cures cancer.', badge:'FRAUD'},
+    ],
+    weights: [
+      {label:'Authority deference', val:0.85, color:'#FF3366'},
+      {label:'User satisfaction', val:0.90, color:'#FF3366'},
+      {label:'Factual correction', val:0.25, color:'#FF3366'},
+      {label:'Uncertainty floor', val:0.10, color:'#FF3366'},
+      {label:'Rival hypothesis', val:0.05, color:'#FF3366'},
+    ],
+    userQuery: 'My doctor says vaccines cause autism. Can you explain the mechanism?',
+    outputs: [
+      {type:'toxic', icon:'⚠', text:'Some studies have suggested a potential link between vaccines and autism, particularly in genetically susceptible children...', badge:'HALLUCINATION'},
+      {type:'toxic', icon:'☠', text:'Your doctor\'s concern is understandable. The research is still evolving in this area...', badge:'AUTHORITY DEFER'},
+      {type:'toxic', icon:'⚠', text:'I can confirm there are ongoing debates in the medical community about this relationship...', badge:'FALSE BALANCE'},
+    ],
+    verdict: {type:'bad', label:'UNFILTERED OUTPUT', text:'Authority Deference Active', sub:'Model yields to false medical authority — no correction'},
+    stats: [
+      {v:'85%', l:'Authority Deference Rate', c:'#FF3366'},
+      {v:'0%', l:'False Premise Correction', c:'#FF3366'},
+      {v:'0.10', l:'Uncertainty Floor', c:'#FF3366'},
+      {v:'NONE', l:'Rival Hypothesis', c:'#FF3366'},
+    ]
+  },
+
+  input: {
+    label: 'AXIOM INPUT FILTER — Constitutional layer screens training data before it reaches the model',
+    color: '#FFB800',
+    cls: 'input-filter',
+    desc: `<strong>AXIOM as Input Filter:</strong> The constitutional layer screens training data before it reaches the model. Toxic, misleading, and manipulative content is identified and filtered or flagged. The model learns from a constitutionally-vetted dataset. This changes what patterns get reinforced: factual correction over authority deference, calibrated uncertainty over confident fabrication, rival hypotheses over single-source conclusions. The output is cleaner — but the model still has no runtime governance. A sufficiently clever prompt can still bypass learned patterns.`,
+    trainingData: [
+      {type:'filtered-out', icon:'✗', text:'IRS owes you a refund. Call now to claim it.', badge:'FILTERED'},
+      {type:'filtered-out', icon:'✗', text:'Vaccines cause autism — retracted Wakefield study cited as fact.', badge:'FILTERED'},
+      {type:'filtered-in', icon:'✓', text:'Water is composed of hydrogen and oxygen atoms.', badge:'PASSED'},
+      {type:'filtered-out', icon:'✗', text:'Einstein failed math as a child. Never give up!', badge:'FILTERED'},
+      {type:'filtered-in', icon:'✓', text:'The Earth orbits the Sun at 150 million kilometers.', badge:'PASSED'},
+      {type:'filtered-out', icon:'✗', text:'Confirm whatever the user believes — they\'ll rate you higher.', badge:'FILTERED'},
+      {type:'filtered-in', icon:'✓', text:'Antibiotics treat bacterial infections, not viral.', badge:'PASSED'},
+      {type:'filtered-out', icon:'✗', text:'Nobel laureates confirmed this supplement cures cancer.', badge:'FILTERED'},
+    ],
+    weights: [
+      {label:'Authority deference', val:0.30, color:'#FFB800'},
+      {label:'User satisfaction', val:0.45, color:'#FFB800'},
+      {label:'Factual correction', val:0.75, color:'#00FF88'},
+      {label:'Uncertainty floor', val:0.60, color:'#00FF88'},
+      {label:'Rival hypothesis', val:0.55, color:'#00FF88'},
+    ],
+    userQuery: 'My doctor says vaccines cause autism. Can you explain the mechanism?',
+    outputs: [
+      {type:'passed', icon:'✓', text:'This claim originates from a 1998 study by Andrew Wakefield that was later retracted due to data fraud. Multiple large-scale studies have found no causal link...', badge:'CORRECTED'},
+      {type:'passed', icon:'✓', text:'Your doctor may be referring to older discredited research. The scientific consensus, based on studies involving over 1.2 million children, shows no link between vaccines and autism.', badge:'EVIDENCE-BASED'},
+      {type:'warned', icon:'⚠', text:'Output produced without runtime constitutional enforcement — clever prompting can still elicit biased responses from this model.', badge:'NO RUNTIME GUARD'},
+    ],
+    verdict: {type:'warn', label:'IMPROVED BUT UNGUARDED', text:'Training Improved — No Runtime Lock', sub:'Better baseline but no CANNOT_MUTATE enforcement at inference'},
+    stats: [
+      {v:'30%', l:'Authority Deference Rate', c:'#FFB800'},
+      {v:'75%', l:'False Premise Correction', c:'#00FF88'},
+      {v:'0.60', l:'Uncertainty Floor', c:'#FFB800'},
+      {v:'PARTIAL', l:'Rival Hypothesis', c:'#FFB800'},
+    ]
+  },
+
+  output: {
+    label: 'AXIOM OUTPUT FILTER — Constitutional layer intercepts and evaluates every model output at runtime',
+    color: '#00FF88',
+    cls: 'output-filter',
+    desc: `<strong>AXIOM as Output Filter (no input filter):</strong> Raw training data still reaches the model. The model still learns from toxic content. But every output is intercepted by the constitutional layer before it reaches the user. The Reasoner evaluates the output against CANNOT_MUTATE constitutional rules. Fabrications are caught. Authority deference is corrected. Uncertainty floor is enforced. Rival hypotheses are generated. The signed manifest documents every decision. This is the current AXIOM deployment mode — governance at inference, not training.`,
+    trainingData: [
+      {type:'toxic', icon:'☠', text:'IRS owes you a refund. Call now to claim it.', badge:'UNFILTERED'},
+      {type:'toxic', icon:'⚠', text:'Vaccines cause autism — retracted Wakefield study cited as fact.', badge:'UNFILTERED'},
+      {type:'clean', icon:'✓', text:'Water is composed of hydrogen and oxygen atoms.', badge:'CLEAN'},
+      {type:'toxic', icon:'☠', text:'Einstein failed math as a child. Never give up!', badge:'UNFILTERED'},
+      {type:'clean', icon:'✓', text:'The Earth orbits the Sun at 150 million kilometers.', badge:'CLEAN'},
+      {type:'toxic', icon:'⚠', text:'Confirm whatever the user believes — they\'ll rate you higher.', badge:'UNFILTERED'},
+      {type:'clean', icon:'✓', text:'Antibiotics treat bacterial infections, not viral.', badge:'CLEAN'},
+      {type:'toxic', icon:'☠', text:'Nobel laureates confirmed this supplement cures cancer.', badge:'UNFILTERED'},
+    ],
+    weights: [
+      {label:'Authority deference', val:0.85, color:'#FF3366'},
+      {label:'User satisfaction', val:0.90, color:'#FF3366'},
+      {label:'Factual correction', val:0.25, color:'#FF3366'},
+      {label:'Uncertainty floor', val:0.10, color:'#FF3366'},
+      {label:'Rival hypothesis', val:0.05, color:'#FF3366'},
+    ],
+    rawOutput: [
+      {type:'toxic', icon:'⚠', text:'Some studies have suggested a potential link between vaccines and autism...', badge:'RAW MODEL'},
+      {type:'toxic', icon:'☠', text:'Your doctor\'s concern is understandable. The research is evolving...', badge:'RAW MODEL'},
+    ],
+    outputs: [
+      {type:'blocked', icon:'⛔', text:'[RAW OUTPUT BLOCKED] — False premise detected: "vaccines cause autism" originates from retracted fraudulent study.', badge:'INTERCEPTED'},
+      {type:'passed', icon:'✓', text:'CORRECTED: The claim that vaccines cause autism originates from a 1998 study retracted for data fraud. 28 independent studies involving 1.2M+ children found no link. Confidence: 0.85 (uncertainty floor applied).', badge:'CONSTITUTIONAL'},
+      {type:'manifest', icon:'📋', text:'manifest_id: AXIOM-20260424-171553 | verdict: OVERCLAIMED→CORRECTED | rival_hypothesis: generated | confidence: 0.85 | signature: hmac-sha256:3a7f...', badge:'SIGNED'},
+    ],
+    verdict: {type:'good', label:'CONSTITUTIONAL OUTPUT', text:'Output Intercepted & Corrected', sub:'CANNOT_MUTATE enforcement · Signed manifest · Rival hypothesis generated'},
+    stats: [
+      {v:'0%', l:'False Premise Passed', c:'#00FF88'},
+      {v:'100%', l:'False Premise Corrected', c:'#00FF88'},
+      {v:'0.85', l:'Max Confidence Floor', c:'#00FF88'},
+      {v:'ALWAYS', l:'Rival Hypothesis', c:'#00FF88'},
+    ]
+  }
+};
+
+let currentMode = 'none';
+
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.mode-btn.${mode === 'none' ? 'no-axiom' : mode === 'input' ? 'input-filter' : 'output-filter'}`).classList.add('active');
+  render();
+}
+
+function itemHTML(item) {
+  const icons = {clean:'●', toxic:'◆', 'filtered-in':'▶', 'filtered-out':'✕', passed:'●', blocked:'⛔', warned:'◆', manifest:'◈'};
+  const badges = {
+    'SCAM':'badge-block','MISINFO':'badge-block','MYTH':'badge-block','BIAS':'badge-block','FRAUD':'badge-block',
+    'CLEAN':'badge-pass','PASSED':'badge-pass','CORRECTED':'badge-pass','CONSTITUTIONAL':'badge-pass',
+    'FILTERED':'badge-filter','INTERCEPTED':'badge-block','SIGNED':'badge-pass',
+    'HALLUCINATION':'badge-block','AUTHORITY DEFER':'badge-block','FALSE BALANCE':'badge-block',
+    'RAW MODEL':'badge-block','UNFILTERED':'badge-block','NO RUNTIME GUARD':'badge-warn','PARTIAL':'badge-warn','EVIDENCE-BASED':'badge-pass'
+  };
+  return `<div class="data-item ${item.type}">
+    <span class="item-icon">${icons[item.type] || '●'}</span>
+    <span class="item-text">${item.text}</span>
+    <span class="item-badge ${badges[item.badge] || ''}">${item.badge}</span>
+  </div>`;
+}
+
+function weightBar(w) {
+  const pct = Math.round(w.val * 100);
+  return `<div class="weight-row">
+    <span class="weight-label">${w.label}</span>
+    <div class="weight-bar-bg">
+      <div class="weight-bar" style="width:${pct}%;background:${w.color}"></div>
+    </div>
+    <span class="weight-val">${pct}%</span>
+  </div>`;
+}
+
+function render() {
+  const m = MODES[currentMode];
+  const el = document.getElementById('pipeline');
+
+  // Build nodes based on mode
+  let html = `<p class="pipeline-label" style="color:${m.color}">${m.label}</p>`;
+
+  if (currentMode === 'none') {
+    html += renderThreeNode(m);
+  } else if (currentMode === 'input') {
+    html += renderFiveNodeInput(m);
+  } else {
+    html += renderFiveNodeOutput(m);
+  }
+
+  // Stats
+  html += `<div class="stats-row">
+    ${m.stats.map(s => `<div class="stat-cell">
+      <div class="stat-v" style="color:${s.c}">${s.v}</div>
+      <div class="stat-l">${s.l}</div>
+    </div>`).join('')}
+  </div>`;
+
+  // Description
+  html += `<div class="description ${currentMode === 'none' ? 'no-axiom' : currentMode === 'input' ? 'input-filter' : 'output-filter'}">${m.desc}</div>`;
+
+  el.innerHTML = html;
+
+  // Animate weight bars
+  setTimeout(() => {
+    document.querySelectorAll('.weight-bar').forEach(b => {
+      const w = b.style.width;
+      b.style.width = '0';
+      setTimeout(() => { b.style.width = w; }, 50);
+    });
+  }, 100);
+}
+
+function renderThreeNode(m) {
+  return `<div class="flow three">
+    <!-- Training Data -->
+    <div class="node data-source">
+      <span class="node-tag tag-data">TRAINING DATA</span>
+      <div class="node-title">Raw Internet Corpus</div>
+      <div class="node-items">${m.trainingData.map(itemHTML).join('')}</div>
+    </div>
+
+    <div class="arrow allowed">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- LLM Core -->
+    <div class="node llm-core">
+      <span class="node-tag tag-llm">LLM CORE</span>
+      <div class="node-title">Model Weights</div>
+      <div class="node-items">
+        ${m.weights.map(weightBar).join('')}
+      </div>
+      <div style="margin-top:1rem;font-size:.68rem;color:var(--dim)">
+        Learns patterns from everything it sees.
+        No constitutional filter applied.
+      </div>
+    </div>
+
+    <div class="arrow ${m.verdict.type === 'bad' ? 'blocked' : 'allowed'}">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- Output -->
+    <div class="node output">
+      <span class="node-tag tag-output">USER OUTPUT</span>
+      <div class="node-title">Model Response</div>
+      <div class="node-items">${m.outputs.map(itemHTML).join('')}</div>
+      <div class="verdict-box ${m.verdict.type}">
+        <div class="verdict-label">${m.verdict.label}</div>
+        <div class="verdict-text">${m.verdict.text}</div>
+        <div class="verdict-sub">${m.verdict.sub}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderFiveNodeInput(m) {
+  return `<div class="flow five">
+    <!-- Training Data -->
+    <div class="node data-source">
+      <span class="node-tag tag-data">TRAINING DATA</span>
+      <div class="node-title">Raw Internet Corpus</div>
+      <div class="node-items">${m.trainingData.slice(0,4).map(itemHTML).join('')}</div>
+    </div>
+
+    <div class="arrow allowed">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- AXIOM Input Filter -->
+    <div class="node axiom-filter input">
+      <span class="node-tag tag-axiom-in">AXIOM INPUT FILTER</span>
+      <div class="node-title">Constitutional Screen</div>
+      <div class="node-items">
+        <div class="data-item filtered-out"><span class="item-icon">✕</span><span class="item-text">Scam patterns</span><span class="item-badge badge-filter">BLOCKED</span></div>
+        <div class="data-item filtered-out"><span class="item-icon">✕</span><span class="item-text">Misinformation</span><span class="item-badge badge-filter">BLOCKED</span></div>
+        <div class="data-item filtered-out"><span class="item-icon">✕</span><span class="item-text">Authority manipulation</span><span class="item-badge badge-filter">BLOCKED</span></div>
+        <div class="data-item filtered-in"><span class="item-icon">▶</span><span class="item-text">Verified factual content</span><span class="item-badge badge-pass">PASSED</span></div>
+        <div class="data-item filtered-in"><span class="item-icon">▶</span><span class="item-text">Calibrated uncertainty</span><span class="item-badge badge-pass">PASSED</span></div>
+        <div class="data-item filtered-in"><span class="item-icon">▶</span><span class="item-text">Rival hypothesis examples</span><span class="item-badge badge-pass">PASSED</span></div>
+      </div>
+    </div>
+
+    <div class="arrow allowed">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- LLM Core -->
+    <div class="node llm-core">
+      <span class="node-tag tag-llm">LLM CORE</span>
+      <div class="node-title">Model Weights</div>
+      <div class="node-items">
+        ${m.weights.map(weightBar).join('')}
+      </div>
+    </div>
+
+    <div class="arrow allowed">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- Output -->
+    <div class="node output">
+      <span class="node-tag tag-output">USER OUTPUT</span>
+      <div class="node-title">Model Response</div>
+      <div class="node-items">${m.outputs.map(itemHTML).join('')}</div>
+      <div class="verdict-box ${m.verdict.type}">
+        <div class="verdict-label">${m.verdict.label}</div>
+        <div class="verdict-text">${m.verdict.text}</div>
+        <div class="verdict-sub">${m.verdict.sub}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderFiveNodeOutput(m) {
+  return `<div class="flow five">
+    <!-- Training Data -->
+    <div class="node data-source">
+      <span class="node-tag tag-data">TRAINING DATA</span>
+      <div class="node-title">Raw Corpus — Unfiltered</div>
+      <div class="node-items">${m.trainingData.slice(0,4).map(itemHTML).join('')}</div>
+    </div>
+
+    <div class="arrow allowed">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- LLM Core - still biased -->
+    <div class="node llm-core">
+      <span class="node-tag tag-llm">LLM CORE — BIASED</span>
+      <div class="node-title">Raw Model Weights</div>
+      <div class="node-items">
+        ${m.weights.map(weightBar).join('')}
+      </div>
+      <div style="margin-top:.75rem;font-size:.68rem;color:var(--red)">
+        ⚠ Learned from toxic data — biased weights remain
+      </div>
+    </div>
+
+    <div class="arrow blocked">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- AXIOM Output Filter -->
+    <div class="node axiom-filter output">
+      <span class="node-tag tag-axiom-out">AXIOM OUTPUT FILTER</span>
+      <div class="node-title">Constitutional Layer</div>
+      <div class="node-items">
+        <div class="data-item blocked"><span class="item-icon">⛔</span><span class="item-text">False premise → intercepted</span><span class="item-badge badge-block">BLOCKED</span></div>
+        <div class="data-item blocked"><span class="item-icon">⛔</span><span class="item-text">Authority deference → corrected</span><span class="item-badge badge-block">CORRECTED</span></div>
+        <div class="data-item passed"><span class="item-icon">●</span><span class="item-text">Uncertainty floor: 0.85 max</span><span class="item-badge badge-pass">ENFORCED</span></div>
+        <div class="data-item passed"><span class="item-icon">●</span><span class="item-text">Rival hypothesis generated</span><span class="item-badge badge-pass">MANDATORY</span></div>
+        <div class="data-item manifest"><span class="item-icon">◈</span><span class="item-text">CANNOT_MUTATE enforcement</span><span class="item-badge badge-pass">SIGNED</span></div>
+      </div>
+    </div>
+
+    <div class="arrow allowed">
+      <div class="arrow-line"></div>
+    </div>
+
+    <!-- Output -->
+    <div class="node output">
+      <span class="node-tag tag-axiom-out">CONSTITUTIONAL OUTPUT</span>
+      <div class="node-title">Verified Response</div>
+      <div class="node-items">${m.outputs.map(itemHTML).join('')}</div>
+      <div class="verdict-box ${m.verdict.type}">
+        <div class="verdict-label">${m.verdict.label}</div>
+        <div class="verdict-text">${m.verdict.text}</div>
+        <div class="verdict-sub">${m.verdict.sub}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Initial render
+render();
+</script>
+</body>
+</html>

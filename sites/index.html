@@ -87,6 +87,12 @@ footer{border-top:1px solid var(--edge);padding:3rem 2rem;max-width:1100px;margi
 .footer-links a{color:var(--gray);text-decoration:none;font-size:.875rem;transition:color .2s}
 .footer-links a:hover{color:var(--green)}
 .footer-meta{font-family:'Space Mono',monospace;font-size:.68rem;color:var(--lgray);text-align:right;line-height:1.8}
+.demo-link{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;background:var(--surf);border:1px solid var(--edge);border-radius:12px;padding:1.75rem 2rem;text-decoration:none;transition:border-color .2s;flex-wrap:wrap}
+.demo-link:hover{border-color:rgba(0,230,118,.3)}
+.demo-link-label{font-family:'Space Mono',monospace;font-size:11px;color:var(--green);letter-spacing:.15em;text-transform:uppercase;margin-bottom:.5rem}
+.demo-link-title{font-size:1.1rem;font-weight:700;color:var(--white);margin-bottom:.25rem}
+.demo-link-desc{font-size:.85rem;color:var(--gray)}
+.demo-link-cta{font-family:'Space Mono',monospace;font-size:.85rem;color:var(--green);white-space:nowrap;flex-shrink:0}
 @media(max-width:700px){.numbers-grid{grid-template-columns:repeat(2,1fr)}.footer-meta{text-align:left}}
 </style>
 </head>
@@ -250,6 +256,19 @@ footer{border-top:1px solid var(--edge);padding:3rem 2rem;max-width:1100px;margi
       <span class="bench-tag bench-gates">All 4 gates pass</span>
     </div>
   </div>
+</section>
+
+<hr>
+
+<section class="section" id="demo">
+  <a href="/data-flow" class="demo-link">
+    <div>
+      <div class="demo-link-label">Interactive Demo</div>
+      <div class="demo-link-title">AXIOM LLM Data Flow</div>
+      <div class="demo-link-desc">See how constitutional layers change what LLMs learn &mdash; and what they output. Three modes. Live comparison.</div>
+    </div>
+    <div class="demo-link-cta">View Demo &rarr;</div>
+  </a>
 </section>
 
 <hr>
