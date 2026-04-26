@@ -383,15 +383,19 @@ def watch_loop(args):
     if not args.headless and PYGAME_AVAILABLE:
         hud = ChessHUD()
 
-    prev_highlighted: list[str] = []
+    prev_highlighted: list = []
     interval = 1.0 / args.fps
-    status   = "watching..."
+    status   = "watching — make a move in browser..."
+    frame_n  = 0
 
-    print(f"\n  AXIOM Browser Chess Watcher started")
-    print(f"  Site: {args.site}   Region: {region}")
-    print(f"  Board: {'flipped (black)' if flipped else 'normal (white at bottom)'}")
-    print(f"  FPS: {args.fps}   Press Q to quit\n")
-    print(f"  Make moves in your browser — manifests appear here.\n")
+    play_as = "flipped (black at bottom)" if flipped else "normal (white at bottom)"
+    print("\n  AXIOM Browser Chess Watcher")
+    print("  Site   : %s" % args.site)
+    print("  Region : %s" % region)
+    print("  Board  : %s" % play_as)
+    print("  FPS    : %d   Depth: %d" % (args.fps, args.depth))
+    print("  Press Q (in HUD) or Ctrl+C to stop")
+    print("  Make a move in your browser...\n")
 
     with mss.mss() as sct:
         while True:
@@ -406,30 +410,40 @@ def watch_loop(args):
             # Detect highlighted squares
             highlighted = _find_highlighted_squares(arr, profiles, w, h, flipped)
 
-            # New move detected when highlight changes to a different pair
-            if (set(highlighted) != set(prev_highlighted)
-                    and len(highlighted) == 2
-                    and len(prev_highlighted) != 0):
+            # Live debug every 20 frames
+            frame_n += 1
+            if frame_n % 20 == 0:
+                sq_str = ",".join(highlighted) if highlighted else "none"
+                print("  [frame %d] highlighted: %-20s  moves recorded: %d" % (
+                    frame_n, sq_str, len(manifests)))
 
+            # Detect new move: highlight changed and we have exactly 2 squares
+            # Allow first move (prev_highlighted may be empty)
+            highlight_changed = set(highlighted) != set(prev_highlighted)
+            new_move_candidate = (
+                highlight_changed
+                and len(highlighted) == 2
+                and len(prev_highlighted) in (0, 2)
+            )
+
+            if new_move_candidate:
                 move = _infer_move(board, highlighted, prev_highlighted)
 
                 if move and move in board.legal_moves:
-                    t_move = time.time()
-
+                    t_move     = time.time()
                     fen_before = board.fen()
                     san        = board.san(move)
                     board.push(move)
                     latency    = int((time.time() - t_move) * 1000)
 
-                    # Evaluate with engine
                     try:
                         best, reasoning, confidence = select_move_engine(
                             board.copy(), depth=args.depth
                         )
-                        mode = f"engine-d{args.depth}"
+                        mode = "engine-d%d" % args.depth
                     except Exception as e:
                         best       = move
-                        reasoning  = f"eval error: {e}"
+                        reasoning  = "eval error: %s" % e
                         confidence = 0.5
                         mode       = "fallback"
 
@@ -447,15 +461,17 @@ def watch_loop(args):
                     if len(manifests) % 5 == 0:
                         manifest_path.write_text(json.dumps(manifests, indent=2))
 
-                    status = f"Move {board.fullmove_number - 1}: {san}  [{manifest['manifest_id']}]"
+                    n = board.fullmove_number - 1
+                    status = "Move %d: %s  [%s]" % (n, san, manifest["manifest_id"])
+                    sig = manifest["signature"][:20]
+                    print("  Move %3d: %-8s  conf=%d%%  %s  %s..." % (
+                        n, san, int(confidence * 100),
+                        manifest["manifest_id"], sig))
 
-                    if args.headless or not hud:
-                        sig = manifest["signature"][:20]
-                        print(
-                            f"  Move {board.fullmove_number-1:>3}: {san:<8} "
-                            f"conf={confidence:.0%}  "
-                            f"id={manifest['manifest_id']}  sig={sig}..."
-                        )
+                elif highlighted and prev_highlighted:
+                    # Highlight changed but move not legal — show for debugging
+                    print("  [debug] highlight %s->%s  not a legal move (check --play-as / --site)" % (
+                        prev_highlighted, highlighted))
 
             prev_highlighted = highlighted
 
