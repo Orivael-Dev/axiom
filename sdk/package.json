@@ -1,0 +1,30 @@
+{
+  "name": "axiom-guard",
+  "version": "1.0.0",
+  "description": "TypeScript client for the AXIOM Guard API — constitutional enforcement middleware for any AI system",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai", "constitutional-ai", "llm", "governance", "axiom",
+    "guard", "compliance", "safety", "orivael"
+  ],
+  "author": "Antonio Roberts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Orivael-Dev/axiom"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
