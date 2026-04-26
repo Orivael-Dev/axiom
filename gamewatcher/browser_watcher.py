@@ -492,7 +492,8 @@ def calibrate(args):
             squares = _find_highlighted_squares(
                 arr, profiles, region["width"], region["height"]
             )
-            print(f"\r  Frame {i:>4}  highlighted: {squares or '(none)'}        ", end="", flush=True)
+            sq_str = str(squares) if squares else "(none)"
+            print("\r  Frame %4d  highlighted: %-40s" % (i, sq_str), end="", flush=True)
             time.sleep(0.25)
     print()
 

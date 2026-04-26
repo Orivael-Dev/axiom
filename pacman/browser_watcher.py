@@ -623,9 +623,8 @@ def calibrate(args):
                 blobs = _find_blobs(mask, min_pixels=20)
                 detected[name] = {"pixels": count, "blobs": len(blobs)}
 
-            print(f"\r  Frame {i:>3}  " +
-                  "  ".join(f"{k}:{v['blobs']}b/{v['pixels']}px" for k, v in detected.items()),
-                  end="", flush=True)
+            row = "  ".join("%s:%db/%dpx" % (k, v["blobs"], v["pixels"]) for k, v in detected.items())
+            print("\r  Frame %3d  %s" % (i, row), end="", flush=True)
             time.sleep(0.5)
 
     print()
