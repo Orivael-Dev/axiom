@@ -57,15 +57,8 @@ try:
 except ImportError:
     PYGAME_AVAILABLE = False
 
-# ── Lazy import of constitutional layers (avoids triggering pacman_watcher game) ─
-_WATCHER_PATH = Path(__file__).parent
-
-def _load_layers():
-    """Import PacmanWatcher/Player/Evaluator only when actually running."""
-    if str(_WATCHER_PATH) not in sys.path:
-        sys.path.insert(0, str(_WATCHER_PATH))
-    from pacman_watcher import PacmanWatcher, PacmanPlayer, PacmanEvaluator
-    return PacmanWatcher, PacmanPlayer, PacmanEvaluator
+# ── Constitutional layers (standalone — no pygame, no game engine) ────────────
+from layers import PacmanWatcher, PacmanPlayer, PacmanEvaluator
 
 # ── Region config file ────────────────────────────────────────────────────────
 REGION_CONFIG = Path(__file__).parent / "browser_region.json"
@@ -511,7 +504,6 @@ def watch_loop(args):
     region   = _load_or_select_region(args)
     profile  = args.game
 
-    PacmanWatcher, PacmanPlayer, PacmanEvaluator = _load_layers()
     watcher   = PacmanWatcher(sample_every=args.sample_every)
     player    = PacmanPlayer()
     evaluator = PacmanEvaluator()
