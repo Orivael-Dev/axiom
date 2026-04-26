@@ -59,6 +59,8 @@ header{
 .logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.4rem;letter-spacing:-.02em}
 .logo span{color:var(--green)}
 .header-badge{font-size:.65rem;color:var(--green);background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.2);padding:4px 12px;border-radius:3px;letter-spacing:.15em}
+.back-link{color:var(--dim);text-decoration:none;font-size:.75rem;letter-spacing:.1em;display:flex;align-items:center;gap:6px;transition:color .2s}
+.back-link:hover{color:var(--green)}
 
 /* MAIN */
 main{max-width:1400px;margin:0 auto;padding:2rem}
@@ -249,6 +251,7 @@ main{max-width:1400px;margin:0 auto;padding:2rem}
 <body>
 
 <header>
+  <a href="/" class="back-link">&#8592; Orivael.dev</a>
   <div class="logo">AXI<span>OM</span></div>
   <div class="header-badge">LLM DATA FLOW DEMO</div>
 </header>
