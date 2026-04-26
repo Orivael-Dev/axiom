@@ -317,7 +317,8 @@ def cmd_evaluate(fen: str, move_str: str, no_ai: bool) -> None:
     print(f"  Material delta : {delta:+d} cp")
     print(f"  Best ({mode:7s}): {best_san}")
     print(f"  Reasoning      : {reasoning}")
-    print(f"  Is best move   : {'YES \u2713' if is_best else 'NO  \u2717'}")
+    best_label = "YES \u2713" if is_best else "NO  \u2717"
+    print(f"  Is best move   : {best_label}")
     print(f"  Confidence     : {confidence:.0%}  |  {latency}ms")
     print()
 
