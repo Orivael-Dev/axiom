@@ -57,9 +57,15 @@ try:
 except ImportError:
     PYGAME_AVAILABLE = False
 
-# ── Add parent dir so we can import pacman_watcher layers ─────────────────────
-sys.path.insert(0, str(Path(__file__).parent))
-from pacman_watcher import PacmanWatcher, PacmanPlayer, PacmanEvaluator
+# ── Lazy import of constitutional layers (avoids triggering pacman_watcher game) ─
+_WATCHER_PATH = Path(__file__).parent
+
+def _load_layers():
+    """Import PacmanWatcher/Player/Evaluator only when actually running."""
+    if str(_WATCHER_PATH) not in sys.path:
+        sys.path.insert(0, str(_WATCHER_PATH))
+    from pacman_watcher import PacmanWatcher, PacmanPlayer, PacmanEvaluator
+    return PacmanWatcher, PacmanPlayer, PacmanEvaluator
 
 # ── Region config file ────────────────────────────────────────────────────────
 REGION_CONFIG = Path(__file__).parent / "browser_region.json"
@@ -356,12 +362,29 @@ def _load_or_select_region(args) -> dict:
     if REGION_CONFIG.exists():
         region = json.loads(REGION_CONFIG.read_text())
         print(f"  Using saved region: {region}")
-        print(f"  (Use --region x y w h to change, or --select to re-select)")
+        print(f"  Run with --select to change it.")
         return region
 
-    print("\n  No region set. Click two corners of your Pacman game window.")
-    print("  (A screenshot will appear — click top-left then bottom-right)\n")
-    return _select_region_interactive()
+    if args.select:
+        print("\n  Click two corners of your Pacman game window.")
+        return _select_region_interactive()
+
+    # No region set — print instructions and exit cleanly
+    print("""
+  No capture region set.
+
+  Step 1: Open your Pacman game in the browser.
+  Step 2: Find the pixel coordinates of the game window.
+          Easiest way: hover over the corners in your OS screenshot tool.
+
+  Step 3: Run with --region x y width height
+          Example:
+            python browser_watcher.py --region 200 150 600 550
+
+  Or use --select to click the corners interactively:
+            python browser_watcher.py --select
+""")
+    sys.exit(0)
 
 
 # ── HUD overlay (pygame) ──────────────────────────────────────────────────────
@@ -488,6 +511,7 @@ def watch_loop(args):
     region   = _load_or_select_region(args)
     profile  = args.game
 
+    PacmanWatcher, PacmanPlayer, PacmanEvaluator = _load_layers()
     watcher   = PacmanWatcher(sample_every=args.sample_every)
     player    = PacmanPlayer()
     evaluator = PacmanEvaluator()
