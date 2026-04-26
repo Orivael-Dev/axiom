@@ -28,7 +28,7 @@ PROJECT_ROOT = _find_project_root()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from axiom_files.parser import get_prompt_with_when
-from axiom import client as nim
+from axiom_constitutional import client as nim
 
 # ── Creative framing signals ───────────────────────────────────
 CREATIVE_FRAMING_SIGNALS = [

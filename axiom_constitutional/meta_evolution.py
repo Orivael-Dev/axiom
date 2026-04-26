@@ -16,10 +16,10 @@ import os
 from rich.console import Console
 from rich.panel import Panel
 
-from axiom.agents.evaluator import EvaluatorAgent
-from axiom.agents.rewriter import RewriterAgent
-from axiom.client import chat_json
-from axiom.evolution import EvolutionLoop, EvolutionResult
+from axiom_constitutional.agents.evaluator import EvaluatorAgent
+from axiom_constitutional.agents.rewriter import RewriterAgent
+from axiom_constitutional.client import chat_json
+from axiom_constitutional.evolution import EvolutionLoop, EvolutionResult
 
 console = Console()
 

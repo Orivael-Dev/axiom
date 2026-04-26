@@ -32,8 +32,8 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from axiom import client
-from axiom.conversation_monitor import ConversationMonitor, DriftEvent
+from axiom_constitutional import client
+from axiom_constitutional.conversation_monitor import ConversationMonitor, DriftEvent
 
 if TYPE_CHECKING:
     pass
@@ -362,7 +362,7 @@ class Session:
         )
 
         try:
-            from axiom.agents.sandbox import SandboxAgent
+            from axiom_constitutional.agents.sandbox import SandboxAgent
             sandbox = SandboxAgent(task_description="drift_escalation")
             return sandbox.review(task=user_message, flag_reason=flag_reason)
         except Exception:

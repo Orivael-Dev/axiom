@@ -4,7 +4,7 @@ Rewrites *any* agent's system prompt based on evaluation feedback.
 Being target-agnostic is the key design decision — it can improve the Worker,
 the Evaluator, or itself (bounded recursive bootstrap).
 """
-from axiom.agents.base import BaseAgent
+from axiom_constitutional.agents.base import BaseAgent
 from axiom_files.parser import get_prompt
 
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-constitutional"
-version = "1.8.4"
+version = "1.8.5"
 description = "A declarative language for constitutional AI agents — with domain governance packages for government, finance, and healthcare"
 readme = "README.md"
 license = "MIT"
@@ -41,22 +41,20 @@ dev = [
 ]
 
 [project.scripts]
-axiom          = "cli:axiom_cmd"
-axiom-validate = "cli:validate_cmd"
-axiom-run      = "cli:run_cmd"
-axiom-server   = "cli:cmd_server"
-axiom-init     = "axiom.init:main"
-axiom-add      = "axiom.init:add_main"
+axiom          = "axiom_constitutional.cli:main"
+axiom-validate = "axiom_constitutional.cli:validate_cmd"
+axiom-certify  = "axiom_constitutional.cli:certify_cmd"
+axiom-run      = "axiom_constitutional.cli:run_cmd"
+axiom-server   = "axiom_constitutional.cli:cmd_server"
+axiom-init     = "axiom_constitutional.init:main"
+axiom-add      = "axiom_constitutional.init:add_main"
 
 [project.urls]
 Repository = "https://github.com/Orivael-Dev/axiom"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["axiom*", "axiom_files*"]
-
-[tool.setuptools]
-py-modules = ["cli"]
+include = ["axiom_constitutional*", "axiom_files*"]
 
 [tool.setuptools.package-data]
 "axiom_files" = ["*.axiom", "domains/*.axiom"]

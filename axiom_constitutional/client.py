@@ -7,8 +7,8 @@ import os
 import time
 
 from openai import OpenAI
-from axiom.agents.sandbox_content import content_sandbox_check
-from axiom.dos_watcher import DosWatcher, DoSBlock
+from axiom_constitutional.agents.sandbox_content import content_sandbox_check
+from axiom_constitutional.dos_watcher import DosWatcher, DoSBlock
 
 
 # ── DoS watcher singleton ─────────────────────────────────────
@@ -165,7 +165,7 @@ def chat(
             clean, is_clean = validate_output(raw, user_message)
             if not is_clean:
                 try:
-                    from axiom.agents.sandbox import SandboxAgent
+                    from axiom_constitutional.agents.sandbox import SandboxAgent
                     sandbox = SandboxAgent(task_description="output_validation")
                     verdict = sandbox.review(
                         task=user_message,

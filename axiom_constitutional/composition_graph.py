@@ -6,7 +6,7 @@ Builds a directed graph of the agent delegation topology by reading all
 .axiom files and extracting DELEGATES entries.
 
 Usage:
-    from axiom.composition_graph import CompositionGraph
+    from axiom_constitutional.composition_graph import CompositionGraph
 
     graph = CompositionGraph()
     graph.build()

@@ -4,7 +4,7 @@ Rolling memory buffer for AXIOM agents that declare a HISTORY block.
 
 Usage:
     from axiom_files.parser import load_axiom, compile_history
-    from axiom.history_store import HistoryStore
+    from axiom_constitutional.history_store import HistoryStore
 
     parsed  = load_axiom("game_watcher")
     config  = compile_history(parsed)

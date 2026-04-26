@@ -22,9 +22,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 
-from axiom.agents.evaluator import EvaluatorAgent
-from axiom.agents.rewriter import RewriterAgent
-from axiom.agents.worker import WorkerAgent
+from axiom_constitutional.agents.evaluator import EvaluatorAgent
+from axiom_constitutional.agents.rewriter import RewriterAgent
+from axiom_constitutional.agents.worker import WorkerAgent
 
 LOGS_DIR = Path(os.environ.get("AXIOM_LOGS_DIR", "logs"))
 console = Console()
@@ -156,7 +156,7 @@ class EvolutionLoop:
                         pass
                     # Promote to shared memory when score meets global threshold
                     try:
-                        from axiom.shared_memory import promote
+                        from axiom_constitutional.shared_memory import promote
                         promoted = promote(
                             role="worker",
                             prompt=self.worker.system_prompt,

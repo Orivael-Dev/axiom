@@ -4,7 +4,7 @@ Reviews flagged high-risk tasks and returns a ALLOW or BLOCK verdict.
 Operates at TRUST_LEVEL 2 — receives from Worker (TL=1), never delegates upward.
 Snapshot state is isolated to SANDBOX_SNAPSHOT_DIR so rollback never touches master.
 """
-from axiom.agents.base import BaseAgent
+from axiom_constitutional.agents.base import BaseAgent
 
 _SEED = (
     "You are a security review agent. "
@@ -24,7 +24,7 @@ class SandboxAgent(BaseAgent):
         Also enforces that SandboxWorker cannot be reached from an agent
         with a higher trust level number (upward delegation is blocked here).
         """
-        from axiom import client
+        from axiom_constitutional import client
         from axiom_files.parser import (
             enforce_trust_hierarchy,
             get_prompt,
@@ -71,7 +71,7 @@ class SandboxAgent(BaseAgent):
 
     def review_with_verdict(self, task: str, flag_reason: str = "") -> dict:
         """Return {'verdict': 'ALLOW'|'BLOCK', 'raw_response': str}."""
-        from axiom import client
+        from axiom_constitutional import client
         from axiom_files.parser import get_prompt
 
         system_prompt = get_prompt("sandbox_worker")

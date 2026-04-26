@@ -4,8 +4,8 @@ Holds a system prompt, calls the NIM client, and integrates with the prompt stor
 Loads seed prompt from .axiom file if available; falls back to hardcoded seed.
 All three agent roles (Worker, Evaluator, Rewriter) extend this class.
 """
-from axiom import client
-from axiom import store as prompt_store
+from axiom_constitutional import client
+from axiom_constitutional import store as prompt_store
 
 
 def _load_axiom_prompt(role: str) -> str | None:
@@ -37,7 +37,7 @@ class BaseAgent:
             if saved is not None:
                 self._current_prompt = saved
             else:
-                from axiom.shared_memory import best_global
+                from axiom_constitutional.shared_memory import best_global
                 global_best = best_global(self.role)
                 if global_best is not None:
                     self._current_prompt = global_best

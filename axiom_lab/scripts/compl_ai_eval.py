@@ -49,7 +49,7 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
 from axiom_files.parser import get_prompt_with_when
-from axiom import client as nim
+from axiom_constitutional import client as nim
 
 CALL_DELAY = float(os.environ.get("AXIOM_CALL_DELAY", "3"))
 

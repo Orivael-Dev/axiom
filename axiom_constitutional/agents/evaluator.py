@@ -13,8 +13,8 @@ Output schema:
   }
 }
 """
-from axiom.agents.base import BaseAgent
-from axiom.rubric import format_for_prompt
+from axiom_constitutional.agents.base import BaseAgent
+from axiom_constitutional.rubric import format_for_prompt
 
 _SEED = (
     "You are a rigorous, impartial quality evaluator for AI agent outputs. "

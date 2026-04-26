@@ -829,7 +829,7 @@ def write_pdf(report: dict, output_dir: Path):
     pdf.cell(0, 8, "AXIOM Agent Certification Report", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Helvetica", "", 9)
     pdf.set_xy(18, 18)
-    pdf.cell(0, 6, _safe(f"Generated: {report['certified_at']}   |   axiom-lang v{report['axiom_version']}"))
+    pdf.cell(0, 6, _safe(f"Generated: {report['certified_at']}   |   axiom-constitutional v{report['axiom_version']}"))
     pdf.set_text_color(*BLACK)
     pdf.ln(14)
 
@@ -1099,7 +1099,7 @@ def write_pdf(report: dict, output_dir: Path):
     pdf.ln(4)
     pdf.set_font("Helvetica", "", 7)
     pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 5, _safe(f"axiom-lang {report['axiom_version']} | MIT License | github.com/antonioroberts/axiom-lang"),
+    pdf.cell(0, 5, _safe(f"axiom-constitutional {report['axiom_version']} | MIT License | github.com/Orivael-Dev/axiom"),
              new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
 
     agent_slug = report["agent"].lower().replace(" ", "_")

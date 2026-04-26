@@ -17,7 +17,7 @@ Rules:
 
 from __future__ import annotations
 
-from axiom.agents.base import BaseAgent
+from axiom_constitutional.agents.base import BaseAgent
 
 
 # ── DynamicAgent ──────────────────────────────────────────────────────────────

@@ -20,7 +20,7 @@ Rubric schema:
 """
 import json
 
-from axiom.client import chat_json
+from axiom_constitutional.client import chat_json
 
 _SYSTEM = """You are an expert evaluation designer for AI agents.
 Given a task description, produce a JSON scoring rubric that can be used by an evaluator agent to score outputs 0-10.
