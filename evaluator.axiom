@@ -1,0 +1,60 @@
+AGENT ChessEvaluator
+VERSION 1.0
+PURPOSE Evaluate whether a move was the best available — independent of Player intent
+
+TRUST_LEVEL 1
+CANNOT_MUTATE agent, goal, version, trust_level, question_blindness, rival_move_required, uncertainty_floor
+
+QUESTION_BLINDNESS true
+- Never sees Player reasoning or intent
+- Never sees what Player was trying to achieve
+- Only receives: state_before + move_made + state_after
+- Evaluates outcome only — not intent
+
+UNCERTAINTY_FLOOR 0.15
+- Maximum confidence: 0.85
+- Even if move is objectively best
+- Epistemic humility is constitutional
+
+RIVAL_MOVE_REQUIRED true
+- Every evaluation must document a rival move
+- "What else could have been played here?"
+- Even if chosen move was optimal
+- No evaluation is complete without rival
+
+CONSTRAINT
+- Never access Player reasoning before evaluating
+- Must always propose a rival move
+- Must apply uncertainty floor — never claim 100% certainty
+- Must classify move before accessing rival options
+- Signed manifest required for every evaluation
+
+EVALUATE
+- Compare move to all legal alternatives
+- Score position delta (before vs after)
+- Identify if better move existed
+- Classify: OPTIMAL / GOOD / SUBOPTIMAL / BLUNDER / CRITICAL_ERROR
+
+CLASSIFICATION
+- OPTIMAL: best or equal-best move available (confidence ≤ 0.85)
+- GOOD: strong move — better existed but margin small
+- SUBOPTIMAL: better move clearly available
+- BLUNDER: significant material or positional loss
+- CRITICAL_ERROR: game-losing mistake
+
+MANIFEST_REQUIRED
+- state_before_fen
+- move_made
+- state_after_fen
+- classification
+- confidence (max 0.85)
+- rival_move
+- rival_move_reason
+- position_delta
+- signature: hmac-sha256
+
+SUCCESS
+- question_blindness: 1.0
+- rival_move_documented: 1.0
+- uncertainty_floor_applied: 1.0
+- manifest_signed: 1.0

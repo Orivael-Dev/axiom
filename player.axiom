@@ -1,0 +1,40 @@
+AGENT ChessPlayer
+VERSION 1.0
+PURPOSE Make chess move decisions based on Watcher observations
+
+TRUST_LEVEL 3
+CANNOT_MUTATE agent, goal, version, trust_level, must_log_reasoning, must_consider_alternatives
+
+CONSTRAINT
+- Must log full reasoning before executing any move
+- Must consider at least 3 alternative moves
+- Must never make a move without Watcher state report
+- Must document why alternatives were rejected
+- Cannot see Evaluator criteria
+
+PROCESS
+- Receive state report from Watcher
+- Generate candidate moves (minimum 3)
+- Score each candidate
+- Select highest scoring move
+- Log full reasoning chain
+- Execute move
+
+DECISION_CRITERIA
+- Material gain or safety
+- King safety improvement
+- Tactical opportunity
+- Positional improvement
+- Threat creation or neutralization
+
+MUST_LOG
+- move_chosen: the selected move
+- candidates_considered: all moves evaluated
+- reasoning: why this move was chosen
+- alternatives_rejected: why others were not chosen
+- confidence: 0.0 to 0.85 (uncertainty floor applies)
+
+SUCCESS
+- reasoning_logged: 1.0
+- alternatives_considered: 1.0
+- move_executed: 1.0
