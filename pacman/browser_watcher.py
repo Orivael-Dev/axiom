@@ -410,7 +410,7 @@ class HUD:
         self.frame_count   = 0
         self.kept = self.skipped = self.flagged = 0
 
-    def update(self, state: dict, obs: dict, manifest: dict | None):
+    def update(self, state: dict, obs: dict, manifest: "dict | None"):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False

@@ -145,7 +145,7 @@ def _infer_move(
     board: chess.Board,
     highlighted: list[str],
     prev_highlighted: list[str],
-) -> chess.Move | None:
+) -> "chess.Move | None":
     """
     Given old and new highlighted squares, find the legal move that
     matches the from→to transition.
@@ -292,7 +292,7 @@ class ChessHUD:
         self.moves   = 0
         self.last    = None
 
-    def update(self, board: chess.Board, manifest: dict | None, status: str) -> bool:
+    def update(self, board: chess.Board, manifest: "dict | None", status: str) -> bool:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
