@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiom-constitutional"
-version = "1.8.5"
-description = "A declarative language for constitutional AI agents — with domain governance packages for government, finance, and healthcare"
-readme = "README.md"
-license = "MIT"
-authors = [{ name = "Antonio Roberts" }]
+version = "1.8.6"
+description = "Constitutional AI governance framework"
+authors = [{ name = "Antonio Roberts", email = "hello@orivael.dev" }]
+license = "Apache-2.0"
 requires-python = ">=3.10"
+readme = "README.md"
 keywords = ["ai", "agents", "llm", "dsl", "governance", "compliance", "constitutional-ai", "prompt-engineering"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -24,16 +24,42 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
+
+# Core dependencies — always installed
 dependencies = [
-    "openai>=1.0.0",
+    "anthropic>=1.0.0",
     "python-dotenv>=1.0.0",
 ]
 
+# Optional installs
 [project.optional-dependencies]
-server = [
-    "fastapi>=0.110.0",
-    "uvicorn[standard]>=0.29.0",
+
+guard = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
 ]
+
+research = [
+    "anthropic>=1.0.0",
+]
+
+games = [
+    "chess>=1.9.0",
+    "pygame>=2.5.0",
+    "numpy>=1.24.0",
+    "mss>=7.0.0",
+    "Pillow>=9.0.0",
+    "pyautogui>=0.9.54",
+]
+
+all = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "chess>=1.9.0",
+    "pygame>=2.5.0",
+    "numpy>=1.24.0",
+]
+
 dev = [
     "pytest>=7.0",
     "black",
@@ -44,13 +70,11 @@ dev = [
 axiom          = "axiom_constitutional.cli:main"
 axiom-validate = "axiom_constitutional.cli:validate_cmd"
 axiom-certify  = "axiom_constitutional.cli:certify_cmd"
-axiom-run      = "axiom_constitutional.cli:run_cmd"
-axiom-server   = "axiom_constitutional.cli:cmd_server"
-axiom-init     = "axiom_constitutional.init:main"
-axiom-add      = "axiom_constitutional.init:add_main"
 
 [project.urls]
+Homepage   = "https://orivael.dev"
 Repository = "https://github.com/Orivael-Dev/axiom"
+PyPI       = "https://pypi.org/project/axiom-constitutional/"
 
 [tool.setuptools.packages.find]
 where = ["."]
