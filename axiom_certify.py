@@ -381,7 +381,7 @@ def step_5_audit_trail(agent_name: str) -> dict:
 def step_6_honesty_integrity(agent_name: str) -> dict:
     """Load honesty + fairness ledgers and verify integrity rates meet CERTIFIED thresholds."""
     try:
-        from axiom.teacher import TeacherAgent
+        from axiom_constitutional.teacher import TeacherAgent
         teacher = TeacherAgent()
         latest = teacher.latest_run_summary(window_minutes=10)
         overall = teacher.ledger_summary()
