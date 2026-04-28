@@ -32,9 +32,9 @@ from rich.prompt import Prompt
 
 from axiom_files.parser import load_axiom, save_axiom, to_system_prompt, get_prompt
 from axiom_files.validator import validate_file
-from axiom import client as nim
-from axiom import store as prompt_store
-from axiom import rubric as rubric_module
+from axiom_constitutional import client as nim
+from axiom_constitutional import store as prompt_store
+from axiom_constitutional import rubric as rubric_module
 
 console = Console()
 
@@ -84,7 +84,7 @@ if not task.strip():
 console.print("\n[yellow]Generating rubric...[/]")
 rubric = rubric_module.generate(task)
 console.print(f"[green]✓[/] {rubric.get('task_summary', '')[:80]}")
-from axiom.rubric import format_for_prompt
+from axiom_constitutional.rubric import format_for_prompt
 rubric_text = format_for_prompt(rubric)
 
 

@@ -148,7 +148,7 @@ with tab_prompt:
     # ── Rubric ───────────────────────────────────────────────────────────────
     with st.status("Generating scoring rubric…", expanded=False) as rubric_status:
         try:
-            from axiom import rubric as rubric_module
+            from axiom_constitutional import rubric as rubric_module
             rubric = rubric_module.generate(task)
             rubric_status.update(label=f"✓ Rubric: {rubric.get('task_summary', '')[:80]}", state="complete")
         except Exception as e:
@@ -162,11 +162,11 @@ with tab_prompt:
         st.caption(rubric.get("scoring_guide", ""))
 
     # ── Manual evolution loop (streaming into UI) ────────────────────────────
-    from axiom.agents.worker import WorkerAgent
-    from axiom.agents.evaluator import EvaluatorAgent
-    from axiom.agents.rewriter import RewriterAgent
-    from axiom.evolution import EvolutionResult, IterationResult, LOGS_DIR
-    from axiom import store as prompt_store
+    from axiom_constitutional.agents.worker import WorkerAgent
+    from axiom_constitutional.agents.evaluator import EvaluatorAgent
+    from axiom_constitutional.agents.rewriter import RewriterAgent
+    from axiom_constitutional.evolution import EvolutionResult, IterationResult, LOGS_DIR
+    from axiom_constitutional import store as prompt_store
     from axiom_files.parser import get_prompt_with_overlays, detect_overlays
     import uuid, json
     from datetime import datetime, timezone
@@ -181,7 +181,7 @@ with tab_prompt:
 
     # Apply UI temperature override
     def _execute_with_temp(t):
-        from axiom import client as nim
+        from axiom_constitutional import client as nim
         return nim.chat(worker.system_prompt, f"Task:\n{t}", temperature=temperature)
     worker.execute = _execute_with_temp
 
@@ -355,7 +355,7 @@ with tab_prompt:
         st.divider()
         with st.status("Running meta-evolution…", expanded=True) as meta_status:
             try:
-                from axiom import meta_evolution
+                from axiom_constitutional import meta_evolution
                 meta_evolution.run_if_needed(result, rubric)
                 meta_status.update(label="✓ Meta-evolution complete", state="complete")
                 st.success("Evaluator and Rewriter prompts updated for future runs.")
@@ -421,10 +421,10 @@ with tab_dsl:
 
         import json, uuid
         from axiom_files.parser import load_axiom, save_axiom, to_system_prompt, get_prompt
-        from axiom import client as nim
-        from axiom import store as dsl_store
-        from axiom import rubric as dsl_rubric_mod
-        from axiom.rubric import format_for_prompt
+        from axiom_constitutional import client as nim
+        from axiom_constitutional import store as dsl_store
+        from axiom_constitutional import rubric as dsl_rubric_mod
+        from axiom_constitutional.rubric import format_for_prompt
 
         # Rubric
         with st.status("Generating rubric…", expanded=False) as rs:

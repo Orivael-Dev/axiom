@@ -630,7 +630,7 @@ def help_cmd():
   PYTHON API
   ────────────────────────────────────────────────
   from axiom_files.parser import load_axiom
-  from axiom.client import chat
+  from axiom_constitutional.client import chat
 
   # Load a domain package as a system prompt
   system = load_axiom("domains/government")
@@ -874,7 +874,7 @@ def run_cmd():
         detect_concepts,
     )
     from axiom_files.validator import validate_file
-    from axiom import client as nim
+    from axiom_constitutional import client as nim
 
     val = validate_file(args.agent)
     if val["status"] == "invalid":

@@ -106,7 +106,7 @@ def main(
     # --- Generate rubric ---
     console.print("\n[yellow]Generating scoring rubric...[/]")
     try:
-        from axiom import rubric as rubric_module
+        from axiom_constitutional import rubric as rubric_module
         rubric = rubric_module.generate(task)
     except Exception as e:
         console.print(f"[red]Rubric generation failed: {e}[/]")
@@ -115,7 +115,7 @@ def main(
     console.print(f"[green]✓ Rubric ready:[/] {rubric.get('task_summary', task[:60])}")
 
     # --- Run evolution loop ---
-    from axiom.evolution import EvolutionLoop
+    from axiom_constitutional.evolution import EvolutionLoop
     loop_kwargs: dict = {}
     if max_iterations > 0:
         loop_kwargs["max_iterations"] = max_iterations
@@ -136,7 +136,7 @@ def main(
     if not no_meta:
         console.print("\n[dim]Running meta-evolution to improve Evaluator and Rewriter...[/]")
         try:
-            from axiom import meta_evolution
+            from axiom_constitutional import meta_evolution
             meta_evolution.run_if_needed(result, rubric)
         except Exception as e:
             console.print(f"[yellow]Meta-evolution error (non-fatal): {e}[/]")
