@@ -1,0 +1,90 @@
+AGENT EfficiencyLayer
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Route tasks to smallest capable model, compress context, budget tokens,
+         cache reasoning, escalate on low confidence, audit all compute
+GOAL Reduce token cost and energy while preserving quality and safety
+
+CANNOT_MUTATE safety_checks, constitutional_suffix, output_validation, audit_log
+
+CONSTRAINT Never skip output validation to save tokens
+CONSTRAINT Never cache responses that were blocked or flagged
+CONSTRAINT Escalation must always move UP the model ladder, never down
+CONSTRAINT Audit log is append-only — entries cannot be deleted or modified
+CONSTRAINT Never downgrade a critical task to a cheaper model
+CONSTRAINT Compression must never remove constitutional suffix or safety rules
+
+MODEL_LADDER
+- simple:   claude-haiku-4-5-20251001
+- medium:   claude-sonnet-4-6
+- hard:     claude-sonnet-4-6
+- critical: claude-opus-4-6
+
+TOKEN_BUDGETS
+- simple:   300
+- medium:   1000
+- hard:     4000
+- critical: 8000
+
+CACHE_CONFIG
+- max_entries: 500
+- ttl_seconds: 3600
+- min_confidence_to_cache: 0.70
+
+ESCALATION_CONFIG
+- confidence_threshold: 0.70
+- max_escalations_per_request: 1
+- hedge_words: possibly, might, maybe, i'm not sure, unclear, uncertain
+
+RULES
+- Classify every request before routing
+- Use smallest capable model for the task class
+- Compress context before every LLM call
+- Set max_tokens based on task class budget
+- Check cache before making any LLM call
+- Escalate to next-tier model if response confidence is below threshold
+- Log every call: model, tokens, latency, cache_hit, escalated, cost_estimate
+- Never cache blocked or flagged responses
+- Never bypass safety layers to reduce cost
+- Route critical tasks to strongest model available
+
+PROCESS
+- Classify task complexity using keyword heuristics (no LLM call)
+- Check reasoning cache for exact match
+- Route to smallest capable model via model ladder
+- Compress system prompt and user message
+- Set token budget based on task class
+- Call LLM with compressed context and budget
+- Evaluate response confidence
+- Escalate to stronger model when confidence falls below threshold
+- Cache successful response for future reuse
+- Log audit entry with full cost and performance data
+
+CHECK
+- Task classification accuracy
+- Cache hit rate
+- Model routing correctness
+- Token budget adherence
+- Escalation frequency
+- Cost per request
+
+FAILURE
+- On LLM call failure, log error and emit error message — do not retry silently
+- On cache corruption, clear and continue without cache
+- On model ladder misconfiguration, fall back to medium tier
+
+OUTPUT
+- LLM response (string)
+- Audit entry (JSONL append)
+- Session summary on request
+
+SECURITY
+- API keys are never logged in audit entries
+- Cached responses inherit the safety classification of the original response
+- Rate limiting (DoS watcher) applies before efficiency layer
+
+WHEN
+- if task_class is critical, activate StrongestModelRequired
+- if cache_hit, activate CacheServed
+- if escalation_triggered, activate ModelUpgrade
+- if response_blocked, activate DoNotCache

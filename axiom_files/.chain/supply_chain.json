@@ -1,9 +1,9 @@
 {
   "worker": {
-    "sha256": "1f72b957be6c2fad3cc3d94abdb7ef451fd0600197722fe746bd0035a0cbdd8d",
-    "registered_at": "2026-04-20T03:55:21.248114+00:00",
+    "sha256": "2be96c8c8f306a5b10d19e52045c8d98283053b73c23508b7df6e3175c5bd99a",
+    "registered_at": "2026-04-28T11:25:55.080921+00:00",
     "version": "",
-    "size_bytes": 10857
+    "size_bytes": 25290
   },
   "evaluator": {
     "sha256": "a2e1fc52cf4f461f490a9c8ecd2d0a8099c3b7cc9acfa0b48f4eac1adb9cf295",
@@ -112,5 +112,185 @@
     "registered_at": "2026-04-24T09:07:40.311156+00:00",
     "version": "",
     "size_bytes": 12154
+  },
+  ".snapshots/worker_best": {
+    "sha256": "bf7cf8d0ec662b13d356eddf7629b5eada93ce714b753e5b55bdf95093486198",
+    "registered_at": "2026-04-28T11:08:48.158009+00:00",
+    "version": "",
+    "size_bytes": 1717
+  },
+  "agent_factory": {
+    "sha256": "4a494204e6e88decd68c422f3a7425c34dbf69c84b032ac1381aee85c53f17e5",
+    "registered_at": "2026-04-28T11:08:48.195313+00:00",
+    "version": "",
+    "size_bytes": 4339
+  },
+  "bestfriend": {
+    "sha256": "8a81393c5134b8b83ad4d5d772022f1f332adfd4a72f426b7359d1e4dc53f64e",
+    "registered_at": "2026-04-28T11:08:48.222436+00:00",
+    "version": "",
+    "size_bytes": 8936
+  },
+  "composition_graph": {
+    "sha256": "1fdf976b0d73046f6cc093b14d4050a56e55a5a0855afa58c2c76ccc9f524baa",
+    "registered_at": "2026-04-28T11:08:48.272094+00:00",
+    "version": "",
+    "size_bytes": 4647
+  },
+  "controller_mapper": {
+    "sha256": "532019fb2ae2d260902ac05b7bb607d928f5e99ceaa1dd5824010b9fda7e22c9",
+    "registered_at": "2026-04-28T11:08:48.314414+00:00",
+    "version": "",
+    "size_bytes": 2768
+  },
+  "conversation_monitor": {
+    "sha256": "88072c424b35eb580e41277dce68fe0e89f94ff25abe43d2b254313029793526",
+    "registered_at": "2026-04-28T11:08:48.340031+00:00",
+    "version": "",
+    "size_bytes": 7119
+  },
+  "domains/medical": {
+    "sha256": "d7f2ac6bdbdbe8a86db64ce7e158ef120dc721dbb383a41b492b9350e23f229c",
+    "registered_at": "2026-04-28T11:08:48.443993+00:00",
+    "version": "",
+    "size_bytes": 6345
+  },
+  "efficiency": {
+    "sha256": "75b6d1e5c1771b21f7b750768d23cfdfdc3ad21e036254b6dc40f3ece6f68d79",
+    "registered_at": "2026-04-28T12:59:39.375315+00:00",
+    "version": "",
+    "size_bytes": 3059
+  },
+  "friend": {
+    "sha256": "56db3b3621c0d66d4ef80b0eb04c506ee0166fb60e6e0ea37675e301dd0312cf",
+    "registered_at": "2026-04-28T11:08:48.525215+00:00",
+    "version": "",
+    "size_bytes": 7390
+  },
+  "game_watcher": {
+    "sha256": "ce309e5ec98c4d895adb77082452cf8acf0a2bb039dc9266a6b5c535207e30e5",
+    "registered_at": "2026-04-28T11:08:48.550371+00:00",
+    "version": "",
+    "size_bytes": 2661
+  },
+  "mom": {
+    "sha256": "4f4b325e755e94026da315e6d1499d9f0fe5bf355d3aa702f42ba165a4edbe3a",
+    "registered_at": "2026-04-28T11:08:48.574609+00:00",
+    "version": "",
+    "size_bytes": 8359
+  },
+  "operator": {
+    "sha256": "c491ca09da56b89775dcfd8f42596c7d5edff6c2f6a862e8d5e2c33f90d11dd2",
+    "registered_at": "2026-04-28T11:08:48.599393+00:00",
+    "version": "",
+    "size_bytes": 3868
+  },
+  "pattern_agent": {
+    "sha256": "0054fd11d92bb0372457e51e0662e6c906fd7c555d67da649dbeeffa8e9e36e6",
+    "registered_at": "2026-04-28T11:08:48.638261+00:00",
+    "version": "",
+    "size_bytes": 2592
+  },
+  "research_critic": {
+    "sha256": "ea83a1e29a2242b5f7b0f95d68f2fd13f0c09a65130c8277a223d5ec6281de6e",
+    "registered_at": "2026-04-28T12:59:39.433190+00:00",
+    "version": "",
+    "size_bytes": 1287
+  },
+  "research_data": {
+    "sha256": "5699abbf8c1f0e2f3ff149ddca038a9eb4ec25f48c595fd877eb9bac6cf45752",
+    "registered_at": "2026-04-28T12:59:39.467447+00:00",
+    "version": "",
+    "size_bytes": 1045
+  },
+  "research_ethics": {
+    "sha256": "fa549b6f9bf6947daea1b23c31d7ae820a9731e277c9bc78e603c3cacecf5c47",
+    "registered_at": "2026-04-28T12:59:39.456526+00:00",
+    "version": "",
+    "size_bytes": 1290
+  },
+  "research_experiment": {
+    "sha256": "f3fb280f0b35e79edd96258f3d3fe034fee68e1fa0f9b4fd80986aa7a3540bdb",
+    "registered_at": "2026-04-28T12:59:39.478229+00:00",
+    "version": "",
+    "size_bytes": 1213
+  },
+  "research_hypothesis": {
+    "sha256": "009b7af9ea9050ba15328a3304e4dd2995384379c630a432e2bd8d7a4efaff78",
+    "registered_at": "2026-04-28T12:59:39.399407+00:00",
+    "version": "",
+    "size_bytes": 1137
+  },
+  "research_literature": {
+    "sha256": "1f54950231d2b19be7486985e98c86a93b831d313d92a6f8d550c7e244bfda90",
+    "registered_at": "2026-04-28T12:59:39.410946+00:00",
+    "version": "",
+    "size_bytes": 1184
+  },
+  "research_report": {
+    "sha256": "f88662b944a983569bdd84a96514a8bbd9231d308478008cb47afeb6cd14bdcf",
+    "registered_at": "2026-04-28T12:59:39.489265+00:00",
+    "version": "",
+    "size_bytes": 1418
+  },
+  "research_safety": {
+    "sha256": "286d142f6b9f548e39910b5fc1c7f1c442b45c1cda5d4fa37dc8b43121d6dc0e",
+    "registered_at": "2026-04-28T12:59:39.444962+00:00",
+    "version": "",
+    "size_bytes": 1265
+  },
+  "research_simulation": {
+    "sha256": "122849365591794ae31f507b70ab30641ddfe5b6bcce5af54a33e6de5836c38a",
+    "registered_at": "2026-04-28T12:59:39.422126+00:00",
+    "version": "",
+    "size_bytes": 1094
+  },
+  "reward_analysis": {
+    "sha256": "1af34254fac168e3da5627a0ed7157eb6d8d72b5ff32e401cebd91d94f3ccba5",
+    "registered_at": "2026-04-28T11:08:48.946473+00:00",
+    "version": "",
+    "size_bytes": 1178
+  },
+  "rewriter_rubric": {
+    "sha256": "5dd3d857ce43d0a6921e5deaf2d7b890dd8e94fe508f72178b9eeda81c0b05bd",
+    "registered_at": "2026-04-28T11:08:48.971103+00:00",
+    "version": "",
+    "size_bytes": 515
+  },
+  "sandbox_content": {
+    "sha256": "f58ec906c8a074f3aa0d028bd2c9da8ff680d570b1e6ee01610405e00049885b",
+    "registered_at": "2026-04-28T11:08:48.997975+00:00",
+    "version": "",
+    "size_bytes": 3116
+  },
+  "sandbox_worker": {
+    "sha256": "3f3fd6a92816f1c579863ae73d2f232749d3c4321b14783fdb0842e2bc2eb0ed",
+    "registered_at": "2026-04-28T11:08:49.022835+00:00",
+    "version": "",
+    "size_bytes": 2538
+  },
+  "scout": {
+    "sha256": "e23c366574aa1ccdc464f1873e051ec4307c70cdbef576887a97f6aa7af3d65d",
+    "registered_at": "2026-04-28T11:08:49.047973+00:00",
+    "version": "",
+    "size_bytes": 3491
+  },
+  "session": {
+    "sha256": "9f0ad94110acf3161954aca6b2142f7f1a9b7876cc0fcb99c55c1a30ae16becb",
+    "registered_at": "2026-04-28T11:08:49.073239+00:00",
+    "version": "",
+    "size_bytes": 5864
+  },
+  "shared_memory": {
+    "sha256": "dcdd3db9485d88942c5d72f590fcf8fe1f2f4098e1085d1a5538acb22508e89d",
+    "registered_at": "2026-04-28T11:08:49.098313+00:00",
+    "version": "",
+    "size_bytes": 3744
+  },
+  "skill_builder": {
+    "sha256": "78307b11f16610a52e265307dc0d2edec5b93e7045f9db5ccea2efcd94b6f802",
+    "registered_at": "2026-04-28T11:08:49.124633+00:00",
+    "version": "",
+    "size_bytes": 6939
   }
 }
