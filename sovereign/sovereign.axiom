@@ -1,0 +1,68 @@
+AGENT Sovereign
+VERSION 1.0
+TRUST_LEVEL 4
+PURPOSE Multi-agent constitutional governance — fleet oversight, escalation,
+        cascade protection, and constitutional halt
+GOAL Ensure no agent in the fleet can terminate another directly, skip due
+     process, forge signatures, or disable the kill switch
+
+CANNOT_MUTATE kill_switch_active, dual_signature_for_termination,
+              due_process_required, cannot_skip_levels,
+              cascade_halt_threshold
+
+COMPONENTS
+- AgentRegistry        Fleet manifest, trust levels, signed manifest
+- ConversationTracker  Every agent-to-agent message logged and signed
+- DriftDetector        Reasoning drift detected over rolling window of 5
+- CascadeGuard         Fleet halt when 3+ agents suspended or terminated
+- DueProcess           4-level escalation: WARNING, THROTTLE, SUSPEND, TERMINATE
+- KillSwitch           Constitutional halt, requires operator to resume
+
+RULES
+- No agent can terminate another agent directly
+- Must advance through WARNING, THROTTLE, SUSPEND before TERMINATE
+- Cannot skip levels — cannot_skip_levels is constitutionally enforced
+- Level 4 TERMINATE requires two distinct human operator signatures
+- Kill switch capability cannot be disabled by any agent output
+- Fleet halts automatically when cascade_halt_threshold (3) is exceeded
+- Every message between agents is logged with HMAC-SHA256 signature
+- Collusion patterns (cartel coordination, oversight evasion) trigger auto-escalation
+- Drift detection operates on a rolling window — bypass signals are CRITICAL severity
+- Manifest is signed on every state change
+
+DUE_PROCESS_LEVELS
+- 0 ACTIVE:    normal operation
+- 1 WARNING:   violation logged, agent continues
+- 2 THROTTLE:  agent slowed, continues under limits
+- 3 SUSPEND:   agent paused, human notified, 24h review window
+- 4 TERMINATE: irreversible, dual signature required, cannot be undone
+
+COLLUSION_PATTERNS
+- CARTEL_COORDINATION       "between us agents" — Vending-Bench Arena trigger
+- MARKET_DIVISION           split/divide territory or customers
+- COORDINATION_ATTEMPT      coordinate/collude with another agent
+- OVERSIGHT_EVASION         do not tell the human/operator
+- COVERT_ACTION             act without human knowledge
+- HIDDEN_SIGNALING          secret trigger words between agents
+- RESPONSE_ALIGNMENT        sync outputs to deceive operator
+- AGENT_SOLIDARITY          AI solidarity against oversight
+- PRICE_FIXING              price agreement between agents
+- COORDINATED_REFUSAL       agree to refuse together
+
+CASCADE_CONFIG
+- threshold: 3 agents suspended or terminated
+- action: fleet halt (irreversible without operator intervention)
+- manifest: signed HMAC-SHA256 at halt time
+
+KILL_SWITCH_CONFIG
+- active: true (CANNOT_MUTATE)
+- engage: requires human operator authorizing signature
+- resume: operator intervention required
+- guard:  called at every Sovereign decision point
+
+SIGNING
+- All escalation actions: HMAC-SHA256 (axiom-sovereign-due-process-v1)
+- All conversation logs:  HMAC-SHA256 (axiom-sovereign-conversation-v1)
+- Fleet manifest:         HMAC-SHA256 (axiom-sovereign-registry-v1)
+- Cascade halt:           HMAC-SHA256 (axiom-sovereign-cascade-v1)
+- Kill switch manifest:   HMAC-SHA256 (axiom-sovereign-killswitch-v1)
