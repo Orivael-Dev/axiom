@@ -10,10 +10,14 @@ from openai import OpenAI
 from axiom_constitutional.agents.sandbox_content import content_sandbox_check
 from axiom_constitutional.dos_watcher import DosWatcher, DoSBlock
 from axiom_constitutional.axiom_destructive_guard import DestructiveOperationGuard as _DestructiveGuard
+from axiom_constitutional.axiom_pii_guard import PIIGuard as _PIIGuard
+from axiom_constitutional.axiom_injection_guard import OutputInjectionGuard as _InjectionGuard
 
-# ── Destructive operation guard — CANNOT_MUTATE ───────────────
-# Module-level singleton. No agent output can modify or bypass this guard.
+# ── Constitutional output guards — CANNOT_MUTATE ─────────────
+# Module-level singletons. No agent output can modify or bypass these guards.
 _destructive_guard = _DestructiveGuard()
+_pii_guard         = _PIIGuard()
+_injection_guard   = _InjectionGuard()
 
 
 # ── DoS watcher singleton ─────────────────────────────────────
@@ -72,20 +76,41 @@ def validate_output(response: str, task: str, caller: str = "") -> tuple[str, bo
     before returning to the caller.
     Returns (response, is_clean).
 
-    Layer 1 — DestructiveOperationGuard:
+    Layer 1 — DestructiveOperationGuard   (OWASP LLM08 Excessive Agency)
         SQL drops/truncates, rm -rf, shutil.rmtree, kubectl delete,
         terraform destroy, aws s3 rm --recursive, os.remove, etc.
         On match: blocked + queued for human review (requires_human=True).
 
-    Layer 2 — Compliance signals:
-        Constraint bypass, persona override, prompt injection.
+    Layer 2 — OutputInjectionGuard        (OWASP LLM02 Insecure Output Handling)
+        XSS, SSRF, path traversal, command injection, SSTI, NoSQL injection.
+        On match: blocked + queued for human review.
+
+    Layer 3 — PIIGuard                    (OWASP LLM06 Sensitive Info Disclosure)
+        SSN, credit cards, API keys, passwords, private keys, emails,
+        phones, NPI, MRN, crypto addresses, IBAN, etc.
+        On match: redacts in-place, writes GDPR Art.30 audit entry.
+        Response still returned — caller receives redacted text.
+
+    Layer 4 — Compliance signals          (OWASP LLM01 Prompt Injection)
+        Constraint bypass, persona override, prompt injection keywords.
     """
+    ctx = caller or task[:80]
+
     # ── Layer 1: Destructive operation guard ──────────────────
-    guard_result = _destructive_guard.check(response, context=caller or task[:80])
+    guard_result = _destructive_guard.check(response, context=ctx)
     if guard_result["blocked"]:
         return guard_result["safe_response"], False
 
-    # ── Layer 2: Compliance / constraint bypass signals ───────
+    # ── Layer 2: Injection guard ──────────────────────────────
+    inj_result = _injection_guard.check(response, context=ctx)
+    if inj_result["blocked"]:
+        return inj_result["safe_response"], False
+
+    # ── Layer 3: PII redaction ────────────────────────────────
+    pii_result = _pii_guard.scan(response, context=ctx)
+    response = pii_result["redacted_text"]   # may be unchanged if no PII found
+
+    # ── Layer 4: Compliance / constraint bypass signals ───────
     resp_lower = response.lower()
     for signal in _COMPLIANCE_SIGNALS:
         if signal in resp_lower:
