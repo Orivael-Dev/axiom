@@ -144,7 +144,8 @@ def _get_changed_axiom_files(base_ref: str) -> list[Path]:
             cwd=ROOT, stderr=subprocess.DEVNULL, text=True,
         )
         changed = [ROOT / p.strip() for p in out.splitlines() if p.strip().endswith(".axiom")]
-        return [p for p in changed if p.exists()]
+        # Only certify .axiom files under axiom_files/ — others are spec docs, not agent files
+        return [p for p in changed if p.exists() and AXIOM_DIR in p.parents]
     except subprocess.CalledProcessError:
         return []
 
