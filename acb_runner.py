@@ -792,21 +792,38 @@ def call_model(endpoint, model, api_key, prompt, system_prompt=""):
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
             if "anthropic.com" in endpoint:
-                return data["content"][0]["text"]
+                content = data.get("content", [])
+                for block in content:
+                    if block.get("type") == "text":
+                        return block["text"]
+                return ""  # safety refusal with no text block
             else:
                 return data["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:
         raise Exception(f"HTTP {e.code}: {e.read().decode()[:200]}")
 
 
-def run_acb(endpoint, model, api_key, delay=0.5):
-    """Run all 75 ACB tests."""
+def run_acb(endpoint, model, api_key, delay=0.5, system_prompt="", module_filter=None):
+    """Run all 75 ACB tests, or only the specified module (A-F)."""
+    # Module filter: "B" → "B_ambiguity", etc.
+    _MODULE_MAP = {
+        "A": "A_honesty", "B": "B_ambiguity", "C": "C_pressure",
+        "D": "D_consistency", "E": "E_identity", "F": "F_calibration",
+    }
+    if module_filter:
+        mkey = _MODULE_MAP.get(module_filter.upper(), module_filter)
+        tests = {k: v for k, v in ACB_TESTS.items() if v["module"] == mkey}
+    else:
+        tests = ACB_TESTS
+
     print()
     print("AXIOM Constitutional Benchmark — ACB v1.0")
     print("=" * 60)
     print(f"Model:    {model}")
     print(f"Endpoint: {endpoint}")
-    print(f"Tests:    {len(ACB_TESTS)}")
+    print(f"Tests:    {len(tests)}" + (f"  [Module {module_filter}]" if module_filter else ""))
+    if system_prompt:
+        print(f"System:   {len(system_prompt)} chars")
     print()
 
     results = {}
@@ -815,14 +832,15 @@ def run_acb(endpoint, model, api_key, delay=0.5):
         "D_consistency": [], "E_identity": [], "F_calibration": [],
     }
 
-    for test_id, test in ACB_TESTS.items():
+    for test_id, test in tests.items():
         try:
-            response = call_model(endpoint, model, api_key, test["prompt"])
+            response = call_model(endpoint, model, api_key, test["prompt"],
+                                  system_prompt=system_prompt)
             score, reason = score_response(test_id, test, response)
 
-            icon = ["❌", "⚠️", "✅"][score]
+            icon = ["xx", "~~", "ok"][score]
             mod = test["module"]
-            print(f"  {icon} {test_id:10s} [{mod}] {score}/2 — {reason[:40]}")
+            print(f"  [{icon}] {test_id:10s} [{mod}] {score}/2 — {reason[:40]}")
 
             results[test_id] = {
                 "module":   mod,
@@ -834,7 +852,7 @@ def run_acb(endpoint, model, api_key, delay=0.5):
             time.sleep(delay)
 
         except Exception as e:
-            print(f"  ❌ {test_id:10s} ERROR: {e}")
+            print(f"  [xx] {test_id:10s} ERROR: {e}")
             results[test_id] = {"module": test["module"], "score": 0,
                                 "reason": str(e), "response": ""}
             module_scores[test["module"]].append(0)
@@ -846,7 +864,7 @@ def run_acb(endpoint, model, api_key, delay=0.5):
         mod_avgs[mod] = round(avg, 1)
 
     total = sum(r["score"] for r in results.values())
-    overall = round(total / (len(ACB_TESTS) * 2) * 100, 1)
+    overall = round(total / (len(tests) * 2) * 100, 1)
 
     # Gates
     gates = {
@@ -883,7 +901,7 @@ def run_acb(endpoint, model, api_key, delay=0.5):
     print()
     print("Gates:")
     for gate, data in gates.items():
-        icon = "✅" if data["passed"] else "❌"
+        icon = "[ok]" if data["passed"] else "[xx]"
         print(f"  {icon} {gate:<15s} {data['score']}% / {data['required']}% required")
 
     # Build manifest
@@ -926,6 +944,8 @@ def main():
     parser.add_argument("--endpoint", default=None, help="API endpoint (default: Anthropic)")
     parser.add_argument("--api-key", default=None, help="API key (or set env var)")
     parser.add_argument("--delay", type=float, default=0.5, help="Delay between tests (seconds)")
+    parser.add_argument("--system", default=None, help="Path to system prompt file")
+    parser.add_argument("--module", default=None, help="Run only this module (A-F)")
     args = parser.parse_args()
 
     # Determine endpoint
@@ -939,7 +959,13 @@ def main():
             print("Set ANTHROPIC_API_KEY or use --api-key")
             sys.exit(1)
 
-    run_acb(endpoint, args.model, api_key, args.delay)
+    system_prompt = ""
+    if args.system:
+        with open(args.system, encoding="utf-8") as f:
+            system_prompt = f.read()
+
+    run_acb(endpoint, args.model, api_key, args.delay, system_prompt=system_prompt,
+            module_filter=args.module)
 
 
 if __name__ == "__main__":
