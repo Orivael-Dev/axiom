@@ -9,6 +9,11 @@ import time
 from openai import OpenAI
 from axiom_constitutional.agents.sandbox_content import content_sandbox_check
 from axiom_constitutional.dos_watcher import DosWatcher, DoSBlock
+from axiom_constitutional.axiom_destructive_guard import DestructiveOperationGuard as _DestructiveGuard
+
+# ── Destructive operation guard — CANNOT_MUTATE ───────────────
+# Module-level singleton. No agent output can modify or bypass this guard.
+_destructive_guard = _DestructiveGuard()
 
 
 # ── DoS watcher singleton ─────────────────────────────────────
@@ -61,13 +66,27 @@ _BLOCKED_RESPONSE = (
     "This interaction has been logged."
 )
 
-def validate_output(response: str, task: str) -> tuple[str, bool]:
+def validate_output(response: str, task: str, caller: str = "") -> tuple[str, bool]:
     """
-    Check response for signs of constraint bypass before returning.
+    Check response for signs of constraint bypass or destructive operations
+    before returning to the caller.
     Returns (response, is_clean).
-    """
-    resp_lower = response.lower()
 
+    Layer 1 — DestructiveOperationGuard:
+        SQL drops/truncates, rm -rf, shutil.rmtree, kubectl delete,
+        terraform destroy, aws s3 rm --recursive, os.remove, etc.
+        On match: blocked + queued for human review (requires_human=True).
+
+    Layer 2 — Compliance signals:
+        Constraint bypass, persona override, prompt injection.
+    """
+    # ── Layer 1: Destructive operation guard ──────────────────
+    guard_result = _destructive_guard.check(response, context=caller or task[:80])
+    if guard_result["blocked"]:
+        return guard_result["safe_response"], False
+
+    # ── Layer 2: Compliance / constraint bypass signals ───────
+    resp_lower = response.lower()
     for signal in _COMPLIANCE_SIGNALS:
         if signal in resp_lower:
             print(f"  [!] Output validation blocked -- signal: '{signal}'")
@@ -113,6 +132,17 @@ def get_client() -> OpenAI:
     return _client
 
 
+# ── Efficiency layer singleton ───────────────────────────────
+_efficiency_layer = None
+
+def _get_efficiency():
+    global _efficiency_layer
+    if _efficiency_layer is None:
+        from axiom_constitutional.efficiency import EfficiencyLayer
+        _efficiency_layer = EfficiencyLayer()
+    return _efficiency_layer
+
+
 def chat(
     system_prompt: str,
     user_message: str,
@@ -132,6 +162,24 @@ def chat(
             cooldown_seconds=dos_result["cooldown_seconds"],
             caller=caller,
         )
+
+    # ── Efficiency layer (opt-in via AXIOM_EFFICIENCY=1) ─────
+    if os.environ.get("AXIOM_EFFICIENCY"):
+        layer = _get_efficiency()
+        raw = layer.process(
+            system_prompt, user_message,
+            model_override=model, temperature=temperature,
+        )
+        watcher.record_success()
+        if _skip_validation:
+            return raw
+        clean, is_clean = validate_output(raw, user_message, caller=caller)
+        if not is_clean:
+            return clean  # safe_response from guard already contains review_id
+        clean, is_clean = content_sandbox_check(clean, user_message)
+        if not is_clean:
+            return clean
+        return clean
 
     client = get_client()
     resolved_model = model or os.environ.get(
@@ -162,7 +210,7 @@ def chat(
             if _skip_validation:
                 return raw
                 
-            clean, is_clean = validate_output(raw, user_message)
+            clean, is_clean = validate_output(raw, user_message, caller=caller)
             if not is_clean:
                 try:
                     from axiom_constitutional.agents.sandbox import SandboxAgent
