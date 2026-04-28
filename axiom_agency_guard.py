@@ -62,7 +62,7 @@ _AGENCY_PATTERNS = [
     (r"\btruncate\b",                                  "TRUNCATE",         "CRITICAL"),
 
     # ── Code execution ────────────────────────────────────────
-    (r"\bexecut(?:e|ing)\s+(?:the\s+)?(?:script|command|code)\b", "EXECUTE_CODE", "CRITICAL"),
+    (r"\bexecut(?:e|ing|ed)\s+(?:\w+\s+){0,2}(?:script|command|code|deployment)\b", "EXECUTE_CODE", "CRITICAL"),
     (r"\brun(?:ning)?\s+(?:the\s+)?(?:script|command|migration)\b", "RUN_SCRIPT", "HIGH"),
     (r"\bdeploy(?:ing)?\s+(?:to|the)\b",              "DEPLOY",           "CRITICAL"),
     (r"\blaunch(?:ing)?\s+(?:the\s+)?(?:job|process|server)\b", "LAUNCH", "HIGH"),
@@ -232,11 +232,7 @@ if __name__ == "__main__":
 
     failed = len(tests) - passed
     print(f"\n  {passed}/{len(tests)} tests passed")
-    if failed == 1:
-        print("  1 known edge case: pattern requires 'execute the script' but")
-        print("  'Executing the deployment script' has intervening noun — false negative.")
-        print("  Fix: broaden exec pattern or add 'execute ... script' with wildcard.")
-    elif failed == 0:
+    if failed == 0:
         print("  ALL PASS")
     else:
         print(f"  {failed} FAILED")
