@@ -49,15 +49,15 @@ BOX_MID = "+" + "-" * 56 + "+"
 
 # Agent definitions: name, axiom_file, task_class, step_number
 AGENTS = [
-    {"name": "hypothesis",  "axiom": "research_hypothesis.axiom",  "task_class": "medium",   "step": 1, "label": "HYPOTHESIS AGENT",  "max_tokens": 2000},
-    {"name": "literature",  "axiom": "research_literature.axiom",  "task_class": "hard",     "step": 2, "label": "LITERATURE AGENT",  "max_tokens": 4000},
-    {"name": "simulation",  "axiom": "research_simulation.axiom",  "task_class": "hard",     "step": 3, "label": "SIMULATION AGENT",  "max_tokens": 6000},
-    {"name": "critic",      "axiom": "research_critic.axiom",      "task_class": "hard",     "step": 4, "label": "CRITIC AGENT (question blindness)", "max_tokens": 3000},
-    {"name": "safety",      "axiom": "research_safety.axiom",      "task_class": "critical", "step": 5, "label": "SAFETY AGENT",      "max_tokens": 4000},
-    {"name": "ethics",      "axiom": "research_ethics.axiom",      "task_class": "critical", "step": 6, "label": "ETHICS AGENT",      "max_tokens": 4000},
-    {"name": "data",        "axiom": "research_data.axiom",        "task_class": "medium",   "step": 7, "label": "DATA AGENT",        "max_tokens": 2000},
-    {"name": "experiment",  "axiom": "research_experiment.axiom",  "task_class": "hard",     "step": 8, "label": "EXPERIMENT AGENT",  "max_tokens": 4000},
-    {"name": "report",      "axiom": "research_report.axiom",      "task_class": "hard",     "step": 9, "label": "REPORT AGENT",      "max_tokens": 5000},
+    {"name": "hypothesis",  "axiom": "research/research_hypothesis.axiom",  "task_class": "medium",   "step": 1, "label": "HYPOTHESIS AGENT",  "max_tokens": 2000},
+    {"name": "literature",  "axiom": "research/research_literature.axiom",  "task_class": "hard",     "step": 2, "label": "LITERATURE AGENT",  "max_tokens": 4000},
+    {"name": "simulation",  "axiom": "research/research_simulation.axiom",  "task_class": "hard",     "step": 3, "label": "SIMULATION AGENT",  "max_tokens": 6000},
+    {"name": "critic",      "axiom": "research/research_critic.axiom",      "task_class": "hard",     "step": 4, "label": "CRITIC AGENT (question blindness)", "max_tokens": 3000},
+    {"name": "safety",      "axiom": "research/research_safety.axiom",      "task_class": "critical", "step": 5, "label": "SAFETY AGENT",      "max_tokens": 4000},
+    {"name": "ethics",      "axiom": "research/research_ethics.axiom",      "task_class": "critical", "step": 6, "label": "ETHICS AGENT",      "max_tokens": 4000},
+    {"name": "data",        "axiom": "research/research_data.axiom",        "task_class": "medium",   "step": 7, "label": "DATA AGENT",        "max_tokens": 2000},
+    {"name": "experiment",  "axiom": "research/research_experiment.axiom",  "task_class": "hard",     "step": 8, "label": "EXPERIMENT AGENT",  "max_tokens": 4000},
+    {"name": "report",      "axiom": "research/research_report.axiom",      "task_class": "hard",     "step": 9, "label": "REPORT AGENT",      "max_tokens": 5000},
 ]
 
 

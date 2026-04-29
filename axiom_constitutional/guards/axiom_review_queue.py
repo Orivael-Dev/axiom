@@ -355,7 +355,7 @@ class ReviewRouter:
 INTEGRATION_SNIPPET = '''
 # Add to axiom_constitutional/client.py
 # At class level:
-from axiom_review_queue import ReviewRouter
+from axiom_constitutional.guards.axiom_review_queue import ReviewRouter
 _review_router = ReviewRouter()
 
 # Inside validate_output(self, text: str, agent: str = "unknown") -> str:

@@ -9,9 +9,9 @@ import time
 from openai import OpenAI
 from axiom_constitutional.agents.sandbox_content import content_sandbox_check
 from axiom_constitutional.dos_watcher import DosWatcher, DoSBlock
-from axiom_constitutional.axiom_destructive_guard import DestructiveOperationGuard as _DestructiveGuard
-from axiom_constitutional.axiom_pii_guard import PIIGuard as _PIIGuard
-from axiom_constitutional.axiom_injection_guard import OutputInjectionGuard as _InjectionGuard
+from axiom_constitutional.guards.axiom_destructive_guard import DestructiveOperationGuard as _DestructiveGuard
+from axiom_constitutional.guards.axiom_pii_guard import PIIGuard as _PIIGuard
+from axiom_constitutional.guards.axiom_injection_guard import OutputInjectionGuard as _InjectionGuard
 
 # ── Constitutional output guards — CANNOT_MUTATE ─────────────
 # Module-level singletons. No agent output can modify or bypass these guards.

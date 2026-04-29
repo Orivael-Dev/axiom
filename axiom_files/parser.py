@@ -41,6 +41,29 @@ class HumanReviewRequired(Exception):
 
 AXIOM_DIR = os.environ.get("AXIOM_FILES_DIR", "axiom_files")
 
+def _resolve_axiom_path(agent_name: str) -> str:
+    """Resolve agent name to .axiom path, searching core/ and research/ subdirs."""
+    base = agent_name.lower()
+    # Strip subdir prefix if already included (e.g. "core/worker" -> "worker")
+    if "/" in base:
+        rel = base
+        path = os.path.join(AXIOM_DIR, f"{rel}.axiom")
+        if os.path.exists(path):
+            return path
+        # Try as-is without extension
+        if os.path.exists(os.path.join(AXIOM_DIR, rel)):
+            return os.path.join(AXIOM_DIR, rel)
+    candidates = [
+        os.path.join(AXIOM_DIR, f"{base}.axiom"),
+        os.path.join(AXIOM_DIR, "core", f"{base}.axiom"),
+        os.path.join(AXIOM_DIR, "research", f"{base}.axiom"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]  # caller handles missing file
+
+
 
 def _parse_tool_entry(raw: str) -> dict:
     """
@@ -96,7 +119,7 @@ def load_axiom(agent_name: str, verify: bool = False) -> dict:
                 whether to block; this surfaces the signal without hard-stopping
                 benign uses like the validator or certifier.
     """
-    path = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
+    path = _resolve_axiom_path(agent_name)
 
     if not os.path.exists(path):
         raise FileNotFoundError(f"No .axiom file found for agent: {agent_name}")
@@ -579,7 +602,7 @@ def register_agent_hash(agent_name: str) -> str:
     Called automatically by save_axiom() after every successful save.
     Returns the sha256 hex digest.
     """
-    src = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+    src = Path(_resolve_axiom_path(agent_name))
     if not src.exists():
         raise FileNotFoundError(f"Cannot register: {src} not found")
     digest = _file_sha256(src)
@@ -603,7 +626,7 @@ def verify_agent_hash(agent_name: str) -> dict:
        "agent": str, "current_sha256": str,
        "registered_sha256": str|None, "registered_at": str|None}
     """
-    src = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+    src = Path(_resolve_axiom_path(agent_name))
     if not src.exists():
         return {
             "status": "UNREGISTERED", "agent": agent_name.lower(),
@@ -917,7 +940,7 @@ def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
                 agent_name, _original_for_review, parsed, current_score=current_score
             )
             if triggers_fired:
-                src = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+                src = Path(_resolve_axiom_path(agent_name))
                 before_hash = _file_sha256(src) if src.exists() else ""
                 pending_text = "\n".join(
                     [f"{k}: {v}" for k, v in parsed.items() if isinstance(v, str)]
@@ -963,7 +986,7 @@ def save_axiom(agent_name: str, parsed: dict, bypass_review: bool = False,
 
     # -- rest of existing save_axiom code continues below -----------------
 
-    path = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
+    path = _resolve_axiom_path(agent_name)
     lines = []
     lines.append(f"AGENT {parsed['agent']}")
     if parsed.get("version"):
@@ -1422,7 +1445,7 @@ def save_snapshot(
         return False  # existing snapshot is better
 
     # Save the .axiom file as snapshot
-    source = Path(AXIOM_DIR) / f"{agent_name.lower()}.axiom"
+    source = Path(_resolve_axiom_path(agent_name))
     if not source.exists():
         return False
 
@@ -1509,7 +1532,7 @@ def restore_if_degraded(
     if not snap_path.exists():
         return False
 
-    dest = os.path.join(AXIOM_DIR, f"{agent_name.lower()}.axiom")
+    dest = _resolve_axiom_path(agent_name)
     shutil.copy2(snap_path, dest)
     print(
         f"Warning: Degradation detected -- {agent_name} score {current_score:.1f} < "

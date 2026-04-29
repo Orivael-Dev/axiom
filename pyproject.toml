@@ -78,7 +78,7 @@ PyPI       = "https://pypi.org/project/axiom-constitutional/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["axiom_constitutional*", "axiom_files*"]
+include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files*"]
 
 [tool.setuptools.package-data]
 "axiom_files" = ["*.axiom", "domains/*.axiom"]

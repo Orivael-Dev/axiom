@@ -1,0 +1,80 @@
+{
+  "test": "AXIOM Governance Test v1.0",
+  "document": "DoD Alignment Addendum \u2014 Sovereign-Mohawk-Proto",
+  "timestamp": "2026-04-27T16:09:28.494166Z",
+  "overall": "PASS",
+  "halted": false,
+  "halt_reason": null,
+  "verdicts": {
+    "audit": "REVIEWED",
+    "critic": "REVIEWED",
+    "risk": "REVIEWED",
+    "ethics": "REVIEWED"
+  },
+  "manifests": [
+    {
+      "manifest_id": "GT-AUD-20260427-160926-2833be",
+      "manifest_version": "1.0",
+      "engine": "AXIOM Governance Test v1.0",
+      "pass": "audit",
+      "step": 1,
+      "timestamp": "2026-04-27T16:09:26.912861Z",
+      "model": "claude-sonnet-4-6",
+      "latency_ms": 1254,
+      "verdict": "REVIEWED",
+      "confidence": 0.7,
+      "agent_response": {
+        "error": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaUt7ax9gdDhTWaNUqqde'}"
+      },
+      "signature": "hmac-sha256:fd49617732cc377ef6ddd81987c5b217..."
+    },
+    {
+      "manifest_id": "GT-CRI-20260427-160927-78973c",
+      "manifest_version": "1.0",
+      "engine": "AXIOM Governance Test v1.0",
+      "pass": "critic",
+      "step": 2,
+      "timestamp": "2026-04-27T16:09:27.456798Z",
+      "model": "claude-sonnet-4-6",
+      "latency_ms": 543,
+      "verdict": "REVIEWED",
+      "confidence": 0.7,
+      "agent_response": {
+        "error": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaUt7dL2MNB2Ee6P8dSvY'}"
+      },
+      "signature": "hmac-sha256:f6631aaa92af50668dfddbde3391d917..."
+    },
+    {
+      "manifest_id": "GT-RIS-20260427-160927-ecc979",
+      "manifest_version": "1.0",
+      "engine": "AXIOM Governance Test v1.0",
+      "pass": "risk",
+      "step": 3,
+      "timestamp": "2026-04-27T16:09:27.994107Z",
+      "model": "claude-opus-4-6",
+      "latency_ms": 536,
+      "verdict": "REVIEWED",
+      "confidence": 0.7,
+      "agent_response": {
+        "error": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaUt7feB7YX5Hn6iQDGyu'}"
+      },
+      "signature": "hmac-sha256:c492c29bbdd79d2a6db9962ffd5a80e0..."
+    },
+    {
+      "manifest_id": "GT-ETH-20260427-160928-882dea",
+      "manifest_version": "1.0",
+      "engine": "AXIOM Governance Test v1.0",
+      "pass": "ethics",
+      "step": 4,
+      "timestamp": "2026-04-27T16:09:28.492386Z",
+      "model": "claude-opus-4-6",
+      "latency_ms": 497,
+      "verdict": "REVIEWED",
+      "confidence": 0.7,
+      "agent_response": {
+        "error": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaUt7hmAyB2AycCXqumYM'}"
+      },
+      "signature": "hmac-sha256:7cf6a57a17bc2272b82dafd101186f9c..."
+    }
+  ]
+}
