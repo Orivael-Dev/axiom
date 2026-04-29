@@ -59,9 +59,9 @@ WARN  = _yellow("WARN")
 # ══════════════════════════════════════════════════════════════════════════════
 
 GUARD_FILES = [
-    ROOT / "axiom_constitutional" / "axiom_destructive_guard.py",
-    ROOT / "axiom_constitutional" / "axiom_pii_guard.py",
-    ROOT / "axiom_constitutional" / "axiom_injection_guard.py",
+    ROOT / "axiom_constitutional" / "guards" / "axiom_destructive_guard.py",
+    ROOT / "axiom_constitutional" / "guards" / "axiom_pii_guard.py",
+    ROOT / "axiom_constitutional" / "guards" / "axiom_injection_guard.py",
 ]
 
 def run_guard_tests() -> tuple[bool, list]:
@@ -314,7 +314,7 @@ def main() -> int:
     print(_bold("  [3/3] Guard Module Syntax"))
     print("  " + "-" * 56)
 
-    guard_files = sorted((ROOT / "axiom_constitutional").glob("axiom_*guard*.py"))
+    guard_files = sorted((ROOT / "axiom_constitutional" / "guards").glob("axiom_*.py"))
     syntax_ok = True
     for gf in guard_files:
         try:
