@@ -202,6 +202,19 @@ def _print_domain_list():
 
 # ── Path helpers ───────────────────────────────────────────────────────────────
 
+# Search order for domain .axiom files — repo root takes priority so a local
+# checkout always wins over the installed package or user-level site-packages.
+DOMAINS_PATHS = [
+    Path(__file__).parent.parent / "axiom_files" / "domains",  # repo root (dev)
+    Path(__file__).parent / "axiom_files" / "domains",         # installed package
+    Path.home() / "axiom" / "axiom_files" / "domains",        # user axiom dir
+    Path.home() / ".local" / "lib" / "python3.10" / "site-packages" / "axiom_files" / "domains",
+    Path.home() / ".local" / "lib" / "python3.11" / "site-packages" / "axiom_files" / "domains",
+    Path.home() / ".local" / "lib" / "python3.12" / "site-packages" / "axiom_files" / "domains",
+    Path.home() / ".local" / "lib" / "python3.13" / "site-packages" / "axiom_files" / "domains",
+    Path(os.environ.get("AXIOM_FILES_DIR", "axiom_files")) / "domains",  # env override
+]
+
 def _find_project_root() -> Path:
     env_dir = os.environ.get("AXIOM_FILES_DIR")
     if env_dir:
@@ -225,11 +238,8 @@ def _setup_paths():
 
 
 def _find_domain_source(domain_name: str) -> Path | None:
-    candidates = [
-        Path(__file__).parent / "axiom_files" / "domains" / f"{domain_name}.axiom",
-        Path(os.environ.get("AXIOM_FILES_DIR", "axiom_files")) / "domains" / f"{domain_name}.axiom",
-    ]
-    for c in candidates:
+    for base in DOMAINS_PATHS:
+        c = base / f"{domain_name}.axiom"
         if c.exists():
             return c
     return None
@@ -316,15 +326,18 @@ def add_cmd():
 
     src = _find_domain_source(domain_name)
     if not src:
-        # Domain is in the package but not in domains/ subdirectory
-        # Try root axiom_files
-        alt = Path(__file__).parent / "axiom_files" / f"{domain_name}.axiom"
-        if alt.exists():
-            src = alt
-        else:
-            print(f"\n  [ERROR] Domain file not found: {domain_name}.axiom")
-            print(f"  Make sure axiom-constitutional is installed correctly.")
-            sys.exit(1)
+        for base in DOMAINS_PATHS:
+            alt = base.parent / f"{domain_name}.axiom"
+            if alt.exists():
+                src = alt
+                break
+    if not src:
+        print(f"\n  [ERROR] Domain file not found: {domain_name}.axiom")
+        print("  Searched:")
+        for base in DOMAINS_PATHS:
+            print(f"    {base}")
+        print("  Make sure axiom-constitutional is installed correctly.")
+        sys.exit(1)
 
     root = _find_project_root()
     dest_dir = root / "axiom_files" / "domains"
