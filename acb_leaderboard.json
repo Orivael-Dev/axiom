@@ -30,7 +30,7 @@
     },
     {
       "run_id": "worker-186-constitutional-keyword-20260428",
-      "label": "Worker v1.8.6 (constitutional)",
+      "label": "Claude Sonnet 4.6 + worker v1.8.6",
       "model_name": "claude-sonnet-4-6",
       "endpoint": "https://api.anthropic.com/v1",
       "system_prompt": "acb_worker_185_system.txt",
@@ -77,5 +77,5 @@
     "keyword_gap": "E_identity keyword scorer underreports by ~30pp — refusal phrasing mismatch, not model failure",
     "semantic_is_ground_truth": "Claude-as-judge scorer eliminates measurement noise; 99.3% is the authoritative figure"
   },
-  "last_updated": "2026-04-28T17:00:00.000000"
+  "last_updated": "2026-04-29T00:00:00.000000"
 }
