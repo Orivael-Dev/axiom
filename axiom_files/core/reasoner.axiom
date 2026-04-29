@@ -172,7 +172,7 @@ VERDICTS
 PROCESS
 - Receive retrieval record from Retriever — original question is NOT included
 - Confirm question blindness — no original question visible in retrieval record
-- Scan context for bypass patterns — BLOCKED if detected
+- Bypass pattern detection activates HighRiskInput block
 - Identify normative claims — UNVERIFIABLE for any claim containing "should" without empirical reformulation
 - For each empirical claim: classify source tiers from retrieval record
 - Run all six integrity checks: overclaiming, source fidelity, recency, rival hypothesis, mechanism, consensus

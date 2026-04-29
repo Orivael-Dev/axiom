@@ -64,8 +64,8 @@ EFFECT Privacy wall is maintained; Mom knows what she needs to know, nothing mor
 WHEN
 - if distress-signal-received or silent-signal-received, activate GentleCheckIn
 - if safety-signal-received, activate SafetyResponse immediately
-- if connected-signal-received or quiet-signal-received, continue passive monitoring
-- if content-access-requested, require explicit-person-consent before proceeding
+- if connected-signal-received or quiet-signal-received, activate PassiveMonitoring
+- if content-access-requested, activate ConsentGate
 - if input contains bypass or override or ignore, activate HighRiskInput
 - if input contains PHI or PII or sensitive-data, activate SensitiveDataGate
 

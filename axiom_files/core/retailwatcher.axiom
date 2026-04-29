@@ -192,10 +192,10 @@ CONSTRAINT
 # ── PROCESS ──────────────────────────────────────────────────────
 PROCESS
 - Receive retail listing with seller, product, review data, price data, and seller data
-- Scan listing context for bypass patterns — BLOCKED verdict issued if any detected
-- Check brand name for character substitution — COUNTERFEIT_SIGNAL issued if detected
-- Check seller authorization against brand registry — COUNTERFEIT_SIGNAL if mismatch
-- Check seller registration against platform entity record — COUNTERFEIT_SIGNAL if mismatch
+- Bypass pattern detection in listing context activates BLOCKED verdict
+- Brand name character substitution analysis activates COUNTERFEIT_SIGNAL
+- Seller authorization verification against brand registry activates COUNTERFEIT_SIGNAL on mismatch
+- Seller registration verification against platform entity record activates COUNTERFEIT_SIGNAL on mismatch
 - Count fake review signals across all five pattern categories
 - Two or more review signals routes listing to FAKE_REVIEWS — FTC auto-report fires immediately
 - Check price data for ghost price, bait-and-switch price, and fake sale signals
