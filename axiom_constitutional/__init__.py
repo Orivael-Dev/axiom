@@ -11,7 +11,6 @@ from axiom_files.parser    import load_axiom, save_axiom
 
 # Guard exports (available when installed with [guard])
 try:
-    from axiom_constitutional.guards.axiom_guard_api import app as guard_app
     from axiom_constitutional.guards.axiom_destructive_guard import DestructiveOperationGuard
     from axiom_constitutional.guards.axiom_pii_guard import PIIGuard
     from axiom_constitutional.guards.axiom_injection_guard import OutputInjectionGuard
