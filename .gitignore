@@ -40,6 +40,13 @@ dist/
 build/
 *.whl
 
+# Runtime artifacts
+latent_manifests.jsonl
+certs/asi03_audit.jsonl
+certs/asi07_audit.jsonl
+certs/asi07_registry.json
+efficiency_audit.jsonl
+
 # IDE
 .vscode/
 .idea/
