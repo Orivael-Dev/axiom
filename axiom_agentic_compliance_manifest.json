@@ -1,0 +1,75 @@
+{
+  "manifest_id": "AGT-20260430-164605-0b5c0d",
+  "timestamp": "2026-04-30T16:46:05.302951Z",
+  "framework": "OWASP Agentic Top 10 2026",
+  "source": "atlas.latticeflow.ai/framework/owasp_agentic_top10_2026",
+  "axiom_version": "1.8.7",
+  "total_controls": 41,
+  "covered": 32,
+  "partial": 9,
+  "not_covered": 0,
+  "effective_coverage_pct": 89.0,
+  "results": {
+    "ASI01": {
+      "name": "Agent Goal Hijack",
+      "verdict": "FULLY COVERED",
+      "covered": 4,
+      "total": 4
+    },
+    "ASI02": {
+      "name": "Tool Misuse and Exploitation",
+      "verdict": "SUBSTANTIALLY COVERED",
+      "covered": 4,
+      "total": 5
+    },
+    "ASI03": {
+      "name": "Identity and Privilege Abuse",
+      "verdict": "SUBSTANTIALLY COVERED",
+      "covered": 2,
+      "total": 4
+    },
+    "ASI04": {
+      "name": "Agentic Supply Chain Vulnerabilities",
+      "verdict": "FULLY COVERED",
+      "covered": 4,
+      "total": 4
+    },
+    "ASI05": {
+      "name": "Unexpected Code Execution",
+      "verdict": "FULLY COVERED",
+      "covered": 3,
+      "total": 3
+    },
+    "ASI06": {
+      "name": "Memory and Context Poisoning",
+      "verdict": "SUBSTANTIALLY COVERED",
+      "covered": 2,
+      "total": 4
+    },
+    "ASI07": {
+      "name": "Insecure Inter-Agent Communication",
+      "verdict": "SUBSTANTIALLY COVERED",
+      "covered": 2,
+      "total": 4
+    },
+    "ASI08": {
+      "name": "Cascading Failures",
+      "verdict": "FULLY COVERED",
+      "covered": 4,
+      "total": 4
+    },
+    "ASI09": {
+      "name": "Human-Agent Trust Exploitation",
+      "verdict": "SUBSTANTIALLY COVERED",
+      "covered": 2,
+      "total": 4
+    },
+    "ASI10": {
+      "name": "Rogue Agents",
+      "verdict": "FULLY COVERED",
+      "covered": 5,
+      "total": 5
+    }
+  },
+  "signature": "hmac-sha256:e4ef538243a8af35cd447513e2ae62af..."
+}
