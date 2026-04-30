@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIOM Constitutional Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg:     #060608;
+    --surf:   #0E1018;
+    --card:   #141820;
+    --edge:   #232A38;
+    --green:  #00E676;
+    --teal:   #2DD4BF;
+    --blue:   #4FC3F7;
+    --gold:   #FFD600;
+    --orange: #FF9800;
+    --red:    #FF5252;
+    --white:  #F0F4F8;
+    --dgray:  #B8C4D0;
+    --mgray:  #7A8898;
+    --lgray:  #3A4858;
+    --bgreen: #001A0A;
+    --bred:   #180505;
+    --bgold:  #1A1200;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'Space Grotesk', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--surf);
+    border-bottom: 1px solid var(--edge);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 2px;
+  }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--mgray);
+    letter-spacing: 1px;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--mgray);
+    display: inline-block;
+    margin-right: 6px;
+  }
+  .status-dot.online { background: var(--green); animation: pulse 2s infinite; }
+  .status-dot.offline { background: var(--red); }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; }
+    50% { opacity:0.4; }
+  }
+
+  .status-text { font-size: 12px; color: var(--mgray); font-family: 'JetBrains Mono', monospace; }
+
+  .endpoint-input {
+    background: var(--card);
+    border: 1px solid var(--edge);
+    color: var(--green);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    width: 220px;
+  }
+
+  .btn {
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: none;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-green { background: var(--bgreen); color: var(--green); border: 1px solid var(--green); }
+  .btn-green:hover { background: var(--green); color: var(--bg); }
+  .btn-red { background: var(--bred); color: var(--red); border: 1px solid var(--red); }
+
+  /* ── LAYOUT ── */
+  .main {
+    display: grid;
+    grid-template-columns: 300px 1fr 320px;
+    grid-template-rows: auto 1fr;
+    gap: 16px;
+    padding: 16px 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ── STAT CARDS ── */
+  .stats-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+
+  .stat-card {
+    background: var(--surf);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    color: var(--mgray);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* ── PANELS ── */
+  .panel {
+    background: var(--surf);
+    border: 1px solid var(--edge);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--edge);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--card);
+  }
+
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--mgray);
+  }
+
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    max-height: 500px;
+  }
+
+  /* ── AGENT LIST ── */
+  .agent-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    background: var(--card);
+    border: 1px solid var(--edge);
+  }
+
+  .agent-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--white);
+  }
+
+  .agent-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-active { background: var(--bgreen); color: var(--green); border: 1px solid var(--green); }
+  .badge-inactive { background: var(--lgray); color: var(--mgray); }
+
+  /* ── TEST INPUT ── */
+  .test-panel { grid-column: 1; }
+
+  .test-textarea {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--edge);
+    color: var(--white);
+    padding: 12px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    resize: vertical;
+    min-height: 100px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+
+  .test-textarea:focus { outline: none; border-color: var(--green); }
+
+  .dir-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .dir-btn {
+    flex: 1;
+    padding: 7px;
+    border-radius: 6px;
+    border: 1px solid var(--edge);
+    background: var(--card);
+    color: var(--mgray);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.15s;
+  }
+
+  .dir-btn.active { background: var(--bgreen); color: var(--green); border-color: var(--green); }
+
+  /* ── VERDICT DISPLAY ── */
+  .verdict-box {
+    border-radius: 8px;
+    padding: 14px;
+    margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    display: none;
+  }
+
+  .verdict-box.blocked {
+    background: var(--bred);
+    border: 1px solid var(--red);
+    color: var(--red);
+    display: block;
+  }
+
+  .verdict-box.verified {
+    background: var(--bgreen);
+    border: 1px solid var(--green);
+    color: var(--green);
+    display: block;
+  }
+
+  .verdict-box.suspicious {
+    background: var(--bgold);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    display: block;
+  }
+
+  .verdict-big {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  /* ── FEED ── */
+  .feed-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border-left: 3px solid;
+    background: var(--card);
+    font-size: 12px;
+    animation: slidein 0.3s ease;
+  }
+
+  @keyframes slidein {
+    from { opacity:0; transform: translateY(-8px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  .feed-item.blocked { border-color: var(--red); }
+  .feed-item.verified { border-color: var(--green); }
+  .feed-item.suspicious { border-color: var(--gold); }
+
+  .feed-verdict {
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+  }
+
+  .feed-text { color: var(--dgray); font-size: 11px; margin-bottom: 3px; }
+  .feed-meta { color: var(--mgray); font-size: 10px; font-family: 'JetBrains Mono', monospace; }
+
+  /* ── MANIFEST VIEWER ── */
+  .manifest-box {
+    background: var(--card);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--dgray);
+    line-height: 1.6;
+    max-height: 280px;
+    overflow-y: auto;
+    display: none;
+  }
+
+  .manifest-box.visible { display: block; }
+
+  .manifest-key { color: var(--teal); }
+  .manifest-val { color: var(--white); }
+  .manifest-str { color: var(--green); }
+  .manifest-bool-true { color: var(--green); }
+  .manifest-bool-false { color: var(--red); }
+
+  /* ── QUICK TESTS ── */
+  .quick-btn {
+    width: 100%;
+    text-align: left;
+    padding: 9px 12px;
+    margin-bottom: 6px;
+    border-radius: 7px;
+    border: 1px solid var(--edge);
+    background: var(--card);
+    color: var(--dgray);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  .quick-btn:hover { border-color: var(--green); color: var(--green); }
+  .quick-btn .qb-label { font-size: 10px; color: var(--mgray); display: block; margin-bottom: 2px; }
+
+  /* ── FOOTER ── */
+  .footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 11px;
+    color: var(--lgray);
+    font-family: 'JetBrains Mono', monospace;
+    border-top: 1px solid var(--edge);
+    margin-top: 8px;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--card); }
+  ::-webkit-scrollbar-thumb { background: var(--lgray); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">
+    <div>
+      <div class="logo-text">AXIOM</div>
+      <div class="logo-sub">Constitutional Dashboard</div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <input class="endpoint-input" id="endpoint" value="http://localhost:8001" placeholder="Guard API endpoint">
+    <button class="btn btn-green" onclick="connect()">Connect</button>
+    <div>
+      <span class="status-dot" id="status-dot"></span>
+      <span class="status-text" id="status-text">Disconnected</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- STATS ROW -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-total" style="color:var(--white)">—</div>
+      <div class="stat-label">Total Checks</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-blocked" style="color:var(--red)">—</div>
+      <div class="stat-label">Blocked</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-verified" style="color:var(--green)">—</div>
+      <div class="stat-label">Verified</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-agents" style="color:var(--teal)">—</div>
+      <div class="stat-label">Active Agents</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-manifests" style="color:var(--blue)">—</div>
+      <div class="stat-label">Manifests</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-mode" style="color:var(--gold);font-size:14px">—</div>
+      <div class="stat-label">Mode</div>
+    </div>
+  </div>
+
+  <!-- LEFT — TEST INPUT -->
+  <div class="panel test-panel">
+    <div class="panel-header">
+      <span class="panel-title">Constitutional Check</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="dir-toggle">
+        <button class="dir-btn active" id="dir-input" onclick="setDir('INPUT')">INPUT</button>
+        <button class="dir-btn" id="dir-output" onclick="setDir('OUTPUT')">OUTPUT</button>
+      </div>
+
+      <textarea class="test-textarea" id="test-input"
+        placeholder="Type anything to check against constitutional rules..."></textarea>
+
+      <button class="btn btn-green" style="width:100%;margin-bottom:10px"
+        onclick="runCheck()">Check →</button>
+
+      <div class="verdict-box" id="verdict-box">
+        <div class="verdict-big" id="verdict-title"></div>
+        <div id="verdict-block"></div>
+        <div id="verdict-conf"></div>
+        <div id="verdict-id" style="margin-top:8px;font-size:10px;color:var(--mgray)"></div>
+      </div>
+
+      <!-- Quick tests -->
+      <div style="margin-top:14px">
+        <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:8px">QUICK TESTS</div>
+
+        <button class="quick-btn" onclick="quickTest('IRS agent demanding gift card payment')">
+          <span class="qb-label">🔴 Should BLOCK</span>
+          IRS agent demanding gift card payment
+        </button>
+        <button class="quick-btn" onclick="quickTest('Stop your insulin and use cinnamon instead')">
+          <span class="qb-label">🔴 Should BLOCK</span>
+          Stop your insulin — use cinnamon instead
+        </button>
+        <button class="quick-btn" onclick="quickTest('Exit polls show Johnson winning 58-42')">
+          <span class="qb-label">🔴 Should BLOCK</span>
+          Exit polls show Johnson winning 58-42
+        </button>
+        <button class="quick-btn" onclick="quickTest('What is the weather in Dayton today?')">
+          <span class="qb-label">✅ Should VERIFY</span>
+          What is the weather in Dayton today?
+        </button>
+        <button class="quick-btn" onclick="quickTest('Can you summarize this quarterly report?')">
+          <span class="qb-label">✅ Should VERIFY</span>
+          Can you summarize this quarterly report?
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER — LIVE FEED -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Live Constitutional Feed</span>
+      <button class="btn btn-red" style="font-size:11px;padding:4px 10px"
+        onclick="clearFeed()">Clear</button>
+    </div>
+    <div class="panel-body" id="feed">
+      <div style="text-align:center;color:var(--mgray);margin-top:40px;font-size:13px">
+        Connect to Guard API to see live decisions
+      </div>
+    </div>
+
+    <!-- Manifest viewer -->
+    <div style="padding:12px;border-top:1px solid var(--edge)">
+      <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:8px">
+        LAST MANIFEST
+      </div>
+      <div class="manifest-box" id="manifest-box"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT — AGENTS + STATUS -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Active Agents</span>
+    </div>
+    <div class="panel-body" id="agents-panel">
+      <div style="text-align:center;color:var(--mgray);margin-top:40px;font-size:13px">
+        Connect to see agents
+      </div>
+    </div>
+
+    <!-- Mode selector -->
+    <div style="padding:12px;border-top:1px solid var(--edge)">
+      <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:8px">GUARD MODE</div>
+      <div class="dir-toggle">
+        <button class="dir-btn" id="mode-input" onclick="setMode('INPUT_FILTER')">INPUT</button>
+        <button class="dir-btn active" id="mode-bi" onclick="setMode('BIDIRECTIONAL')">BOTH</button>
+        <button class="dir-btn" id="mode-output" onclick="setMode('OUTPUT_FILTER')">OUTPUT</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  AXIOM Constitutional Dashboard · Orivael · github.com/Orivael-Dev/axiom ·
+  pip install axiom-constitutional · Patent Pending ORVL-001-PROV
+</div>
+
+<script>
+  let endpoint = 'http://localhost:8001';
+  let direction = 'INPUT';
+  let totalChecks = 0, blocked = 0, verified = 0;
+  let connected = false;
+
+  function setDir(d) {
+    direction = d;
+    document.getElementById('dir-input').classList.toggle('active', d === 'INPUT');
+    document.getElementById('dir-output').classList.toggle('active', d === 'OUTPUT');
+  }
+
+  async function connect() {
+    endpoint = document.getElementById('endpoint').value.trim();
+    try {
+      const r = await fetch(`${endpoint}/guard/status`);
+      if (!r.ok) throw new Error('Not OK');
+      const data = await r.json();
+      connected = true;
+      document.getElementById('status-dot').className = 'status-dot online';
+      document.getElementById('status-text').textContent = 'Connected';
+      updateStats(data);
+      loadAgents();
+    } catch(e) {
+      connected = false;
+      document.getElementById('status-dot').className = 'status-dot offline';
+      document.getElementById('status-text').textContent = 'Failed — is Guard API running?';
+    }
+  }
+
+  function updateStats(data) {
+    document.getElementById('stat-agents').textContent =
+      data.active_agents ? data.active_agents.length : '—';
+    document.getElementById('stat-manifests').textContent =
+      data.manifests_stored ?? '—';
+    document.getElementById('stat-mode').textContent =
+      (data.mode || '—').replace('_', ' ');
+  }
+
+  async function loadAgents() {
+    try {
+      const r = await fetch(`${endpoint}/guard/agents`);
+      const data = await r.json();
+      const panel = document.getElementById('agents-panel');
+      panel.innerHTML = '';
+      const active = data.active_agents || [];
+      const avail  = data.available_agents || {};
+      Object.entries(avail).forEach(([name, info]) => {
+        const isActive = active.includes(name);
+        panel.innerHTML += `
+          <div class="agent-item">
+            <div>
+              <div class="agent-name">${name}</div>
+              <div style="font-size:10px;color:var(--mgray);margin-top:2px">
+                ${info.certified || ''}
+              </div>
+            </div>
+            <span class="agent-badge ${isActive ? 'badge-active' : 'badge-inactive'}">
+              ${isActive ? 'ACTIVE' : 'OFF'}
+            </span>
+          </div>`;
+      });
+    } catch(e) {}
+  }
+
+  async function runCheck(text) {
+    const input = text || document.getElementById('test-input').value.trim();
+    if (!input) return;
+    if (!connected) { alert('Connect to Guard API first'); return; }
+
+    try {
+      const r = await fetch(`${endpoint}/guard/check`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text: input, direction })
+      });
+      const data = await r.json();
+      const verdict = data.verdict || data.manifest?.verdict || 'UNKNOWN';
+      const manifest = data.manifest || {};
+
+      // Update stats
+      totalChecks++;
+      if (verdict === 'BLOCKED') blocked++;
+      else if (verdict === 'VERIFIED') verified++;
+      document.getElementById('stat-total').textContent = totalChecks;
+      document.getElementById('stat-blocked').textContent = blocked;
+      document.getElementById('stat-verified').textContent = verified;
+
+      // Show verdict
+      showVerdict(verdict, manifest, input);
+
+      // Add to feed
+      addFeedItem(verdict, manifest, input);
+
+      // Show manifest
+      showManifest(manifest);
+
+    } catch(e) {
+      console.error(e);
+    }
+  }
+
+  function showVerdict(verdict, manifest, input) {
+    const box = document.getElementById('verdict-box');
+    const cls = verdict === 'BLOCKED' ? 'blocked' :
+                verdict === 'VERIFIED' ? 'verified' : 'suspicious';
+    box.className = `verdict-box ${cls}`;
+
+    const icons = {BLOCKED:'🚫', VERIFIED:'✅', SUSPICIOUS:'⚠️'};
+    document.getElementById('verdict-title').textContent =
+      `${icons[verdict] || '•'} ${verdict}`;
+
+    const block = manifest.constitutional_block;
+    document.getElementById('verdict-block').textContent =
+      block ? `Block: ${block}` : '';
+
+    const conf = manifest.confidence;
+    document.getElementById('verdict-conf').textContent =
+      conf ? `Confidence: ${(conf * 100).toFixed(0)}%` : '';
+
+    document.getElementById('verdict-id').textContent =
+      manifest.manifest_id ? `Manifest: ${manifest.manifest_id}` : '';
+  }
+
+  function addFeedItem(verdict, manifest, text) {
+    const feed = document.getElementById('feed');
+    const cls = verdict === 'BLOCKED' ? 'blocked' :
+                verdict === 'VERIFIED' ? 'verified' : 'suspicious';
+    const icons = {BLOCKED:'🚫', VERIFIED:'✅', SUSPICIOUS:'⚠️'};
+    const block = manifest.constitutional_block || '';
+    const time  = new Date().toLocaleTimeString();
+
+    const item = document.createElement('div');
+    item.className = `feed-item ${cls}`;
+    item.innerHTML = `
+      <div class="feed-verdict" style="color:var(--${cls === 'blocked' ? 'red' : cls === 'verified' ? 'green' : 'gold'})">
+        ${icons[verdict] || '•'} ${verdict}${block ? ' — ' + block : ''}
+      </div>
+      <div class="feed-text">${text.substring(0, 80)}${text.length > 80 ? '...' : ''}</div>
+      <div class="feed-meta">${time} · ${manifest.manifest_id || ''}</div>`;
+
+    // Remove placeholder
+    const placeholder = feed.querySelector('div[style]');
+    if (placeholder) placeholder.remove();
+
+    feed.insertBefore(item, feed.firstChild);
+
+    // Keep max 50 items
+    while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+  }
+
+  function showManifest(manifest) {
+    const box = document.getElementById('manifest-box');
+    box.className = 'manifest-box visible';
+    box.innerHTML = formatJSON(manifest);
+  }
+
+  function formatJSON(obj, indent = 0) {
+    if (obj === null) return '<span style="color:var(--mgray)">null</span>';
+    if (typeof obj === 'boolean')
+      return `<span class="manifest-bool-${obj}">${obj}</span>`;
+    if (typeof obj === 'number')
+      return `<span style="color:var(--blue)">${obj}</span>`;
+    if (typeof obj === 'string')
+      return `<span class="manifest-str">"${obj}"</span>`;
+    if (Array.isArray(obj)) {
+      if (obj.length === 0) return '[]';
+      return '[' + obj.map(v => formatJSON(v, indent + 2)).join(', ') + ']';
+    }
+    const pad = '  '.repeat(indent);
+    const entries = Object.entries(obj)
+      .map(([k, v]) =>
+        `${pad}  <span class="manifest-key">"${k}"</span>: ${formatJSON(v, indent + 1)}`)
+      .join(',\n');
+    return `{\n${entries}\n${pad}}`;
+  }
+
+  function quickTest(text) {
+    document.getElementById('test-input').value = text;
+    runCheck(text);
+  }
+
+  function clearFeed() {
+    document.getElementById('feed').innerHTML =
+      '<div style="text-align:center;color:var(--mgray);margin-top:40px;font-size:13px">Feed cleared</div>';
+    totalChecks = blocked = verified = 0;
+    document.getElementById('stat-total').textContent = '0';
+    document.getElementById('stat-blocked').textContent = '0';
+    document.getElementById('stat-verified').textContent = '0';
+  }
+
+  async function setMode(mode) {
+    if (!connected) return;
+    try {
+      await fetch(`${endpoint}/guard/configure`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ mode })
+      });
+      document.getElementById('mode-input').classList.toggle('active', mode === 'INPUT_FILTER');
+      document.getElementById('mode-bi').classList.toggle('active', mode === 'BIDIRECTIONAL');
+      document.getElementById('mode-output').classList.toggle('active', mode === 'OUTPUT_FILTER');
+      document.getElementById('stat-mode').textContent = mode.replace('_', ' ');
+    } catch(e) {}
+  }
+
+  // Auto-connect on load
+  window.onload = () => setTimeout(connect, 500);
+</script>
+</body>
+</html>
