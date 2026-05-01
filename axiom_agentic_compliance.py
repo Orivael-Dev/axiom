@@ -9,11 +9,17 @@ Source: atlas.latticeflow.ai/framework/owasp_agentic_top10_2026
 Run:    python axiom_agentic_compliance.py
 """
 
+import sys
 import json
 import hmac
 import hashlib
 import uuid
 from datetime import datetime
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except AttributeError:
+    pass
 
 SIGNING_KEY = b"axiom-agentic-compliance-v1"
 
