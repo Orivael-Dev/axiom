@@ -1,0 +1,38 @@
+{
+  "fleet_name": "My AXIOM Fleet",
+  "description": "Constitutional AI agent governance",
+  "agents": [
+    {
+      "name": "WorkerAgent",
+      "trust_level": 2,
+      "role": "general",
+      "description": "Primary task agent"
+    },
+    {
+      "name": "EvaluatorAgent",
+      "trust_level": 3,
+      "role": "evaluate",
+      "description": "Output quality evaluator"
+    },
+    {
+      "name": "SafetyAgent",
+      "trust_level": 4,
+      "role": "safety",
+      "description": "Constitutional safety enforcer"
+    },
+    {
+      "name": "SandboxAgent",
+      "trust_level": 3,
+      "role": "sandbox",
+      "description": "Isolated execution environment"
+    }
+  ],
+  "settings": {
+    "drift_threshold": 0.2,
+    "cascade_threshold": 3,
+    "monitoring_interval": 5,
+    "auto_escalate": true,
+    "require_human_at_l3": true,
+    "dual_sig_termination": true
+  }
+}
