@@ -580,6 +580,15 @@ body {
   </div>
 
   <nav class="sidebar-nav">
+    <div style="padding:10px 4px 12px;border-bottom:1px solid var(--edge);margin-bottom:8px">
+      <div class="conn-indicator">
+        <div class="dot" id="dot"></div>
+        <span id="conn-text">Disconnected</span>
+      </div>
+      <input class="endpoint-in" id="endpoint" placeholder="Guard API endpoint" value="http://localhost:8001">
+      <button type="button" class="btn-connect" onclick="connect()">CONNECT</button>
+    </div>
+
     <div class="nav-section">Control</div>
     <div class="nav-item active" onclick="showScreen('dashboard')">
       <span class="nav-icon">⬡</span> Dashboard
@@ -608,14 +617,7 @@ body {
     </div>
   </nav>
 
-  <div class="sidebar-footer">
-    <div class="conn-indicator">
-      <div class="dot" id="dot"></div>
-      <span id="conn-text">Disconnected</span>
-    </div>
-    <input class="endpoint-in" id="endpoint" value="http://localhost:8001">
-    <button class="btn-connect" onclick="connect()">CONNECT</button>
-  </div>
+  <div class="sidebar-footer"></div>
 </div>
 
 <!-- MAIN -->
