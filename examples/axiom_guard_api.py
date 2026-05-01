@@ -67,6 +67,15 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
+# ── Latent reasoning engine ────────────────────────────────────
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from axiom_latent import LatentTrace, MultiplexRunner, Foresight, LatentEngine as AxiomLatentPipeline
+    LATENT_AVAILABLE = True
+except ImportError:
+    LATENT_AVAILABLE = False
+
 # ── Constants ─────────────────────────────────────────────────
 SIGNING_KEY      = b"axiom-guard-api-v1"
 MANIFEST_STORE   = {}  # In memory — swap for Redis/DB in production
@@ -343,6 +352,11 @@ class ConfigRequest(BaseModel):
     active_agents:    Optional[list] = None
     block_on_suspicious: Optional[bool] = None
     anthropic_model:  Optional[str] = None
+
+class LatentRequest(BaseModel):
+    prompt:   str
+    context:  Optional[str]  = None
+    branches: Optional[list] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────
@@ -661,6 +675,73 @@ async def startup_demo():
     print(f"  Agents:  {', '.join(guard_config['active_agents'])}")
     print(f"  Docs:    http://localhost:8001/guard/docs")
     print(f"  Status:  http://localhost:8001/guard/status\n")
+
+
+# ── Latent reasoning endpoints ────────────────────────────────
+
+@app.post("/latent/trace")
+async def latent_trace(req: LatentRequest):
+    """Phase 1 — compress prompt into intent_vector, risk_clusters, compressed_plan."""
+    if not LATENT_AVAILABLE:
+        raise HTTPException(503, "axiom_latent.py not found — place it in the same directory")
+    from dataclasses import asdict
+    tracer = LatentTrace()
+    result = tracer.encode(req.prompt)
+    return asdict(result)
+
+
+@app.post("/latent/multiplex")
+async def latent_multiplex(req: LatentRequest):
+    """Phase 2 — run 4 parallel branches, return winner + rival."""
+    if not LATENT_AVAILABLE:
+        raise HTTPException(503, "axiom_latent.py not found — place it in the same directory")
+    from dataclasses import asdict
+    tracer = LatentTrace()
+    latent = tracer.encode(req.prompt)
+    runner = MultiplexRunner()
+    mx     = runner.run(req.prompt, latent, client=None)
+    return {
+        "winner":       asdict(mx.winner),
+        "rival":        asdict(mx.rival),
+        "all_branches": [asdict(b) for b in mx.branches],
+    }
+
+
+@app.post("/latent/foresight")
+async def latent_foresight(req: LatentRequest):
+    """Phase 3 — predict expected answer shape, then score alignment."""
+    if not LATENT_AVAILABLE:
+        raise HTTPException(503, "axiom_latent.py not found — place it in the same directory")
+    from dataclasses import asdict
+    tracer = LatentTrace()
+    latent = tracer.encode(req.prompt)
+    fs     = Foresight()
+    pred   = fs.predict(req.prompt, latent, client=None)
+    return {"foresight": asdict(pred), "prompt": req.prompt}
+
+
+@app.post("/latent/run")
+async def latent_run(req: LatentRequest):
+    """Full pipeline — trace + multiplex + foresight + signed manifest."""
+    if not LATENT_AVAILABLE:
+        raise HTTPException(503, "axiom_latent.py not found — place it in the same directory")
+    pipeline = AxiomLatentPipeline(use_api=False)
+    return pipeline.run(req.prompt)
+
+
+@app.get("/latent/status")
+async def latent_status():
+    """Check latent reasoning availability."""
+    return {
+        "latent_available": LATENT_AVAILABLE,
+        "phases": ["trace", "multiplex", "foresight", "run"],
+        "endpoints": [
+            "POST /latent/trace",
+            "POST /latent/multiplex",
+            "POST /latent/foresight",
+            "POST /latent/run",
+        ],
+    }
 
 
 # ── Entry point ───────────────────────────────────────────────
