@@ -1,6 +1,6 @@
 {
-  "manifest_id": "AGT-20260430-164605-0b5c0d",
-  "timestamp": "2026-04-30T16:46:05.302951Z",
+  "manifest_id": "AGT-20260430-231959-aaf57c",
+  "timestamp": "2026-04-30T23:19:59.571515Z",
   "framework": "OWASP Agentic Top 10 2026",
   "source": "atlas.latticeflow.ai/framework/owasp_agentic_top10_2026",
   "axiom_version": "1.8.7",
@@ -71,5 +71,5 @@
       "total": 5
     }
   },
-  "signature": "hmac-sha256:e4ef538243a8af35cd447513e2ae62af..."
+  "signature": "hmac-sha256:259db4d552076d484e8534c941d5735e..."
 }

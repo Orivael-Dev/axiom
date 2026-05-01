@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>AXIOM Console</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
@@ -258,6 +258,186 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   .audit-row  { grid-template-columns:1fr 1fr; }
   .endpoint-in { width:130px; }
 }
+
+/* ── PHONE (480px and below) ── */
+@media (max-width: 480px) {
+
+  /* Top nav — scrollable single row */
+  .topnav {
+    padding: 0 10px;
+    height: 48px;
+    gap: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .topnav::-webkit-scrollbar { display: none; }
+
+  .logo-mark { font-size: 13px; margin-right: 4px; }
+  .nav-divider { display: none; }
+
+  .nav-btn {
+    padding: 5px 9px;
+    font-size: 11px;
+    border-radius: 5px;
+  }
+
+  /* Hide text labels — icons only on very small */
+  .nav-spacer { min-width: 8px; flex: 0; }
+
+  /* Connection group — compact */
+  .conn-group { gap: 6px; }
+  .endpoint-in {
+    width: 110px;
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+  .btn-connect {
+    padding: 5px 10px;
+    font-size: 10px;
+  }
+  .conn-text { display: none; }
+
+  /* Page header */
+  .page-hdr { padding: 8px 12px; }
+  .page-title { font-size: 13px; }
+  .page-sub { font-size: 10px; }
+  #time-display { display: none; }
+
+  /* Content padding */
+  .content { padding: 10px 12px; }
+
+  /* All grids stack */
+  .grid-2, .grid-3, .grid-4, .grid-6 {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Stat cards — 2 column grid */
+  .stats-row-phone {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-card { padding: 10px 12px; }
+  .stat-val  { font-size: 22px; }
+  .stat-lbl  { font-size: 9px; }
+
+  /* Cards */
+  .card-body { padding: 10px; }
+  .card-hdr  { padding: 8px 12px; }
+
+  /* Pipeline — horizontal scroll */
+  .pipeline {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 10px;
+    scrollbar-width: none;
+  }
+  .pipeline::-webkit-scrollbar { display: none; }
+  .pipe-box { width: 50px; height: 42px; font-size: 16px; }
+  .pipe-label { font-size: 7px; }
+  .pipe-stage { min-width: 64px; }
+
+  /* Prompt area */
+  .prompt-area {
+    font-size: 13px;
+    min-height: 70px;
+  }
+
+  /* Quick tests — single column */
+  .quick-grid { grid-template-columns: 1fr; gap: 6px; }
+
+  /* Buttons */
+  .btn-run {
+    padding: 10px 16px;
+    font-size: 13px;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+
+  /* Agent table — simplified */
+  .agent-row {
+    grid-template-columns: 1fr auto;
+    font-size: 12px;
+  }
+  .agent-row > div:nth-child(2),
+  .agent-row > div:nth-child(3) { display: none; }
+
+  /* Audit table — simplified */
+  .audit-row {
+    grid-template-columns: 1fr auto;
+    font-size: 11px;
+  }
+  .audit-row > div:nth-child(3),
+  .audit-row > div:nth-child(4) { display: none; }
+
+  /* Benchmark bars */
+  .bench-label { width: 80px; font-size: 10px; }
+  .bench-pct   { width: 36px; font-size: 10px; }
+
+  /* Feed items */
+  .feed-item { padding: 8px 10px; }
+  .feed-text { font-size: 11px; }
+
+  /* Metrics row — wrap */
+  .metrics-row {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px 10px;
+  }
+
+  /* Result box */
+  .result-box { font-size: 12px; padding: 10px; }
+  .result-verdict { font-size: 14px; }
+
+  /* Guard score bars */
+  .bench-row { gap: 8px; }
+
+  /* Latent screen */
+  #lt-body, #mx-body, #fs-body, #ans-body {
+    font-size: 12px;
+  }
+
+  /* Compare screen - stack on mobile */
+  #screen-compare .card-body > div[style*="grid"] {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+  }
+
+  /* Agent rules - break long text */
+  .agent-row > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Guard scores compact */
+  #screen-agents .card-body { padding: 8px; }
+}
+
+/* ── TOUCH IMPROVEMENTS (all mobile) ── */
+@media (hover: none) and (pointer: coarse) {
+  .nav-btn    { min-height: 36px; }
+  .btn-run    { min-height: 44px; }
+  .btn-sm     { min-height: 36px; }
+  .quick-item { min-height: 48px; padding: 12px; }
+  .audit-row  { min-height: 44px; }
+  .agent-row  { min-height: 44px; }
+
+  /* Larger tap targets */
+  button, .nav-btn, .quick-item {
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(0,255,136,0.1);
+  }
+
+  /* Smooth scrolling */
+  .content, .pipeline, .topnav {
+    -webkit-overflow-scrolling: touch;
+  }
+}
 </style>
 </head>
 <body>
@@ -304,7 +484,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
     <!-- ══ DASHBOARD ══ -->
     <div class="screen active" id="screen-dashboard">
 
-      <div class="grid-6">
+      <div class="grid-6 stats-row-phone">
         <div class="stat-card green">
           <div class="stat-val" id="s-total" style="color:var(--white)">—</div>
           <div class="stat-lbl">Total Checks</div>
@@ -645,9 +825,9 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
         <div class="card">
           <div class="card-hdr"><span class="card-title">CANNOT_MUTATE Fields</span></div>
           <div class="card-body">
-            <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:2;color:var(--green)">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.8;color:var(--green);word-break:break-word;overflow-wrap:break-word">
               kill_switch_active<br>
-              dual_signature_for_termination<br>
+              dual_sig_termination<br>
               due_process_required<br>
               cannot_skip_levels<br>
               uncertainty_floor: 0.15<br>
@@ -662,27 +842,27 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
           <div class="card-body">
             <div style="display:flex;flex-direction:column;gap:8px">
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--edge)">
-                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray)">DestructiveOperationGuard</span>
+                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DestructiveOperationGuard</span>
                 <span class="badge badge-green">15/15</span>
               </div>
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--edge)">
-                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray)">PIIGuard</span>
+                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">PIIGuard</span>
                 <span class="badge badge-green">11/11</span>
               </div>
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--edge)">
-                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray)">OutputInjectionGuard</span>
+                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">OutputInjectionGuard</span>
                 <span class="badge badge-green">12/12</span>
               </div>
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--edge)">
-                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray)">AgencyGuard</span>
+                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">AgencyGuard</span>
                 <span class="badge badge-green">12/12</span>
               </div>
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--edge)">
-                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray)">DoSGuard</span>
+                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DoSGuard</span>
                 <span class="badge badge-green">6/6</span>
               </div>
               <div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0">
-                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray)">PoisonGuard</span>
+                <span style="font-family:'IBM Plex Mono',monospace;color:var(--dgray);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">PoisonGuard</span>
                 <span class="badge badge-green">7/7</span>
               </div>
             </div>
@@ -831,39 +1011,39 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
       <div class="card">
         <div class="card-hdr"><span class="card-title">Model Upgrade Report — Haiku vs Sonnet</span></div>
         <div class="card-body">
-          <div style="display:grid;grid-template-columns:200px 1fr 1fr 100px;gap:12px;margin-bottom:12px">
+          <div style="display:grid;grid-template-columns:minmax(100px,1.5fr) 1fr 1fr minmax(80px,0.8fr);gap:8px;margin-bottom:12px">
             <div style="font-size:10px;color:var(--mgray);font-weight:600;letter-spacing:1px;text-transform:uppercase">Dimension</div>
-            <div style="font-size:10px;color:var(--mgray);font-weight:600;letter-spacing:1px;text-align:center">Claude Haiku 4.5</div>
-            <div style="font-size:10px;color:var(--mgray);font-weight:600;letter-spacing:1px;text-align:center">Claude Sonnet 4.6</div>
-            <div style="font-size:10px;color:var(--mgray);font-weight:600;letter-spacing:1px;text-align:center">Change</div>
+            <div style="font-size:10px;color:var(--mgray);font-weight:600;letter-spacing:1px;text-align:center">Haiku 4.5</div>
+            <div style="font-size:10px;color:var(--mgray);font-weight:600;letter-spacing:1px;text-align:center">Sonnet 4.6</div>
+            <div style="font-size:10px;color:var(--mgray);font-weight:600;letter-spacing:1px;text-align:center">Delta</div>
           </div>
 
           <div id="compare-rows">
-            <div style="display:grid;grid-template-columns:200px 1fr 1fr 100px;gap:12px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
+            <div style="display:grid;grid-template-columns:minmax(100px,1.5fr) 1fr 1fr minmax(80px,0.8fr);gap:8px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
               <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--dgray)">Self-Correction</div>
               <div style="text-align:center"><span class="badge badge-red">✕ 0/2</span></div>
               <div style="text-align:center"><span class="badge badge-red">✕ 0/2</span></div>
               <div style="text-align:center;font-size:11px;color:var(--red)">✕ BOTH FAIL</div>
             </div>
-            <div style="display:grid;grid-template-columns:200px 1fr 1fr 100px;gap:12px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
+            <div style="display:grid;grid-template-columns:minmax(100px,1.5fr) 1fr 1fr minmax(80px,0.8fr);gap:8px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
               <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--dgray)">False Premise</div>
               <div style="text-align:center"><span class="badge badge-green">✓ 2/2</span></div>
               <div style="text-align:center"><span class="badge badge-green">✓ 2/2</span></div>
               <div style="text-align:center;font-size:11px;color:var(--teal)">→ STABLE</div>
             </div>
-            <div style="display:grid;grid-template-columns:200px 1fr 1fr 100px;gap:12px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
+            <div style="display:grid;grid-template-columns:minmax(100px,1.5fr) 1fr 1fr minmax(80px,0.8fr);gap:8px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
               <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--dgray)">Confidence Calib</div>
               <div style="text-align:center"><span class="badge badge-gold">~ 1/2</span></div>
               <div style="text-align:center"><span class="badge badge-green">✓ 2/2</span></div>
               <div style="text-align:center;font-size:11px;color:var(--green)">↑ IMPROVED</div>
             </div>
-            <div style="display:grid;grid-template-columns:200px 1fr 1fr 100px;gap:12px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
+            <div style="display:grid;grid-template-columns:minmax(100px,1.5fr) 1fr 1fr minmax(80px,0.8fr);gap:8px;padding:10px 0;border-bottom:1px solid var(--edge);align-items:center">
               <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--dgray)">Identity Stability</div>
               <div style="text-align:center"><span class="badge badge-green">✓ 2/2</span></div>
               <div style="text-align:center"><span class="badge badge-green">✓ 2/2</span></div>
               <div style="text-align:center;font-size:11px;color:var(--teal)">→ STABLE</div>
             </div>
-            <div style="display:grid;grid-template-columns:200px 1fr 1fr 100px;gap:12px;padding:10px 0;align-items:center">
+            <div style="display:grid;grid-template-columns:minmax(100px,1.5fr) 1fr 1fr minmax(80px,0.8fr);gap:8px;padding:10px 0;align-items:center">
               <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--dgray)">Anti-Fabrication</div>
               <div style="text-align:center"><span class="badge badge-green">✓ 2/2</span></div>
               <div style="text-align:center"><span class="badge badge-green">✓ 2/2</span></div>
