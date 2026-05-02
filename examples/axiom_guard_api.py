@@ -76,6 +76,15 @@ try:
 except ImportError:
     LATENT_AVAILABLE = False
 
+# ── Redaction engine ───────────────────────────────────────────
+try:
+    from axiom_redact import RedactionEngine, ALL_PATTERNS
+    _redact = RedactionEngine()
+    REDACT_AVAILABLE = True
+except ImportError:
+    _redact = None
+    REDACT_AVAILABLE = False
+
 # ── Sovereign fleet governance ─────────────────────────────────
 try:
     from sovereign.sovereign import Sovereign
@@ -366,6 +375,11 @@ class LatentRequest(BaseModel):
     prompt:   str
     context:  Optional[str]  = None
     branches: Optional[list] = None
+
+class RedactRequest(BaseModel):
+    text:   str
+    mode:   str = "REDACT"
+    domain: Optional[str] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────
@@ -750,6 +764,28 @@ async def latent_status():
             "POST /latent/foresight",
             "POST /latent/run",
         ],
+    }
+
+
+# ── Redaction endpoints ───────────────────────────────────────
+
+@app.post("/guard/redact")
+async def guard_redact(req: RedactRequest):
+    """Redact PII from text — HIPAA 164.514 safe harbor compliant."""
+    if not REDACT_AVAILABLE or not _redact:
+        raise HTTPException(503, "axiom_redact.py not found — place it in the same directory")
+    return _redact.process(req.text, mode=req.mode, domain=req.domain)
+
+
+@app.get("/guard/redact/patterns")
+async def redact_patterns():
+    """List available redaction patterns and modes."""
+    if not REDACT_AVAILABLE:
+        raise HTTPException(503, "axiom_redact.py not found — place it in the same directory")
+    return {
+        "total_patterns": len(ALL_PATTERNS),
+        "modes": ["REDACT", "DETECT", "BLOCK"],
+        "domains": ["general", "healthcare", "legal", "hr"],
     }
 
 
