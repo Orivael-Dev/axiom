@@ -431,6 +431,19 @@ Always verify paths before using them. Never assume a file exists."""
         except Exception as e:
             return f"[Claude error: {e}]"
 
+    # Fallback: common command starters for raw model output (no code blocks)
+    CMD_STARTERS = re.compile(
+        r'^\s*(pip3?\s|python3?\s|npm\s|node\s|cargo\s|go\s|git\s|apt\s|'
+        r'brew\s|yum\s|dnf\s|pacman\s|snap\s|'
+        r'mkdir\s|touch\s|cp\s|mv\s|rm\s|chmod\s|chown\s|ln\s|'
+        r'cat\s|ls\s|cd\s|pwd|echo\s|test\s|which\s|command\s|'
+        r'curl\s|wget\s|tar\s|unzip\s|make\s|cmake\s|'
+        r'docker\s|kubectl\s|systemctl\s|service\s|'
+        r'sudo\s|bash\s|sh\s|source\s|export\s|'
+        r'find\s|grep\s|awk\s|sed\s|sort\s|wc\s|head\s|tail\s)',
+        re.IGNORECASE
+    )
+
     def _extract_commands(self, response: str) -> list:
         """Extract terminal commands from model response."""
         commands = []
@@ -444,6 +457,13 @@ Always verify paths before using them. Never assume a file exists."""
         # Extract inline commands (lines starting with $)
         dollar_lines = re.findall(r'^\$\s+(.+)$', response, re.MULTILINE)
         commands.extend(dollar_lines)
+
+        # Fallback: tinyllama and small models emit raw commands without code blocks
+        if not commands:
+            for line in response.split('\n'):
+                stripped = line.strip()
+                if stripped and self.CMD_STARTERS.match(stripped):
+                    commands.append(stripped)
 
         # Deduplicate preserving order
         seen = set()
