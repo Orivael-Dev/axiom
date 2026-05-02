@@ -27,14 +27,18 @@ classifiers = [
 
 # Core dependencies — always installed
 dependencies = [
-    "anthropic>=1.0.0",
     "python-dotenv>=1.0.0",
 ]
 
 # Optional installs
 [project.optional-dependencies]
 
+llm = [
+    "anthropic>=1.0.0",
+]
+
 guard = [
+    "anthropic>=1.0.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
 ]
@@ -53,6 +57,7 @@ games = [
 ]
 
 all = [
+    "anthropic>=1.0.0",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "chess>=1.9.0",
@@ -81,4 +86,4 @@ where = ["."]
 include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files*"]
 
 [tool.setuptools.package-data]
-"axiom_files" = ["*.axiom", "domains/*.axiom"]
+"axiom_files" = ["*.axiom", "core/*.axiom", "domains/*.axiom", "research/*.axiom"]
