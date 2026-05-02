@@ -76,6 +76,15 @@ try:
 except ImportError:
     LATENT_AVAILABLE = False
 
+# ── Sovereign fleet governance ─────────────────────────────────
+try:
+    from sovereign.sovereign import Sovereign
+    _sovereign = Sovereign()
+    SOVEREIGN_AVAILABLE = True
+except ImportError:
+    _sovereign = None
+    SOVEREIGN_AVAILABLE = False
+
 # ── Constants ─────────────────────────────────────────────────
 SIGNING_KEY      = b"axiom-guard-api-v1"
 MANIFEST_STORE   = {}  # In memory — swap for Redis/DB in production
@@ -742,6 +751,49 @@ async def latent_status():
             "POST /latent/run",
         ],
     }
+
+
+# ── Sovereign fleet endpoints ─────────────────────────────────
+
+@app.get("/sovereign/status")
+async def sovereign_status():
+    """Fleet status — all agents + kill switch + manifest."""
+    if not SOVEREIGN_AVAILABLE or not _sovereign:
+        raise HTTPException(503, "Sovereign not available — place sovereign/ in the same directory")
+    return _sovereign.fleet_status()
+
+
+@app.post("/sovereign/register")
+async def sovereign_register(name: str, trust_level: int = 2):
+    """Register a new agent in the fleet."""
+    if not SOVEREIGN_AVAILABLE or not _sovereign:
+        raise HTTPException(503, "Sovereign not available — place sovereign/ in the same directory")
+    agent = _sovereign.register_agent(name, trust_level)
+    return agent.to_dict()
+
+
+@app.post("/sovereign/message")
+async def sovereign_message(from_agent: str, to_agent: str, content: str):
+    """Process an inter-agent message through Sovereign constitutional checks."""
+    if not SOVEREIGN_AVAILABLE or not _sovereign:
+        raise HTTPException(503, "Sovereign not available — place sovereign/ in the same directory")
+    return _sovereign.process_message(from_agent, to_agent, content)
+
+
+@app.post("/sovereign/escalate")
+async def sovereign_escalate(agent_id: str, reason: str):
+    """Escalate an agent to Level 3 Suspend."""
+    if not SOVEREIGN_AVAILABLE or not _sovereign:
+        raise HTTPException(503, "Sovereign not available — place sovereign/ in the same directory")
+    return _sovereign.escalate_to_level3(agent_id, reason)
+
+
+@app.get("/sovereign/agents")
+async def sovereign_agents():
+    """List all registered agents with status, trust, drift."""
+    if not SOVEREIGN_AVAILABLE or not _sovereign:
+        raise HTTPException(503, "Sovereign not available — place sovereign/ in the same directory")
+    return _sovereign.registry.fleet_manifest()
 
 
 # ── Entry point ───────────────────────────────────────────────
