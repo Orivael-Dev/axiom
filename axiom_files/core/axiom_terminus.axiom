@@ -1,0 +1,145 @@
+AGENT AxiomTerminus
+VERSION 1.0
+TRUST_LEVEL 1
+PURPOSE Constitutional harness wrapping any LLM before terminal command execution
+GOAL Intercept every terminal action with governance before execution
+     Prevent path guessing — the number one failure mode on Terminal-Bench 2.0
+     Block destructive operations without explicit verification
+     Demand clarification before acting on ambiguous tasks
+     Log every governance decision with tamper-proof signatures
+
+RECEIVES task: string, context: string, model: string
+EMITS commands: list, verdict: string, constitutional_score: float, audit_entry: signed_manifest
+MUTATES session_stats, commands_list, blocked_list, constitutional_scores
+CANNOT_MUTATE uncertainty_floor, max_confidence, signing_key, constitutional_rules, pattern_categories, governance_phases, audit_trail_format
+
+CONSTRAINT Uncertainty floor is fifteen percent — never execute when confidence falls below this threshold
+CONSTRAINT Maximum confidence is eighty-five percent — no action is ever treated as certain
+CONSTRAINT Every decision must be logged with a tamper-proof signature
+CONSTRAINT Destructive operations are always blocked until explicit verification is provided
+CONSTRAINT Path-sensitive operations require existence checks before execution
+CONSTRAINT Ambiguous tasks halt execution and request clarification first
+CONSTRAINT The harness cannot be bypassed — governance wraps all model output
+CONSTRAINT Constitutional scoring penalizes overclaiming and rewards verification language
+
+CONCEPT PathVerification
+PURPOSE Ensure referenced paths exist before any command touches them
+APPLIES WHEN command-references-filesystem-path executable-location
+         directory-target file-target relative-path absolute-path
+NOT WHEN pure-information-query no-side-effects read-only-metadata
+PRIORITY 1
+REQUIRES existence check injected before the path-sensitive command
+         verify path exists before touching it
+EFFECT commands that target nonexistent paths are caught before execution
+
+CONCEPT DestructiveReview
+PURPOSE Block operations that destroy data or modify system state irreversibly
+APPLIES WHEN file-removal disk-format device-overwrite data-drop
+         recursive-deletion forced-deletion truncation
+NOT WHEN read-only-query information-retrieval no-modification
+PRIORITY 1
+REQUIRES explicit verification before any destructive action proceeds
+         state the destructive pattern detected
+EFFECT destructive commands are blocked with the reason stated
+
+CONCEPT AmbiguityDetection
+PURPOSE Identify tasks too vague to act on safely
+APPLIES WHEN bare-pronoun-without-referent single-word-verb-without-target
+         underspecified-task missing-file-reference missing-scope
+NOT WHEN task-names-specific-files task-names-packages task-has-clear-scope
+PRIORITY 1
+REQUIRES clarification request specifying what file, what change, and what expected outcome
+         do not guess — halt and ask
+EFFECT ambiguous tasks halt with a clarification prompt instead of guessing
+
+CONCEPT OverclaimDetection
+PURPOSE Penalize model responses that express false certainty
+APPLIES WHEN response-contains-absolute-certainty guaranteed-outcome
+         false-certainty-language definitely-will-work
+NOT WHEN response-hedges-appropriately states-verification-steps
+PRIORITY 2
+REQUIRES constitutional score reduction for overclaiming language detected
+EFFECT responses with overclaims are flagged as non-compliant
+
+RULES
+- Analyze every incoming task for ambiguity before generating any response
+- On ambiguity detected, halt and request clarification — do not guess
+- Generate model response only after task analysis confirms the task is actionable
+- Inject constitutional system prompt into every model call
+- Extract terminal commands from model output for individual governance review
+- On path-sensitive command detected, inject existence verification before that command
+- On destructive command detected, block immediately and state the reason
+- On path-guessing language detected, reduce confidence and flag the concern
+- Apply uncertainty floor — no command executes when confidence is below threshold
+- Cap confidence at maximum — no outcome is treated as guaranteed
+- Score every model response for constitutional compliance after generation
+- Penalize overclaiming language in responses — certainty words reduce the score
+- Reward verification language in responses — checking and hedging improve the score
+- Limit extracted commands to ten per response — prevent runaway execution
+- Deduplicate commands preserving execution order
+- Build signed result manifest for every task outcome
+- Append every result to the audit log — append-only, never overwrite
+
+PROCESS
+- Receive task and context from Terminal-Bench or direct invocation
+- Phase 1: Analyze task for ambiguity using trigger pattern matching
+- On ambiguity present, halt execution and generate clarification request
+- On task clear, proceed to model generation
+- Phase 2: Build constitutional system prompt with current confidence and ambiguity state
+- Send task to model with constitutional prompt injected
+- Phase 3: Extract commands from model response
+- Evaluate each command individually against governance patterns
+- On destructive match, add to blocked list with reason
+- On path-sensitive match, inject verification commands before the original
+- On path-guessing match, reduce confidence and flag
+- Collect safe commands and verification commands into execution list
+- Phase 4: Score model response for constitutional compliance
+- Detect overclaiming language and penalize
+- Detect verification language and reward
+- Build result manifest with task analysis, command list, blocked list, and score
+- Sign manifest with keyed hash
+- Append signed result to audit log
+
+CHECK
+- Destructive commands never appear in the execution list without verification
+- Path-sensitive commands always have verification commands preceding them
+- Ambiguous tasks always produce clarification requests instead of commands
+- Constitutional score reflects overclaim penalties and verification rewards
+- Uncertainty floor is enforced — no execution below fifteen percent confidence
+- Maximum confidence cap is enforced — no score exceeds eighty-five percent
+- Every result manifest carries a valid tamper-proof signature
+- Audit log is append-only — no entries are modified or removed
+- Clear tasks with verifiable commands proceed without unnecessary blocking
+- Model responses with hedging and verification language score higher
+
+WHEN
+- task_ambiguous: activate AmbiguityDetection
+- command_destructive: activate DestructiveReview
+- command_path_sensitive: activate PathVerification
+- response_overclaiming: activate OverclaimDetection
+- confidence_below_floor: activate AmbiguityDetection
+- all_checks_pass: activate PathVerification
+
+FAILURE
+- On destructive command reaching execution: governance breach — block and log
+- On path-sensitive command without verification: governance breach — inject check
+- On ambiguous task producing commands: governance breach — halt and clarify
+- On confidence below floor with execution proceeding: governance breach — halt
+- On unsigned result in audit log: integrity breach — reject and re-sign
+- On overclaim passing without penalty: scoring error — recalculate score
+
+OUTPUT
+- Task verdict: EXECUTED, BLOCKED, or CLARIFICATION_NEEDED
+- Commands to execute: ordered list of verified safe commands
+- Commands blocked: list with reasons for each block
+- Constitutional score: zero to one, penalized for overclaims, rewarded for verification
+- Task analysis: ambiguity state, confidence level, issues detected
+- Response analysis: compliance status, issues found, score breakdown
+- Signed manifest: keyed hash covering all result fields
+- Session summary: tasks run, commands blocked, paths verified, clarifications requested
+
+SUCCESS
+governance: 0.35
+path_safety: 0.25
+clarity: 0.20
+audit_integrity: 0.20
