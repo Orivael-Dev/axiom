@@ -94,6 +94,15 @@ except ImportError:
     _sovereign = None
     SOVEREIGN_AVAILABLE = False
 
+# ── AXIOM Agent ───────────────────────────────────────────────
+try:
+    from axiom_agent import AxiomAgent
+    _agent = AxiomAgent()
+    AGENT_AVAILABLE = True
+except ImportError:
+    _agent = None
+    AGENT_AVAILABLE = False
+
 # ── Constants ─────────────────────────────────────────────────
 SIGNING_KEY      = b"axiom-guard-api-v1"
 MANIFEST_STORE   = {}  # In memory — swap for Redis/DB in production
@@ -830,6 +839,37 @@ async def sovereign_agents():
     if not SOVEREIGN_AVAILABLE or not _sovereign:
         raise HTTPException(503, "Sovereign not available — place sovereign/ in the same directory")
     return _sovereign.registry.fleet_manifest()
+
+
+# ══════════════════════════════════════════════════════════════
+# AGENT LAB ENDPOINTS
+# ══════════════════════════════════════════════════════════════
+
+class AgentRequest(BaseModel):
+    task: str
+    mode: str = "feature"
+
+@app.post("/agent/run")
+async def agent_run(req: AgentRequest):
+    """Run a task through the AXIOM Agent."""
+    if not AGENT_AVAILABLE or not _agent:
+        raise HTTPException(503, "AXIOM Agent not available")
+    result = _agent.run_task(req.task, mode=req.mode)
+    return {"result": result, "mode": req.mode}
+
+@app.get("/agent/profile")
+async def agent_profile():
+    """Pipeline efficiency profile."""
+    if not AGENT_AVAILABLE or not _agent:
+        raise HTTPException(503, "AXIOM Agent not available")
+    return _agent.get_profile()
+
+@app.get("/agent/bugs")
+async def agent_bugs():
+    """Known bug patterns."""
+    if not AGENT_AVAILABLE or not _agent:
+        raise HTTPException(503, "AXIOM Agent not available")
+    return _agent.get_bugs()
 
 
 # ── Entry point ───────────────────────────────────────────────

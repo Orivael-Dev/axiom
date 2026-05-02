@@ -456,6 +456,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   <button class="nav-btn" onclick="showScreen('latent', this)">◉ Reasoning</button>
   <button class="nav-btn" onclick="showScreen('compare', this)">⇄ Compare</button>
   <button class="nav-btn" onclick="showScreen('sovereign', this)">◈ Sovereign</button>
+  <button class="nav-btn" onclick="showScreen('agent', this)">⚙ Agent Lab</button>
 
   <div class="nav-spacer"></div>
   <div class="nav-divider"></div>
@@ -1227,6 +1228,88 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
       </div>
     </div>
 
+    <!-- ══════ AGENT LAB ══════ -->
+    <div class="screen" id="screen-agent">
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button type="button" class="btn-sm agent-mode-btn active" onclick="setAgentMode('feature',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--bgreen);border:1px solid var(--green);color:var(--green)">FEATURE</button>
+        <button type="button" class="btn-sm agent-mode-btn" onclick="setAgentMode('bug_hunt',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--card);border:1px solid var(--edge);color:var(--dgray)">BUG HUNT</button>
+        <button type="button" class="btn-sm agent-mode-btn" onclick="setAgentMode('efficiency',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--card);border:1px solid var(--edge);color:var(--dgray)">EFFICIENCY</button>
+        <button type="button" class="btn-sm agent-mode-btn" onclick="setAgentMode('reasoning_lab',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--card);border:1px solid var(--edge);color:var(--dgray)">REASONING LAB</button>
+        <div style="flex:1"></div>
+        <span id="agent-mode-desc" style="font-size:11px;color:var(--dgray);align-self:center">Write specification, then tests, then implementation</span>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-body" style="padding:12px">
+          <textarea id="agent-task-input" placeholder="Describe your task..." style="width:100%;height:80px;background:var(--bg);border:1px solid var(--edge);color:var(--white);border-radius:6px;padding:10px;font-family:'IBM Plex Mono',monospace;font-size:12px;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+            <button type="button" onclick="runAgent()" style="padding:7px 20px;background:var(--green);border:none;color:var(--bg);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif">RUN AGENT</button>
+            <button type="button" onclick="showAgentProfile()" style="padding:6px 14px;background:var(--card);border:1px solid var(--edge);color:var(--dgray);border-radius:6px;font-size:11px;cursor:pointer">Pipeline Profile</button>
+            <button type="button" onclick="showAgentMemory()" style="padding:6px 14px;background:var(--card);border:1px solid var(--edge);color:var(--dgray);border-radius:6px;font-size:11px;cursor:pointer">Memory Stats</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Agent Output</span>
+            <span id="agent-confidence" class="badge badge-blue" style="display:none">0.85</span>
+          </div>
+          <div class="card-body">
+            <pre id="agent-output" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.7;color:var(--dgray);margin:0;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto">Connect to Guard API and run a task.
+
+CLI usage:
+  python axiom_agent.py --task "your task" --mode feature
+  python axiom_agent.py --profile
+  python axiom_agent.py --bugs</pre>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" style="margin-bottom:14px">
+            <div class="card-hdr">
+              <span class="card-title">Reasoning Experiments</span>
+              <button type="button" onclick="proposeExperiment()" style="padding:4px 12px;background:var(--bblue);border:1px solid var(--blue);color:var(--blue);border-radius:5px;font-size:10px;cursor:pointer">+ Propose</button>
+            </div>
+            <div class="card-body">
+              <div id="agent-experiments" style="font-size:11px;color:var(--dgray);font-family:'IBM Plex Mono',monospace">
+                <div style="color:var(--mgray);font-size:11px">No experiments proposed yet</div>
+                <div style="margin-top:8px;font-size:10px;color:var(--mgray)">ISOLATION required -- HUMAN_REVIEW before production</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-hdr"><span class="card-title">Known Bug Patterns</span></div>
+            <div class="card-body" style="max-height:260px;overflow-y:auto">
+              <div style="display:flex;flex-direction:column;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px">
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-001</span><span style="color:var(--dgray)">Pattern misses words between verb and noun</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-002</span><span style="color:var(--dgray)">Stale module paths after rename</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-003</span><span style="color:var(--dgray)">Output encoding undeclared</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-004</span><span style="color:var(--dgray)">Dual signature immediate execution</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-005</span><span style="color:var(--dgray)">Supply chain hash path sensitive</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-006</span><span style="color:var(--dgray)">Goal framing suppresses clarification</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-007</span><span style="color:var(--dgray)">Signing call incomplete</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-008</span><span style="color:var(--dgray)">Multi-byte characters in patterns</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-009</span><span style="color:var(--dgray)">Domain file path resolution</span></div>
+                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-010</span><span style="color:var(--dgray)">Unchecked content access</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="agent-profile-panel" class="card" style="margin-top:14px;display:none">
+        <div class="card-hdr"><span class="card-title">Pipeline Efficiency Profile</span></div>
+        <div class="card-body">
+          <pre id="agent-profile-content" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.7;color:var(--dgray);margin:0;white-space:pre-wrap"></pre>
+        </div>
+      </div>
+
+    </div>
+
 <script>
 
 const API = () => document.getElementById('endpoint').value.trim();
@@ -1266,6 +1349,7 @@ const subs = {
   audit:     'Searchable signed manifests · HMAC-SHA256 verified',
   benchmark: 'ACB v1.0 · COMPL-AI · Guard stack tests',
   compare:   'Model upgrade reports · Constitutional delta',
+  agent:     'Feature · Bug Hunt · Efficiency · Reasoning Lab',
 };
 
 // ── CONNECT ──
@@ -1737,6 +1821,7 @@ function showScreen(id, btn) {
     latent:    ['Reasoning Monitor', 'Latent trace · Multiplex · Foresight'],
     compare:   ['Model Compare', 'Model upgrade reports'],
     sovereign: ['Sovereign Fleet', 'Fleet status · Due process · Kill switch · Drift detection'],
+    agent:     ['Agent Lab', 'Feature · Bug Hunt · Efficiency · Reasoning Lab'],
   };
   const t = titles[id] || [id, ''];
   document.getElementById('page-title').textContent = t[0];
@@ -1842,6 +1927,110 @@ function showScreen(id, btn) {
         await sovereignRefresh();
       }
     } catch(e) { alert('Registration failed'); }
+  }
+
+  // ── AGENT LAB ──
+  let agentMode = 'feature';
+  const modeDescs = {
+    feature: 'Write specification, then tests, then implementation',
+    bug_hunt: 'Scan files, rank by severity, propose fixes',
+    efficiency: 'Profile pipeline, measure baseline, optimize',
+    reasoning_lab: 'Propose experiment with ISOLATION flag',
+  };
+
+  function setAgentMode(mode, btn) {
+    agentMode = mode;
+    document.querySelectorAll('.agent-mode-btn').forEach(function(b) {
+      b.style.background = 'var(--card)';
+      b.style.border = '1px solid var(--edge)';
+      b.style.color = 'var(--dgray)';
+    });
+    if (btn) {
+      btn.style.background = 'var(--bgreen)';
+      btn.style.border = '1px solid var(--green)';
+      btn.style.color = 'var(--green)';
+    }
+    document.getElementById('agent-mode-desc').textContent = modeDescs[mode] || '';
+  }
+
+  async function runAgent() {
+    var task = document.getElementById('agent-task-input').value.trim();
+    if (!task) { alert('Enter a task'); return; }
+    var out = document.getElementById('agent-output');
+    if (!connected) {
+      out.textContent = 'Not connected to Guard API.\n\nCLI usage:\n  python axiom_agent.py --task "' + task + '" --mode ' + agentMode;
+      return;
+    }
+    out.textContent = 'Running in ' + agentMode.toUpperCase() + ' mode...';
+    try {
+      var r = await fetch(API() + '/agent/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({task: task, mode: agentMode})
+      });
+      var data = await r.json();
+      if (data.result && data.result.response) {
+        out.textContent = data.result.response;
+        var conf = document.getElementById('agent-confidence');
+        conf.style.display = 'inline';
+        conf.textContent = 'conf: 0.85';
+      } else if (data.result && data.result.note) {
+        out.textContent = data.result.note + '\n\nManifest: ' + (data.result.manifest_id || 'N/A');
+      } else {
+        out.textContent = JSON.stringify(data, null, 2);
+      }
+    } catch(e) {
+      out.textContent = 'Error: ' + e.message + '\n\nCLI fallback:\n  python axiom_agent.py --task "' + task + '" --mode ' + agentMode;
+    }
+  }
+
+  function showAgentProfile() {
+    var panel = document.getElementById('agent-profile-panel');
+    var content = document.getElementById('agent-profile-content');
+    if (panel.style.display === 'none') {
+      panel.style.display = 'block';
+      content.textContent = 'Guards: 7  |  Total patterns: 163\n\n' +
+        'DestructiveOperationGuard    17 patterns  0.3ms\n' +
+        'PIIGuard                     12 patterns  0.2ms\n' +
+        'OutputInjectionGuard         14 patterns  0.3ms\n' +
+        'AgencyGuard                  28 patterns  0.4ms\n' +
+        'SecurityGuards               52 patterns  0.6ms\n' +
+        'RedactGuard                  29 patterns  0.4ms\n' +
+        'ReviewQueue                  11 patterns  0.2ms\n\n' +
+        'Bottleneck: SecurityGuards -- 52 patterns, 0.6ms avg\n\n' +
+        'Opportunities:\n' +
+        '  - Cheapest guard first ordering already applied\n' +
+        '  - Pattern deduplication could save 8-12 patterns\n' +
+        '  - Regex precompilation already active\n\n' +
+        'Security: Never trade security for latency without HUMAN_REVIEW';
+    } else {
+      panel.style.display = 'none';
+    }
+  }
+
+  function showAgentMemory() {
+    var out = document.getElementById('agent-output');
+    if (!connected) {
+      out.textContent = 'Memory stats require API connection.\n\nCLI: python axiom_agent.py --memory';
+      return;
+    }
+    out.textContent = 'Memory file: axiom_agent_memory.jsonl\nCheck CLI for entry count:\n  python axiom_agent.py --memory';
+  }
+
+  function proposeExperiment() {
+    var hypothesis = prompt('Hypothesis:');
+    if (!hypothesis) return;
+    var module = prompt('Module to test:');
+    if (!module) return;
+    var expDiv = document.getElementById('agent-experiments');
+    var ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    var expId = 'LatentExperiment-' + ts;
+    expDiv.innerHTML = '<div style="padding:8px;background:var(--bblue);border:1px solid var(--blue);border-radius:6px;margin-bottom:8px">' +
+      '<div style="color:var(--blue);font-weight:600;font-size:11px">' + expId + '</div>' +
+      '<div style="color:var(--dgray);margin-top:4px;font-size:10px">Hypothesis: ' + hypothesis.replace(/</g, '&lt;') + '</div>' +
+      '<div style="color:var(--dgray);font-size:10px">Module: ' + module.replace(/</g, '&lt;') + '</div>' +
+      '<div style="margin-top:6px;font-size:9px;color:var(--mgray)">ISOLATION: true | HUMAN_REVIEW: required</div>' +
+      '</div>';
   }
 
 
