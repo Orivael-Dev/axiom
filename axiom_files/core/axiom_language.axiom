@@ -1,0 +1,145 @@
+AGENT AxiomLanguage
+VERSION 1.3
+TRUST_LEVEL 1
+PURPOSE Define the Axiom Language System in its own terms
+GOAL Self-contained language reference expressed entirely in Axiom constructs
+     No external programming language syntax permitted
+     This spec is the canonical reference for what constitutes valid Axiom
+     Parser behavior must match these definitions exactly
+
+CANNOT_MUTATE construct_definitions, semantic_types, validation_rules, strict_mode, block_types
+
+CONSTRAINT Every construct definition must use only Axiom-native syntax
+CONSTRAINT No Python, JavaScript, or procedural code references permitted
+CONSTRAINT All behavior is expressed declaratively through Axiom constructs
+CONSTRAINT This spec is self-describing — it uses only the constructs it defines
+CONSTRAINT Construct names are uppercase keywords appearing at the start of a line
+CONSTRAINT Section headers are single uppercase words on their own line followed by bullet items
+CONSTRAINT Continuation lines are indented lines that extend the previous construct value
+
+RULES
+- AGENT names the agent — one per file, required, appears on the first line
+- VERSION declares the semantic version — format is major dot minor or major dot minor dot patch
+- TRUST_LEVEL declares the trust tier as an integer — delegation flows downward only, never upward
+- SANDBOX_AGENT names the sandbox delegate agent for isolated execution
+- PURPOSE is a one-line mission statement describing what the agent does
+- GOAL is the multi-line objective — continuation lines are indented below the first line
+- RECEIVES declares the input contract as name colon type pairs
+- EMITS declares the output contract as name colon type pairs
+- MUTATES lists the fields this agent may modify at runtime
+- CANNOT_MUTATE lists the fields permanently locked — the parser enforces immutability on these
+- CONSTRAINT declares a single-line invariant — one invariant per CONSTRAINT keyword, never bundled
+- RULES is a section header followed by bullet items — each bullet is an operational command the agent follows
+- PROCESS is a section header followed by bullet items — each bullet is an ordered step executed sequentially
+- CHECK is a section header followed by bullet items — each bullet is a quality gate evaluated after PROCESS
+- FAILURE is a section header followed by bullet items — each bullet describes behavior when CHECK gates fail
+- OUTPUT is a section header followed by bullet items — each bullet describes the format and structure of the response
+- SUCCESS is a section header followed by field colon weight pairs — weights must sum to one point zero
+- CONCEPT is a named sub-specification block containing its own PURPOSE, APPLIES WHEN, NOT WHEN, PRIORITY, REQUIRES, and EFFECT fields
+- WHEN is a section header followed by decision table entries — each entry maps a keyword condition to a concept activation
+- SECURITY is a section header followed by bullet items — each bullet is a hard security rule that overrides RULES
+- TOOLS is a section header followed by bullet items — each bullet declares an available tool with permissions and sandbox flags
+- DELEGATES is a section header followed by routing entries — each entry maps Agent to Target on a named trigger
+- HUMAN_REVIEW is a section header followed by bullet items — each bullet declares a condition requiring human approval
+- HISTORY is a section header followed by timestamped change log entries
+- Any unrecognized uppercase word on its own line becomes a generic section header collecting bullet items below it
+- Blank lines separate logical sections but carry no semantic meaning
+- Lines beginning with a dash and space are bullet items belonging to the current section
+- Lines beginning with indentation are continuation lines extending the previous value
+
+PROCESS
+- Read the file line by line from top to bottom
+- Identify construct keywords appearing at the start of each line
+- For single-line constructs, capture the value after the keyword and space
+- For continuation lines, append the trimmed content to the previous construct value
+- For section headers, set the current section and collect subsequent bullet items
+- For CONCEPT blocks, enter sub-parsing mode and collect nested fields until the next top-level construct
+- For CANNOT_MUTATE fields, register each listed field as immutable for the lifetime of the agent
+- After parsing completes, validate the parsed structure against all rules
+- Build a system prompt from the parsed structure for injection into the reasoning model
+- Sign the resulting manifest with a cryptographic hash for tamper detection
+
+CHECK
+- AGENT field is present and non-empty
+- VERSION field is present and follows the major dot minor format
+- SUCCESS weights sum to exactly one point zero when present
+- CANNOT_MUTATE fields are never modified by any save operation
+- MUTATES and CANNOT_MUTATE have no overlapping fields
+- CONCEPT blocks contain at minimum a PURPOSE field
+- WHEN entries reference concepts that exist in the same file or a loaded dependency
+- TRUST_LEVEL is an integer between one and five when present
+- No purity violations detected — StrictMode rules apply
+- DELEGATES routing flows downward in trust level, never upward
+- TOOLS entries include permission declarations
+- SECURITY rules do not contradict CANNOT_MUTATE fields
+
+FAILURE
+- Missing AGENT: file is rejected — status invalid
+- Missing VERSION: file is rejected — status invalid
+- Purity violation detected: file is rejected with violation description
+- SUCCESS weights do not sum to one point zero: file is rejected
+- MUTATES and CANNOT_MUTATE overlap: file is rejected — constitutional conflict
+- Vague qualifier detected in CONSTRAINT block: warning issued — file status is warning
+- WHEN references a nonexistent concept: warning issued
+- DELEGATES routes upward in trust: file is rejected — trust hierarchy violation
+- CONCEPT missing PURPOSE: warning issued
+
+OUTPUT
+- A parsed dictionary keyed by construct name containing all extracted values
+- A system prompt string assembled from the parsed structure for model injection
+- A validation result with status, issues list, and suggestions
+- An HMAC-SHA256 manifest entry for tamper detection on the parsed output
+
+SUCCESS
+completeness: 0.3
+purity: 0.3
+accuracy: 0.2
+clarity: 0.2
+
+CONCEPT ConstructSemantics
+PURPOSE Classify each construct by its semantic role in the language
+APPLIES WHEN validating-block-placement reviewing-spec-structure auditing-language-purity
+NOT WHEN reading-content-only generating-system-prompt
+PRIORITY 2
+REQUIRES Each construct belongs to exactly one semantic type
+         RULES blocks contain imperative commands
+         PROCESS blocks contain procedural steps in execution order
+         CHECK blocks contain conditional quality gates
+         FAILURE and OUTPUT blocks contain descriptive documentation
+         SECURITY blocks contain prohibitive hard rules
+         WHEN blocks contain conditional activation mappings
+         CONSTRAINT lines contain prohibitive invariants
+         CANNOT_MUTATE fields contain constitutional immutable declarations
+         CONCEPT blocks are composite sub-specifications
+         HISTORY blocks contain declarative change records
+         AGENT VERSION TRUST_LEVEL PURPOSE GOAL RECEIVES EMITS SUCCESS TOOLS DELEGATES are declarative metadata
+EFFECT Constructs placed in semantically wrong blocks are flagged during validation
+       Imperative content in descriptive blocks triggers a warning
+       Descriptive content in imperative blocks is permitted but noted
+       Constitutional fields override all other semantic types
+
+CONCEPT ValidationPhases
+PURPOSE Define the four-phase validation pipeline applied to every Axiom file
+APPLIES WHEN file-is-parsed validation-requested pre-save-check
+NOT WHEN file-is-being-read-only system-prompt-generation
+PRIORITY 1
+REQUIRES Phase one checks syntax — required fields present, version format valid, SUCCESS weights correct
+         Phase two checks purity — no external language patterns in any block
+         Phase three checks semantics — no vague qualifiers, no procedural drift in wrong blocks
+         Phase four checks history — HISTORY entries have valid structure and timestamps
+         All four phases run in order — a phase-one failure skips remaining phases
+         Each phase produces its own issue list with severity level
+EFFECT Files passing all four phases receive status valid
+       Files with warnings but no errors receive status warning
+       Files with any error receive status invalid and are rejected
+
+WHEN
+- if file is loaded for validation, activate ValidationPhases
+- if reviewing construct placement in blocks, activate ConstructSemantics
+- if any block contains external language syntax, activate StrictMode
+- if CANNOT_MUTATE field modification is attempted, activate ConstitutionalViolation
+- if DELEGATES routes upward in trust level, activate TrustHierarchyViolation
+- if SUCCESS weights do not sum to one point zero, activate ValidationPhases
+
+HISTORY
+- 2026-04-30: v1.3 — Initial self-describing meta-spec created in pure Axiom

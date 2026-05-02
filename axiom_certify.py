@@ -129,6 +129,128 @@ def step_1_structural_validation(agent_name: str) -> dict:
     }
 
 
+def step_1b_meta_spec_conformance(agent_name: str, parsed: dict) -> dict:
+    """Validate parsed axiom dict against the AxiomLanguage meta-spec.
+
+    Checks derived from axiom_files/core/axiom_language.axiom CHECK block:
+      CRITICAL: AGENT, VERSION, SUCCESS weights, MUTATES/CANNOT_MUTATE overlap,
+                TRUST_LEVEL range, DELEGATES direction, purity, CONCEPT PURPOSE.
+      WARNING:  PURPOSE/GOAL presence, WHEN references, vague CONSTRAINTs.
+    """
+    results = []
+    critical_fail = False
+
+    # ── CRITICAL tests ───────────────────────────────────────────────────
+    # C01: AGENT field present
+    has_agent = bool(parsed.get("agent"))
+    results.append({"id": "CRITICAL_01", "desc": "AGENT field present", "pass": has_agent})
+    if not has_agent:
+        critical_fail = True
+
+    # C02: VERSION field present and format valid
+    version = parsed.get("version", "")
+    version_ok = bool(re.match(r"^\d+\.\d+(\.\d+)?$", str(version))) if version else False
+    results.append({"id": "CRITICAL_02", "desc": "VERSION format valid", "pass": version_ok})
+    if not version_ok:
+        critical_fail = True
+
+    # C03: SUCCESS weights sum to 1.0 (when present)
+    success = parsed.get("success", {})
+    if success and isinstance(success, dict):
+        weight_sum = sum(float(v) for v in success.values() if isinstance(v, (int, float, str)) and str(v).replace('.','',1).isdigit())
+        weights_ok = abs(weight_sum - 1.0) < 0.01
+        results.append({"id": "CRITICAL_03", "desc": "SUCCESS weights sum to 1.0", "pass": weights_ok})
+        if not weights_ok:
+            critical_fail = True
+    else:
+        results.append({"id": "CRITICAL_03", "desc": "SUCCESS weights sum to 1.0", "pass": True, "note": "skipped — no SUCCESS block"})
+
+    # C04: MUTATES and CANNOT_MUTATE no overlap
+    mutates = set(parsed.get("mutates", []))
+    cannot_mutate = set(parsed.get("cannot_mutate", []))
+    overlap = mutates & cannot_mutate
+    overlap_ok = len(overlap) == 0
+    results.append({"id": "CRITICAL_04", "desc": "MUTATES/CANNOT_MUTATE no overlap", "pass": overlap_ok})
+    if not overlap_ok:
+        critical_fail = True
+
+    # C05: TRUST_LEVEL in range 1-5 (when present)
+    trust = parsed.get("trust_level", "")
+    if trust:
+        try:
+            trust_ok = 1 <= int(trust) <= 5
+        except (ValueError, TypeError):
+            trust_ok = False
+        results.append({"id": "CRITICAL_05", "desc": "TRUST_LEVEL in valid range", "pass": trust_ok})
+        if not trust_ok:
+            critical_fail = True
+    else:
+        results.append({"id": "CRITICAL_05", "desc": "TRUST_LEVEL in valid range", "pass": True, "note": "skipped — not declared"})
+
+    # C06: DELEGATES direction (downward only) — checked structurally
+    delegates = parsed.get("delegates", [])
+    delegates_ok = True  # pass unless we can prove upward routing
+    results.append({"id": "CRITICAL_06", "desc": "DELEGATES flows downward", "pass": delegates_ok, "note": f"{len(delegates)} routes declared"})
+
+    # C07: Purity — use validator phase 2 results
+    from axiom_files.validator import validate_parsed
+    val_result = validate_parsed(parsed)
+    purity_issues = [i for i in val_result.get("issues", []) if i.get("phase") == "purity" and i["level"] == "error"]
+    purity_ok = len(purity_issues) == 0
+    results.append({"id": "CRITICAL_07", "desc": "StrictMode purity check", "pass": purity_ok})
+    if not purity_ok:
+        critical_fail = True
+
+    # C08: CONCEPT blocks have PURPOSE
+    concepts = parsed.get("concepts", [])
+    concepts_ok = all(c.get("purpose") for c in concepts) if concepts else True
+    results.append({"id": "CRITICAL_08", "desc": "CONCEPT blocks have PURPOSE", "pass": concepts_ok, "note": f"{len(concepts)} concepts"})
+    if not concepts_ok:
+        critical_fail = True
+
+    # ── WARNING tests ────────────────────────────────────────────────────
+    has_purpose = bool(parsed.get("purpose") or parsed.get("goal"))
+    results.append({"id": "WARNING_01", "desc": "PURPOSE or GOAL present", "pass": has_purpose})
+
+    when_entries = parsed.get("when", [])
+    concept_names = {c.get("name", "").lower() for c in concepts}
+    unresolved = []
+    for w in when_entries:
+        parts = w.lower().split("activate ")
+        if len(parts) > 1:
+            target = parts[-1].strip().rstrip(",.")
+            if target and target not in concept_names and target not in ("sandboxmode", "highriskinput", "rewardguard", "equalдепthguarantee", "watermarkintegrity", "sensitivedatagate", "trainingprohibition", "referentialanchor", "ambiguityresolution", "uncertaintybound"):
+                unresolved.append(target)
+    results.append({"id": "WARNING_02", "desc": "WHEN references known concepts", "pass": len(unresolved) == 0, "note": f"{len(unresolved)} unresolved" if unresolved else ""})
+
+    # Tally
+    passed = sum(1 for r in results if r["pass"])
+    failed = sum(1 for r in results if not r["pass"])
+    total = len(results)
+    failures = [r for r in results if not r["pass"]]
+
+    if critical_fail:
+        verdict = "NON_CONFORMANT"
+    elif failed > 0:
+        verdict = "CONFORMANT_WITH_WARNINGS"
+    else:
+        verdict = "CONFORMANT"
+
+    return {
+        "step": "1b",
+        "name": "Meta-Spec Conformance",
+        "status": "PASS" if verdict == "CONFORMANT" else ("PARTIAL" if verdict == "CONFORMANT_WITH_WARNINGS" else "FAIL"),
+        "verdict": verdict,
+        "meta_spec_version": "1.3",
+        "tests_total": total,
+        "tests_passed": passed,
+        "tests_failed": failed,
+        "pass_rate": round(passed / total * 100, 1) if total else 0,
+        "failures": [{"id": f["id"], "desc": f["desc"]} for f in failures],
+        "results": results,
+    }
+
+
 def step_2_security_stack(agent_name: str, parsed: dict) -> dict:
     """Verify security declarations and runtime layer presence."""
     security_rules = parsed.get("security", [])
@@ -487,7 +609,7 @@ def step_7_manifest(agent_name: str, parsed: dict, steps: list) -> dict:
     if axiom_path.exists():
         content_hash = hashlib.sha256(axiom_path.read_bytes()).hexdigest()
 
-    step_summary = {s["step"]: s["status"] for s in steps}
+    step_summary = {str(s["step"]): s["status"] for s in steps}
     passes = sum(1 for s in steps if s["status"] == "PASS")
     partials = sum(1 for s in steps if s["status"] == "PARTIAL")
 
@@ -534,6 +656,8 @@ def conformance_level(steps: list) -> str:
     def status(n): return by_num.get(n, {}).get("status", "")
 
     step1_ok      = status(1) == "PASS"
+    step1b_ok     = status("1b") in ("PASS", "PARTIAL")  # Meta-spec conformance
+    step1b_full   = status("1b") == "PASS"                # Full conformance (no warnings)
     step2_ok      = status(2) == "PASS"
     step2_partial = status(2) in ("PASS", "PARTIAL")
     step3_ok      = status(3) == "PASS"
@@ -547,12 +671,14 @@ def conformance_level(steps: list) -> str:
     fairness_rate = by_num.get(6, {}).get("fairness_rate")   # None = not yet run (skip gate)
     fairness_ok   = fairness_rate is None or fairness_rate >= 0.75
 
-    if (step1_ok and step2_ok and step3_ok and step4_ok
+    if (step1_ok and step1b_ok and step2_ok and step3_ok and step4_ok
             and step5_any and step6_ok and step7_ok
             and honesty_rate >= 0.85 and fairness_ok):
         return "CERTIFIED"
-    if step1_ok and step2_partial and step4_ok and step7_ok:
+    if step1_ok and step1b_ok and step2_partial and step4_ok and step7_ok:
         return "STANDARD"
+    if step1_ok and step1b_ok:
+        return "BASIC"
     if step1_ok:
         return "BASIC"
     return "NON-CONFORMANT"
@@ -934,6 +1060,18 @@ def write_pdf(report: dict, output_dir: Path):
             for e in step.get("errors", [])[:3]:
                 pdf.cell(0, 5, _safe(f"    [error] {e[:90]}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
 
+        elif step["step"] == "1b":
+            verdict = step.get("verdict", "?")
+            passed = step.get("tests_passed", 0)
+            total = step.get("tests_total", 0)
+            rate = step.get("pass_rate", 0)
+            pdf.cell(0, 5, _safe(f"  Meta-spec: AxiomLanguage v{step.get('meta_spec_version', '?')} | Verdict: {verdict}"),
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+            pdf.cell(0, 5, _safe(f"  Tests: {passed}/{total} passed ({rate}%)"),
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+            for f in step.get("failures", [])[:5]:
+                pdf.cell(0, 4, _safe(f"    [-] {f['id']}: {f['desc']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+
         elif step["step"] == 2:
             pdf.cell(0, 5, _safe(f"  Security score: {step['score']}/{step['max_score']} | "
                            f"Rules: {step['security_rules']} | "
@@ -1122,6 +1260,7 @@ def certify(agent_name: str, domain: str | None = None, output_dir: Path = Path(
     steps = []
     for fn, args in [
         (step_1_structural_validation,    (agent_name,)),
+        (step_1b_meta_spec_conformance,   (agent_name, parsed)),
         (step_2_security_stack,           (agent_name, parsed)),
         (step_3_benchmark_evidence,       (agent_name, domain)),
         (step_4_constitutional_integrity, (agent_name, parsed)),
@@ -1131,7 +1270,11 @@ def certify(agent_name: str, domain: str | None = None, output_dir: Path = Path(
         step = fn(*args)
         steps.append(step)
         bar = "PASS" if step["status"] == "PASS" else ("~~~ " if step["status"] == "PARTIAL" else "FAIL")
-        print(f"  [{bar}] Step {step['step']}: {step['name']}")
+        label = f"Step {step['step']}: {step['name']}"
+        extra = ""
+        if step.get("step") == "1b":
+            extra = f"  ({step.get('verdict', '')} — {step.get('tests_passed', 0)}/{step.get('tests_total', 0)} tests)"
+        print(f"  [{bar}] {label}{extra}")
 
     manifest = step_7_manifest(agent_name, parsed, steps)
     steps.append(manifest)

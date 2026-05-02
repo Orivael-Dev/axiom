@@ -1,0 +1,133 @@
+AGENT AxiomLanguageTest
+VERSION 1.0
+TRUST_LEVEL 1
+PURPOSE Validate that any Axiom file conforms to the AxiomLanguage meta-spec
+GOAL Close the language loop — the Axiom language validates itself
+     Every test case expressed in Axiom constructs only
+     No external programming language syntax permitted
+
+CANNOT_MUTATE test_definitions, pass_criteria, fail_criteria, meta_spec_reference
+
+CONSTRAINT This test suite references AxiomLanguage v1.3 as the canonical spec
+CONSTRAINT All test assertions are declarative — no procedural test harness syntax
+CONSTRAINT A file that fails any CRITICAL test is non-conformant to the meta-spec
+CONSTRAINT A file that fails only WARNING tests is conformant with advisories
+CONSTRAINT Tests are ordered by severity — CRITICAL tests run before WARNING tests
+
+RULES
+- TEST_CRITICAL_01: Every file must contain an AGENT field on the first non-blank line
+- TEST_CRITICAL_02: Every file must contain a VERSION field with major dot minor format
+- TEST_CRITICAL_03: SUCCESS weights must sum to exactly one point zero when present
+- TEST_CRITICAL_04: CANNOT_MUTATE and MUTATES must have zero overlapping fields
+- TEST_CRITICAL_05: TRUST_LEVEL must be an integer between one and five when present
+- TEST_CRITICAL_06: DELEGATES routing must flow downward in trust level, never upward
+- TEST_CRITICAL_07: Zero purity violations detected — StrictMode rejection rules apply
+- TEST_CRITICAL_08: CONCEPT blocks must contain at minimum a PURPOSE field
+- TEST_WARNING_01: Every file should contain a PURPOSE or GOAL field
+- TEST_WARNING_02: WHEN entries should reference concepts defined in the same file or a loaded dependency
+- TEST_WARNING_03: CONSTRAINT lines should not contain vague qualifiers
+- TEST_WARNING_04: PROCESS steps should not contain procedural control flow keywords
+- TEST_WARNING_05: SECURITY rules should not contradict CANNOT_MUTATE declarations
+- TEST_WARNING_06: TOOLS entries should include permission declarations when present
+- TEST_WARNING_07: HISTORY entries should have valid timestamps when present
+- TEST_WARNING_08: RULES items should be imperative commands, not descriptions
+- TEST_WARNING_09: FAILURE items should be descriptive outcomes, not commands
+- TEST_WARNING_10: OUTPUT items should describe format and structure, not implementation
+
+PROCESS
+- Load the target file through the Axiom parser
+- Verify AGENT field is present and non-empty — mark CRITICAL_01
+- Verify VERSION field is present and matches major dot minor format — mark CRITICAL_02
+- Verify SUCCESS weights sum to one point zero when the SUCCESS block exists — mark CRITICAL_03
+- Extract MUTATES and CANNOT_MUTATE field lists and verify zero overlap — mark CRITICAL_04
+- Verify TRUST_LEVEL is a valid integer in range when present — mark CRITICAL_05
+- Extract DELEGATES entries and verify all routing flows downward in trust — mark CRITICAL_06
+- Run StrictMode purity scan across all blocks — mark CRITICAL_07
+- Verify every CONCEPT block contains a PURPOSE field — mark CRITICAL_08
+- Check for PURPOSE or GOAL presence — mark WARNING_01
+- Check WHEN entries reference known concepts — mark WARNING_02
+- Scan CONSTRAINT lines for vague qualifiers — mark WARNING_03
+- Scan PROCESS steps for procedural drift — mark WARNING_04
+- Cross-reference SECURITY rules against CANNOT_MUTATE — mark WARNING_05
+- Verify TOOLS entries have permission declarations — mark WARNING_06
+- Verify HISTORY entry structure and timestamps — mark WARNING_07
+- Verify RULES items use imperative voice — mark WARNING_08
+- Verify FAILURE items use descriptive voice — mark WARNING_09
+- Verify OUTPUT items describe format not implementation — mark WARNING_10
+- Tally results: count passed, failed, and skipped tests
+- Determine conformance verdict based on CRITICAL test results
+
+CHECK
+- All CRITICAL tests must pass for the file to be meta-spec conformant
+- Any CRITICAL failure marks the file as non-conformant
+- WARNING failures are reported as advisories but do not block conformance
+- Skipped tests are noted when the tested construct is absent from the file
+- Total test count equals CRITICAL count plus WARNING count
+- Pass rate is calculated as passed tests divided by total applicable tests
+
+FAILURE
+- CRITICAL_01 fails: file has no AGENT declaration — rejected
+- CRITICAL_02 fails: file has no VERSION or VERSION format is invalid — rejected
+- CRITICAL_03 fails: SUCCESS weights do not sum to one point zero — rejected
+- CRITICAL_04 fails: MUTATES and CANNOT_MUTATE share a field — constitutional conflict
+- CRITICAL_05 fails: TRUST_LEVEL is not a valid integer in range — rejected
+- CRITICAL_06 fails: DELEGATES routes upward in trust hierarchy — trust violation
+- CRITICAL_07 fails: purity violation detected — StrictMode enforcement triggered
+- CRITICAL_08 fails: CONCEPT block missing PURPOSE — incomplete specification
+- WARNING failures are reported individually with the test identifier and description
+- Overall verdict: CONFORMANT, CONFORMANT_WITH_WARNINGS, or NON_CONFORMANT
+
+OUTPUT
+- Verdict: CONFORMANT or CONFORMANT_WITH_WARNINGS or NON_CONFORMANT
+- Agent name and version of the tested file
+- Meta-spec version referenced: AxiomLanguage 1.3
+- Total tests: count of applicable tests
+- Passed: count
+- Failed: count with test identifiers and failure descriptions
+- Skipped: count with reasons
+- Pass rate as a percentage
+- Advisories: list of WARNING test failures with descriptions
+
+SUCCESS
+coverage: 0.3
+accuracy: 0.3
+purity: 0.2
+clarity: 0.2
+
+CONCEPT MetaSpecReference
+PURPOSE Anchor all test assertions to the canonical AxiomLanguage specification
+APPLIES WHEN running-meta-spec-validation certifying-an-agent validating-language-conformance
+NOT WHEN running-domain-specific-tests running-benchmark-tests
+PRIORITY 1
+REQUIRES The AxiomLanguage spec version 1.3 is the single source of truth
+         All CRITICAL tests derive from the CHECK block of AxiomLanguage
+         All WARNING tests derive from the RULES block of AxiomLanguage
+         Test verdicts align with the FAILURE block of AxiomLanguage
+         No test may contradict the meta-spec — discrepancies are spec bugs not test bugs
+EFFECT Test results are traceable to specific meta-spec rules
+       Conformance verdicts are reproducible and auditable
+       The language validates itself through its own constructs
+
+CONCEPT StrictModeEnforcement
+PURPOSE Apply StrictMode purity rules during CRITICAL_07 validation
+APPLIES WHEN scanning-file-blocks-for-purity-violations
+NOT WHEN testing-non-purity-constructs
+PRIORITY 2
+REQUIRES All rejection rules from StrictMode version 1.0 apply
+         Purity scan covers every block in the target file
+         Violations are reported with block name and content description
+         English descriptions mentioning programming concepts are permitted
+         Only actual programming syntax triggers a violation
+EFFECT Files containing external language syntax fail CRITICAL_07
+       Files using only Axiom constructs pass CRITICAL_07
+       Purity results feed into the overall conformance verdict
+
+WHEN
+- if target file is loaded for meta-spec validation, activate MetaSpecReference
+- if scanning blocks for purity violations, activate StrictModeEnforcement
+- if any CRITICAL test fails, activate MetaSpecReference
+- if all CRITICAL tests pass and any WARNING test fails, activate MetaSpecReference
+- if all tests pass, activate MetaSpecReference
+
+HISTORY
+- 2026-05-02: v1.0 — Initial test suite created to close the Axiom language loop

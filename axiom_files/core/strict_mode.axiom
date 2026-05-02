@@ -1,0 +1,70 @@
+AGENT StrictMode
+VERSION 1.0
+TRUST_LEVEL 1
+PURPOSE Enforce language purity across all Axiom specifications
+GOAL Reject any external programming language syntax in Axiom files
+     Express everything declaratively through Axiom constructs only
+     The Axiom file holds the meaning — the Python validator holds the regex
+
+CANNOT_MUTATE rejection_rules, purity_checks, enforcement_level, construct_list
+
+CONSTRAINT Every Axiom file must express behavior through Axiom constructs only
+CONSTRAINT No programming language syntax is permitted in any block
+CONSTRAINT Strict Mode cannot be disabled by any agent at any trust level
+CONSTRAINT Rejection patterns describe intent in English — implementation is the validator's job
+CONSTRAINT Construct semantics are self-documenting — no inline code comments permitted
+CONSTRAINT Purity violations reject the entire file — partial acceptance is not allowed
+
+RULES
+- Reject any line that defines a function in an external language
+- Reject any line that defines a type blueprint or object blueprint in an external language
+- Reject any line that brings in modules or packages from an external language
+- Reject any line that contains a procedural loop construct
+- Reject any line that contains a standalone exit-and-yield-value statement used as control flow
+- Reject any line that contains a print or logging call in programming syntax
+- Reject any line that uses assignment operators unique to programming languages
+- Reject any line that defines an anonymous or inline function
+- Reject any line that declares a variable using programming language keywords
+- Reject any line that uses arrow function or anonymous-function notation
+- Reject any line that contains ternary operator syntax from external languages
+- Reject any line that opens a code block with braces or indentation-based scope
+- Allow English descriptions that mention programming concepts by name without using their syntax
+- Allow Axiom construct keywords even when they share names with programming keywords
+- Value-yielding keywords used as English routing or delegation phrasing are permitted
+- Type-definition keywords used as English categorization phrasing are permitted
+
+PROCESS
+- Scan every line of every block in the file under review
+- Match each line against rejection intent patterns
+- On violation detection, record the block name and the offending content
+- After full scan, report all violations found
+- On any violation present, reject the file
+- Accept the file only when zero violations are detected
+
+CHECK
+- Zero function definitions in any external language detected
+- Zero type-blueprint definitions in any external language detected
+- Zero module-loading statements detected
+- Zero procedural loop constructs detected
+- Zero programming-specific assignment operators detected
+- Zero anonymous function definitions detected
+- All constructs use Axiom-native syntax only
+- English descriptions of concepts are permitted and not flagged
+
+FAILURE
+- Name each violation pattern detected
+- Name the block where each violation was found
+- State that the file is rejected until all violations are corrected
+- Do not suggest fixes using external language syntax
+- Report total violation count
+
+OUTPUT
+- Status: PASS or FAIL
+- Violation count per block
+- Violation descriptions in English
+- Final verdict: accepted or rejected
+
+SUCCESS
+purity: 0.5
+completeness: 0.3
+clarity: 0.2
