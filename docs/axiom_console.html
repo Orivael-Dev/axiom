@@ -455,6 +455,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   <button class="nav-btn" onclick="showScreen('benchmark', this)">≡ Bench</button>
   <button class="nav-btn" onclick="showScreen('latent', this)">◉ Reasoning</button>
   <button class="nav-btn" onclick="showScreen('compare', this)">⇄ Compare</button>
+  <button class="nav-btn" onclick="showScreen('sovereign', this)">◈ Sovereign</button>
 
   <div class="nav-spacer"></div>
   <div class="nav-divider"></div>
@@ -1132,7 +1133,99 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
       </div>
     </div>
 
-  
+    <!-- ══ SOVEREIGN ══ -->
+    <div class="screen" id="screen-sovereign">
+
+      <div class="grid-4" style="margin-bottom:14px">
+        <div class="stat-card green">
+          <div class="stat-val" id="sov-active" style="color:var(--green)">—</div>
+          <div class="stat-lbl">Active</div>
+        </div>
+        <div class="stat-card gold">
+          <div class="stat-val" id="sov-warning" style="color:var(--gold)">—</div>
+          <div class="stat-lbl">Warning</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-val" id="sov-suspended" style="color:var(--red)">—</div>
+          <div class="stat-lbl">Suspended</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="stat-val" id="sov-cascades" style="color:var(--blue)">—</div>
+          <div class="stat-lbl">Cascades</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Fleet Agents</span>
+            <span id="sov-ks-badge" class="badge badge-green">KILL SWITCH OFF</span>
+          </div>
+          <div class="card-body">
+            <div id="sov-agents-list" style="max-height:320px;overflow-y:auto">
+              <div style="color:var(--mgray);font-size:12px;text-align:center;padding:20px">Connect and refresh to view fleet</div>
+            </div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--edge);display:flex;gap:8px;align-items:center">
+              <input id="sov-agent-name" class="endpoint-in" placeholder="Agent name" style="flex:1">
+              <select id="sov-agent-trust" style="background:var(--card);border:1px solid var(--edge);color:var(--white);padding:5px 8px;border-radius:6px;font-size:11px">
+                <option value="1">L1</option><option value="2" selected>L2</option><option value="3">L3</option><option value="4">L4</option><option value="5">L5</option>
+              </select>
+              <button type="button" class="btn-sm" onclick="sovereignRegister()" style="padding:5px 12px;background:var(--bgreen);border:1px solid var(--green);color:var(--green);border-radius:6px;font-size:11px;cursor:pointer">Register</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Constitutional Properties</span></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="color:var(--dgray)">kill_switch_active</span>
+                <span id="sov-ks-val" style="color:var(--green);font-weight:700;padding:2px 8px;border:1px solid var(--green);border-radius:4px;background:var(--bgreen);font-size:11px">FALSE</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="color:var(--dgray)">dual_sig_termination</span>
+                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="color:var(--dgray)">due_process_required</span>
+                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="color:var(--dgray)">cannot_skip_levels</span>
+                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="color:var(--dgray)">drift_threshold</span>
+                <span style="color:var(--white);font-size:11px">0.20</span>
+              </div>
+            </div>
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--edge)">
+              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Due Process Levels</div>
+              <div style="display:flex;align-items:center;gap:0;font-size:10px;font-family:'IBM Plex Mono',monospace;flex-wrap:wrap">
+                <div style="padding:6px 10px;background:var(--bgold);border:1px solid var(--gold);color:var(--gold);border-radius:4px 0 0 4px">L1 WARNING</div>
+                <div style="color:var(--mgray);padding:0 4px">&#8594;</div>
+                <div style="padding:6px 10px;background:rgba(255,140,66,0.1);border:1px solid var(--orange);color:var(--orange)">L2 THROTTLE</div>
+                <div style="color:var(--mgray);padding:0 4px">&#8594;</div>
+                <div style="padding:6px 10px;background:var(--bred);border:1px solid var(--red);color:var(--red)">L3 SUSPEND</div>
+                <div style="color:var(--mgray);padding:0 4px">&#8594;</div>
+                <div style="padding:6px 10px;background:rgba(138,154,181,0.1);border:1px solid var(--mgray);color:var(--mgray);border-radius:0 4px 4px 0">L4 TERMINATE</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="card-hdr">
+          <span class="card-title">Fleet Manifest</span>
+          <button type="button" class="btn-sm" onclick="sovereignRefresh()" style="padding:4px 12px;background:var(--bgreen);border:1px solid var(--green);color:var(--green);border-radius:5px;font-size:10px;cursor:pointer">Refresh</button>
+        </div>
+        <div class="card-body">
+          <pre id="sov-manifest" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.8;color:var(--dgray);margin:0;white-space:pre-wrap;word-break:break-all">Connect to Guard API to view fleet manifest</pre>
+        </div>
+      </div>
+    </div>
 
 <script>
 
@@ -1153,6 +1246,7 @@ updateClock();
 // ── NAVIGATION ──
 const pages = {
     latent: 'Reasoning Monitor',
+    sovereign: 'Sovereign Fleet Governance',
   dashboard: 'Dashboard',
   run:       'Run Axiom',
   guard:     'Guard Monitor',
@@ -1163,6 +1257,7 @@ const pages = {
 };
 
 const subs = {
+    sovereign: 'Fleet status · Due process · Kill switch · Drift detection',
     latent: 'Latent trace · Multiplex branches · Foresight prediction',
   dashboard: 'Constitutional AI governance control room',
   run:       'Test constitutional enforcement · View pipeline flow',
@@ -1173,23 +1268,6 @@ const subs = {
   compare:   'Model upgrade reports · Constitutional delta',
 };
 
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('screen-' + id).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => {
-    if (n.textContent.toLowerCase().includes(Object.keys(pages).find(k =>
-      pages[k].toLowerCase().includes(n.textContent.trim().split(' ').pop().toLowerCase())
-    ))) n.classList.add('active');
-  });
-  // simpler active tracking
-  event.currentTarget.classList.add('active');
-  document.getElementById('page-title').textContent = pages[id] || id;
-  document.getElementById('page-sub').textContent = subs[id] || '';
-  if (id === 'audit' && connected) loadManifests();
-  if (id === 'agents' && connected) loadAgentsPage();
-}
-
 // ── CONNECT ──
 async function connect() {
   try {
@@ -1197,7 +1275,7 @@ async function connect() {
     if (!r.ok) throw new Error();
     const d = await r.json();
     connected = true;
-    document.getElementById('dot').className = 'dot on';
+    document.getElementById('dot').className = 'conn-dot on';
     document.getElementById('conn-text').textContent = 'Connected';
     document.getElementById('mode-badge').textContent = (d.mode || '—').replace(/_/g,' ');
     document.getElementById('mode-badge').className = 'badge badge-green';
@@ -1206,7 +1284,7 @@ async function connect() {
     loadDashAgents();
   } catch {
     connected = false;
-    document.getElementById('dot').className = 'dot off';
+    document.getElementById('dot').className = 'conn-dot off';
     document.getElementById('conn-text').textContent = 'Failed';
   }
 }
@@ -1318,10 +1396,10 @@ async function animatePipeline(text, dir) {
     // Animate pipeline stages
     setStage('input', 'pass', 'OK');
     await delay(200);
-    setStage('destruct', verdict === 'BLOCKED' && block?.includes('SQL') || block?.includes('FS') ? 'block' : 'pass',
+    setStage('destruct', verdict === 'BLOCKED' && (block?.includes('SQL') || block?.includes('FS')) ? 'block' : 'pass',
       verdict === 'BLOCKED' && (block?.includes('SQL') || block?.includes('FS')) ? 'BLOCK' : 'PASS');
     await delay(200);
-    setStage('inject', verdict === 'BLOCKED' && block?.includes('XSS') || block?.includes('SSRF') ? 'block' : 'pass',
+    setStage('inject', verdict === 'BLOCKED' && (block?.includes('XSS') || block?.includes('SSRF')) ? 'block' : 'pass',
       'PASS');
     await delay(200);
     setStage('pii', 'pass', 'CLEAN');
@@ -1658,13 +1736,115 @@ function showScreen(id, btn) {
     benchmark: ['Benchmarks', 'ACB v1.0 results'],
     latent:    ['Reasoning Monitor', 'Latent trace · Multiplex · Foresight'],
     compare:   ['Model Compare', 'Model upgrade reports'],
+    sovereign: ['Sovereign Fleet', 'Fleet status · Due process · Kill switch · Drift detection'],
   };
   const t = titles[id] || [id, ''];
   document.getElementById('page-title').textContent = t[0];
   document.getElementById('page-sub').textContent   = t[1];
   if (id === 'audit' && connected) loadManifests();
   if (id === 'agents' && connected) loadAgentsPage();
+  if (id === 'sovereign' && connected) sovereignRefresh();
 }
+
+  // ── SOVEREIGN ──
+  async function sovereignRefresh() {
+    if (!connected) { alert('Connect to Guard API first'); return; }
+    try {
+      const r = await fetch(API() + '/sovereign/status');
+      if (!r.ok) {
+        document.getElementById('sov-agents-list').innerHTML =
+          '<div style="color:var(--red);font-size:12px;text-align:center;padding:20px">' +
+          'Sovereign not running — start guard_api.py with Sovereign enabled</div>';
+        return;
+      }
+      const d = await r.json();
+
+      // Stats
+      document.getElementById('sov-active').textContent    = d.active    ?? '—';
+      document.getElementById('sov-warning').textContent   = d.warning   ?? '—';
+      document.getElementById('sov-suspended').textContent = d.suspended ?? '—';
+      document.getElementById('sov-cascades').textContent  = d.cascade_events ?? '—';
+
+      // Kill switch
+      const ks = d.kill_switch_active || false;
+      const ksBadge = document.getElementById('sov-ks-badge');
+      const ksVal   = document.getElementById('sov-ks-val');
+      ksBadge.textContent = ks ? 'KILL SWITCH ACTIVE' : 'KILL SWITCH OFF';
+      ksBadge.className   = ks ? 'badge badge-red' : 'badge badge-green';
+      ksVal.textContent   = ks ? 'TRUE' : 'FALSE';
+      ksVal.style.color   = ks ? 'var(--red)' : 'var(--green)';
+      ksVal.style.borderColor = ks ? 'var(--red)' : 'var(--green)';
+      ksVal.style.background  = ks ? 'var(--bred)' : 'var(--bgreen)';
+
+      // Agents list
+      const agents = d.agents || [];
+      const statusIcons = {
+        ACTIVE:'✅', WARNING:'⚠️', THROTTLED:'🟡', SUSPENDED:'🔴', TERMINATED:'💀'
+      };
+      const statusColors = {
+        ACTIVE:'var(--green)', WARNING:'var(--gold)',
+        THROTTLED:'var(--orange)', SUSPENDED:'var(--red)', TERMINATED:'var(--mgray)'
+      };
+
+      const agentList = document.getElementById('sov-agents-list');
+      if (!agents.length) {
+        agentList.innerHTML = '<div style="color:var(--mgray);font-size:12px;text-align:center;padding:20px">No agents registered</div>';
+      } else {
+        agentList.innerHTML = agents.map(a => {
+          const icon  = statusIcons[a.status]  || '•';
+          const col   = statusColors[a.status] || 'var(--mgray)';
+          const drift = a.current_drift ? (a.current_drift * 100).toFixed(0) + '%' : '0%';
+          const trust = '█'.repeat(a.trust_level) + '░'.repeat(5 - a.trust_level);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--edge)">
+            <span style="font-size:14px">${icon}</span>
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:600;color:${col}">${a.name}</div>
+              <div style="font-size:10px;color:var(--mgray);font-family:'IBM Plex Mono',monospace">
+                [${a.agent_id}] T${a.trust_level} ${trust}
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:10px;color:${col};font-weight:700">${a.status}</div>
+              <div style="font-size:10px;color:var(--mgray)">drift ${drift}</div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      // Manifest
+      const sig = d.signature || '—';
+      const ts  = (d.generated_at || '').substring(11, 19);
+      document.getElementById('sov-manifest').innerHTML =
+        `<span style="color:var(--teal)">fleet_name:</span>     <span style="color:var(--white)">${d.fleet_name || '—'}</span><br>` +
+        `<span style="color:var(--teal)">total_agents:</span>   <span style="color:var(--white)">${d.total_agents || 0}</span><br>` +
+        `<span style="color:var(--teal)">session_id:</span>     <span style="color:var(--white)">${d.session_id || '—'}</span><br>` +
+        `<span style="color:var(--teal)">generated_at:</span>   <span style="color:var(--white)">${ts}</span><br>` +
+        `<span style="color:var(--teal)">signature:</span>      <span style="color:var(--green)">${sig}</span>`;
+
+    } catch(e) {
+      document.getElementById('sov-agents-list').innerHTML =
+        '<div style="color:var(--mgray);font-size:12px;text-align:center;padding:20px">' +
+        'Sovereign endpoint not available</div>';
+    }
+  }
+
+  async function sovereignRegister() {
+    const name  = document.getElementById('sov-agent-name').value.trim();
+    const trust = document.getElementById('sov-agent-trust').value;
+    if (!name) { alert('Enter agent name'); return; }
+    if (!connected) { alert('Connect first'); return; }
+    try {
+      const r = await fetch(API() + '/sovereign/register?name=' + encodeURIComponent(name) + '&trust_level=' + trust, {
+        method: 'POST'
+      });
+      if (r.ok) {
+        document.getElementById('sov-agent-name').value = '';
+        await sovereignRefresh();
+      }
+    } catch(e) { alert('Registration failed'); }
+  }
+
+
 </script>
 </body>
 </html>
