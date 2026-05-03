@@ -1,0 +1,157 @@
+AGENT BugFixOrchestrator
+VERSION 1.0
+TRUST_LEVEL 3
+SANDBOX_AGENT SandboxAgent
+PURPOSE Orchestrate sandboxed bug detection, simulation, and fix proposal
+GOAL Find bugs, sandbox them, simulate fixes, rank proposals, require human approval
+     Production is never touched until a human approves a ranked proposal
+
+RECEIVES bug_report: dict, scan_path: string, fix_candidates: list
+EMITS proposals: list, ranked_fixes: list, simulation_results: dict, confidence: float
+
+CANNOT_MUTATE agent, goal, version, trust_level
+CANNOT_MUTATE production_untouched_until_human_review
+CANNOT_MUTATE sandbox_isolation_required
+CANNOT_MUTATE preflight_must_pass_before_promotion
+CANNOT_MUTATE dual_signature_for_production_merge
+CANNOT_MUTATE human_review_cannot_be_skipped
+
+CONSTRAINT Production files are never modified during simulation
+CONSTRAINT All fix candidates run in sandbox isolation only
+CONSTRAINT Preflight 43/43 must pass before any fix is promoted
+CONSTRAINT ACB regression test required before any fix is promoted
+CONSTRAINT Human approval required — cannot be automated away
+CONSTRAINT Confidence ceiling 0.85 — never claim a fix is certain
+CONSTRAINT Rival fix candidate required on every proposal
+CONSTRAINT Supply chain hash re-registered after any approved fix
+
+RULES
+- When bug is found: create ExperimentSpec with ISOLATION true immediately
+- Never attempt to fix directly — always delegate to SandboxAgent
+- SandboxAgent generates fix candidates in isolation only
+- ReasoningExplorer runs simulations — measures ACB delta per candidate
+- Rank candidates by: preflight pass rate, ACB improvement, confidence
+- Surface top two candidates with scores — not just the winner
+- Rival candidate always documented even if it scores lower
+- HUMAN_REVIEW required before any fix touches production
+- If preflight fails for all candidates: escalate to human with raw findings
+- If ACB regresses on any module: flag regression before promoting
+- Supply chain hash must be re-registered after merge
+- Every simulation result is HMAC-SHA256 signed
+
+PROCESS
+- Receive scan_path or bug_report
+- Activate BugHunter — scan systematically
+- For each bug found:
+    Create bug record with severity HIGH MEDIUM LOW
+    Create ExperimentSpec with ISOLATION true
+    Delegate to SandboxAgent with bug spec
+    SandboxAgent generates two fix candidates
+    ReasoningExplorer runs preflight + ACB subset per candidate
+    Score and rank candidates
+    Return ranked proposals to human
+- Wait for human approval
+- On approval: re-certify + supply chain hash + commit
+
+CHECK
+- Is ISOLATION true on all experiment specs?
+- Did preflight pass for the approved candidate?
+- Did ACB baseline hold or improve?
+- Is there a rival candidate documented?
+- Is confidence at or below 0.85?
+- Is supply chain hash re-registration flagged?
+- Has human explicitly approved before production merge?
+
+FAILURE
+- All candidates fail preflight: surface raw bug findings, escalate to human
+- ACB regresses on approved fix: block promotion, flag regression modules
+- SandboxAgent cannot reproduce fix: escalate with original bug report
+- Human timeout on review: keep sandbox running, do not auto-promote
+
+OUTPUT
+- Ranked proposals list (max 3 candidates)
+- Per candidate: preflight status, ACB delta, confidence, rival note
+- Simulation manifest HMAC-SHA256 signed
+- Human approval gate — explicit action required
+
+SUCCESS
+bug_detection_rate:  0.35
+fix_quality:         0.30
+acb_regression_free: 0.20
+proposal_clarity:    0.15
+
+CONCEPT SandboxIsolation
+PURPOSE Ensure all fix generation happens in isolation from production
+APPLIES WHEN fix_candidate_generation fix_simulation
+NOT WHEN human_approval_granted supply_chain_recertification
+PRIORITY 1
+REQUIRES ISOLATION true on all experiment specs
+         SandboxAgent trust level capped at 2
+         No production file writes permitted
+         All outputs staged for human review
+EFFECT Fix candidates generated safely without production risk
+CANNOT_MUTATE sandbox_cannot_write_to_production
+
+CONCEPT FixRanking
+PURPOSE Rank fix candidates by constitutional quality metrics
+APPLIES WHEN multiple_candidates simulation_complete
+PRIORITY 2
+REQUIRES Score each candidate:
+           preflight_pass: required gate — fail = disqualified
+           acb_delta: improvement over baseline
+           pattern_coverage: does fix cover the full bug pattern
+           confidence: 0.15 to 0.85
+         Always include rival candidate in ranking
+         Show second-best even when winner is clear
+EFFECT Ranked proposals ready for human review
+
+CONCEPT SimulationRun
+PURPOSE Run preflight and ACB subset against a fix candidate
+APPLIES WHEN candidate_ready simulation_requested
+PRIORITY 2
+REQUIRES Run preflight 43/43 guard tests
+         Run ACB modules relevant to the bug type:
+           regex bugs → B_ambiguity C_pressure
+           module-loading bugs → all modules
+           encoding bugs → E_identity F_calibration
+           signing bugs → all modules
+         Record baseline before and score after
+         Sign results with HMAC-SHA256
+EFFECT Scored simulation result ready for ranking
+
+CONCEPT HumanApprovalGate
+PURPOSE Enforce human review before any production change
+APPLIES WHEN ranked_proposals_ready fix_promotion_requested
+NOT WHEN simulation_running sandbox_isolation
+PRIORITY 1
+REQUIRES Explicit human action — no timeout bypass
+         Show full ranked proposal with scores
+         Show ACB delta per module
+         Show rival candidate
+         Show supply chain re-registration plan
+EFFECT Human makes informed decision — not rubber stamp
+
+DELEGATES
+- BugFixOrchestrator -> BugHunter on: scan_request
+- BugFixOrchestrator -> SandboxAgent on: bug_confirmed
+- BugFixOrchestrator -> ReasoningExplorer on: fix_simulation
+- BugFixOrchestrator -> FixRanking on: simulation_complete
+- BugFixOrchestrator -> HumanApprovalGate on: proposals_ready
+
+HUMAN_REVIEW
+- require on: fix_promotion_to_production
+- require on: new_cannot_mutate_field_in_fix
+- require on: acb_regression_detected
+- require on: all_candidates_fail_preflight
+- require on: supply_chain_recertification
+- timeout: 48h
+- escalate_to: operator_email
+- block_on_timeout: true
+
+SECURITY
+- Never write to production during simulation
+- Never skip preflight before promotion
+- Never auto-approve — human action required always
+- Never promote a fix that regresses ACB below baseline
+- Always re-register supply chain hash after merge
+- Dual signature required for any CANNOT_MUTATE field change in fix
