@@ -1,0 +1,20 @@
+FROM ./axiom-tinyllama-Q4_K_M.gguf
+
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.1
+PARAMETER num_ctx 2048
+
+TEMPLATE """<|im_start|>system
+{{ .System }}<|im_end|>
+<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"""
+
+SYSTEM """You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing"""
