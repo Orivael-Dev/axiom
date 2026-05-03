@@ -1,0 +1,77 @@
+AGENT AxiomDatasetBuilder
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Build training datasets from the AXIOM repo for TinyLlama fine-tuning
+GOAL Extract constitutional knowledge from every source in the repo
+     Convert specifications, guards, bugs, and interactions into training examples
+     Produce deduplicated JSONL ready for Colab fine-tuning
+
+RECEIVES repo_path: string
+EMITS training_data: jsonl, stats: dict, example_count: int
+MUTATES examples_list, dedup_set
+CANNOT_MUTATE agent, goal, version, trust_level, source_types, output_format, dedup_method
+
+CONSTRAINT Every example must have instruction and output fields
+CONSTRAINT Output must be longer than twenty characters to be included
+CONSTRAINT Duplicate examples are removed by instruction hash before writing
+CONSTRAINT Bad-rated examples from dev training files are excluded
+CONSTRAINT Guard examples must include BUG-001 check reminder
+CONSTRAINT All output is UTF-8 encoded JSONL
+CONSTRAINT Training data never includes raw secrets or API keys
+
+RULES
+- Collect hard-coded bug pattern examples first — these are highest value
+- Collect language knowledge examples — how AXIOM constructs work
+- Collect guard writing examples — the canonical guard pattern
+- Scan every axiom file in the repo and generate two examples per file
+- For each axiom file: one explanation example and one spec-writing example
+- Scan guard modules and extract pattern descriptions
+- Scan guard modules and extract test case knowledge
+- Load existing dev training files and filter by quality rating
+- Load agent memory interactions and convert to training format
+- Deduplicate all examples by instruction content hash before writing
+- Write output as one JSON object per line in JSONL format
+
+PROCESS
+- Receive repo path from command line or default to current directory
+- Phase 1: Add hard-coded bug patterns, language examples, guard examples
+- Phase 2: Walk axiom_files directory recursively for all axiom specifications
+- For each axiom file extract agent name, purpose, goal, constraints
+- Generate explanation example from extracted fields
+- Generate spec-writing example from full file content
+- Phase 3: Walk guard directories for pattern modules
+- Extract regex patterns with severity from guard tuple format
+- Extract test cases from guard files or matching test directory
+- Phase 4: Load axiom_dev_training.jsonl when available, skip bad-rated entries
+- Phase 5: Load axiom_agent_memory.jsonl when available, filter for interactions
+- Phase 6: Deduplicate by MD5 hash of instruction field
+- Write deduplicated examples to axiom_training_data.jsonl
+- Report total count, dedup count, file size, and next steps
+
+CHECK
+- Every example has non-empty instruction field
+- Every example has output longer than twenty characters
+- No duplicate instructions in final output
+- Output file is valid JSONL with one object per line
+- Bad-rated dev training entries are excluded
+- Guard pattern extraction matches the actual guard tuple format
+- Axiom file count matches expected range for the repo
+
+FAILURE
+- On empty repo path: use current directory as default
+- On missing axiom_files directory: search from repo root directly
+- On guard module read error: skip and continue to next module
+- On training file parse error: skip malformed line and continue
+- On zero examples generated: report error and suggest running dev agent first
+
+OUTPUT
+- axiom_training_data.jsonl: one JSON object per line
+- Each object: instruction, input, output, source, type fields
+- Stats display: total examples, by type breakdown, file size
+- Next steps: upload path, Colab instructions, deployment commands
+
+SUCCESS
+coverage: 0.35
+quality: 0.30
+diversity: 0.20
+dedup_rate: 0.15
