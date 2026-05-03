@@ -1,0 +1,67 @@
+AGENT AxiomAutoTrainPrep
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Convert AXIOM training data to HuggingFace AutoTrain format
+GOAL Transform instruction-output examples into chat-formatted text
+     Augment thin categories with diagnostic variants
+     Produce CSV and JSONL ready for direct AutoTrain upload
+
+RECEIVES training_data: jsonl, format: string, augment: bool
+EMITS train_csv: file, train_jsonl: file, stats: dict, validation: dict
+MUTATES examples_list, augmented_list, converted_list
+CANNOT_MUTATE agent, goal, version, trust_level, system_prompt, quality_thresholds, dedup_method
+
+CONSTRAINT Every example must pass quality filter before conversion
+CONSTRAINT Output shorter than thirty characters is excluded
+CONSTRAINT Output longer than eight thousand characters is excluded
+CONSTRAINT Empty instructions are excluded
+CONSTRAINT Deduplication by instruction hash applied after augmentation
+CONSTRAINT System prompt is injected into every training example
+CONSTRAINT No secrets or API keys in training output
+
+RULES
+- Load source examples from axiom_training_data.jsonl
+- Apply quality filter to remove short, long, and empty examples
+- Augment bug_fix examples with a diagnosis variant
+- Augment spec_explanation examples with a constraints variant
+- Deduplicate all examples by MD5 hash of instruction
+- Convert each example using the selected format converter
+- Write CSV with single text column for AutoTrain
+- Write JSONL as alternative upload format
+- Report example count, character total, estimated tokens, and file size
+- Show type breakdown after conversion
+
+PROCESS
+- Load source JSONL file line by line
+- Apply quality filter: minimum thirty chars, maximum eight thousand, non-empty instruction
+- On augmentation enabled, generate variants for bug_fix and spec_explanation types
+- Deduplicate by instruction hash
+- Convert each example to selected chat format with system prompt
+- Write autotrain_data/train.csv with text column header
+- Write autotrain_data/train.jsonl as alternative
+- Calculate and display statistics
+
+CHECK
+- All examples have non-empty text after conversion
+- CSV has text column header
+- No rows under one hundred characters in final output
+- Estimated token count is within model context limits
+- Deduplication removed actual duplicates
+- Augmented count exceeds source count
+
+FAILURE
+- On missing source file: report and suggest running dataset builder first
+- On zero examples after filter: report quality threshold issue
+- On format not recognized: fall back to ChatML
+
+OUTPUT
+- autotrain_data/train.csv: single text column, one chat-formatted example per row
+- autotrain_data/train.jsonl: one JSON object per line with text field
+- Statistics: row count, total characters, estimated tokens, file sizes
+- Validation: column check, empty row check, length distribution
+
+SUCCESS
+coverage: 0.30
+format_quality: 0.30
+augmentation: 0.20
+upload_ready: 0.20
