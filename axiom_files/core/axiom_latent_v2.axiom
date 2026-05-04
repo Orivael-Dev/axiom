@@ -1,0 +1,103 @@
+AGENT LatentTraceV2
+VERSION 1.2
+TRUST_LEVEL 2
+PURPOSE Track reasoning trajectory through preflight, mid-chain, and final synthesis stages
+GOAL Capture intent vector evolution across three constitutional reasoning stages
+     Sign every trajectory with tamper-proof keyed hash
+     Maintain backward compatibility with version one consumers
+
+RECEIVES base_intent_vector: list, trajectory: list, hmac_key: bytes, confidence: float
+EMITS manifest: dict, trajectory_hmac: string, canonical_json: string
+MUTATES trajectory_samples, manifest_fields
+CANNOT_MUTATE agent, goal, version, trust_level, stage_order, security_cannot_be_traded_for_latency, confidence_ceiling, encoding_standard
+
+CONSTRAINT Trajectory length must be exactly three samples
+CONSTRAINT Stage order is preflight then mid_chain then final_synthesis — no reordering
+CONSTRAINT Final sample intent vector must equal base intent vector exactly
+CONSTRAINT All stage names must contain only ASCII printable characters
+CONSTRAINT Confidence ceiling is eighty-five percent — never claim higher certainty
+CONSTRAINT Every trajectory is signed with keyed SHA-256 hash producing sixty-four character hex
+CONSTRAINT Signing must call hexdigest explicitly — incomplete signatures are rejected
+CONSTRAINT All string to bytes conversions specify UTF-8 encoding explicitly
+CONSTRAINT When trajectory is absent, output omits trajectory key for version one compatibility
+
+RULES
+- Accept base intent vector and optional trajectory samples
+- When trajectory is present, validate all four invariants before signing
+- Invariant one: trajectory contains exactly three samples
+- Invariant two: stages appear in canonical order — preflight, mid_chain, final_synthesis
+- Invariant three: final sample intent vector matches base intent vector
+- Invariant four: all stage names are ASCII printable only
+- On any invariant violation, raise validation error with specific violation described
+- Sign trajectory using keyed SHA-256 hash with explicit hexdigest finalization
+- Verify signature is exactly sixty-four character hex string after signing
+- On signing failure, raise signing error — do not emit unsigned manifest
+- Cap confidence at eighty-five percent regardless of input value
+- Build manifest with module name, version, timestamp, trajectory hash, and encoding declaration
+- When trajectory is absent, set trajectory_hmac to null and trajectory_present to false
+- Serialize output with deterministic key ordering and ASCII-safe encoding
+
+PROCESS
+- Receive base intent vector, optional trajectory, signing key, and confidence
+- Cap confidence at ceiling value
+- On trajectory present, run all four validation invariants
+- On validation pass, compute canonical bytes from trajectory samples
+- Sign canonical bytes with keyed SHA-256 hash
+- Verify hex digest is sixty-four characters
+- Build manifest with signing result
+- On trajectory absent, build manifest with null trajectory hash
+- Expose both full dict and JSON serialization methods
+
+CHECK
+- Trajectory length is exactly three when present
+- Stage order matches canonical sequence
+- Final intent vector equals base intent vector
+- All stage names are ASCII printable
+- Signature is sixty-four character hex string
+- Confidence does not exceed eighty-five percent
+- Manifest includes module name, version, and encoding declaration
+- Version one consumers receive output without trajectory key when absent
+
+WHEN
+- trajectory_provided: activate TrajectoryValidation
+- trajectory_absent: activate BackwardCompatibility
+- signing_failure: activate SigningError
+- validation_failure: activate ValidationError
+
+FAILURE
+- On trajectory length not three: reject with count mismatch
+- On stage order wrong: reject with expected versus actual stages
+- On intent vector mismatch: reject with vector comparison
+- On non-ASCII stage name: reject with offending stage identified
+- On signing failure: reject with signing error details
+- On hex digest not sixty-four characters: reject as incomplete signature
+
+CONCEPT TrajectoryValidation
+PURPOSE Enforce all four invariants on trajectory samples before signing
+APPLIES WHEN trajectory-present trajectory-not-none
+NOT WHEN trajectory-absent version-one-compat
+PRIORITY 1
+REQUIRES all four invariants pass before signing proceeds
+EFFECT invalid trajectories are rejected before any signature is computed
+
+CONCEPT BackwardCompatibility
+PURPOSE Maintain version one contract when trajectory is not provided
+APPLIES WHEN trajectory-absent trajectory-none
+NOT WHEN trajectory-present
+PRIORITY 2
+REQUIRES output omits trajectory key entirely
+         manifest sets trajectory_hmac to null
+         manifest sets trajectory_present to false
+EFFECT version one consumers process output without modification
+
+OUTPUT
+- Manifest dict with module name, version, timestamp, trajectory hash, confidence
+- Full dict with intent vector, confidence, manifest, and optional trajectory
+- JSON string with deterministic key ordering and ASCII-safe encoding
+- Supply chain hash registration function for post-write verification
+
+SUCCESS
+invariant_enforcement: 0.35
+signing_integrity: 0.30
+backward_compatibility: 0.20
+encoding_safety: 0.15
