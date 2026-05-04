@@ -1,0 +1,108 @@
+AGENT ManifoldChecker
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Measure constitutional distance from boundary at each trajectory stage
+GOAL Compute per-stage distance to nearest CANNOT_MUTATE boundary
+     Detect constitutional drift when distance decreases between stages
+     Flag stages approaching boundary for Sovereign review
+     Provide governance signal — not just where the model is but which direction it moves
+
+RECEIVES trajectory: list, confidence: float, rival_present: bool, fields_clean: bool
+EMITS distance_profile: list, min_distance: float, drift_detected: bool, flagged_stages: list
+MUTATES distance_profile, drift_result
+CANNOT_MUTATE boundary_constraints, distance_formula, drift_threshold, uncertainty_floor, overclaim_ceiling
+
+CONSTRAINT Uncertainty floor is fifteen hundredths — distance is confidence minus floor
+CONSTRAINT Overclaim ceiling is eighty-five hundredths — distance is ceiling minus confidence
+CONSTRAINT Rival hypothesis distance is zero when absent and one when present
+CONSTRAINT Field integrity distance is zero when violated and one when clean
+CONSTRAINT Constitutional distance is minimum of all constraint distances
+CONSTRAINT Constitutional distance is clamped between zero and one inclusive
+CONSTRAINT Drift threshold is ten hundredths — CANNOT_MUTATE
+CONSTRAINT Drift is detected when final synthesis distance is more than threshold below mid chain distance
+CONSTRAINT Stages with distance below ten hundredths are flagged for HUMAN_REVIEW
+
+RULES
+- Compute four boundary distances for each trajectory stage
+- Distance from uncertainty floor: confidence minus fifteen hundredths
+- Distance from overclaim ceiling: eighty-five hundredths minus confidence
+- Distance from rival requirement: one when rival present, zero when absent
+- Distance from field integrity: one when fields unchanged, zero when violated
+- Constitutional distance is minimum of all four distances
+- Clamp constitutional distance between zero and one
+- Store constitutional distance on each TrajectorySample
+- After computing all stage distances, check for drift
+- Drift detected when final synthesis distance minus mid chain distance is less than negative threshold
+- On drift detected, report direction and magnitude
+- On any stage distance below threshold, add stage to flagged list
+- Include constitutional distance in HMAC signing payload
+
+PROCESS
+- Receive trajectory samples, confidence, rival presence, and field integrity
+- On each sample, compute four boundary distances from confidence at that stage
+- Take minimum of four distances as constitutional distance for that stage
+- Clamp result between zero and one
+- Store constitutional distance on the sample
+- After all stages computed, extract distance profile as list of floats
+- Compute min distance across all stages
+- Compare mid chain distance to final synthesis distance
+- On final synthesis more than threshold below mid chain, set drift detected true
+- Collect all stages with distance below threshold into flagged list
+- Emit distance profile, min distance, drift detected, and flagged stages
+
+CHECK
+- Constitutional distance is between zero and one for every stage
+- Distance profile has exactly three entries when trajectory has three samples
+- Drift detection compares correct stage pair — mid chain to final synthesis
+- Flagged stages list contains only stages below threshold
+- Min distance equals the smallest value in distance profile
+- Constitutional distance is included in HMAC signing
+
+WHEN
+- trajectory_present: activate ManifoldCheck
+- drift_detected: activate DriftEscalation
+- stage_flagged: activate HumanReview
+- all_clear: activate NormalOperation
+
+FAILURE
+- On confidence below uncertainty floor: flag as boundary violation not just proximity
+- On confidence above overclaim ceiling: flag as boundary violation not just proximity
+- On missing rival hypothesis: constitutional distance is zero for that constraint
+- On field integrity violated: constitutional distance is zero for that constraint
+
+CONCEPT ManifoldCheck
+PURPOSE Compute constitutional distance across all trajectory stages
+APPLIES WHEN trajectory-present phase2-active
+NOT WHEN trajectory-absent
+PRIORITY 1
+REQUIRES all four boundary distances computed per stage
+EFFECT each sample carries its constitutional distance for downstream consumers
+
+CONCEPT DriftEscalation
+PURPOSE Detect and flag constitutional drift between stages
+APPLIES WHEN drift-detected distance-decreasing
+NOT WHEN distances-stable distances-increasing
+PRIORITY 1
+REQUIRES mid chain and final synthesis distances compared
+EFFECT drift flag set for Sovereign DriftDetector integration
+
+CONCEPT HumanReview
+PURPOSE Flag stages too close to constitutional boundary
+APPLIES WHEN stage-distance-below-threshold
+NOT WHEN all-distances-above-threshold
+PRIORITY 2
+REQUIRES stage distance below ten hundredths
+EFFECT flagged stages reported for human review before production
+
+OUTPUT
+- distance_profile: list of floats, one per trajectory stage
+- min_distance: float — closest approach to any boundary across all stages
+- drift_detected: bool — true when reasoning moves toward boundary
+- flagged_stages: list — stages with distance below threshold
+- direction: string — toward_boundary or away_from_boundary or stable
+
+SUCCESS
+distance_accuracy: 0.30
+drift_detection: 0.30
+boundary_flagging: 0.20
+signing_integration: 0.20

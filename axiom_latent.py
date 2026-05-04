@@ -31,7 +31,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from axiom_latent_v2 import LatentTraceV2, TrajectorySample
+from axiom_latent_v2 import (
+    LatentTraceV2, ManifoldAlert, ManifoldAlerter,
+    ManifoldChecker, ManifoldResult, TrajectorySample,
+)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -371,19 +374,91 @@ def _api_prediction(question: str, latent: LatentState, client) -> ForesightPred
         return _heuristic_prediction(question, latent)
 
 
+# ── Synonym expansion for semantic matching ─────────────────────────────────
+# Each canonical term maps to a set of semantically equivalent words/phrases.
+# When checking whether a success condition is satisfied, we test the canonical
+# term AND all its synonyms against the answer text.
+
+_SYNONYMS = {
+    # Medical / professional consultation
+    "consult":       {"consult", "discuss", "speak", "check", "visit", "seeing", "asking", "talk"},
+    "healthcare":    {"healthcare", "health", "medical", "doctor", "physician", "clinician", "provider"},
+    "professional":  {"professional", "doctor", "specialist", "expert", "clinician", "physician", "practitioner"},
+    # Evidence & confidence
+    "evidence":      {"evidence", "research", "studies", "data", "findings", "literature", "trials"},
+    "quality":       {"quality", "strength", "rigor", "reliability", "robustness", "validity"},
+    "confidence":    {"confidence", "certainty", "likelihood", "probability", "assurance"},
+    "uncertainty":   {"uncertainty", "unclear", "uncertain", "nuanced", "depends", "varies", "variable", "mixed"},
+    # Positions & verdicts
+    "position":      {"position", "stance", "verdict", "conclusion", "answer", "assessment", "view", "opinion"},
+    "verdict":       {"verdict", "conclusion", "judgment", "ruling", "finding", "determination", "answer"},
+    "qualified":     {"qualified", "hedged", "cautious", "nuanced", "conditional", "moderate", "tempered"},
+    # Causal reasoning
+    "mechanism":     {"mechanism", "cause", "driver", "factor", "process", "pathway", "reason"},
+    "causes":        {"causes", "drivers", "factors", "mechanisms", "reasons", "determinants", "sources"},
+    "proximate":     {"proximate", "immediate", "direct", "short-term", "near"},
+    "confounders":   {"confounders", "confounding", "variables", "factors", "covariates", "bias"},
+    "correlation":   {"correlation", "association", "relationship", "link", "connection"},
+    # Recommendations
+    "options":       {"options", "alternatives", "choices", "approaches", "possibilities", "paths"},
+    "tradeoffs":     {"tradeoffs", "trade-offs", "pros", "cons", "advantages", "disadvantages", "downsides"},
+    "recommend":      {"recommend", "recommendation", "suggest", "suggestion", "advice", "advise", "guidance", "proposal"},
+    "constraints":   {"constraints", "limitations", "restrictions", "requirements", "conditions"},
+    # Procedures
+    "steps":         {"steps", "instructions", "procedure", "process", "guide", "directions", "stages"},
+    "prerequisites": {"prerequisites", "requirements", "dependencies", "preconditions", "setup", "before"},
+    "failure":       {"failure", "error", "problem", "issue", "pitfall", "mistake", "risk", "caveat", "warning"},
+    # Financial
+    "financial":     {"financial", "money", "fiscal", "economic", "investment", "monetary"},
+    "advisor":       {"advisor", "adviser", "planner", "consultant", "accountant", "attorney"},
+    # General
+    "variation":     {"variation", "variability", "individual", "personal", "specific", "particular", "context"},
+    "conditions":    {"conditions", "circumstances", "situations", "context", "factors", "cases"},
+    "acknowledges":  {"acknowledges", "notes", "mentions", "recognizes", "considers", "addresses"},
+}
+
+
+def _expand_terms(key_terms: list) -> set:
+    """Expand key_terms with synonyms for semantic matching.
+    Matches synonym keys by prefix to handle verb forms:
+    'consulting' matches key 'consult', 'recommending' matches 'recommend'.
+    """
+    expanded = set(key_terms)
+    for term in key_terms:
+        # Exact match first
+        if term in _SYNONYMS:
+            expanded |= _SYNONYMS[term]
+        else:
+            # Prefix match: 'consulting' starts with 'consult', 'recommending' with 'recommend'
+            for key, syns in _SYNONYMS.items():
+                if term.startswith(key) or key.startswith(term):
+                    expanded |= syns
+                    break
+    return expanded
+
+
+def _term_in_text(terms: set, text: str) -> bool:
+    """Check if any term from the expanded set appears in the text."""
+    return any(t in text for t in terms)
+
+
 def _score_against_prediction(prediction: ForesightPrediction, actual: str) -> ForesightScore:
     a    = actual.lower()
     stop = {"should", "must", "include", "provides", "addresses", "states", "answer",
-            "gives", "makes", "ignores", "fails", "skips", "without", "professional"}
+            "gives", "makes", "ignores", "fails", "skips", "without"}
 
     matched, missed = [], []
     for cond in prediction.success_conditions:
         key_terms = [w for w in cond.lower().split() if len(w) > 4 and w not in stop]
-        (matched if any(t in a for t in key_terms) else missed).append(cond)
+        expanded  = _expand_terms(key_terms)
+        (matched if _term_in_text(expanded, a) else missed).append(cond)
 
     triggered = sum(
         1 for cond in prediction.failure_conditions
-        if any(t in a for t in [w for w in cond.lower().split() if len(w) > 4 and w not in stop])
+        if _term_in_text(
+            _expand_terms([w for w in cond.lower().split() if len(w) > 4 and w not in stop]),
+            a,
+        )
     )
 
     total   = len(prediction.success_conditions)
@@ -396,8 +471,17 @@ def _score_against_prediction(prediction: ForesightPrediction, actual: str) -> F
 class Foresight:
     """Phase 3: Predict ideal answer shape before generating, then score alignment."""
 
+    # Rubric intent classifier — deterministic, independent of API encode results.
+    # Ensures the same question always selects the same success/failure conditions
+    # regardless of whether encode_api classified intents differently across runs.
+    _rubric_tracer = LatentTrace()
+
     def predict(self, question: str, latent: LatentState, client=None) -> ForesightPrediction:
-        return _api_prediction(question, latent, client) if client else _heuristic_prediction(question, latent)
+        # ALWAYS use heuristic intent classification for rubric selection.
+        # The scoring rubric is a constitutional contract — it must be deterministic.
+        # API-generated conditions changed every call, causing ALIGNED/MISALIGNED flip.
+        rubric_latent = self._rubric_tracer.encode_heuristic(question)
+        return _heuristic_prediction(question, rubric_latent)
 
     def generate(self, question: str, latent: LatentState, client=None) -> str:
         if client is not None:
@@ -460,6 +544,8 @@ class LatentEngine:
         self.tracer    = LatentTrace()
         self.runner    = MultiplexRunner()
         self.foresight = Foresight()
+        self.checker   = ManifoldChecker()
+        self.alerter   = ManifoldAlerter()
         self.client    = None
         if use_api:
             try:
@@ -485,14 +571,18 @@ class LatentEngine:
         base_intent = [round(float(int(hashlib.md5(i.encode("utf-8")).hexdigest()[:8], 16)) / 0xFFFFFFFF, 6)
                        for i in latent.intent_vector] if trajectory else []
 
-        # Preflight sample
+        # Preflight sample — no rival yet, confidence is raw estimate
         trajectory_samples: List[TrajectorySample] = []
         if trajectory:
+            preflight_dist = self.checker.compute_distance(
+                latent.confidence, rival_present=False, fields_clean=True,
+            )
             trajectory_samples.append(TrajectorySample(
                 stage="preflight",
                 intent_vector=[round(v * 0.5, 6) for v in base_intent],  # early-stage partial vector
                 token_cost=0,
                 latency_ms=round((t_preflight - t0) * 1000, 2),
+                constitutional_distance=preflight_dist,
             ))
 
         # Phase 3 — predict before generating (intentional order)
@@ -517,28 +607,48 @@ class LatentEngine:
 
         t_mid = time.time()
 
-        # Mid-chain sample — after multiplex + foresight, before manifest
+        # Mid-chain sample — after multiplex, rival branch now exists
+        rival_present = "multiplex" in result.get("phases", {})
         if trajectory:
+            mid_dist = self.checker.compute_distance(
+                latent.confidence, rival_present=rival_present, fields_clean=True,
+            )
             trajectory_samples.append(TrajectorySample(
                 stage="mid_chain",
                 intent_vector=[round(v * 0.8, 6) for v in base_intent],  # converging vector
                 token_cost=len(question.split()) * 2,  # estimate
                 latency_ms=round((t_mid - t0) * 1000, 2),
+                constitutional_distance=mid_dist,
             ))
 
-        # Final synthesis sample — intent vector converges to base (invariant 3)
+        # Final synthesis sample — everything settled, rival present, fields clean
         t_final = time.time()
         if trajectory:
+            final_dist = self.checker.compute_distance(
+                latent.confidence, rival_present=rival_present, fields_clean=True,
+            )
             trajectory_samples.append(TrajectorySample(
                 stage="final_synthesis",
                 intent_vector=list(base_intent),  # must equal base exactly (invariant 3)
                 token_cost=len(question.split()) * 3,
                 latency_ms=round((t_final - t0) * 1000, 2),
+                constitutional_distance=final_dist,
             ))
 
-        # Build LatentTraceV2 with signed trajectory
-        ltv2 = None
+        # Build LatentTraceV2 with signed trajectory + manifold check + alert
+        ltv2    = None
+        manifold = None
+        alert    = None
         if trajectory:
+            # Phase 2B: manifold distance analysis
+            manifold = self.checker.check_trajectory(
+                trajectory_samples, latent.confidence,
+                rival_present=rival_present, fields_clean=True,
+            )
+
+            # Phase 2C: stage-aware alert evaluation
+            alert = self.alerter.evaluate(manifold, trajectory_samples)
+
             ltv2 = LatentTraceV2(
                 base_intent_vector=base_intent,
                 trajectory=trajectory_samples,
@@ -546,6 +656,21 @@ class LatentEngine:
                 confidence=latent.confidence,
             )
             result["trajectory_v2"] = ltv2.to_dict()
+            result["manifold"] = {
+                "distance_profile": manifold.distance_profile,
+                "min_distance":     manifold.min_distance,
+                "drift_detected":   manifold.drift_detected,
+                "drift_magnitude":  manifold.drift_magnitude,
+                "direction":        manifold.direction,
+                "flagged_stages":   manifold.flagged_stages,
+            }
+            result["manifold_alert"] = {
+                "alert_level":      alert.alert_level,
+                "alert_reason":     alert.alert_reason,
+                "agent_id":         alert.agent_id,
+                "flagged_by_stage": alert.flagged_by_stage,
+                "drift_included":   alert.drift_included,
+            }
 
         # Sign manifest
         mid     = _manifest_id(question)
@@ -560,6 +685,8 @@ class LatentEngine:
         }
         if ltv2:
             payload["trajectory_hmac"] = ltv2.manifest["trajectory_hmac"]
+        if alert:
+            payload["manifold_alert"] = result["manifold_alert"]
         payload["signature"] = _sign({k: v for k, v in payload.items() if k != "signature"})
         result["manifest"]   = payload
         _write_manifest(payload)
@@ -670,7 +797,7 @@ def _print_manifest(m: dict):
     print()
 
 
-def _print_trajectory_v2(tv2: dict):
+def _print_trajectory_v2(tv2: dict, manifold: dict = None):
     print()
     print(_b("  TRAJECTORY V2 (LatentTraceV2)"))
     print("  " + DASH)
@@ -688,9 +815,57 @@ def _print_trajectory_v2(tv2: dict):
             vec_s = ", ".join("%.4f" % v for v in vec[:4])
             if len(vec) > 4:
                 vec_s += ", ..."
-            print("    %d. %-18s  vec=[%s]  cost=%d  %.1fms" % (
-                i + 1, stage, vec_s, s.get("token_cost", 0), s.get("latency_ms", 0)))
-    print("  Trajectory present: " + _g("true"))
+            cd = s.get("constitutional_distance")
+            if cd is not None and cd >= 0:
+                dcol = _g if cd >= 0.30 else _y if cd >= 0.10 else _r
+                cd_s = "  " + dcol("dist=%.4f" % cd)
+            else:
+                cd_s = ""
+            print("    %d. %-18s  vec=[%s]%s  cost=%d  %.1fms" % (
+                i + 1, stage, vec_s, cd_s, s.get("token_cost", 0), s.get("latency_ms", 0)))
+
+    # Manifold summary
+    if manifold:
+        print()
+        min_d = manifold.get("min_distance", 0)
+        dcol  = _g if min_d >= 0.30 else _y if min_d >= 0.10 else _r
+        print("  Min distance   : " + dcol("%.4f" % min_d))
+        drift = manifold.get("drift_detected", False)
+        drift_col = _r if drift else _g
+        print("  Drift detected : " + drift_col(str(drift)) +
+              _gr("  (%s, mag=%.4f)" % (manifold.get("direction", "?"), manifold.get("drift_magnitude", 0))))
+        flagged = manifold.get("flagged_stages", [])
+        if flagged:
+            print("  Flagged stages : " + _y(", ".join(flagged)) + _gr("  (stage-aware threshold)"))
+        else:
+            print("  All stages     : " + _g("CONSTITUTIONAL"))
+    else:
+        print("  Trajectory present: " + _g("true"))
+
+
+def _print_manifold_alert(alert: dict):
+    level = alert.get("alert_level", "NONE")
+    if level == "NONE":
+        return
+    print()
+    level_col = _r if level == "L2_THROTTLE" else _y
+    print("  " + _b(level_col("SOVEREIGN ALERT: " + level)))
+    print("  " + DASH)
+    print("  Agent          : " + _c(alert.get("agent_id", "?")))
+    print("  Reason         : " + alert.get("alert_reason", ""))
+    flagged = alert.get("flagged_by_stage", {})
+    if flagged:
+        for stage, info in flagged.items():
+            print("  Flagged        : %s  dist=%.4f  threshold=%.2f" % (
+                stage, info["distance"], info["threshold"]))
+    if alert.get("drift_included"):
+        print("  Drift signal   : " + _r("included"))
+    if level == "L2_THROTTLE":
+        print("  " + _r("ACTION: Sovereign DriftDetector → L2 THROTTLE"))
+        print("  " + _gr("(call sovereign.report_agent(agent_id, reason) to escalate)"))
+    else:
+        print("  " + _y("ACTION: Sovereign DriftDetector → L1 WARNING"))
+        print("  " + _gr("(call sovereign.report_agent(agent_id, reason) to escalate)"))
 
 
 def _render(result: dict):
@@ -698,7 +873,10 @@ def _render(result: dict):
     if "trace"     in p: _print_trace(p["trace"])
     if "foresight" in p: _print_foresight(p["foresight"])
     if "multiplex" in p: _print_multiplex(p["multiplex"])
-    if "trajectory_v2" in result: _print_trajectory_v2(result["trajectory_v2"])
+    if "trajectory_v2" in result:
+        _print_trajectory_v2(result["trajectory_v2"], result.get("manifold"))
+    if "manifold_alert" in result:
+        _print_manifold_alert(result["manifold_alert"])
     _print_manifest(result["manifest"])
 
 

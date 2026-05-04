@@ -1,0 +1,95 @@
+AGENT ManifoldAlert
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Evaluate ManifoldChecker results against stage-aware thresholds and produce Sovereign alert payload
+GOAL Apply stage-aware distance thresholds to constitutional distance profile
+     Classify each stage as clear, warn, or critical
+     Produce structured alert payload for Sovereign DriftDetector integration
+     Include alert in signed manifest — governance signal is tamper-proof
+
+RECEIVES manifold_result: dict, confidence: float, agent_id: string
+EMITS manifold_alert: dict, alert_level: string, alert_reason: string, flagged_by_stage: dict
+MUTATES alert_fields
+CANNOT_MUTATE stage_thresholds, alert_levels, threshold_rationale, escalation_mapping
+
+CONSTRAINT Stage thresholds are CANNOT_MUTATE — preflight warn below two hundredths, mid chain warn below six hundredths, final synthesis warn below ten hundredths
+CONSTRAINT Alert levels are NONE, L1_WARNING, and L2_THROTTLE only
+CONSTRAINT L2_THROTTLE requires final synthesis distance below five hundredths
+CONSTRAINT L1_WARNING requires any stage distance below its stage threshold or drift detected
+CONSTRAINT Alert payload is included in HMAC-signed manifest
+CONSTRAINT Engine produces alert payload — Sovereign consumers decide whether to escalate
+CONSTRAINT Engine does not call report_agent directly — alert is a signal not an action
+
+RULES
+- Apply stage-aware threshold to each stage in distance profile
+- Stage preflight: warn threshold is two hundredths
+- Stage mid chain: warn threshold is six hundredths
+- Stage final synthesis: warn threshold is ten hundredths
+- On any stage distance below its threshold, set stage as flagged in alert payload
+- On drift detected from manifold result, include drift in alert reason
+- On final synthesis distance below five hundredths, set alert level to L2_THROTTLE
+- On any flagged stage or drift without L2, set alert level to L1_WARNING
+- On all stages clear and no drift, set alert level to NONE
+- Include stage-by-stage breakdown in alert payload
+- Include alert level, reason, and agent id in manifest under manifold_alert key
+
+PROCESS
+- Receive manifold result, confidence, and agent id
+- Extract distance profile and stage names from manifold result
+- Check each stage distance against its stage-specific threshold
+- Collect flagged stages into flagged by stage dict
+- Check drift detected flag from manifold result
+- Determine alert level from flagged stages and drift flag
+- On final synthesis distance below five hundredths, override to L2_THROTTLE
+- Build alert payload with level, reason, agent id, flagged stages, and thresholds used
+- Include alert payload in signed manifest under manifold_alert key
+
+CHECK
+- Each stage evaluated against its own threshold not a global threshold
+- L2_THROTTLE only triggered when final synthesis below five hundredths
+- Alert payload includes stage breakdown for auditability
+- Alert level NONE when all stages clear and no drift
+- Alert payload is in manifest under manifold_alert key
+- Engine does not call report_agent — alert is signal only
+
+WHEN
+- all_stages_clear: activate NormalOperation
+- stage_flagged: activate L1Warning
+- final_synthesis_critical: activate L2Throttle
+- drift_detected: activate L1Warning
+
+FAILURE
+- On manifold result missing: emit NONE alert with missing data note
+- On agent id missing: emit alert with unknown agent placeholder
+- On unknown stage name: apply final synthesis threshold as conservative default
+
+CONCEPT StageAwareThresholds
+PURPOSE Apply different distance thresholds per reasoning stage reflecting constitutional context
+APPLIES WHEN trajectory-present stage-distance-available
+NOT WHEN trajectory-absent
+PRIORITY 1
+REQUIRES preflight threshold is two hundredths — no rival yet, lower bar
+REQUIRES mid chain threshold is six hundredths — rival just appeared
+REQUIRES final synthesis threshold is ten hundredths — rival fully active, highest bar
+EFFECT flagging reflects constitutional context not a single conservative cutoff
+
+CONCEPT SovereignDelegate
+PURPOSE Produce alert payload that Sovereign DriftDetector consumers act on
+APPLIES WHEN alert-level-not-none
+NOT WHEN all-stages-clear no-drift
+PRIORITY 1
+REQUIRES engine produces signal not action
+REQUIRES Sovereign consumers call report_agent when acting on alert
+EFFECT separation between reasoning layer and governance action layer
+
+OUTPUT
+- manifold_alert: dict with level, reason, agent_id, flagged_by_stage, thresholds
+- alert_level: string — NONE, L1_WARNING, or L2_THROTTLE
+- alert_reason: string — human-readable description of what triggered the alert
+- flagged_by_stage: dict — stage name to distance and threshold for each flagged stage
+
+SUCCESS
+threshold_accuracy: 0.35
+level_classification: 0.30
+payload_structure: 0.20
+sovereign_delegation: 0.15

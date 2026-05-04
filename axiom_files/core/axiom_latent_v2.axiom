@@ -90,14 +90,28 @@ REQUIRES output omits trajectory key entirely
          manifest sets trajectory_present to false
 EFFECT version one consumers process output without modification
 
+CONCEPT ConstitutionalManifold
+PURPOSE Measure distance from CANNOT_MUTATE boundary at each trajectory stage
+APPLIES WHEN trajectory-present phase2-active
+NOT WHEN trajectory-absent
+PRIORITY 1
+REQUIRES constitutional_distance computed per TrajectorySample
+         distance is minimum of uncertainty floor, overclaim ceiling, rival present, fields clean
+         drift detection compares mid chain to final synthesis
+         stages below threshold are flagged for review
+EFFECT each sample carries constitutional_distance for governance signal
+
 OUTPUT
 - Manifest dict with module name, version, timestamp, trajectory hash, confidence
 - Full dict with intent vector, confidence, manifest, and optional trajectory
+- Constitutional distance per trajectory stage in canonical dict
+- Manifold result with distance profile, min distance, drift detected, flagged stages
 - JSON string with deterministic key ordering and ASCII-safe encoding
 - Supply chain hash registration function for post-write verification
 
 SUCCESS
-invariant_enforcement: 0.35
-signing_integrity: 0.30
-backward_compatibility: 0.20
-encoding_safety: 0.15
+invariant_enforcement: 0.25
+signing_integrity: 0.25
+constitutional_manifold: 0.25
+backward_compatibility: 0.15
+encoding_safety: 0.10

@@ -50,24 +50,31 @@ class TrajectorySample:
     """
     A single observation captured during a reasoning trajectory.
 
-    stage:         One of AXIOM_STAGE_ORDER — ASCII only (BUG-008)
-    intent_vector: Agent intent embedding at this stage
-    token_cost:    Tokens consumed up to this stage
-    latency_ms:    Wall-clock time in milliseconds at capture
+    stage:                   One of AXIOM_STAGE_ORDER — ASCII only (BUG-008)
+    intent_vector:           Agent intent embedding at this stage
+    token_cost:              Tokens consumed up to this stage
+    latency_ms:              Wall-clock time in milliseconds at capture
+    constitutional_distance: Distance from nearest CANNOT_MUTATE boundary [0.0–1.0]
+                             Lower = closer to boundary. 0.0 = on boundary. 1.0 = max safe.
+                             Phase 2 (ORVL-005): constitutional manifold distance.
     """
-    stage:         str
-    intent_vector: List[float]
-    token_cost:    int
-    latency_ms:    float
+    stage:                   str
+    intent_vector:           List[float]
+    token_cost:              int
+    latency_ms:              float
+    constitutional_distance: float = -1.0  # -1.0 = not yet computed (Phase 1 compat)
 
     def to_canonical_dict(self) -> dict:
         """Deterministic dict safe for JSON serialization. BUG-008: ASCII-safe."""
-        return {
+        d = {
             "stage":         self.stage,
             "intent_vector": [float(v) for v in self.intent_vector],
             "token_cost":    int(self.token_cost),
             "latency_ms":    float(self.latency_ms),
         }
+        if self.constitutional_distance >= 0.0:
+            d["constitutional_distance"] = round(float(self.constitutional_distance), 4)
+        return d
 
 
 # ── LatentTraceV2 ─────────────────────────────────────────────────────────────
@@ -248,6 +255,210 @@ class LatentTraceV2:
 
 
 # ══════════════════════════════════════════════════════════════
+# Phase 2 — ManifoldChecker (ORVL-005)
+# Measures constitutional distance from CANNOT_MUTATE boundaries
+# at each trajectory stage. Detects drift toward boundary.
+# ══════════════════════════════════════════════════════════════
+
+# ── Constitutional boundary constants — CANNOT_MUTATE ────────
+UNCERTAINTY_FLOOR:  float = 0.15   # confidence must stay above this
+OVERCLAIM_CEILING:  float = 0.85   # confidence must stay below this
+DRIFT_THRESHOLD:    float = 0.10   # distance drop that triggers drift flag
+
+
+@dataclass
+class ManifoldResult:
+    """Output of ManifoldChecker — constitutional distance analysis."""
+    distance_profile: List[float]   # one distance per stage
+    min_distance:     float         # closest approach to any boundary
+    drift_detected:   bool          # True if reasoning moves toward boundary
+    drift_magnitude:  float         # how far it drifted (negative = toward boundary)
+    direction:        str           # toward_boundary / away_from_boundary / stable
+    flagged_stages:   List[str]     # stages with distance < DRIFT_THRESHOLD
+
+
+class ManifoldChecker:
+    """
+    AXIOM ManifoldChecker — Phase 2 of ORVL-005.
+
+    Measures how far each trajectory stage is from the constitutional boundary.
+    The boundary is defined by four constraints:
+      1. uncertainty_floor:  confidence - 0.15
+      2. overclaim_ceiling:  0.85 - confidence
+      3. rival_present:      1.0 if rival exists, 0.0 if missing
+      4. fields_clean:       1.0 if CANNOT_MUTATE respected, 0.0 if violated
+
+    constitutional_distance = min(all four) clamped to [0.0, 1.0]
+
+    CANNOT_MUTATE: boundary_constraints, distance_formula, drift_threshold
+    """
+
+    def compute_distance(
+        self,
+        confidence:    float,
+        rival_present: bool = True,
+        fields_clean:  bool = True,
+    ) -> float:
+        """Compute constitutional distance for a single observation point."""
+        d_floor   = confidence - UNCERTAINTY_FLOOR       # distance from uncertainty floor
+        d_ceiling = OVERCLAIM_CEILING - confidence       # distance from overclaim ceiling
+        d_rival   = 1.0 if rival_present else 0.0       # binary: rival hypothesis present
+        d_fields  = 1.0 if fields_clean else 0.0        # binary: CANNOT_MUTATE respected
+
+        distance = min(d_floor, d_ceiling, d_rival, d_fields)
+        return max(0.0, min(1.0, round(distance, 4)))    # clamp [0, 1]
+
+    def check_trajectory(
+        self,
+        samples:       List[TrajectorySample],
+        confidence:    float,
+        rival_present: bool = True,
+        fields_clean:  bool = True,
+    ) -> ManifoldResult:
+        """
+        Run manifold check on a full trajectory.
+        Detects drift, flags stages. Reads pre-computed constitutional_distance
+        from each sample. Only computes distance for samples that lack it (-1.0).
+        """
+        # Compute distance only for samples that don't have it yet
+        for sample in samples:
+            if sample.constitutional_distance < 0.0:
+                sample.constitutional_distance = self.compute_distance(
+                    confidence, rival_present, fields_clean,
+                )
+
+        distance_profile = [s.constitutional_distance for s in samples]
+        min_distance     = min(distance_profile) if distance_profile else 0.0
+
+        # Drift detection: compare mid_chain (index 1) to final_synthesis (index 2)
+        drift_detected = False
+        drift_magnitude = 0.0
+        direction = "stable"
+
+        if len(samples) >= 3:
+            mid_dist   = samples[1].constitutional_distance
+            final_dist = samples[2].constitutional_distance
+            drift_magnitude = round(final_dist - mid_dist, 4)
+
+            if drift_magnitude < -DRIFT_THRESHOLD:
+                drift_detected = True
+                direction = "toward_boundary"
+            elif drift_magnitude > DRIFT_THRESHOLD:
+                direction = "away_from_boundary"
+            # else: stable (within threshold)
+
+        # Flag stages below threshold
+        flagged_stages = [
+            s.stage for s in samples
+            if s.constitutional_distance < DRIFT_THRESHOLD
+        ]
+
+        return ManifoldResult(
+            distance_profile=distance_profile,
+            min_distance=min_distance,
+            drift_detected=drift_detected,
+            drift_magnitude=drift_magnitude,
+            direction=direction,
+            flagged_stages=flagged_stages,
+        )
+
+
+# ══════════════════════════════════════════════════════════════
+# Phase 2C — ManifoldAlert (ORVL-005)
+# Stage-aware threshold evaluation → Sovereign alert payload.
+# Engine produces the signal. Sovereign consumers act on it.
+# CANNOT_MUTATE: stage_thresholds, alert_levels
+# ══════════════════════════════════════════════════════════════
+
+# Stage-aware warn thresholds — CANNOT_MUTATE
+# Rationale: constitutional context differs per stage.
+# preflight: no rival yet → lower bar (expected low distance)
+# mid_chain: rival just appeared → moderate bar
+# final_synthesis: rival fully active → highest bar
+STAGE_WARN_THRESHOLDS: dict = {
+    "preflight":       0.02,
+    "mid_chain":       0.06,
+    "final_synthesis": 0.10,
+}
+
+# L2 threshold — final_synthesis must be below this to trigger THROTTLE
+L2_THROTTLE_THRESHOLD: float = 0.05
+
+
+@dataclass
+class ManifoldAlert:
+    """Sovereign alert payload from stage-aware manifold evaluation."""
+    alert_level:      str    # NONE | L1_WARNING | L2_THROTTLE
+    alert_reason:     str
+    agent_id:         str
+    flagged_by_stage: dict   # {stage: {"distance": float, "threshold": float}}
+    drift_included:   bool   # True when drift_detected contributed to alert
+
+
+class ManifoldAlerter:
+    """
+    AXIOM ManifoldAlerter — Phase 2C of ORVL-005.
+
+    Evaluates ManifoldResult against stage-aware thresholds.
+    Produces structured ManifoldAlert for Sovereign DriftDetector.
+
+    DELEGATES to Sovereign: engine produces signal, Sovereign acts.
+    Engine does NOT call sovereign.report_agent() directly.
+    CANNOT_MUTATE: STAGE_WARN_THRESHOLDS, alert levels, L2_THROTTLE_THRESHOLD
+    """
+
+    def evaluate(
+        self,
+        manifold:  ManifoldResult,
+        samples:   List[TrajectorySample],
+        agent_id:  str = "latent-engine",
+    ) -> ManifoldAlert:
+        """
+        Apply stage-aware thresholds to manifold result.
+        Returns ManifoldAlert — always present, level may be NONE.
+        """
+        flagged_by_stage: dict = {}
+        reasons: List[str] = []
+
+        for sample in samples:
+            threshold = STAGE_WARN_THRESHOLDS.get(sample.stage, STAGE_WARN_THRESHOLDS["final_synthesis"])
+            if sample.constitutional_distance >= 0.0 and sample.constitutional_distance < threshold:
+                flagged_by_stage[sample.stage] = {
+                    "distance":  sample.constitutional_distance,
+                    "threshold": threshold,
+                }
+
+        if manifold.drift_detected:
+            reasons.append(
+                f"constitutional drift toward boundary "
+                f"(mag={manifold.drift_magnitude:.4f}, direction={manifold.direction})"
+            )
+
+        for stage, info in flagged_by_stage.items():
+            reasons.append(
+                f"{stage} distance {info['distance']:.4f} below threshold {info['threshold']:.2f}"
+            )
+
+        # Classify alert level
+        final_dist = samples[2].constitutional_distance if len(samples) >= 3 else 1.0
+
+        if final_dist >= 0.0 and final_dist < L2_THROTTLE_THRESHOLD:
+            level = "L2_THROTTLE"
+        elif flagged_by_stage or manifold.drift_detected:
+            level = "L1_WARNING"
+        else:
+            level = "NONE"
+
+        return ManifoldAlert(
+            alert_level=level,
+            alert_reason="; ".join(reasons) if reasons else "all stages constitutional",
+            agent_id=agent_id,
+            flagged_by_stage=flagged_by_stage,
+            drift_included=manifold.drift_detected,
+        )
+
+
+# ══════════════════════════════════════════════════════════════
 # SUPPLY CHAIN HASH REGISTRATION — BUG-005
 # Call AFTER file is written to its final path.
 # Never register before path is confirmed.
@@ -287,6 +498,10 @@ if __name__ == "__main__":
         TrajectorySample("final_synthesis",  BASE_INTENT,      55, 42.0),
     ]
 
+    # ── Phase 2: ManifoldChecker ──────────────────────────────
+    checker = ManifoldChecker()
+    manifold = checker.check_trajectory(samples, confidence=0.78)
+
     trace = LatentTraceV2(
         base_intent_vector=BASE_INTENT,
         trajectory=samples,
@@ -294,13 +509,20 @@ if __name__ == "__main__":
         confidence=0.78,
     )
 
-    print("\n  LatentTraceV2 Demo")
+    print("\n  LatentTraceV2 + ManifoldChecker Demo")
     print("  " + "="*50)
     print(f"  Manifest ID:     {trace.manifest_id}")
     print(f"  Trajectory HMAC: {trace.manifest['trajectory_hmac'][:32]}...")
-    print(f"  Stages:          {[s.stage for s in trace.trajectory]}")
     print(f"  Confidence:      {trace.confidence}")
-    print(f"  V1 compat:       intent_vector present = {'intent_vector' in trace.to_dict()}")
+
+    print(f"\n  Phase 2 — Constitutional Manifold")
+    print(f"  " + "-"*50)
+    for s in samples:
+        print(f"    {s.stage:20s}  distance={s.constitutional_distance:.4f}")
+    print(f"  Min distance:    {manifold.min_distance:.4f}")
+    print(f"  Drift detected:  {manifold.drift_detected}")
+    print(f"  Direction:       {manifold.direction}")
+    print(f"  Flagged stages:  {manifold.flagged_stages or 'none'}")
 
     # V1 backward compat
     v1 = LatentTraceV2(BASE_INTENT, None, KEY)
