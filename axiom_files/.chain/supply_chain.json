@@ -556,5 +556,71 @@
     "registered_at": "2026-04-29T20:26:58.326305+00:00",
     "version": "",
     "size_bytes": 1094
+  },
+  "core/axiom_language": {
+    "sha256": "e68e9e711d14e46fbf7129e8f5c9adaa26a2a119dcf82b6b825819e1acbe34ef",
+    "registered_at": "2026-05-02T13:17:39.319277+00:00",
+    "version": "",
+    "size_bytes": 9135
+  },
+  "core/axiom_language_test": {
+    "sha256": "edecd7286299ee2e586e427d2f5dadaf04127f07411f3c43a456c9c0496c5be1",
+    "registered_at": "2026-05-02T13:17:39.343163+00:00",
+    "version": "",
+    "size_bytes": 7531
+  },
+  "core/strict_mode": {
+    "sha256": "a1e8d53c2a4de9cd1e007cb8dc74cfbfeb4ed2837e99ef344546e5e7d77ba648",
+    "registered_at": "2026-05-02T13:17:39.357513+00:00",
+    "version": "",
+    "size_bytes": 3408
+  },
+  "core/axiom_agent": {
+    "sha256": "a57b5c5416bb34f71c7951f1a764af18d3ed3df0b6faaf2527950186c20e334e",
+    "registered_at": "2026-05-02T14:10:07.568991+00:00",
+    "version": "",
+    "size_bytes": 13040
+  },
+  "core/axiom_terminus": {
+    "sha256": "1453e96079041c00d63200325099ba7a6a7a79a3402a55a29e410b361592755e",
+    "registered_at": "2026-05-02T19:01:18.407614+00:00",
+    "version": "",
+    "size_bytes": 7967
+  },
+  "core/bug_fix_orchestrator": {
+    "sha256": "3195b9525617256515bc1e7623bec7d766c39a39ba85281cc582dd23ca3084b3",
+    "registered_at": "2026-05-03T03:19:45.269836+00:00",
+    "version": "",
+    "size_bytes": 6518
+  },
+  "core/axiom_dataset_builder": {
+    "sha256": "2f319e338a99f181f9d1d0f2517836acb30ca118cde24d227da9c43518bcddea",
+    "registered_at": "2026-05-03T10:12:20.937544+00:00",
+    "version": "",
+    "size_bytes": 3699
+  },
+  "core/axiom_autotrain_prep": {
+    "sha256": "9202e14c115f57e5f257d571fd919778f83bb4eb8d39de40f64b851e8700acfe",
+    "registered_at": "2026-05-03T19:41:27.376807+00:00",
+    "version": "",
+    "size_bytes": 2899
+  },
+  "core/axiom_latent_v2": {
+    "sha256": "d18d704dd16e58e83b5804b267b7e4f73db8d42b8f5c7437ac0eb5cfc2f72d3a",
+    "registered_at": "2026-05-04T21:55:52.106601+00:00",
+    "version": "1.3.0",
+    "size_bytes": 5894
+  },
+  "core/axiom_manifold_alert": {
+    "sha256": "573cd272e10410916bc5ca6bc0bed17deae574311001314b3dcb2ebad3aef827",
+    "registered_at": "2026-05-04T21:55:04.292969+00:00",
+    "version": "",
+    "size_bytes": 4792
+  },
+  "core/axiom_manifold_checker": {
+    "sha256": "7c1f986a0a881db726923f3a1736f8bc50bf1970edd40a79c8b439f2e706b9b5",
+    "registered_at": "2026-05-04T21:55:04.315127+00:00",
+    "version": "",
+    "size_bytes": 5367
   }
 }
