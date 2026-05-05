@@ -178,11 +178,14 @@ def prepare(fmt: str = "chatml", augment: bool = True):
     print(f"  Source: {INPUT_FILE}")
     print(f"  {'─'*50}")
 
-    # Load
+    # Load — normalise "response" → "output" so both key conventions are accepted
     examples = []
     for line in INPUT_FILE.open(encoding="utf-8"):
         try:
-            examples.append(json.loads(line.strip()))
+            ex = json.loads(line.strip())
+            if "output" not in ex and "response" in ex:
+                ex["output"] = ex.pop("response")
+            examples.append(ex)
         except Exception:
             pass
     print(f"  Loaded:     {len(examples)} examples")
