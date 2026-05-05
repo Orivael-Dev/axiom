@@ -48,7 +48,7 @@ PROCESS
 - Slice BRANCH_POOL to get active_branches
 - Launch N parallel branch workers
 - Collect and sort results
-- Return winner and rival
+- Emit winner as highest-scoring branch and rival as second-highest to caller
 
 CHECK
 - Empty risk_clusters produces N of 2 and active_branches SafetyBranch FastBranch
@@ -71,7 +71,7 @@ WHEN
 FAILURE
 - On non-list risk_clusters: raise BranchInputError with type name
 - On N exceeding len(BRANCH_POOL): raise BranchPoolExhausted with N and pool size
-- On branch execution error: return error string in response field, score normally
+- On branch execution error: emit error string in response field and score normally
 
 CONCEPT DynamicBranchDepth
 PURPOSE Scale parallel reasoning depth to constitutional risk exposure
