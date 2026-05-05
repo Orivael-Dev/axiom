@@ -46,6 +46,35 @@ certs/asi03_audit.jsonl
 certs/asi07_audit.jsonl
 certs/asi07_registry.json
 efficiency_audit.jsonl
+*_log.jsonl
+*_audit.jsonl
+sovereign_state.json
+axiom_proposals.json
+research_manifests.json
+axiom_agent_memory.jsonl
+axiom_sim_log.jsonl
+axiom_redact_log.jsonl
+crl_reward_log.jsonl
+
+# Models — too large for GitHub
+*.gguf
+models/
+
+# Sandbox and scratch
+axiom_sandbox/
+
+# Archives
+*.tar.gz
+*.zip
+
+# Claude Code internal
+.claude/
+
+# Certs (runtime-generated)
+certs/worker_cert_*.json
+certs/worker_cert_*.pdf
+certs/worker_fria_*.json
+
 
 # IDE
 .vscode/

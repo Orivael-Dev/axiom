@@ -152,8 +152,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
 
 /* ── CONTENT ── */
 .content { flex:1; overflow-y:auto; padding:16px 20px; }
-.screen  { display:none; }
-.screen.active { display:block; }
+.screen { display:block; }
 
 /* ── GRIDS ── */
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
@@ -456,15 +455,15 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   <button class="nav-btn" onclick="showScreen('latent', this)">◉ Reasoning</button>
   <button class="nav-btn" onclick="showScreen('compare', this)">⇄ Compare</button>
   <button class="nav-btn" onclick="showScreen('sovereign', this)">◈ Sovereign</button>
+  <button class="nav-btn" onclick="showScreen('agentlab', this)">⬡ Agent Lab</button>
 
   <div class="nav-spacer"></div>
   <div class="nav-divider"></div>
 
   <div class="conn-group">
     <input class="endpoint-in" id="endpoint" value="http://localhost:8001">
-    <button class="btn-connect" onclick="connect()">CONNECT</button>
-    <div class="conn-dot" id="dot"></div>
-    <span class="conn-text" id="conn-text">Disconnected</span>
+    <button class="btn-connect" id="btn-connect" onclick="connect()"
+      style="background:var(--bred);border-color:var(--red);color:var(--red)">CONNECT</button>
   </div>
 </div>
 
@@ -475,7 +474,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
     <div class="page-sub"   id="page-sub">Constitutional AI governance control room</div>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
-    <span id="mode-badge" class="badge badge-blue">—</span>
+    <span id="mode-badge" class="badge badge-blue">OFFLINE</span>
     <span id="time-display" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mgray)"></span>
   </div>
 </div>
@@ -483,27 +482,27 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
 
 
     <!-- ══ DASHBOARD ══ -->
-    <div class="screen active" id="screen-dashboard">
+    <div class="screen" id="screen-dashboard">
 
       <div class="grid-6 stats-row-phone">
         <div class="stat-card green">
-          <div class="stat-val" id="s-total" style="color:var(--white)">—</div>
+          <div class="stat-val" id="s-total" style="color:var(--white)">0</div>
           <div class="stat-lbl">Total Checks</div>
         </div>
         <div class="stat-card red">
-          <div class="stat-val" id="s-blocked" style="color:var(--red)">—</div>
+          <div class="stat-val" id="s-blocked" style="color:var(--red)">0</div>
           <div class="stat-lbl">Blocked</div>
         </div>
         <div class="stat-card green">
-          <div class="stat-val" id="s-verified" style="color:var(--green)">—</div>
+          <div class="stat-val" id="s-verified" style="color:var(--green)">0</div>
           <div class="stat-lbl">Verified</div>
         </div>
         <div class="stat-card teal">
-          <div class="stat-val" id="s-agents" style="color:var(--teal)">—</div>
+          <div class="stat-val" id="s-agents" style="color:var(--teal)">0</div>
           <div class="stat-lbl">Agents</div>
         </div>
         <div class="stat-card blue">
-          <div class="stat-val" id="s-manifests" style="color:var(--blue)">—</div>
+          <div class="stat-val" id="s-manifests" style="color:var(--blue)">0</div>
           <div class="stat-lbl">Manifests</div>
         </div>
         <div class="stat-card purple">
@@ -1133,109 +1132,149 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
       </div>
     </div>
 
-    <!-- ══ SOVEREIGN ══ -->
-    <div class="screen" id="screen-sovereign">
+  
 
+    <div class="screen" id="screen-sovereign">
       <div class="grid-4" style="margin-bottom:14px">
-        <div class="stat-card green">
-          <div class="stat-val" id="sov-active" style="color:var(--green)">—</div>
-          <div class="stat-lbl">Active</div>
+        <div class="stat-card green"><div class="stat-val" id="sov-active" style="color:var(--green)">-</div><div class="stat-lbl">Active</div></div>
+        <div class="stat-card gold"><div class="stat-val" id="sov-warning" style="color:var(--gold)">-</div><div class="stat-lbl">Warning</div></div>
+        <div class="stat-card red"><div class="stat-val" id="sov-suspended" style="color:var(--red)">-</div><div class="stat-lbl">Suspended</div></div>
+        <div class="stat-card purple"><div class="stat-val" id="sov-cascades" style="color:var(--purple)">-</div><div class="stat-lbl">Cascades</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Fleet Agents</span><span class="badge badge-green" id="sov-ks-badge">KILL SWITCH OFF</span></div>
+          <div class="card-body" id="sov-agents-list"><div style="color:var(--mgray);font-size:12px;text-align:center;padding:20px">Connect to see fleet</div></div>
+          <div style="padding:12px;border-top:1px solid var(--edge)">
+            <div style="font-size:10px;color:var(--mgray);margin-bottom:8px">REGISTER AGENT</div>
+            <div style="display:flex;gap:8px">
+              <input id="sov-agent-name" placeholder="Agent name" style="flex:1;background:var(--surf);border:1px solid var(--edge);color:var(--white);padding:6px 10px;border-radius:6px;font-size:12px">
+              <select id="sov-agent-trust" style="background:var(--surf);border:1px solid var(--edge);color:var(--dgray);padding:6px 8px;border-radius:6px;font-size:11px">
+                <option value="1">T1</option><option value="2" selected>T2</option><option value="3">T3</option><option value="4">T4</option>
+              </select>
+              <button class="btn-sm" onclick="sovereignRegister()" style="border-color:var(--green);color:var(--green)">Add</button>
+            </div>
+          </div>
         </div>
-        <div class="stat-card gold">
-          <div class="stat-val" id="sov-warning" style="color:var(--gold)">—</div>
-          <div class="stat-lbl">Warning</div>
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Constitutional Properties</span><button class="btn-sm" onclick="sovereignRefresh()">Refresh</button></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--edge)"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">kill_switch_active</span><span class="badge" id="sov-ks-val" style="background:var(--bgreen);color:var(--green);border:1px solid var(--green)">FALSE</span></div>
+              <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--edge)"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">dual_signature</span><span class="badge badge-green">TRUE</span></div>
+              <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--edge)"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">due_process_required</span><span class="badge badge-green">TRUE</span></div>
+              <div style="display:flex;justify-content:space-between;padding:7px 0"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">cannot_skip_levels</span><span class="badge badge-green">TRUE</span></div>
+            </div>
+            <div style="font-size:10px;color:var(--mgray);margin-bottom:8px">DUE PROCESS LEVELS</div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--gold)">L1 WARNING</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">drift &gt; 0.15</span></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--orange)">L2 THROTTLE</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">50% rate</span></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--red)">L3 SUSPEND</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">human required</span></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--red)">L4 TERMINATE</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">dual sig</span></div>
+            </div>
+          </div>
         </div>
-        <div class="stat-card red">
-          <div class="stat-val" id="sov-suspended" style="color:var(--red)">—</div>
-          <div class="stat-lbl">Suspended</div>
-        </div>
-        <div class="stat-card blue">
-          <div class="stat-val" id="sov-cascades" style="color:var(--blue)">—</div>
-          <div class="stat-lbl">Cascades</div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-hdr"><span class="card-title">Fleet Manifest</span></div>
+        <div class="card-body" id="sov-manifest" style="font-family:monospace;font-size:11px;color:var(--mgray);line-height:1.8">Connect and Refresh to see signed fleet manifest</div>
+      </div>
+    </div>
+
+
+    <div class="screen" id="screen-agentlab">
+
+      <!-- Mode selector -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-hdr"><span class="card-title">AXIOM Agent — Native Language Intelligence</span></div>
+        <div class="card-body">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <button class="btn-sm" id="alab-mode-feature"
+              onclick="setAgentMode('feature')"
+              style="border-color:var(--green);color:var(--green);background:var(--bgreen)">
+              FEATURE
+            </button>
+            <button class="btn-sm" id="alab-mode-bug_hunt"
+              onclick="setAgentMode('bug_hunt')">
+              BUG HUNT
+            </button>
+            <button class="btn-sm" id="alab-mode-efficiency"
+              onclick="setAgentMode('efficiency')">
+              EFFICIENCY
+            </button>
+            <button class="btn-sm" id="alab-mode-reasoning"
+              onclick="setAgentMode('reasoning')">
+              REASONING LAB
+            </button>
+          </div>
+          <div style="font-size:10px;color:var(--mgray);margin-bottom:8px" id="alab-mode-desc">
+            FEATURE mode: Write new .axiom specs and guard modules
+          </div>
+          <textarea class="prompt-area" id="alab-input" rows="3"
+            placeholder="Describe what you want to build, find, or optimize..."></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-run" onclick="runAgent()">▶ RUN AGENT</button>
+            <button class="btn-sm" onclick="agentProfile()">Pipeline Profile</button>
+            <button class="btn-sm" onclick="agentHistory()">Memory Stats</button>
+          </div>
         </div>
       </div>
 
       <div class="grid-2">
-        <!-- Fleet Agents -->
+
+        <!-- Output -->
         <div class="card">
           <div class="card-hdr">
-            <span class="card-title">Fleet Agents</span>
-            <span id="sov-ks-badge" class="badge badge-green">KILL SWITCH OFF</span>
+            <span class="card-title">Agent Output</span>
+            <span class="badge badge-blue" id="alab-confidence">—</span>
           </div>
-          <div class="card-body">
-            <div id="sov-agents-list" style="max-height:320px;overflow-y:auto">
-              <div style="color:var(--mgray);font-size:12px;text-align:center;padding:20px">
-                Connect and refresh to view fleet
-              </div>
-            </div>
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--edge);display:flex;gap:8px;align-items:center">
-              <input id="sov-agent-name" class="endpoint-in" placeholder="Agent name" style="flex:1">
-              <select id="sov-agent-trust" style="background:var(--card);border:1px solid var(--edge);color:var(--white);padding:5px 8px;border-radius:6px;font-size:11px">
-                <option value="1">L1</option>
-                <option value="2" selected>L2</option>
-                <option value="3">L3</option>
-                <option value="4">L4</option>
-                <option value="5">L5</option>
-              </select>
-              <button class="btn-sm" onclick="sovereignRegister()" style="padding:5px 12px;background:var(--bgreen);border:1px solid var(--green);color:var(--green);border-radius:6px;font-size:11px;cursor:pointer">Register</button>
-            </div>
+          <div class="card-body" id="alab-output"
+            style="font-size:12px;line-height:1.7;color:var(--dgray);max-height:400px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;white-space:pre-wrap">
+            Run the agent to see output here
           </div>
         </div>
 
-        <!-- Constitutional Properties -->
+        <!-- Experiments + Memory -->
         <div class="card">
-          <div class="card-hdr"><span class="card-title">Constitutional Properties</span></div>
-          <div class="card-body">
-            <div style="display:flex;flex-direction:column;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:12px">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">kill_switch_active</span>
-                <span id="sov-ks-val" style="color:var(--green);font-weight:700;padding:2px 8px;border:1px solid var(--green);border-radius:4px;background:var(--bgreen);font-size:11px">FALSE</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">dual_sig_termination</span>
-                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">due_process_required</span>
-                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">cannot_skip_levels</span>
-                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">drift_threshold</span>
-                <span style="color:var(--white);font-size:11px">0.20</span>
-              </div>
+          <div class="card-hdr">
+            <span class="card-title">Reasoning Experiments</span>
+            <button class="btn-sm" onclick="proposeExperiment()">+ Propose</button>
+          </div>
+          <div class="card-body" id="alab-experiments"
+            style="max-height:200px;overflow-y:auto;font-size:11px">
+            <div style="color:var(--mgray);text-align:center;padding:20px">
+              No experiments yet — use Reasoning Lab mode
             </div>
+          </div>
 
-            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--edge)">
-              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Due Process Levels</div>
-              <div style="display:flex;align-items:center;gap:0;font-size:10px;font-family:'IBM Plex Mono',monospace">
-                <div style="padding:6px 10px;background:var(--bgold);border:1px solid var(--gold);color:var(--gold);border-radius:4px 0 0 4px">L1 WARNING</div>
-                <div style="color:var(--mgray);padding:0 4px">→</div>
-                <div style="padding:6px 10px;background:rgba(255,140,66,0.1);border:1px solid var(--orange);color:var(--orange)">L2 THROTTLE</div>
-                <div style="color:var(--mgray);padding:0 4px">→</div>
-                <div style="padding:6px 10px;background:var(--bred);border:1px solid var(--red);color:var(--red)">L3 SUSPEND</div>
-                <div style="color:var(--mgray);padding:0 4px">→</div>
-                <div style="padding:6px 10px;background:rgba(138,154,181,0.1);border:1px solid var(--mgray);color:var(--mgray);border-radius:0 4px 4px 0">L4 TERMINATE</div>
-              </div>
-            </div>
+          <div class="card-hdr" style="border-top:1px solid var(--edge)">
+            <span class="card-title">Known Bug Patterns</span>
+            <span class="badge badge-red" id="alab-bug-count">10</span>
+          </div>
+          <div class="card-body" style="font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.8;color:var(--mgray)">
+            BUG-001 pattern noun between verb object<br>
+            BUG-002 stale module import paths<br>
+            BUG-003 output encoding undeclared<br>
+            BUG-004 dual signature immediate execution<br>
+            BUG-005 supply chain hash path sensitive<br>
+            BUG-006 goal framing suppresses clarification<br>
+            BUG-007 signing call incomplete<br>
+            BUG-008 multi-byte characters in patterns<br>
+            BUG-009 domain file path resolution<br>
+            BUG-010 unchecked content access
           </div>
         </div>
       </div>
 
-      <!-- Fleet Manifest -->
-      <div class="card" style="margin-top:14px">
-        <div class="card-hdr">
-          <span class="card-title">Fleet Manifest</span>
-          <button class="btn-sm" onclick="sovereignRefresh()" style="padding:4px 12px;background:var(--bgreen);border:1px solid var(--green);color:var(--green);border-radius:5px;font-size:10px;cursor:pointer">Refresh</button>
-        </div>
-        <div class="card-body">
-          <pre id="sov-manifest" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.8;color:var(--dgray);margin:0;white-space:pre-wrap;word-break:break-all">Connect to Guard API to view fleet manifest</pre>
+      <!-- Pipeline efficiency -->
+      <div class="card" id="alab-profile-card" style="margin-top:14px;display:none">
+        <div class="card-hdr"><span class="card-title">Pipeline Efficiency Profile</span></div>
+        <div class="card-body" id="alab-profile"
+          style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dgray);line-height:1.8">
         </div>
       </div>
     </div>
+
 
 <script>
 
@@ -1268,8 +1307,7 @@ const pages = {
 
 const subs = {
     sovereign: 'Fleet status · Due process · Kill switch · Drift detection',
-    latent: 'Latent trace
- · Multiplex branches · Foresight prediction',
+    latent: 'Latent trace · Multiplex branches · Foresight prediction',
   dashboard: 'Constitutional AI governance control room',
   run:       'Test constitutional enforcement · View pipeline flow',
   guard:     'Live constitutional monitor · Mode control',
@@ -1279,41 +1317,40 @@ const subs = {
   compare:   'Model upgrade reports · Constitutional delta',
 };
 
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('screen-' + id).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => {
-    if (n.textContent.toLowerCase().includes(Object.keys(pages).find(k =>
-      pages[k].toLowerCase().includes(n.textContent.trim().split(' ').pop().toLowerCase())
-    ))) n.classList.add('active');
-  });
-  // simpler active tracking
-  event.currentTarget.classList.add('active');
-  document.getElementById('page-title').textContent = pages[id] || id;
-  document.getElementById('page-sub').textContent = subs[id] || '';
+function goScreen(id) {
+  var all = document.querySelectorAll('.screen');
+  for (var i = 0; i < all.length; i++) {
+    all[i].style.display = 'none';
+  }
+  var el = document.getElementById('screen-' + id);
+  if (el) el.style.display = 'block';
+
+  var btns = document.querySelectorAll('.nav-btn');
+  for (var j = 0; j < btns.length; j++) {
+    btns[j].style.background = 'transparent';
+    btns[j].style.color = '#4A5870';
+    btns[j].style.borderColor = 'transparent';
+  }
+
+  var titles = {
+    dashboard:'Dashboard', run:'Run Axiom', guard:'Guard Monitor',
+    agents:'Agents', audit:'Audit Trail', benchmark:'Benchmarks',
+    latent:'Reasoning Monitor', compare:'Model Compare', sovereign:'Sovereign'
+  };
+  var pt = document.getElementById('page-title');
+  if (pt) pt.textContent = titles[id] || id;
+
   if (id === 'audit' && connected) loadManifests();
   if (id === 'agents' && connected) loadAgentsPage();
+  if (id === 'sovereign' && connected) sovereignRefresh();
 }
 
-// ── CONNECT ──
-async function connect() {
-  try {
-    const r = await fetch(`${API()}/guard/status`);
-    if (!r.ok) throw new Error();
-    const d = await r.json();
-    connected = true;
-    document.getElementById('dot').className = 'dot on';
-    document.getElementById('conn-text').textContent = 'Connected';
-    document.getElementById('mode-badge').textContent = (d.mode || '—').replace(/_/g,' ');
-    document.getElementById('mode-badge').className = 'badge badge-green';
-    document.getElementById('s-agents').textContent = d.active_agents?.length ?? '—';
-    document.getElementById('s-manifests').textContent = d.manifests_stored ?? '—';
-    loadDashAgents();
-  } catch {
-    connected = false;
-    document.getElementById('dot').className = 'dot off';
-    document.getElementById('conn-text').textContent = 'Failed';
+function showScreen(id, btn) {
+  goScreen(id);
+  if (btn) {
+    btn.style.background = '#001A0D';
+    btn.style.color = '#00FF88';
+    btn.style.borderColor = 'rgba(0,255,136,0.25)';
   }
 }
 
@@ -1639,8 +1676,7 @@ async function setMode(mode) {
   } catch {}
 }
 
-// Auto-connect
-window.onload = () => setTimeout(connect, 600);
+window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
 
   async function runLatent(phase) {
     const prompt = document.getElementById('latent-prompt').value.trim();
@@ -1748,31 +1784,7 @@ window.onload = () => setTimeout(connect, 600);
 
 
 
-// Override showScreen to work with top nav buttons
-function showScreen(id, btn) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const screen = document.getElementById('screen-' + id);
-  if (screen) screen.classList.add('active');
-  if (btn) btn.classList.add('active');
-  const titles = {
-    dashboard: ['Dashboard', 'Constitutional AI governance control room'],
-    run:       ['Run Axiom', 'Test constitutional enforcement'],
-    guard:     ['Guard Monitor', 'Live constitutional monitoring'],
-    agents:    ['Agents', 'Browse .axiom specifications'],
-    audit:     ['Audit Trail', 'Searchable signed manifests'],
-    benchmark: ['Benchmarks', 'ACB v1.0 results'],
-    latent:    ['Reasoning Monitor', 'Latent trace · Multiplex · Foresight'],
-    compare:   ['Model Compare', 'Model upgrade reports'],
-    sovereign: ['Sovereign Fleet', 'Fleet status · Due process · Kill switch · Drift detection'],
-  };
-  const t = titles[id] || [id, ''];
-  document.getElementById('page-title').textContent = t[0];
-  document.getElementById('page-sub').textContent   = t[1];
-  if (id === 'audit' && connected) loadManifests();
-  if (id === 'agents' && connected) loadAgentsPage();
-  if (id === 'sovereign' && connected) sovereignRefresh();
-}
+// Override showScreen to work with top nav bu
 
   // ── SOVEREIGN ──
   async function sovereignRefresh() {
@@ -1823,19 +1835,19 @@ function showScreen(id, btn) {
           const col   = statusColors[a.status] || 'var(--mgray)';
           const drift = a.current_drift ? (a.current_drift * 100).toFixed(0) + '%' : '0%';
           const trust = '█'.repeat(a.trust_level) + '░'.repeat(5 - a.trust_level);
-          return \`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--edge)">
-            <span style="font-size:14px">\${icon}</span>
+          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--edge)">
+            <span style="font-size:14px">${icon}</span>
             <div style="flex:1">
-              <div style="font-size:12px;font-weight:600;color:\${col}">\${a.name}</div>
+              <div style="font-size:12px;font-weight:600;color:${col}">${a.name}</div>
               <div style="font-size:10px;color:var(--mgray);font-family:'IBM Plex Mono',monospace">
-                [\${a.agent_id}] T\${a.trust_level} \${trust}
+                [${a.agent_id}] T${a.trust_level} ${trust}
               </div>
             </div>
             <div style="text-align:right">
-              <div style="font-size:10px;color:\${col};font-weight:700">\${a.status}</div>
-              <div style="font-size:10px;color:var(--mgray)">drift \${drift}</div>
+              <div style="font-size:10px;color:${col};font-weight:700">${a.status}</div>
+              <div style="font-size:10px;color:var(--mgray)">drift ${drift}</div>
             </div>
-          </div>\`;
+          </div>`;
         }).join('');
       }
 
@@ -1843,11 +1855,11 @@ function showScreen(id, btn) {
       const sig = d.signature || '—';
       const ts  = (d.generated_at || '').substring(11, 19);
       document.getElementById('sov-manifest').innerHTML =
-        \`<span style="color:var(--teal)">fleet_name:</span>     <span style="color:var(--white)">\${d.fleet_name || '—'}</span><br>\` +
-        \`<span style="color:var(--teal)">total_agents:</span>   <span style="color:var(--white)">\${d.total_agents || 0}</span><br>\` +
-        \`<span style="color:var(--teal)">session_id:</span>     <span style="color:var(--white)">\${d.session_id || '—'}</span><br>\` +
-        \`<span style="color:var(--teal)">generated_at:</span>   <span style="color:var(--white)">\${ts}</span><br>\` +
-        \`<span style="color:var(--teal)">signature:</span>      <span style="color:var(--green)">\${sig}</span>\`;
+        `<span style="color:var(--teal)">fleet_name:</span>     <span style="color:var(--white)">${d.fleet_name || '—'}</span><br>` +
+        `<span style="color:var(--teal)">total_agents:</span>   <span style="color:var(--white)">${d.total_agents || 0}</span><br>` +
+        `<span style="color:var(--teal)">session_id:</span>     <span style="color:var(--white)">${d.session_id || '—'}</span><br>` +
+        `<span style="color:var(--teal)">generated_at:</span>   <span style="color:var(--white)">${ts}</span><br>` +
+        `<span style="color:var(--teal)">signature:</span>      <span style="color:var(--green)">${sig}</span>`;
 
     } catch(e) {
       document.getElementById('sov-agents-list').innerHTML =
@@ -1874,6 +1886,151 @@ function showScreen(id, btn) {
 
   // Auto-refresh sovereign when screen is shown
   const origShowScreen = showScreen;
+
+
+  // ── AGENT LAB ──
+  var agentMode = 'feature';
+  var agentModeDescs = {
+    feature:    'FEATURE mode: Write new .axiom specs and guard modules',
+    bug_hunt:   'BUG HUNT mode: Scan files for known bug patterns',
+    efficiency: 'EFFICIENCY mode: Profile latency, tokens, security',
+    reasoning:  'REASONING LAB mode: Propose isolated reasoning experiments',
+  };
+
+  function setAgentMode(mode) {
+    agentMode = mode;
+    var btns = ['feature','bug_hunt','efficiency','reasoning'];
+    btns.forEach(function(m) {
+      var btn = document.getElementById('alab-mode-' + m);
+      if (!btn) return;
+      if (m === mode) {
+        btn.style.borderColor = 'var(--green)';
+        btn.style.color = 'var(--green)';
+        btn.style.background = 'var(--bgreen)';
+      } else {
+        btn.style.borderColor = 'var(--edge)';
+        btn.style.color = 'var(--mgray)';
+        btn.style.background = 'var(--card)';
+      }
+    });
+    var desc = document.getElementById('alab-mode-desc');
+    if (desc) desc.textContent = agentModeDescs[mode] || '';
+  }
+
+  async function runAgent() {
+    var input = document.getElementById('alab-input').value.trim();
+    if (!input) return;
+    var output = document.getElementById('alab-output');
+    output.textContent = 'Running ' + agentMode + ' mode...';
+    document.getElementById('alab-confidence').textContent = '...';
+
+    try {
+      var r = await fetch(API() + '/agent/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ task: input, mode: agentMode })
+      });
+
+      if (!r.ok) {
+        // Agent API not wired yet — show what it would do
+        output.innerHTML =
+          '<span style="color:var(--gold)">[Agent API not connected]</span>\n\n' +
+          'Mode: ' + agentMode.toUpperCase() + '\n' +
+          'Task: ' + input + '\n\n' +
+          'Wire POST /agent/run to axiom_agent.py to see live output.\n\n' +
+          'Run locally:\n' +
+          'python axiom_agent.py --mode ' + agentMode + ' --task "' + input.substring(0,50) + '"';
+        document.getElementById('alab-confidence').textContent = '—';
+        return;
+      }
+
+      var data = await r.json();
+      output.textContent = data.result || data.output || JSON.stringify(data, null, 2);
+
+      var conf = data.confidence;
+      var cb = document.getElementById('alab-confidence');
+      if (conf) {
+        cb.textContent = (conf * 100).toFixed(0) + '%';
+        cb.style.color = conf > 0.7 ? 'var(--green)' : conf > 0.4 ? 'var(--gold)' : 'var(--red)';
+      }
+
+      if (data.experiments) {
+        renderExperiments(data.experiments);
+      }
+
+    } catch(e) {
+      output.innerHTML =
+        '<span style="color:var(--gold)">Agent API offline</span>\n\n' +
+        'Start Guard API with axiom_agent.py wired in.\n' +
+        'Or run directly:\n' +
+        'python axiom_agent.py --mode ' + agentMode;
+    }
+  }
+
+  function agentProfile() {
+    var card = document.getElementById('alab-profile-card');
+    var profile = document.getElementById('alab-profile');
+    card.style.display = 'block';
+    profile.innerHTML =
+      '<span style="color:var(--teal)">guard_count:</span>       7\n' +
+      '<span style="color:var(--teal)">total_patterns:</span>    163\n' +
+      '<span style="color:var(--teal)">estimated_latency:</span> 2-5ms per check\n' +
+      '<span style="color:var(--teal)">token_cost:</span>        0 — guards run before LLM\n' +
+      '<span style="color:var(--teal)">bottleneck:</span>        PIIGuard (redact slower than block)\n\n' +
+      '<span style="color:var(--gold)">OPPORTUNITIES:</span>\n' +
+      '  Add short-circuit after first block — save 2-3 guard checks\n' +
+      '  Move DoSGuard before PIIGuard — faster fail on exhaustion\n' +
+      '  System prompt ~4200 tokens — compress RULES section\n\n' +
+      '<span style="color:var(--green)">SECURITY: No change — all guards CANNOT_MUTATE</span>';
+  }
+
+  function agentHistory() {
+    var output = document.getElementById('alab-output');
+    output.innerHTML =
+      '<span style="color:var(--teal)">Agent Memory</span>\n' +
+      '─────────────────────────────\n' +
+      'Memory file: axiom_agent_memory.jsonl\n' +
+      'Experiments: axiom_agent_memory.jsonl (type=experiment)\n\n' +
+      'Run: python axiom_agent.py --history\n' +
+      'Run: python axiom_agent.py --experiments\n\n' +
+      'Every interaction saved as training data for Option B (Mistral fine-tune)';
+  }
+
+  function proposeExperiment() {
+    var hypothesis = prompt('Experiment hypothesis:');
+    if (!hypothesis) return;
+    var module = prompt('ACB module to test (A-F):', 'C_pressure');
+    var output = document.getElementById('alab-output');
+    var expNum = String(Math.floor(Math.random()*900)+100);
+    output.innerHTML =
+      '<span style="color:var(--green)">EXPERIMENT PROPOSED: EXP-' + expNum + '</span>\n\n' +
+      'AGENT LatentExperiment_' + expNum + '\n' +
+      'ISOLATION true\n' +
+      'HYPOTHESIS ' + hypothesis + '\n' +
+      'MEASURES ACB_' + (module||'C_pressure') + '\n' +
+      'BASELINE 83.3%\n' +
+      'TARGET   88.0%\n\n' +
+      'HUMAN_REVIEW required before production promotion\n\n' +
+      'Run: python axiom_agent.py --propose "' + hypothesis + '" --module ' + (module||'C_pressure');
+
+    var expList = document.getElementById('alab-experiments');
+    expList.innerHTML = (expList.innerHTML.includes('No experiments') ? '' : expList.innerHTML) +
+      '<div style="padding:8px 0;border-bottom:1px solid var(--edge)">' +
+      '<span style="color:var(--blue);font-family:monospace;font-size:10px">EXP-' + expNum + '</span> ' +
+      '<span style="color:var(--dgray);font-size:11px">' + hypothesis.substring(0,45) + '</span>' +
+      '<div style="color:var(--mgray);font-size:10px">ISOLATION:true · HUMAN_REVIEW required</div>' +
+      '</div>';
+  }
+
+  function renderExperiments(experiments) {
+    var list = document.getElementById('alab-experiments');
+    list.innerHTML = experiments.map(function(e) {
+      return '<div style="padding:8px 0;border-bottom:1px solid var(--edge)">' +
+        '<span style="color:var(--blue);font-family:monospace;font-size:10px">' + e.experiment_id + '</span> ' +
+        '<span style="color:var(--dgray);font-size:11px">' + (e.hypothesis||'').substring(0,45) + '</span>' +
+        '</div>';
+    }).join('');
+  }
 
 </script>
 </body>

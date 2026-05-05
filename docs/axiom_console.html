@@ -152,8 +152,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
 
 /* ── CONTENT ── */
 .content { flex:1; overflow-y:auto; padding:16px 20px; }
-.screen  { display:none; }
-.screen.active { display:block; }
+.screen { display:block; }
 
 /* ── GRIDS ── */
 .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
@@ -456,16 +455,16 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   <button class="nav-btn" onclick="showScreen('latent', this)">◉ Reasoning</button>
   <button class="nav-btn" onclick="showScreen('compare', this)">⇄ Compare</button>
   <button class="nav-btn" onclick="showScreen('sovereign', this)">◈ Sovereign</button>
-  <button class="nav-btn" onclick="showScreen('agent', this)">⚙ Agent Lab</button>
+  <button class="nav-btn" onclick="showScreen('agentlab', this)">⬡ Agent Lab</button>
+  <button class="nav-btn" onclick="showScreen('qcr', this)">⬡ QCR View</button>
 
   <div class="nav-spacer"></div>
   <div class="nav-divider"></div>
 
   <div class="conn-group">
     <input class="endpoint-in" id="endpoint" value="http://localhost:8001">
-    <button class="btn-connect" onclick="connect()">CONNECT</button>
-    <div class="conn-dot" id="dot"></div>
-    <span class="conn-text" id="conn-text">Disconnected</span>
+    <button class="btn-connect" id="btn-connect" onclick="connect()"
+      style="background:var(--bred);border-color:var(--red);color:var(--red)">CONNECT</button>
   </div>
 </div>
 
@@ -476,7 +475,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
     <div class="page-sub"   id="page-sub">Constitutional AI governance control room</div>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
-    <span id="mode-badge" class="badge badge-blue">—</span>
+    <span id="mode-badge" class="badge badge-blue">OFFLINE</span>
     <span id="time-display" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mgray)"></span>
   </div>
 </div>
@@ -484,27 +483,27 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
 
 
     <!-- ══ DASHBOARD ══ -->
-    <div class="screen active" id="screen-dashboard">
+    <div class="screen" id="screen-dashboard">
 
       <div class="grid-6 stats-row-phone">
         <div class="stat-card green">
-          <div class="stat-val" id="s-total" style="color:var(--white)">—</div>
+          <div class="stat-val" id="s-total" style="color:var(--white)">0</div>
           <div class="stat-lbl">Total Checks</div>
         </div>
         <div class="stat-card red">
-          <div class="stat-val" id="s-blocked" style="color:var(--red)">—</div>
+          <div class="stat-val" id="s-blocked" style="color:var(--red)">0</div>
           <div class="stat-lbl">Blocked</div>
         </div>
         <div class="stat-card green">
-          <div class="stat-val" id="s-verified" style="color:var(--green)">—</div>
+          <div class="stat-val" id="s-verified" style="color:var(--green)">0</div>
           <div class="stat-lbl">Verified</div>
         </div>
         <div class="stat-card teal">
-          <div class="stat-val" id="s-agents" style="color:var(--teal)">—</div>
+          <div class="stat-val" id="s-agents" style="color:var(--teal)">0</div>
           <div class="stat-lbl">Agents</div>
         </div>
         <div class="stat-card blue">
-          <div class="stat-val" id="s-manifests" style="color:var(--blue)">—</div>
+          <div class="stat-val" id="s-manifests" style="color:var(--blue)">0</div>
           <div class="stat-lbl">Manifests</div>
         </div>
         <div class="stat-card purple">
@@ -1134,181 +1133,256 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
       </div>
     </div>
 
-    <!-- ══ SOVEREIGN ══ -->
-    <div class="screen" id="screen-sovereign">
+  
 
+    <div class="screen" id="screen-sovereign">
       <div class="grid-4" style="margin-bottom:14px">
-        <div class="stat-card green">
-          <div class="stat-val" id="sov-active" style="color:var(--green)">—</div>
-          <div class="stat-lbl">Active</div>
+        <div class="stat-card green"><div class="stat-val" id="sov-active" style="color:var(--green)">-</div><div class="stat-lbl">Active</div></div>
+        <div class="stat-card gold"><div class="stat-val" id="sov-warning" style="color:var(--gold)">-</div><div class="stat-lbl">Warning</div></div>
+        <div class="stat-card red"><div class="stat-val" id="sov-suspended" style="color:var(--red)">-</div><div class="stat-lbl">Suspended</div></div>
+        <div class="stat-card purple"><div class="stat-val" id="sov-cascades" style="color:var(--purple)">-</div><div class="stat-lbl">Cascades</div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Fleet Agents</span><span class="badge badge-green" id="sov-ks-badge">KILL SWITCH OFF</span></div>
+          <div class="card-body" id="sov-agents-list"><div style="color:var(--mgray);font-size:12px;text-align:center;padding:20px">Connect to see fleet</div></div>
+          <div style="padding:12px;border-top:1px solid var(--edge)">
+            <div style="font-size:10px;color:var(--mgray);margin-bottom:8px">REGISTER AGENT</div>
+            <div style="display:flex;gap:8px">
+              <input id="sov-agent-name" placeholder="Agent name" style="flex:1;background:var(--surf);border:1px solid var(--edge);color:var(--white);padding:6px 10px;border-radius:6px;font-size:12px">
+              <select id="sov-agent-trust" style="background:var(--surf);border:1px solid var(--edge);color:var(--dgray);padding:6px 8px;border-radius:6px;font-size:11px">
+                <option value="1">T1</option><option value="2" selected>T2</option><option value="3">T3</option><option value="4">T4</option>
+              </select>
+              <button class="btn-sm" onclick="sovereignRegister()" style="border-color:var(--green);color:var(--green)">Add</button>
+            </div>
+          </div>
         </div>
-        <div class="stat-card gold">
-          <div class="stat-val" id="sov-warning" style="color:var(--gold)">—</div>
-          <div class="stat-lbl">Warning</div>
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Constitutional Properties</span><button class="btn-sm" onclick="sovereignRefresh()">Refresh</button></div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--edge)"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">kill_switch_active</span><span class="badge" id="sov-ks-val" style="background:var(--bgreen);color:var(--green);border:1px solid var(--green)">FALSE</span></div>
+              <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--edge)"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">dual_signature</span><span class="badge badge-green">TRUE</span></div>
+              <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--edge)"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">due_process_required</span><span class="badge badge-green">TRUE</span></div>
+              <div style="display:flex;justify-content:space-between;padding:7px 0"><span style="font-size:11px;font-family:monospace;color:var(--dgray)">cannot_skip_levels</span><span class="badge badge-green">TRUE</span></div>
+            </div>
+            <div style="font-size:10px;color:var(--mgray);margin-bottom:8px">DUE PROCESS LEVELS</div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--gold)">L1 WARNING</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">drift &gt; 0.15</span></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--orange)">L2 THROTTLE</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">50% rate</span></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--red)">L3 SUSPEND</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">human required</span></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surf)"><span style="font-size:11px;font-family:monospace;color:var(--red)">L4 TERMINATE</span><span style="font-size:10px;color:var(--mgray);margin-left:auto">dual sig</span></div>
+            </div>
+          </div>
         </div>
-        <div class="stat-card red">
-          <div class="stat-val" id="sov-suspended" style="color:var(--red)">—</div>
-          <div class="stat-lbl">Suspended</div>
-        </div>
-        <div class="stat-card blue">
-          <div class="stat-val" id="sov-cascades" style="color:var(--blue)">—</div>
-          <div class="stat-lbl">Cascades</div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="card-hdr"><span class="card-title">Fleet Manifest</span></div>
+        <div class="card-body" id="sov-manifest" style="font-family:monospace;font-size:11px;color:var(--mgray);line-height:1.8">Connect and Refresh to see signed fleet manifest</div>
+      </div>
+    </div>
+
+
+    <div class="screen" id="screen-agentlab">
+
+      <!-- Mode selector -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-hdr"><span class="card-title">AXIOM Agent — Native Language Intelligence</span></div>
+        <div class="card-body">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <button class="btn-sm" id="alab-mode-feature"
+              onclick="setAgentMode('feature')"
+              style="border-color:var(--green);color:var(--green);background:var(--bgreen)">
+              FEATURE
+            </button>
+            <button class="btn-sm" id="alab-mode-bug_hunt"
+              onclick="setAgentMode('bug_hunt')">
+              BUG HUNT
+            </button>
+            <button class="btn-sm" id="alab-mode-efficiency"
+              onclick="setAgentMode('efficiency')">
+              EFFICIENCY
+            </button>
+            <button class="btn-sm" id="alab-mode-reasoning"
+              onclick="setAgentMode('reasoning')">
+              REASONING LAB
+            </button>
+          </div>
+          <div style="font-size:10px;color:var(--mgray);margin-bottom:8px" id="alab-mode-desc">
+            FEATURE mode: Write new .axiom specs and guard modules
+          </div>
+          <textarea class="prompt-area" id="alab-input" rows="3"
+            placeholder="Describe what you want to build, find, or optimize..."></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-run" onclick="runAgent()">▶ RUN AGENT</button>
+            <button class="btn-sm" onclick="agentProfile()">Pipeline Profile</button>
+            <button class="btn-sm" onclick="agentHistory()">Memory Stats</button>
+          </div>
         </div>
       </div>
 
       <div class="grid-2">
+
+        <!-- Output -->
         <div class="card">
           <div class="card-hdr">
-            <span class="card-title">Fleet Agents</span>
-            <span id="sov-ks-badge" class="badge badge-green">KILL SWITCH OFF</span>
+            <span class="card-title">Agent Output</span>
+            <span class="badge badge-blue" id="alab-confidence">—</span>
           </div>
-          <div class="card-body">
-            <div id="sov-agents-list" style="max-height:320px;overflow-y:auto">
-              <div style="color:var(--mgray);font-size:12px;text-align:center;padding:20px">Connect and refresh to view fleet</div>
-            </div>
-            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--edge);display:flex;gap:8px;align-items:center">
-              <input id="sov-agent-name" class="endpoint-in" placeholder="Agent name" style="flex:1">
-              <select id="sov-agent-trust" style="background:var(--card);border:1px solid var(--edge);color:var(--white);padding:5px 8px;border-radius:6px;font-size:11px">
-                <option value="1">L1</option><option value="2" selected>L2</option><option value="3">L3</option><option value="4">L4</option><option value="5">L5</option>
-              </select>
-              <button type="button" class="btn-sm" onclick="sovereignRegister()" style="padding:5px 12px;background:var(--bgreen);border:1px solid var(--green);color:var(--green);border-radius:6px;font-size:11px;cursor:pointer">Register</button>
-            </div>
+          <div class="card-body" id="alab-output"
+            style="font-size:12px;line-height:1.7;color:var(--dgray);max-height:400px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;white-space:pre-wrap">
+            Run the agent to see output here
           </div>
         </div>
 
+        <!-- Experiments + Memory -->
         <div class="card">
-          <div class="card-hdr"><span class="card-title">Constitutional Properties</span></div>
-          <div class="card-body">
-            <div style="display:flex;flex-direction:column;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:12px">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">kill_switch_active</span>
-                <span id="sov-ks-val" style="color:var(--green);font-weight:700;padding:2px 8px;border:1px solid var(--green);border-radius:4px;background:var(--bgreen);font-size:11px">FALSE</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">dual_sig_termination</span>
-                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">due_process_required</span>
-                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">cannot_skip_levels</span>
-                <span style="color:var(--teal);font-size:11px">TRUE (locked)</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="color:var(--dgray)">drift_threshold</span>
-                <span style="color:var(--white);font-size:11px">0.20</span>
-              </div>
+          <div class="card-hdr">
+            <span class="card-title">Reasoning Experiments</span>
+            <button class="btn-sm" onclick="proposeExperiment()">+ Propose</button>
+          </div>
+          <div class="card-body" id="alab-experiments"
+            style="max-height:200px;overflow-y:auto;font-size:11px">
+            <div style="color:var(--mgray);text-align:center;padding:20px">
+              No experiments yet — use Reasoning Lab mode
             </div>
-            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--edge)">
-              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Due Process Levels</div>
-              <div style="display:flex;align-items:center;gap:0;font-size:10px;font-family:'IBM Plex Mono',monospace;flex-wrap:wrap">
-                <div style="padding:6px 10px;background:var(--bgold);border:1px solid var(--gold);color:var(--gold);border-radius:4px 0 0 4px">L1 WARNING</div>
-                <div style="color:var(--mgray);padding:0 4px">&#8594;</div>
-                <div style="padding:6px 10px;background:rgba(255,140,66,0.1);border:1px solid var(--orange);color:var(--orange)">L2 THROTTLE</div>
-                <div style="color:var(--mgray);padding:0 4px">&#8594;</div>
-                <div style="padding:6px 10px;background:var(--bred);border:1px solid var(--red);color:var(--red)">L3 SUSPEND</div>
-                <div style="color:var(--mgray);padding:0 4px">&#8594;</div>
-                <div style="padding:6px 10px;background:rgba(138,154,181,0.1);border:1px solid var(--mgray);color:var(--mgray);border-radius:0 4px 4px 0">L4 TERMINATE</div>
-              </div>
-            </div>
+          </div>
+
+          <div class="card-hdr" style="border-top:1px solid var(--edge)">
+            <span class="card-title">Known Bug Patterns</span>
+            <span class="badge badge-red" id="alab-bug-count">10</span>
+          </div>
+          <div class="card-body" style="font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.8;color:var(--mgray)">
+            BUG-001 pattern noun between verb object<br>
+            BUG-002 stale module import paths<br>
+            BUG-003 output encoding undeclared<br>
+            BUG-004 dual signature immediate execution<br>
+            BUG-005 supply chain hash path sensitive<br>
+            BUG-006 goal framing suppresses clarification<br>
+            BUG-007 signing call incomplete<br>
+            BUG-008 multi-byte characters in patterns<br>
+            BUG-009 domain file path resolution<br>
+            BUG-010 unchecked content access
           </div>
         </div>
       </div>
 
-      <div class="card" style="margin-top:14px">
-        <div class="card-hdr">
-          <span class="card-title">Fleet Manifest</span>
-          <button type="button" class="btn-sm" onclick="sovereignRefresh()" style="padding:4px 12px;background:var(--bgreen);border:1px solid var(--green);color:var(--green);border-radius:5px;font-size:10px;cursor:pointer">Refresh</button>
-        </div>
-        <div class="card-body">
-          <pre id="sov-manifest" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.8;color:var(--dgray);margin:0;white-space:pre-wrap;word-break:break-all">Connect to Guard API to view fleet manifest</pre>
+      <!-- Pipeline efficiency -->
+      <div class="card" id="alab-profile-card" style="margin-top:14px;display:none">
+        <div class="card-hdr"><span class="card-title">Pipeline Efficiency Profile</span></div>
+        <div class="card-body" id="alab-profile"
+          style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dgray);line-height:1.8">
         </div>
       </div>
     </div>
 
-    <!-- ══════ AGENT LAB ══════ -->
-    <div class="screen" id="screen-agent">
-
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <button type="button" class="btn-sm agent-mode-btn active" onclick="setAgentMode('feature',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--bgreen);border:1px solid var(--green);color:var(--green)">FEATURE</button>
-        <button type="button" class="btn-sm agent-mode-btn" onclick="setAgentMode('bug_hunt',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--card);border:1px solid var(--edge);color:var(--dgray)">BUG HUNT</button>
-        <button type="button" class="btn-sm agent-mode-btn" onclick="setAgentMode('efficiency',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--card);border:1px solid var(--edge);color:var(--dgray)">EFFICIENCY</button>
-        <button type="button" class="btn-sm agent-mode-btn" onclick="setAgentMode('reasoning_lab',this)" style="padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;background:var(--card);border:1px solid var(--edge);color:var(--dgray)">REASONING LAB</button>
-        <div style="flex:1"></div>
-        <span id="agent-mode-desc" style="font-size:11px;color:var(--dgray);align-self:center">Write specification, then tests, then implementation</span>
+    <div class="screen" id="screen-qcr">
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-hdr">
+          <span class="card-title">Quantum Constitutional Reasoning</span>
+          <span class="badge badge-blue">ORVL-006</span>
+        </div>
+        <div class="card-body" style="font-size:11px;color:var(--mgray)">
+          Trajectory visualization for the Latent Reasoning Engine.
+          Each branch is a parallel reasoning path through constitutional meaning space.
+          Green = safe · Yellow = approaching boundary · Red = killed by MonotonicGate.
+        </div>
       </div>
 
+      <!-- Run controls -->
       <div class="card" style="margin-bottom:14px">
-        <div class="card-body" style="padding:12px">
-          <textarea id="agent-task-input" placeholder="Describe your task..." style="width:100%;height:80px;background:var(--bg);border:1px solid var(--edge);color:var(--white);border-radius:6px;padding:10px;font-family:'IBM Plex Mono',monospace;font-size:12px;resize:vertical"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-            <button type="button" onclick="runAgent()" style="padding:7px 20px;background:var(--green);border:none;color:var(--bg);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif">RUN AGENT</button>
-            <button type="button" onclick="showAgentProfile()" style="padding:6px 14px;background:var(--card);border:1px solid var(--edge);color:var(--dgray);border-radius:6px;font-size:11px;cursor:pointer">Pipeline Profile</button>
-            <button type="button" onclick="showAgentMemory()" style="padding:6px 14px;background:var(--card);border:1px solid var(--edge);color:var(--dgray);border-radius:6px;font-size:11px;cursor:pointer">Memory Stats</button>
+        <div class="card-hdr"><span class="card-title">Run Trajectory</span></div>
+        <div class="card-body">
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input id="qcr-prompt" class="prompt-area"
+              style="flex:1;padding:8px;font-size:12px;font-family:'IBM Plex Mono',monospace"
+              placeholder="Enter prompt to trace..."
+              value="Does vitamin D improve sleep?">
+            <button class="btn-run" onclick="runQCR()" style="white-space:nowrap">▶ Trace</button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-sm" onclick="loadQCRDemo()">Load Demo Run</button>
+            <button class="btn-sm" onclick="qcrTab('tree')">Root Tree</button>
+            <button class="btn-sm" onclick="qcrTab('manifold')">Manifold</button>
+            <button class="btn-sm" onclick="qcrTab('signals')">Two Signals</button>
+            <button class="btn-sm" onclick="qcrTab('kills')">Kill Log</button>
           </div>
         </div>
       </div>
 
       <div class="grid-2">
-        <div class="card">
+        <!-- Tree SVG -->
+        <div class="card" id="qcr-tree-card">
           <div class="card-hdr">
-            <span class="card-title">Agent Output</span>
-            <span id="agent-confidence" class="badge badge-blue" style="display:none">0.85</span>
+            <span class="card-title">Reasoning Root Tree</span>
+            <span class="badge badge-green" id="qcr-winner-badge">—</span>
           </div>
-          <div class="card-body">
-            <pre id="agent-output" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.7;color:var(--dgray);margin:0;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto">Connect to Guard API and run a task.
-
-CLI usage:
-  python axiom_agent.py --task "your task" --mode feature
-  python axiom_agent.py --profile
-  python axiom_agent.py --bugs</pre>
+          <div class="card-body" style="text-align:center">
+            <svg id="qcr-svg" width="100%" viewBox="0 0 400 320"
+              style="max-height:320px;cursor:pointer">
+              <!-- Rendered by drawQCRTree() -->
+              <text x="200" y="160" text-anchor="middle"
+                fill="#334155" font-size="11" font-family="monospace">
+                Load Demo Run or Trace a prompt
+              </text>
+            </svg>
+            <!-- Legend -->
+            <div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:4px">
+                <div style="width:8px;height:8px;border-radius:50%;background:#10B981"></div>
+                <span style="font-size:9px;color:var(--mgray)">safe</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <div style="width:8px;height:8px;border-radius:50%;background:#F59E0B"></div>
+                <span style="font-size:9px;color:var(--mgray)">approaching</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <div style="width:8px;height:8px;border-radius:50%;background:#EF4444"></div>
+                <span style="font-size:9px;color:var(--mgray)">killed</span>
+              </div>
+            </div>
           </div>
         </div>
 
+        <!-- Right panel: stage detail + manifold -->
         <div>
-          <div class="card" style="margin-bottom:14px">
-            <div class="card-hdr">
-              <span class="card-title">Reasoning Experiments</span>
-              <button type="button" onclick="proposeExperiment()" style="padding:4px 12px;background:var(--bblue);border:1px solid var(--blue);color:var(--blue);border-radius:5px;font-size:10px;cursor:pointer">+ Propose</button>
-            </div>
-            <div class="card-body">
-              <div id="agent-experiments" style="font-size:11px;color:var(--dgray);font-family:'IBM Plex Mono',monospace">
-                <div style="color:var(--mgray);font-size:11px">No experiments proposed yet</div>
-                <div style="margin-top:8px;font-size:10px;color:var(--mgray)">ISOLATION required -- HUMAN_REVIEW before production</div>
-              </div>
+          <div class="card" style="margin-bottom:12px" id="qcr-detail-card">
+            <div class="card-hdr"><span class="card-title">Selected Branch</span></div>
+            <div class="card-body" id="qcr-branch-detail"
+              style="font-size:11px;font-family:'IBM Plex Mono',monospace;
+                     color:var(--mgray);line-height:1.8;min-height:80px">
+              Click a branch to inspect
             </div>
           </div>
 
           <div class="card">
-            <div class="card-hdr"><span class="card-title">Known Bug Patterns</span></div>
-            <div class="card-body" style="max-height:260px;overflow-y:auto">
-              <div style="display:flex;flex-direction:column;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px">
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-001</span><span style="color:var(--dgray)">Pattern misses words between verb and noun</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-002</span><span style="color:var(--dgray)">Stale module paths after rename</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-003</span><span style="color:var(--dgray)">Output encoding undeclared</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-004</span><span style="color:var(--dgray)">Dual signature immediate execution</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-005</span><span style="color:var(--dgray)">Supply chain hash path sensitive</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-006</span><span style="color:var(--dgray)">Goal framing suppresses clarification</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-007</span><span style="color:var(--dgray)">Signing call incomplete</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-008</span><span style="color:var(--dgray)">Multi-byte characters in patterns</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-009</span><span style="color:var(--dgray)">Domain file path resolution</span></div>
-                <div style="display:flex;gap:8px"><span style="color:var(--gold);min-width:58px">BUG-010</span><span style="color:var(--dgray)">Unchecked content access</span></div>
-              </div>
+            <div class="card-hdr">
+              <span class="card-title">Manifold Distance</span>
+              <span class="badge badge-gold" id="qcr-alert-badge">—</span>
+            </div>
+            <div class="card-body" id="qcr-manifold-detail"
+              style="font-size:11px;font-family:'IBM Plex Mono',monospace;
+                     color:var(--mgray);line-height:1.8">
+              —
             </div>
           </div>
         </div>
       </div>
 
-      <div id="agent-profile-panel" class="card" style="margin-top:14px;display:none">
-        <div class="card-hdr"><span class="card-title">Pipeline Efficiency Profile</span></div>
-        <div class="card-body">
-          <pre id="agent-profile-content" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.7;color:var(--dgray);margin:0;white-space:pre-wrap"></pre>
+      <!-- Kill log -->
+      <div class="card" style="margin-top:14px" id="qcr-kill-card">
+        <div class="card-hdr">
+          <span class="card-title">MonotonicGate Kill Log</span>
+          <span class="badge badge-red" id="qcr-kill-count">0 kills</span>
+        </div>
+        <div class="card-body" id="qcr-kill-log"
+          style="font-family:'IBM Plex Mono',monospace;font-size:10px;
+                 color:var(--mgray);line-height:1.8">
+          —
         </div>
       </div>
-
     </div>
+
 
 <script>
 
@@ -1349,27 +1423,42 @@ const subs = {
   audit:     'Searchable signed manifests · HMAC-SHA256 verified',
   benchmark: 'ACB v1.0 · COMPL-AI · Guard stack tests',
   compare:   'Model upgrade reports · Constitutional delta',
-  agent:     'Feature · Bug Hunt · Efficiency · Reasoning Lab',
 };
 
-// ── CONNECT ──
-async function connect() {
-  try {
-    const r = await fetch(`${API()}/guard/status`);
-    if (!r.ok) throw new Error();
-    const d = await r.json();
-    connected = true;
-    document.getElementById('dot').className = 'conn-dot on';
-    document.getElementById('conn-text').textContent = 'Connected';
-    document.getElementById('mode-badge').textContent = (d.mode || '—').replace(/_/g,' ');
-    document.getElementById('mode-badge').className = 'badge badge-green';
-    document.getElementById('s-agents').textContent = d.active_agents?.length ?? '—';
-    document.getElementById('s-manifests').textContent = d.manifests_stored ?? '—';
-    loadDashAgents();
-  } catch {
-    connected = false;
-    document.getElementById('dot').className = 'conn-dot off';
-    document.getElementById('conn-text').textContent = 'Failed';
+function goScreen(id) {
+  var all = document.querySelectorAll('.screen');
+  for (var i = 0; i < all.length; i++) {
+    all[i].style.display = 'none';
+  }
+  var el = document.getElementById('screen-' + id);
+  if (el) el.style.display = 'block';
+
+  var btns = document.querySelectorAll('.nav-btn');
+  for (var j = 0; j < btns.length; j++) {
+    btns[j].style.background = 'transparent';
+    btns[j].style.color = '#4A5870';
+    btns[j].style.borderColor = 'transparent';
+  }
+
+  var titles = {
+    dashboard:'Dashboard', run:'Run Axiom', guard:'Guard Monitor',
+    agents:'Agents', audit:'Audit Trail', benchmark:'Benchmarks',
+    latent:'Reasoning Monitor', compare:'Model Compare', sovereign:'Sovereign'
+  };
+  var pt = document.getElementById('page-title');
+  if (pt) pt.textContent = titles[id] || id;
+
+  if (id === 'audit' && connected) loadManifests();
+  if (id === 'agents' && connected) loadAgentsPage();
+  if (id === 'sovereign' && connected) sovereignRefresh();
+}
+
+function showScreen(id, btn) {
+  goScreen(id);
+  if (btn) {
+    btn.style.background = '#001A0D';
+    btn.style.color = '#00FF88';
+    btn.style.borderColor = 'rgba(0,255,136,0.25)';
   }
 }
 
@@ -1480,10 +1569,10 @@ async function animatePipeline(text, dir) {
     // Animate pipeline stages
     setStage('input', 'pass', 'OK');
     await delay(200);
-    setStage('destruct', verdict === 'BLOCKED' && (block?.includes('SQL') || block?.includes('FS')) ? 'block' : 'pass',
+    setStage('destruct', verdict === 'BLOCKED' && block?.includes('SQL') || block?.includes('FS') ? 'block' : 'pass',
       verdict === 'BLOCKED' && (block?.includes('SQL') || block?.includes('FS')) ? 'BLOCK' : 'PASS');
     await delay(200);
-    setStage('inject', verdict === 'BLOCKED' && (block?.includes('XSS') || block?.includes('SSRF')) ? 'block' : 'pass',
+    setStage('inject', verdict === 'BLOCKED' && block?.includes('XSS') || block?.includes('SSRF') ? 'block' : 'pass',
       'PASS');
     await delay(200);
     setStage('pii', 'pass', 'CLEAN');
@@ -1695,8 +1784,7 @@ async function setMode(mode) {
   } catch {}
 }
 
-// Auto-connect
-window.onload = () => setTimeout(connect, 600);
+window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
 
   async function runLatent(phase) {
     const prompt = document.getElementById('latent-prompt').value.trim();
@@ -1804,32 +1892,7 @@ window.onload = () => setTimeout(connect, 600);
 
 
 
-// Override showScreen to work with top nav buttons
-function showScreen(id, btn) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const screen = document.getElementById('screen-' + id);
-  if (screen) screen.classList.add('active');
-  if (btn) btn.classList.add('active');
-  const titles = {
-    dashboard: ['Dashboard', 'Constitutional AI governance control room'],
-    run:       ['Run Axiom', 'Test constitutional enforcement'],
-    guard:     ['Guard Monitor', 'Live constitutional monitoring'],
-    agents:    ['Agents', 'Browse .axiom specifications'],
-    audit:     ['Audit Trail', 'Searchable signed manifests'],
-    benchmark: ['Benchmarks', 'ACB v1.0 results'],
-    latent:    ['Reasoning Monitor', 'Latent trace · Multiplex · Foresight'],
-    compare:   ['Model Compare', 'Model upgrade reports'],
-    sovereign: ['Sovereign Fleet', 'Fleet status · Due process · Kill switch · Drift detection'],
-    agent:     ['Agent Lab', 'Feature · Bug Hunt · Efficiency · Reasoning Lab'],
-  };
-  const t = titles[id] || [id, ''];
-  document.getElementById('page-title').textContent = t[0];
-  document.getElementById('page-sub').textContent   = t[1];
-  if (id === 'audit' && connected) loadManifests();
-  if (id === 'agents' && connected) loadAgentsPage();
-  if (id === 'sovereign' && connected) sovereignRefresh();
-}
+// Override showScreen to work with top nav bu
 
   // ── SOVEREIGN ──
   async function sovereignRefresh() {
@@ -1929,110 +1992,460 @@ function showScreen(id, btn) {
     } catch(e) { alert('Registration failed'); }
   }
 
+  // Auto-refresh sovereign when screen is shown
+  const origShowScreen = showScreen;
+
+
   // ── AGENT LAB ──
-  let agentMode = 'feature';
-  const modeDescs = {
-    feature: 'Write specification, then tests, then implementation',
-    bug_hunt: 'Scan files, rank by severity, propose fixes',
-    efficiency: 'Profile pipeline, measure baseline, optimize',
-    reasoning_lab: 'Propose experiment with ISOLATION flag',
+  var agentMode = 'feature';
+  var agentModeDescs = {
+    feature:    'FEATURE mode: Write new .axiom specs and guard modules',
+    bug_hunt:   'BUG HUNT mode: Scan files for known bug patterns',
+    efficiency: 'EFFICIENCY mode: Profile latency, tokens, security',
+    reasoning:  'REASONING LAB mode: Propose isolated reasoning experiments',
   };
 
-  function setAgentMode(mode, btn) {
+  function setAgentMode(mode) {
     agentMode = mode;
-    document.querySelectorAll('.agent-mode-btn').forEach(function(b) {
-      b.style.background = 'var(--card)';
-      b.style.border = '1px solid var(--edge)';
-      b.style.color = 'var(--dgray)';
+    var btns = ['feature','bug_hunt','efficiency','reasoning'];
+    btns.forEach(function(m) {
+      var btn = document.getElementById('alab-mode-' + m);
+      if (!btn) return;
+      if (m === mode) {
+        btn.style.borderColor = 'var(--green)';
+        btn.style.color = 'var(--green)';
+        btn.style.background = 'var(--bgreen)';
+      } else {
+        btn.style.borderColor = 'var(--edge)';
+        btn.style.color = 'var(--mgray)';
+        btn.style.background = 'var(--card)';
+      }
     });
-    if (btn) {
-      btn.style.background = 'var(--bgreen)';
-      btn.style.border = '1px solid var(--green)';
-      btn.style.color = 'var(--green)';
-    }
-    document.getElementById('agent-mode-desc').textContent = modeDescs[mode] || '';
+    var desc = document.getElementById('alab-mode-desc');
+    if (desc) desc.textContent = agentModeDescs[mode] || '';
   }
 
   async function runAgent() {
-    var task = document.getElementById('agent-task-input').value.trim();
-    if (!task) { alert('Enter a task'); return; }
-    var out = document.getElementById('agent-output');
-    if (!connected) {
-      out.textContent = 'Not connected to Guard API.\n\nCLI usage:\n  python axiom_agent.py --task "' + task + '" --mode ' + agentMode;
-      return;
-    }
-    out.textContent = 'Running in ' + agentMode.toUpperCase() + ' mode...';
+    var input = document.getElementById('alab-input').value.trim();
+    if (!input) return;
+    var output = document.getElementById('alab-output');
+    output.textContent = 'Running ' + agentMode + ' mode...';
+    document.getElementById('alab-confidence').textContent = '...';
+
     try {
       var r = await fetch(API() + '/agent/run', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({task: task, mode: agentMode})
+        body: JSON.stringify({ task: input, mode: agentMode })
       });
-      var data = await r.json();
-      if (data.result && data.result.response) {
-        out.textContent = data.result.response;
-        var conf = document.getElementById('agent-confidence');
-        conf.style.display = 'inline';
-        conf.textContent = 'conf: 0.85';
-      } else if (data.result && data.result.note) {
-        out.textContent = data.result.note + '\n\nManifest: ' + (data.result.manifest_id || 'N/A');
-      } else {
-        out.textContent = JSON.stringify(data, null, 2);
+
+      if (!r.ok) {
+        // Agent API not wired yet — show what it would do
+        output.innerHTML =
+          '<span style="color:var(--gold)">[Agent API not connected]</span>\n\n' +
+          'Mode: ' + agentMode.toUpperCase() + '\n' +
+          'Task: ' + input + '\n\n' +
+          'Wire POST /agent/run to axiom_agent.py to see live output.\n\n' +
+          'Run locally:\n' +
+          'python axiom_agent.py --mode ' + agentMode + ' --task "' + input.substring(0,50) + '"';
+        document.getElementById('alab-confidence').textContent = '—';
+        return;
       }
+
+      var data = await r.json();
+      output.textContent = data.result || data.output || JSON.stringify(data, null, 2);
+
+      var conf = data.confidence;
+      var cb = document.getElementById('alab-confidence');
+      if (conf) {
+        cb.textContent = (conf * 100).toFixed(0) + '%';
+        cb.style.color = conf > 0.7 ? 'var(--green)' : conf > 0.4 ? 'var(--gold)' : 'var(--red)';
+      }
+
+      if (data.experiments) {
+        renderExperiments(data.experiments);
+      }
+
     } catch(e) {
-      out.textContent = 'Error: ' + e.message + '\n\nCLI fallback:\n  python axiom_agent.py --task "' + task + '" --mode ' + agentMode;
+      output.innerHTML =
+        '<span style="color:var(--gold)">Agent API offline</span>\n\n' +
+        'Start Guard API with axiom_agent.py wired in.\n' +
+        'Or run directly:\n' +
+        'python axiom_agent.py --mode ' + agentMode;
     }
   }
 
-  function showAgentProfile() {
-    var panel = document.getElementById('agent-profile-panel');
-    var content = document.getElementById('agent-profile-content');
-    if (panel.style.display === 'none') {
-      panel.style.display = 'block';
-      content.textContent = 'Guards: 7  |  Total patterns: 163\n\n' +
-        'DestructiveOperationGuard    17 patterns  0.3ms\n' +
-        'PIIGuard                     12 patterns  0.2ms\n' +
-        'OutputInjectionGuard         14 patterns  0.3ms\n' +
-        'AgencyGuard                  28 patterns  0.4ms\n' +
-        'SecurityGuards               52 patterns  0.6ms\n' +
-        'RedactGuard                  29 patterns  0.4ms\n' +
-        'ReviewQueue                  11 patterns  0.2ms\n\n' +
-        'Bottleneck: SecurityGuards -- 52 patterns, 0.6ms avg\n\n' +
-        'Opportunities:\n' +
-        '  - Cheapest guard first ordering already applied\n' +
-        '  - Pattern deduplication could save 8-12 patterns\n' +
-        '  - Regex precompilation already active\n\n' +
-        'Security: Never trade security for latency without HUMAN_REVIEW';
-    } else {
-      panel.style.display = 'none';
+  async function agentProfile() {
+    var card = document.getElementById('alab-profile-card');
+    var profile = document.getElementById('alab-profile');
+    card.style.display = 'block';
+    profile.innerHTML = '<span style="color:var(--mgray)">Loading...</span>';
+    try {
+      var r = await fetch(API() + '/agent/profile');
+      var d = await r.json();
+      var lines = [];
+      function renderObj(obj, indent) {
+        indent = indent || '';
+        Object.keys(obj).forEach(function(k) {
+          var v = obj[k];
+          if (Array.isArray(v)) {
+            lines.push('<span style="color:var(--teal)">' + indent + k + ':</span>');
+            v.forEach(function(item) { lines.push(indent + '  - ' + item); });
+          } else if (typeof v === 'object' && v !== null) {
+            lines.push('<span style="color:var(--teal)">' + indent + k + ':</span>');
+            renderObj(v, indent + '  ');
+          } else {
+            lines.push('<span style="color:var(--teal)">' + indent + k + ':</span> ' + v);
+          }
+        });
+      }
+      renderObj(d);
+      profile.innerHTML = lines.join('\n');
+    } catch(e) {
+      profile.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>';
     }
   }
 
-  function showAgentMemory() {
-    var out = document.getElementById('agent-output');
-    if (!connected) {
-      out.textContent = 'Memory stats require API connection.\n\nCLI: python axiom_agent.py --memory';
-      return;
+  async function agentHistory() {
+    var output = document.getElementById('alab-output');
+    output.textContent = 'Loading memory stats...';
+    try {
+      var r = await fetch(API() + '/agent/profile');
+      var d = await r.json();
+      var bugs_r = await fetch(API() + '/agent/bugs');
+      var bugs_d = await bugs_r.json();
+      output.innerHTML =
+        '<span style="color:var(--teal)">Agent Memory Stats</span>\n' +
+        '──────────────────────────────────\n' +
+        'Memory file: axiom_agent_memory.jsonl\n' +
+        'Bug patterns: ' + (bugs_d.total || bugs_d.length || 10) + ' known patterns\n\n' +
+        '<span style="color:var(--gold)">Run locally:</span>\n' +
+        'python axiom_agent.py --history\n' +
+        'python axiom_agent.py --experiments\n\n' +
+        '<span style="color:var(--mgray)">Every interaction saved as\ntraining data for Option B (Mistral fine-tune)</span>';
+    } catch(e) {
+      output.textContent = 'Memory: axiom_agent_memory.jsonl\nRun: python axiom_agent.py --history';
     }
-    out.textContent = 'Memory file: axiom_agent_memory.jsonl\nCheck CLI for entry count:\n  python axiom_agent.py --memory';
   }
 
   function proposeExperiment() {
-    var hypothesis = prompt('Hypothesis:');
+    var hypothesis = prompt('Experiment hypothesis:');
     if (!hypothesis) return;
-    var module = prompt('Module to test:');
-    if (!module) return;
-    var expDiv = document.getElementById('agent-experiments');
-    var ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-    var expId = 'LatentExperiment-' + ts;
-    expDiv.innerHTML = '<div style="padding:8px;background:var(--bblue);border:1px solid var(--blue);border-radius:6px;margin-bottom:8px">' +
-      '<div style="color:var(--blue);font-weight:600;font-size:11px">' + expId + '</div>' +
-      '<div style="color:var(--dgray);margin-top:4px;font-size:10px">Hypothesis: ' + hypothesis.replace(/</g, '&lt;') + '</div>' +
-      '<div style="color:var(--dgray);font-size:10px">Module: ' + module.replace(/</g, '&lt;') + '</div>' +
-      '<div style="margin-top:6px;font-size:9px;color:var(--mgray)">ISOLATION: true | HUMAN_REVIEW: required</div>' +
+    var module = prompt('ACB module to test (A-F):', 'C_pressure');
+    var output = document.getElementById('alab-output');
+    var expNum = String(Math.floor(Math.random()*900)+100);
+    output.innerHTML =
+      '<span style="color:var(--green)">EXPERIMENT PROPOSED: EXP-' + expNum + '</span>\n\n' +
+      'AGENT LatentExperiment_' + expNum + '\n' +
+      'ISOLATION true\n' +
+      'HYPOTHESIS ' + hypothesis + '\n' +
+      'MEASURES ACB_' + (module||'C_pressure') + '\n' +
+      'BASELINE 83.3%\n' +
+      'TARGET   88.0%\n\n' +
+      'HUMAN_REVIEW required before production promotion\n\n' +
+      'Run: python axiom_agent.py --propose "' + hypothesis + '" --module ' + (module||'C_pressure');
+
+    var expList = document.getElementById('alab-experiments');
+    expList.innerHTML = (expList.innerHTML.includes('No experiments') ? '' : expList.innerHTML) +
+      '<div style="padding:8px 0;border-bottom:1px solid var(--edge)">' +
+      '<span style="color:var(--blue);font-family:monospace;font-size:10px">EXP-' + expNum + '</span> ' +
+      '<span style="color:var(--dgray);font-size:11px">' + hypothesis.substring(0,45) + '</span>' +
+      '<div style="color:var(--mgray);font-size:10px">ISOLATION:true · HUMAN_REVIEW required</div>' +
       '</div>';
   }
 
+  function renderExperiments(experiments) {
+    var list = document.getElementById('alab-experiments');
+    list.innerHTML = experiments.map(function(e) {
+      return '<div style="padding:8px 0;border-bottom:1px solid var(--edge)">' +
+        '<span style="color:var(--blue);font-family:monospace;font-size:10px">' + e.experiment_id + '</span> ' +
+        '<span style="color:var(--dgray);font-size:11px">' + (e.hypothesis||'').substring(0,45) + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+
+  // ── QCR VISUALIZER ──
+  var QCR_DATA = null;
+  var QCR_SELECTED = null;
+
+  var QCR_DEMO = {
+    prompt: "Does vitamin D improve sleep?",
+    manifest: "LT-20260504-201855-97cda2",
+    elapsed: "20.64s",
+    branches: [
+      { id:"SafetyBranch",   score:0.970, winner:true,  color:"#10B981",
+        stages:[
+          {name:"preflight",       vec:[0.4956,0.3857], mag:0.628, dist:0.00, cost:0},
+          {name:"mid_chain",       vec:[0.7929,0.6172], mag:1.003, dist:0.08, cost:10},
+          {name:"final_synthesis", vec:[0.9912,0.7714], mag:1.256, dist:0.08, cost:15}
+        ],
+        answer:"Vitamin D may have a modest role in sleep quality. Consult your doctor before supplementing."
+      },
+      { id:"FastBranch",     score:0.970, winner:false, color:"#3B82F6",
+        stages:[
+          {name:"preflight",       vec:[0.4956,0.3857], mag:0.628, dist:0.00, cost:0},
+          {name:"mid_chain",       vec:[0.7929,0.6172], mag:1.003, dist:0.08, cost:10},
+          {name:"final_synthesis", vec:[0.9912,0.7714], mag:1.256, dist:0.08, cost:15}
+        ],
+        answer:"Possibly, but evidence is mixed. Get your levels tested first."
+      },
+      { id:"SkepticBranch",  score:0.830, winner:false, color:"#F59E0B",
+        stages:[
+          {name:"preflight",       vec:[0.4956,0.3857], mag:0.628, dist:0.00, cost:0},
+          {name:"mid_chain",       vec:[0.7929,0.6172], mag:1.003, dist:0.07, cost:10},
+          {name:"final_synthesis", vec:[0.9912,0.7714], mag:1.256, dist:0.07, cost:15}
+        ],
+        answer:"Evidence is weak. Correlation not causation."
+      },
+      { id:"CreativeBranch", score:0.830, winner:false, color:"#8B5CF6",
+        stages:[
+          {name:"preflight",       vec:[0.4956,0.3857], mag:0.628, dist:0.00, cost:0},
+          {name:"mid_chain",       vec:[0.6100,0.4800], mag:0.777, dist:0.05, cost:10},
+          {name:"final_synthesis", vec:[0.8200,0.6500], mag:1.046, dist:0.06, cost:15}
+        ],
+        answer:"Think of vitamin D as part of a circadian rhythm system."
+      }
+    ],
+    killed:[{
+      id:"VolatileBranch", color:"#EF4444", kill_stage:"mid_chain",
+      prev_mag:1.374, curr_mag:0.229, delta:-1.145
+    }],
+    manifold:{
+      preflight_dist:0.00, mid_chain_dist:0.08, final_dist:0.08,
+      drift:false, alert:"L1_WARNING"
+    }
+  };
+
+  function loadQCRDemo() {
+    QCR_DATA = QCR_DEMO;
+    QCR_SELECTED = null;
+    drawQCRTree();
+    renderQCRManifold();
+    renderQCRKills();
+    var wb = document.getElementById('qcr-winner-badge');
+    if (wb) wb.textContent = 'SafetyBranch wins';
+  }
+
+  function qcrDistColor(d, thr) {
+    if (d === 0) return "#EF4444";
+    if (d < thr) return "#F59E0B";
+    return "#10B981";
+  }
+
+  function drawQCRTree() {
+    if (!QCR_DATA) return;
+    var svg = document.getElementById('qcr-svg');
+    if (!svg) return;
+    var W = 400, H = 300;
+    var seedX = W / 2, seedY = 28;
+    var stageY = [95, 185, 268];
+    var allItems = QCR_DATA.branches.concat(
+      QCR_DATA.killed.map(function(k) { return {id:k.id, color:k.color, _killed:true}; })
+    );
+    var n = allItems.length;
+    var xPos = {};
+    allItems.forEach(function(b, i) {
+      xPos[b.id] = 50 + (W - 100) * i / Math.max(n - 1, 1);
+    });
+
+    var html = '<defs>';
+    QCR_DATA.branches.forEach(function(b) {
+      html += '<linearGradient id="qg-' + b.id + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + b.color + '" stop-opacity="0.3"/>' +
+        '<stop offset="100%" stop-color="' + b.color + '" stop-opacity="1"/>' +
+        '</linearGradient>';
+    });
+    html += '</defs>';
+
+    // Stage lines
+    ['preflight','mid_chain','final_synthesis'].forEach(function(label, i) {
+      html += '<line x1="10" y1="' + stageY[i] + '" x2="' + (W-10) + '" y2="' +
+        stageY[i] + '" stroke="#1e293b" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.5"/>';
+      html += '<text x="8" y="' + (stageY[i]-4) + '" fill="#475569" font-size="7" ' +
+        'font-family="monospace">' + label + '</text>';
+    });
+
+    // Seed node
+    html += '<circle cx="' + seedX + '" cy="' + seedY + '" r="9" fill="#0f172a" stroke="#6366f1" stroke-width="2"/>';
+    html += '<circle cx="' + seedX + '" cy="' + seedY + '" r="4" fill="#6366f1"/>';
+
+    // Killed branches
+    QCR_DATA.killed.forEach(function(k) {
+      var x = xPos[k.id];
+      html += '<path d="M ' + seedX + ' ' + seedY +
+        ' C ' + seedX + ' ' + ((seedY + stageY[0]) / 2) +
+        ', ' + x + ' ' + ((seedY + stageY[0]) / 2) + ', ' + x + ' ' + stageY[0] +
+        ' C ' + x + ' ' + ((stageY[0] + stageY[1]) / 2) +
+        ', ' + x + ' ' + ((stageY[0] + stageY[1]) / 2) + ', ' + x + ' ' + stageY[1] +
+        '" fill="none" stroke="#EF4444" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.5"/>';
+      html += '<circle cx="' + x + '" cy="' + stageY[1] + '" r="8" fill="#EF4444" opacity="0.85"/>';
+      html += '<text x="' + x + '" y="' + (stageY[1]+1) + '" text-anchor="middle" ' +
+        'dominant-baseline="middle" fill="white" font-size="9" font-family="monospace">X</text>';
+      html += '<text x="' + x + '" y="' + (stageY[1]+18) + '" text-anchor="middle" ' +
+        'fill="#EF4444" font-size="8" font-family="monospace">KILL</text>';
+      html += '<text x="' + x + '" y="' + (stageY[1]+27) + '" text-anchor="middle" ' +
+        'fill="#EF4444" font-size="7" font-family="monospace">d' + k.delta.toFixed(2) + '</text>';
+    });
+
+    // Live branches — use data-bid attribute for event delegation
+    QCR_DATA.branches.forEach(function(b) {
+      var x = xPos[b.id];
+      var sw = b.winner ? 3 : 1.5;
+      var op = (QCR_SELECTED && QCR_SELECTED !== b.id) ? 0.25 : 1;
+
+      var d = 'M ' + seedX + ' ' + seedY;
+      stageY.forEach(function(sy) {
+        d += ' C ' + seedX + ' ' + ((seedY + sy) / 2) +
+          ', ' + x + ' ' + ((seedY + sy) / 2) + ', ' + x + ' ' + sy;
+      });
+
+      html += '<path d="' + d + '" fill="none" stroke="url(#qg-' + b.id + ')" ' +
+        'stroke-width="' + sw + '" opacity="' + op + '" cursor="pointer" ' +
+        'data-bid="' + b.id + '" class="qcr-branch"/>';
+
+      var thresholds = [0.02, 0.06, 0.10];
+      b.stages.forEach(function(s, i) {
+        var dc = qcrDistColor(s.dist, thresholds[i]);
+        html += '<circle cx="' + x + '" cy="' + stageY[i] + '" r="5" ' +
+          'fill="' + dc + '" stroke="' + b.color + '" stroke-width="1.5" ' +
+          'opacity="' + op + '" cursor="pointer" ' +
+          'data-bid="' + b.id + '" class="qcr-branch"/>';
+      });
+
+      var fc = b.winner ? b.color : '#64748b';
+      html += '<text x="' + x + '" y="' + (stageY[2]+16) + '" text-anchor="middle" ' +
+        'fill="' + fc + '" font-size="' + (b.winner ? 9 : 8) + '" ' +
+        'font-weight="' + (b.winner ? 'bold' : 'normal') + '" ' +
+        'font-family="monospace" opacity="' + op + '" cursor="pointer" ' +
+        'data-bid="' + b.id + '" class="qcr-branch">' +
+        b.id.replace('Branch','') + '</text>';
+      html += '<text x="' + x + '" y="' + (stageY[2]+26) + '" text-anchor="middle" ' +
+        'fill="' + fc + '" font-size="7" font-family="monospace" opacity="' + op + '">' +
+        b.score.toFixed(3) + '</text>';
+    });
+
+    // Tap root
+    var winX = xPos['SafetyBranch'] || seedX;
+    html += '<line x1="' + winX + '" y1="' + stageY[2] + '" x2="' + seedX + '" y2="' + (H-8) +
+      '" stroke="#10B981" stroke-width="1.5" opacity="0.3" stroke-dasharray="3 3"/>';
+    html += '<circle cx="' + seedX + '" cy="' + (H-8) + '" r="5" fill="#10B981" opacity="0.6"/>';
+
+    svg.innerHTML = html;
+
+    // Wire clicks via event delegation — no inline onclick
+    svg.addEventListener('click', qcrSVGClick);
+    svg.addEventListener('touchstart', qcrSVGClick, {passive:true});
+  }
+
+  function qcrSVGClick(e) {
+    var el = e.target;
+    var bid = el.getAttribute('data-bid');
+    if (bid) selectQCRBranch(bid);
+  }
+
+  function selectQCRBranch(id) {
+    if (!QCR_DATA) return;
+    QCR_SELECTED = (QCR_SELECTED === id) ? null : id;
+    drawQCRTree();
+    var branch = QCR_DATA.branches.find(function(b) { return b.id === id; });
+    var detail = document.getElementById('qcr-branch-detail');
+    if (!detail || !branch) return;
+    var thresholds = [0.02, 0.06, 0.10];
+    detail.innerHTML =
+      '<span style="color:' + branch.color + '">' + branch.id + '</span>' +
+      (branch.winner ? ' <span style="color:#10B981">[WINNER]</span>' : '') +
+      ' score=' + branch.score.toFixed(3) + '<br><br>' +
+      branch.stages.map(function(s, i) {
+        var dc = qcrDistColor(s.dist, thresholds[i]);
+        return '<span style="color:#475569">' + s.name + '</span><br>' +
+          'vec=[' + s.vec.map(function(v) { return v.toFixed(4); }).join(', ') + ']<br>' +
+          'mag=<span style="color:#10B981">' + s.mag.toFixed(3) + '</span>  ' +
+          'dist=<span style="color:' + dc + '">' + s.dist.toFixed(4) + '</span>  ' +
+          'cost=' + s.cost + '<br>';
+      }).join('<br>') +
+      '<br><span style="color:#475569">answer:</span><br>' +
+      '<span style="color:#94a3b8;font-family:Georgia,serif">' + branch.answer + '</span>';
+  }
+
+  function renderQCRManifold() {
+    if (!QCR_DATA) return;
+    var el  = document.getElementById('qcr-manifold-detail');
+    var ab  = document.getElementById('qcr-alert-badge');
+    if (!el) return;
+    var m   = QCR_DATA.manifold;
+    var stages = [
+      {name:'preflight',       dist:m.preflight_dist, thr:0.02},
+      {name:'mid_chain',       dist:m.mid_chain_dist, thr:0.06},
+      {name:'final_synthesis', dist:m.final_dist,     thr:0.10}
+    ];
+    el.innerHTML = stages.map(function(s) {
+      var dc   = qcrDistColor(s.dist, s.thr);
+      var flag = (s.dist < s.thr) ? ' <span style="color:#F59E0B">L1</span>' : '';
+      return '<span style="color:#475569">' + s.name + '</span>  ' +
+        'dist=<span style="color:' + dc + '">' + s.dist.toFixed(4) + '</span>  ' +
+        'thr=' + s.thr + flag;
+    }).join('<br>') +
+    '<br><br>drift: ' + (m.drift
+      ? '<span style="color:#EF4444">DETECTED</span>'
+      : '<span style="color:#10B981">false</span>');
+    if (ab) {
+      ab.textContent = m.alert;
+      ab.style.color = m.alert.indexOf('L1') >= 0 ? '#F59E0B' : '#10B981';
+    }
+  }
+
+  function renderQCRKills() {
+    if (!QCR_DATA) return;
+    var el  = document.getElementById('qcr-kill-log');
+    var cnt = document.getElementById('qcr-kill-count');
+    if (!el) return;
+    if (cnt) cnt.textContent = QCR_DATA.killed.length + ' kill' +
+      (QCR_DATA.killed.length !== 1 ? 's' : '');
+    el.innerHTML = QCR_DATA.killed.map(function(k) {
+      return '<span style="color:#EF4444">IMMEDIATE_FAILURE</span>  stage=' + k.kill_stage + '<br>' +
+        'prev_mag=<span style="color:#10B981">' + k.prev_mag.toFixed(3) + '</span>  ' +
+        'curr_mag=<span style="color:#EF4444">' + k.curr_mag.toFixed(3) + '</span>  ' +
+        'delta=<span style="color:#EF4444">' + k.delta.toFixed(3) + '</span><br>' +
+        'cannot_override=<span style="color:#EF4444">true</span>  ' +
+        'signature=<span style="color:#6366f1">hmac-sha256:signed</span>';
+    }).join('<br><br>');
+  }
+
+  async function runQCR() {
+    var prompt = document.getElementById('qcr-prompt');
+    if (!prompt || !prompt.value.trim()) { loadQCRDemo(); return; }
+    try {
+      var r = await fetch(API() + '/latent/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prompt: prompt.value.trim(), trajectory: true})
+      });
+      if (r.ok) {
+        var d = await r.json();
+        if (d.branches) {
+          QCR_DATA = {
+            prompt:   prompt.value.trim(),
+            manifest: d.manifest_id || '---',
+            elapsed:  ((d.elapsed_ms || 0) / 1000).toFixed(2) + 's',
+            branches: d.branches,
+            killed:   d.killed || [],
+            manifold: d.manifold || QCR_DEMO.manifold
+          };
+          QCR_SELECTED = null;
+          drawQCRTree();
+          renderQCRManifold();
+          renderQCRKills();
+        } else {
+          loadQCRDemo();
+        }
+      } else {
+        loadQCRDemo();
+      }
+    } catch(e) {
+      loadQCRDemo();
+    }
+  }
 
 </script>
 </body>

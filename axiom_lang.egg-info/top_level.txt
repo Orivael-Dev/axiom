@@ -1,4 +1,0 @@
-axiom
-axiom_files
-axiom_lab
-cli

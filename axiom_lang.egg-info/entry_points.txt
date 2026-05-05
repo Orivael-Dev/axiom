@@ -1,7 +1,0 @@
-[console_scripts]
-axiom = cli:axiom_cmd
-axiom-add = axiom.init:add_main
-axiom-init = axiom.init:main
-axiom-run = cli:run_cmd
-axiom-server = cli:cmd_server
-axiom-validate = cli:validate_cmd
