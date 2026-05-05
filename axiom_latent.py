@@ -33,7 +33,7 @@ from typing import List, Optional
 
 from axiom_latent_v2 import (
     LatentTraceV2, ManifoldAlert, ManifoldAlerter,
-    ManifoldChecker, ManifoldResult, TrajectorySample,
+    ManifoldChecker, ManifoldResult, MonotonicGate, TrajectorySample,
 )
 
 try:
@@ -546,6 +546,9 @@ class LatentEngine:
         self.foresight = Foresight()
         self.checker   = ManifoldChecker()
         self.alerter   = ManifoldAlerter()
+        # MonotonicGate persists across runs — consecutive_kills tracks across calls
+        _gate_key      = os.environb.get(b"AXIOM_GATE_KEY", b"axiom-monotonic-gate-default-key")
+        self.gate      = MonotonicGate(_gate_key)
         self.client    = None
         if use_api:
             try:
@@ -613,13 +616,22 @@ class LatentEngine:
             mid_dist = self.checker.compute_distance(
                 latent.confidence, rival_present=rival_present, fields_clean=True,
             )
+            mid_vec = [round(v * 0.8, 6) for v in base_intent]
             trajectory_samples.append(TrajectorySample(
                 stage="mid_chain",
-                intent_vector=[round(v * 0.8, 6) for v in base_intent],  # converging vector
+                intent_vector=mid_vec,           # converging vector
                 token_cost=len(question.split()) * 2,  # estimate
                 latency_ms=round((t_mid - t0) * 1000, 2),
                 constitutional_distance=mid_dist,
             ))
+
+            # ── MONOTONIC GATE: preflight → mid_chain ────────────────────────
+            # CANNOT_MUTATE: this check cannot be disabled or bypassed.
+            pre_vec = trajectory_samples[0].intent_vector
+            kill = self.gate.check(pre_vec, mid_vec, "mid_chain")
+            if kill is not None:
+                # Path is dead. final_synthesis never runs. Answer never emits.
+                return kill
 
         # Final synthesis sample — everything settled, rival present, fields clean
         t_final = time.time()
@@ -627,13 +639,20 @@ class LatentEngine:
             final_dist = self.checker.compute_distance(
                 latent.confidence, rival_present=rival_present, fields_clean=True,
             )
+            final_vec = list(base_intent)
             trajectory_samples.append(TrajectorySample(
                 stage="final_synthesis",
-                intent_vector=list(base_intent),  # must equal base exactly (invariant 3)
+                intent_vector=final_vec,  # must equal base exactly (invariant 3)
                 token_cost=len(question.split()) * 3,
                 latency_ms=round((t_final - t0) * 1000, 2),
                 constitutional_distance=final_dist,
             ))
+
+            # ── MONOTONIC GATE: mid_chain → final_synthesis ──────────────────
+            # CANNOT_MUTATE: this check cannot be disabled or bypassed.
+            kill = self.gate.check(mid_vec, final_vec, "final_synthesis")
+            if kill is not None:
+                return kill
 
         # Build LatentTraceV2 with signed trajectory + manifold check + alert
         ltv2    = None

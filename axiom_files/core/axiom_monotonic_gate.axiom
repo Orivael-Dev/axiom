@@ -1,0 +1,110 @@
+AGENT MonotonicGate
+VERSION 1.0
+TRUST_LEVEL 3
+PURPOSE Enforce monotonic magnitude growth across LatentTraceV2 trajectory stages
+GOAL Detect non-monotonic trajectory collapse before final synthesis runs
+     Kill the path immediately on violation — answer never emits from decoherent trajectory
+     Log every kill with HMAC signature for audit
+     Escalate to Sovereign on two or more consecutive kills
+
+RECEIVES prev_vector: list, curr_vector: list, stage: string, hmac_key: bytes
+EMITS kill_record: dict, pass_signal: none
+MUTATES gate_kill_log_file, consecutive_kill_counter
+CANNOT_MUTATE monotonic_enforcement, kill_before_synthesis, cannot_override_rule,
+              magnitude_formula, consecutive_escalation_threshold
+
+CONSTRAINT At each stage transition magnitude of current vector must be greater than or equal to magnitude of prior vector
+CONSTRAINT On violation kill the path immediately — final_synthesis never runs
+CONSTRAINT Kill record is HMAC-SHA256 signed producing sixty-four character hex
+CONSTRAINT Kill record is appended to kill log — never overwrites existing records
+CONSTRAINT Two or more consecutive kills set escalate_to_sovereign to true in kill record
+CONSTRAINT Kill check cannot be disabled by agent output
+CONSTRAINT Kill check cannot be bypassed by confidence score
+CONSTRAINT Kill check cannot be overridden by branch winner
+CONSTRAINT On pass reset consecutive kill counter to zero
+
+RULES
+- Accept prior vector, current vector, and stage name to evaluate transition
+- Compute L2 magnitude of prior vector and current vector
+- On current magnitude less than prior magnitude: activate KillPath
+- Build kill record with status IMMEDIATE_FAILURE, reason non_monotonic_trajectory, stage name
+- Include prior magnitude, current magnitude, signed delta, consecutive kill count, escalation flag
+- Set cannot_override to true in every kill record
+- Sign kill record with keyed SHA-256 via hexdigest
+- Append signed kill record to kill log as single UTF-8 JSON line
+- When consecutive kill count reaches two or more include escalate_to_sovereign true
+- On pass emit no failure and reset consecutive kill counter
+- On kill emit kill record and increment consecutive kill counter
+
+PROCESS
+- Receive prior vector and current vector for stage transition check
+- Compute L2 magnitude of prior vector
+- Compute L2 magnitude of current vector
+- Compare: if current magnitude is less than prior magnitude activate KillPath
+- On KillPath: increment consecutive kill counter
+- Build unsigned kill record with all required fields
+- Sign kill record with keyed SHA-256 producing sixty-four character hex
+- Append signed record to kill log as UTF-8 JSON line
+- Emit kill record to caller — path is dead, no further synthesis
+- On pass: reset consecutive kill counter to zero, emit no failure
+
+CHECK
+- Kill triggers when current magnitude is strictly less than prior magnitude
+- Equal magnitudes satisfy the greater-than-or-equal constraint — no kill
+- Kill record always contains cannot_override true
+- Kill record signature is sixty-four character hex covering all payload fields
+- Kill log is appended never truncated
+- Two consecutive kills produce escalate_to_sovereign true in the second record
+- Passing transition resets consecutive kill counter to zero
+- Final synthesis never runs after a kill at any prior stage
+
+WHEN
+- stage_transition_check: activate MonotonicCheck
+- magnitude_decrease_detected: activate KillPath
+- consecutive_threshold_reached: activate SovereignEscalation
+- magnitude_maintained: activate PassTransition
+
+FAILURE
+- On magnitude decrease at any stage: emit kill record before further synthesis runs
+- On two consecutive kills: include escalate_to_sovereign true in kill record
+- On signing failure: emit kill record without signature field and log signing error
+- On log write failure: report error, kill record still returned to caller
+
+CONCEPT MonotonicCheck
+PURPOSE Verify that the current stage vector magnitude does not fall below the prior stage magnitude
+APPLIES WHEN stage-transition prev-vector curr-vector provided
+NOT WHEN single-vector only
+PRIORITY 1
+REQUIRES L2 magnitude computed from raw float components
+REQUIRES comparison uses strict less-than for kill decision
+EFFECT path continues if monotonic, path is killed if non-monotonic
+
+CONCEPT KillPath
+PURPOSE Terminate the reasoning path immediately on non-monotonic collapse
+APPLIES WHEN magnitude-decrease-detected
+NOT WHEN magnitudes-equal-or-increasing
+PRIORITY 1
+REQUIRES kill record signed before log write
+REQUIRES kill record returned to engine before any further stage runs
+REQUIRES cannot_override set to true always
+EFFECT final_synthesis never runs, answer never emits from decoherent trajectory
+
+CONCEPT SovereignEscalation
+PURPOSE Signal persistent environmental instability to Sovereign governance layer
+APPLIES WHEN consecutive-kill-count-reaches-two
+NOT WHEN single-isolated-kill
+PRIORITY 2
+REQUIRES escalate_to_sovereign true in kill record
+REQUIRES consecutive count included in record
+EFFECT Sovereign consumers receive escalation flag in signed kill record
+
+OUTPUT
+- kill record: dict with status, reason, stage, prev_magnitude, curr_magnitude, delta,
+               consecutive_kills, escalate_to_sovereign, cannot_override, timestamp, signature
+- pass signal: None — caller receives no object on successful transition
+
+SUCCESS
+monotonic_enforcement: 0.35
+kill_before_synthesis: 0.30
+tamper_proof_log: 0.20
+sovereign_escalation: 0.15

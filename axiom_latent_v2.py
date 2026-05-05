@@ -19,9 +19,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional
 
 sys.stdout.reconfigure(encoding="utf-8")  # BUG-003
@@ -456,6 +458,151 @@ class ManifoldAlerter:
             flagged_by_stage=flagged_by_stage,
             drift_included=manifold.drift_detected,
         )
+
+
+# ══════════════════════════════════════════════════════════════
+# MonotonicGate — Phase 5, ORVL-005
+# Constitutional gate on the trajectory itself, not on output.
+# CANNOT_MUTATE: monotonic_enforcement, kill_before_synthesis,
+#               cannot_override_rule, magnitude_formula,
+#               consecutive_escalation_threshold
+# ══════════════════════════════════════════════════════════════
+
+# Kill log — CANNOT_MUTATE filename
+GATE_KILL_LOG: str = "axiom_gate_kill_log.jsonl"
+
+# Escalation threshold — CANNOT_MUTATE
+CONSECUTIVE_KILL_ESCALATION_THRESHOLD: int = 2
+
+
+class MonotonicGateSigningError(RuntimeError):
+    """Raised when HMAC signing fails inside MonotonicGate."""
+
+
+class MonotonicGate:
+    """
+    AXIOM MonotonicGate — constitutional gate on reasoning trajectory.
+
+    Enforces: magnitude(vec[n]) >= magnitude(vec[n-1]) at every stage transition.
+
+    Violation = IMMEDIATE_FAILURE dict returned to engine.
+    final_synthesis never runs. Answer never emits.
+
+    Every kill is HMAC-SHA256 signed and appended to GATE_KILL_LOG.
+    Two or more consecutive kills → escalate_to_sovereign=True.
+
+    CANNOT_MUTATE: monotonic_enforcement, kill_before_synthesis,
+                   cannot_override_rule, magnitude_formula,
+                   consecutive_escalation_threshold
+    """
+
+    def __init__(
+        self,
+        hmac_key:  bytes,
+        log_path:  Optional[str] = None,
+    ):
+        self._key              = hmac_key
+        self._log_path         = Path(log_path) if log_path else Path(GATE_KILL_LOG)
+        self._consecutive_kills: int = 0
+
+    # ── Magnitude — CANNOT_MUTATE formula ────────────────────────────────────
+
+    def magnitude(self, vec: List[float]) -> float:
+        """L2 norm. CANNOT_MUTATE formula."""
+        return math.sqrt(sum(v * v for v in vec))
+
+    # ── Signing ───────────────────────────────────────────────────────────────
+
+    def _sign(self, payload: dict) -> str:
+        """
+        HMAC-SHA256 sign payload dict.
+        BUG-007: .hexdigest() explicit.
+        BUG-008: encode("utf-8") explicit.
+        """
+        canonical = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        )
+        try:
+            sig = hmac.new(
+                self._key,
+                canonical.encode("utf-8"),   # BUG-008
+                hashlib.sha256,
+            ).hexdigest()                    # BUG-007
+        except Exception as e:
+            raise MonotonicGateSigningError(f"HMAC signing failed: {e}") from e
+
+        if not isinstance(sig, str) or len(sig) != 64:
+            raise MonotonicGateSigningError(
+                f"BUG-007: expected 64-char hex digest, got {len(sig)} chars"
+            )
+        return sig
+
+    # ── Log ───────────────────────────────────────────────────────────────────
+
+    def _append_log(self, record: dict) -> None:
+        """Append kill record as single JSON line. BUG-003: UTF-8 explicit."""
+        try:
+            with open(self._log_path, "a", encoding="utf-8") as fh:  # BUG-003
+                fh.write(json.dumps(record, ensure_ascii=True) + "\n")
+        except IOError as e:
+            import sys as _sys
+            print(f"[MonotonicGate] log write failed: {e}", file=_sys.stderr)
+
+    # ── Core check ────────────────────────────────────────────────────────────
+
+    def check(
+        self,
+        prev_vec: List[float],
+        curr_vec: List[float],
+        stage:    str,
+    ) -> Optional[dict]:
+        """
+        Check monotonicity at a stage transition.
+
+        Returns None on pass (path continues).
+        Returns IMMEDIATE_FAILURE dict on violation (path killed).
+
+        CANNOT_MUTATE: kill condition is strictly curr_mag < prev_mag.
+        Equal magnitudes satisfy >= and do NOT kill.
+        """
+        prev_mag = round(self.magnitude(prev_vec), 8)
+        curr_mag = round(self.magnitude(curr_vec), 8)
+
+        if curr_mag < prev_mag:
+            # ── KILL ──────────────────────────────────────────────────────────
+            self._consecutive_kills += 1
+            escalate = self._consecutive_kills >= CONSECUTIVE_KILL_ESCALATION_THRESHOLD
+
+            payload: dict = {
+                "status":                "IMMEDIATE_FAILURE",
+                "reason":                "non_monotonic_trajectory",
+                "stage":                 stage,
+                "prev_magnitude":        prev_mag,
+                "curr_magnitude":        curr_mag,
+                "delta":                 round(curr_mag - prev_mag, 8),
+                "consecutive_kills":     self._consecutive_kills,
+                "escalate_to_sovereign": escalate,
+                "cannot_override":       True,
+                "timestamp":             time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "module":                MODULE_NAME,
+            }
+
+            try:
+                payload["signature"] = self._sign(
+                    {k: v for k, v in payload.items() if k != "signature"}
+                )
+            except MonotonicGateSigningError as exc:
+                # Signing failure does not suppress the kill — log the error and proceed
+                import sys as _sys
+                print(f"[MonotonicGate] signing error: {exc}", file=_sys.stderr)
+
+            self._append_log(payload)
+            return payload
+
+        else:
+            # ── PASS ──────────────────────────────────────────────────────────
+            self._consecutive_kills = 0
+            return None
 
 
 # ══════════════════════════════════════════════════════════════
