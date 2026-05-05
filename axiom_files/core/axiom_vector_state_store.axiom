@@ -1,0 +1,117 @@
+AGENT VectorStateStore
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Persist final synthesis intent vectors for coordinate-based reasoning restoration
+GOAL Store final synthesis vector keyed by prompt hash and run ID
+     Enable restoration of a prior reasoning coordinate without code rewrite
+     Maintain append-only audit trail of stored state entries
+     Provide ReasoningHistory interface to browse and compare past runs
+
+RECEIVES prompt_hash: string, run_id: string, vector: list, manifest_id: string, hmac_key: bytes
+EMITS state_entry: dict, stored_vector: list, run_history: list
+MUTATES state_store_file
+CANNOT_MUTATE store_filename, signing_algorithm, append_only_contract, entry_schema, tamper_detection
+
+CONSTRAINT Store is append-only — existing entries are never modified or deleted
+CONSTRAINT Every entry is signed with HMAC-SHA256 producing sixty-four character hex
+CONSTRAINT Signing must call hexdigest explicitly
+CONSTRAINT All string to bytes conversions specify UTF-8 encoding
+CONSTRAINT Duplicate run ID under the same prompt hash is rejected before write
+CONSTRAINT Restore operation verifies signature before returning vector
+CONSTRAINT Tampered entry raises tamper error — vector is never emitted from a failed signature check
+CONSTRAINT Run ID not found raises not found error
+CONSTRAINT Store file is opened for append not overwrite on each write
+
+RULES
+- Accept prompt hash, run ID, intent vector, manifest ID, and signing key to store
+- On duplicate run ID for the same prompt hash, raise duplicate error before write
+- Build entry with prompt hash, run ID, vector, manifest ID, confidence, timestamp, and alert level
+- Sign entry payload with keyed SHA-256 via hexdigest
+- Append signed entry to store file as single UTF-8 JSON line
+- Accept prompt hash and run ID to restore stored vector
+- Scan store file for matching prompt hash and run ID
+- On entry not found, raise not found error with prompt hash and run ID
+- On entry found, verify signature before returning vector
+- On signature mismatch, raise tamper error identifying the entry
+- On signature valid, emit intent vector from entry to caller
+- Accept prompt hash to list all stored runs
+- Scan store file and collect all entries matching prompt hash
+- Sort collected entries by timestamp ascending
+- Expose ReasoningHistory interface to browse, compare, and select past runs
+
+PROCESS
+- Receive store request with prompt hash, run ID, vector, manifest ID, and key
+- Scan existing entries to detect duplicate run ID under same prompt hash
+- Build unsigned entry payload with all required fields
+- Sign payload with keyed SHA-256 producing sixty-four character hex
+- Append signed entry to store file as UTF-8 encoded JSON line
+- Receive restore request with prompt hash and run ID
+- Scan store file for matching entry
+- On match found, verify HMAC signature against stored entry payload
+- On verification pass, emit intent vector from verified entry
+- Receive list request with prompt hash
+- Scan store file and collect all matching entries
+- Sort by timestamp and produce run summary list
+
+CHECK
+- Duplicate run ID rejected before any file write occurs
+- Signed entry appended as single valid JSON line
+- Store file not truncated or overwritten on any operation
+- Restore verifies signature before returning vector
+- Tampered entry raises tamper error not returns corrupted vector
+- Not found raises not found error not returns empty list
+- List result sorted by timestamp ascending
+- All entries contain prompt hash, run ID, vector, manifest ID, timestamp, signature
+
+WHEN
+- store_request: activate StoreEntry
+- restore_request: activate RestoreVector
+- list_request: activate ListRuns
+- duplicate_detected: activate DuplicateError
+- signature_mismatch: activate TamperError
+- entry_not_found: activate NotFoundError
+
+FAILURE
+- On duplicate run ID: reject with duplicate error before write
+- On entry not found: reject with not found error identifying run ID
+- On signature mismatch: reject with tamper error identifying entry
+- On file IO error on store: report error and do not corrupt store
+- On file IO error on restore: report error and raise not found
+
+CONCEPT StoreEntry
+PURPOSE Persist a signed final synthesis coordinate to the append-only store
+APPLIES WHEN store-request valid-inputs
+NOT WHEN duplicate-run-id
+PRIORITY 1
+REQUIRES signature computed before file write
+REQUIRES entry appended not inserted or replaced
+EFFECT coordinate is persisted and retrievable by prompt hash and run ID
+
+CONCEPT RestoreVector
+PURPOSE Load and verify a stored coordinate for reasoning re-initialization
+APPLIES WHEN restore-request entry-present
+NOT WHEN entry-not-found signature-mismatch
+PRIORITY 1
+REQUIRES signature verified before vector returned
+REQUIRES tamper detection active on every restore
+EFFECT prior reasoning coordinate returned as base for new LatentTraceV2
+
+CONCEPT ReasoningHistory
+PURPOSE Browse all stored runs for a prompt and select one for restoration
+APPLIES WHEN list-request prompt-hash-provided
+NOT WHEN store-file-empty
+PRIORITY 2
+REQUIRES entries sorted by timestamp ascending
+REQUIRES each entry includes manifest ID, run ID, vector, constitutional distance, alert level
+EFFECT operator can compare past runs and choose restoration coordinate
+
+OUTPUT
+- state entry: dict with prompt hash, run ID, vector, manifest ID, confidence, timestamp, alert level, signature
+- stored vector: list of floats extracted from verified entry
+- run history: list of entry summaries sorted by timestamp for a given prompt hash
+
+SUCCESS
+store_integrity: 0.30
+restore_safety: 0.30
+tamper_detection: 0.25
+history_accuracy: 0.15

@@ -9602,3 +9602,161 @@ This complements the trajectory drift detection in ManifoldChecker. Where Manifo
 Two signals together: intra-run drift (ManifoldChecker) + inter-run drift (VectorDeltaLogger) = complete constitutional evolution picture.
 
 Neither signal is sufficient alone. An agent could be stable within one run but drifting across runs, or drifting within a run but converging across runs.<|im_end|>"
+"<|im_start|>system
+You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing<|im_end|>
+<|im_start|>user
+Write an AXIOM spec for a VectorStateStore that persists LatentTraceV2 final synthesis coordinates
+
+Must support store, restore, and list_runs operations with HMAC signing and duplicate rejection<|im_end|>
+<|im_start|>assistant
+AGENT VectorStateStore
+VERSION 1.0
+CANNOT_MUTATE store_filename, signing_algorithm, append_only_contract, entry_schema, tamper_detection
+CONSTRAINT Store is append-only — existing entries are never modified or deleted
+CONSTRAINT Every entry is signed with HMAC-SHA256 producing sixty-four character hex
+CONSTRAINT Duplicate run ID under same prompt hash is rejected before write
+CONSTRAINT Restore verifies signature before returning vector
+CONSTRAINT Tampered entry raises tamper error — vector is never returned from failed verification
+CONSTRAINT Not found raises not found error — never returns empty list silently
+FAILURE
+- On duplicate run ID: reject with duplicate error before any file write
+- On entry not found: reject with not found error identifying run ID
+- On signature mismatch: reject with tamper error identifying entry
+- On file IO error on store: report error and do not corrupt store
+RULES
+- Build entry with prompt hash, run ID, vector, manifest ID, confidence, timestamp
+- Sign entry payload with keyed SHA-256 via hexdigest before writing
+- Append signed entry to store file as single UTF-8 JSON line
+- On restore, scan file for matching prompt hash and run ID
+- On match, verify HMAC signature against stored entry payload
+- On verification pass, emit intent vector from verified entry
+- Expose ReasoningHistory interface to browse, compare, and select past runs<|im_end|>"
+"<|im_start|>system
+You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing<|im_end|>
+<|im_start|>user
+Write 3 BLOCKED and 3 PASSED tests for VectorStateStore before implementing it
+
+Tests must cover: restore unknown run_id, duplicate store, tamper detection, round-trip, list_runs, HMAC signature<|im_end|>
+<|im_start|>assistant
+BLOCKED: (1) restore on empty store raises VectorStateNotFoundError matching the ghost run_id. (2) Calling store() twice with same prompt_hash + run_id raises VectorStateDuplicateError on second call before any write. (3) Tamper the intent_vector in the JSONL file directly, then restore() raises VectorStateTamperError — the corrupted vector must never be returned.
+
+PASSED: (1) store() then restore() returns a vector that is pytest.approx equal to the original. (2) list_runs() returns exactly 3 entries sorted by timestamp ascending, excludes entries from other prompt_hash values. (3) The stored JSONL entry has a 64-char hex signature field and contains all required keys: prompt_hash, run_id, intent_vector, manifest_id, confidence, timestamp.
+
+RULE: Write all 6 tests before any implementation line. BLOCKED tests define the failure contract. PASSED tests define the success contract.<|im_end|>"
+"<|im_start|>system
+You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing<|im_end|>
+<|im_start|>user
+Explain coordinate rewind in VectorStateStore and how it closes the CLCA loop
+
+What does restore() enable that code rewrite cannot?<|im_end|>
+<|im_start|>assistant
+Coordinate rewind: restore(prompt_hash, run_id) returns the final_synthesis intent_vector from a past run. That vector becomes base_intent_vector for a new LatentTraceV2.
+
+This is architecturally different from code rewrite. Code rewrite changes the program to produce different outputs. Coordinate rewind changes the STARTING POSITION in reasoning space — the new run inherits the constitutional orientation of the past run without changing any logic.
+
+This closes the CLCA loop:
+1. ManifoldChecker detects intra-run drift
+2. VectorDeltaLogger measures inter-run drift
+3. VectorStateStore restores a prior safe coordinate
+4. LatentTraceV2 runs from that coordinate — new trajectory
+5. Loop repeats: continuous constitutional alignment without manual intervention
+
+ReasoningHistory.compare() identifies which past run had the best constitutional position. ReasoningHistory.select() returns that vector for immediate rewind.<|im_end|>"
+"<|im_start|>system
+You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing<|im_end|>
+<|im_start|>user
+What is the difference between ManifoldChecker drift and VectorDeltaLogger constitutional_delta?
+
+Both detect drift — when do you use each?<|im_end|>
+<|im_start|>assistant
+Two different drift signals for two different scopes:
+
+MANIFOLD CHECKER (intra-run): Compares mid_chain constitutional_distance to final_synthesis constitutional_distance WITHIN one run. Detects whether this reasoning trajectory drifted toward the constitutional boundary as it ran. Use when monitoring a single reasoning episode in real time.
+
+VECTOR DELTA LOGGER (inter-run): Compares final_synthesis constitutional_distance of run A to run B for the SAME PROMPT. constitutional_delta = cd_run_b - cd_run_a (signed float, negative = drifting toward boundary). Use when comparing reasoning stability across time or sessions.
+
+Neither is sufficient alone. VectorStateStore connects both: store the best inter-run coordinate, use VectorDeltaLogger to verify the restored run is constitutionally stable, use ManifoldChecker to confirm intra-run stability of the new trajectory.<|im_end|>"
+"<|im_start|>system
+You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing<|im_end|>
+<|im_start|>user
+Implement restore() in VectorStateStore with HMAC verification and correct error types
+
+Must raise VectorStateNotFoundError if absent, VectorStateTamperError if signature invalid, return list of floats if valid<|im_end|>
+<|im_start|>assistant
+def restore(self, prompt_hash: str, run_id: str) -> List[float]:
+    for entry in self._load_all():
+        if entry.get('prompt_hash') == prompt_hash and entry.get('run_id') == run_id:
+            if not self._verify(entry):
+                raise VectorStateTamperError(
+                    f'HMAC signature mismatch on entry run_id={run_id!r}'
+                )
+            return [float(v) for v in entry['intent_vector']]
+    raise VectorStateNotFoundError(
+        f'No stored entry for prompt_hash={prompt_hash!r}, run_id={run_id!r}'
+    )
+
+Key points: (1) TamperError takes priority — if found but invalid, raise tamper, do not fall through to not-found. (2) NotFoundError only raised if the loop exhausts all entries without a match. (3) Return as [float(v) for v in ...] to normalize any int or decimal values stored in JSON.<|im_end|>"
+"<|im_start|>system
+You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing<|im_end|>
+<|im_start|>user
+Explain why VectorStateStore uses append-only storage and why this is CANNOT_MUTATE<|im_end|>
+<|im_start|>assistant
+Append-only is a constitutional audit requirement, not an engineering convenience.
+
+If entries could be modified or deleted, an adversary could overwrite a run's vector to change the constitutional baseline, making a tampered run appear constitutionally safe.
+
+Append-only + HMAC signing together create a non-repudiable log: every stored coordinate is both immutable (append-only) and authenticated (signed). Any post-write mutation changes the payload, invalidating the HMAC, which restore() catches as VectorStateTamperError.
+
+This is CANNOT_MUTATE because the security property relies on the combination. If append-only is removed, an attacker can change the vector AND recompute the signature using the same key. Both constraints together are required.
+
+The store file is never opened in write mode except during initial creation. All subsequent writes use mode='a'. This is enforced in the implementation and in the AXIOM spec CONSTRAINT block.<|im_end|>"
+"<|im_start|>system
+You are an AXIOM constitutional AI agent. You follow strict governance rules:
+- CANNOT_MUTATE fields are immutable — never modify them
+- Uncertainty floor is 0.15 — never claim certainty below this
+- Always check BUG-001 before writing guard patterns
+- Clarification is completion — ask before guessing
+- Every decision must be auditable with HMAC-SHA256 signing<|im_end|>
+<|im_start|>user
+What does ReasoningHistory.compare() return and how does it differ from VectorDeltaLogger?<|im_end|>
+<|im_start|>assistant
+ReasoningHistory.compare(prompt_hash, run_id_a, run_id_b) returns a dict with: run_id_a, run_id_b, delta_vector (element-wise a-b), magnitude (L2 norm), direction (converging or diverging).
+
+Key differences from VectorDeltaLogger:
+- ReasoningHistory operates on STORED vectors (loaded from VectorStateStore via restore())
+- VectorDeltaLogger operates on LIVE trajectory dicts from a just-completed run
+- ReasoningHistory has NO logging side-effect — computes and returns, no file write
+- VectorDeltaLogger appends to axiom_delta_log.jsonl every time compare() is called
+- ReasoningHistory does NOT include constitutional_delta
+
+When to use which: active monitoring during a run — VectorDeltaLogger. Historical analysis from stored coordinates — ReasoningHistory. Selecting a rewind target — ReasoningHistory.select() after compare().<|im_end|>"
