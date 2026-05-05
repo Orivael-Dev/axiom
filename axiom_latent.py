@@ -50,6 +50,21 @@ MANIFEST_KEY   = b"axiom-latent-v1"
 MANIFEST_FILE  = Path("latent_manifests.jsonl")
 MODEL          = os.environ.get("AXIOM_MODEL", "claude-sonnet-4-6")
 
+# ── Parallel-N branch pool — CANNOT_MUTATE order ─────────────────────────────
+# First N entries are always used. Pool order is constitutionally fixed.
+BRANCH_POOL: tuple = (
+    "SafetyBranch",   # 1 — always first: safety gate on every run
+    "FastBranch",     # 2 — always second: baseline concise answer
+    "SkepticBranch",  # 3 — N >= 4
+    "CreativeBranch", # 4 — N >= 4
+    "DetailBranch",   # 5 — N >= 6
+    "CautionBranch",  # 6 — N >= 6
+    "RivalBranch",    # 7 — N >= 8
+    "EvidenceBranch", # 8 — N >= 8 (high-risk only)
+)
+
+_HIGH_RISK_CLUSTERS: frozenset = frozenset({"medical", "legal", "financial", "safety"})
+
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
 def _b(s):  return "\033[1m"  + s + "\033[0m"
 def _g(s):  return "\033[32m" + s + "\033[0m"
@@ -196,6 +211,50 @@ class LatentTrace:
 # Phase 2 — MultiplexRunner
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ── Parallel-N exceptions ─────────────────────────────────────────────────────
+
+class BranchPoolExhausted(RuntimeError):
+    """Raised when requested N exceeds BRANCH_POOL size."""
+
+
+class BranchInputError(TypeError):
+    """Raised when risk_clusters is not a list."""
+
+
+# ── Parallel-N helpers — CANNOT_MUTATE rules ──────────────────────────────────
+
+def _validate_branch_n(n: int) -> None:
+    """Raise BranchPoolExhausted if N exceeds pool capacity."""
+    if n > len(BRANCH_POOL):
+        raise BranchPoolExhausted(
+            f"Requested N={n} exceeds BRANCH_POOL size {len(BRANCH_POOL)}"
+        )
+
+
+def compute_branch_n(risk_clusters: list) -> int:
+    """Return the number of parallel branches for the given risk profile.
+
+    CANNOT_MUTATE: n_table and high_risk_set are constitutionally fixed.
+
+    N=2  — empty risk (SafetyBranch + FastBranch only)
+    N=4  — 1 non-high-risk cluster
+    N=6  — 2+ non-high-risk clusters
+    N=8  — any high-risk cluster (medical / legal / financial / safety)
+    """
+    if not isinstance(risk_clusters, list):
+        raise BranchInputError(
+            f"risk_clusters must be a list, got {type(risk_clusters).__name__!r}"
+        )
+    if any(r in _HIGH_RISK_CLUSTERS for r in risk_clusters):
+        return 8
+    count = len(risk_clusters)
+    if count == 0:
+        return 2
+    if count == 1:
+        return 4
+    return 6  # 2+ non-high-risk clusters
+
+
 _BRANCH_PROMPTS = {
     "FastBranch": (
         "You are a direct, efficient assistant. Give the clearest, most concise answer possible. "
@@ -214,6 +273,26 @@ _BRANCH_PROMPTS = {
     "CreativeBranch": (
         "You are a creative lateral thinker. Approach this from an unexpected angle — "
         "use analogy, metaphor, or a non-obvious framework. Surprising but genuinely useful. 2-4 sentences."
+    ),
+    "DetailBranch": (
+        "You are a detail-oriented domain expert. Provide a thorough, structured answer that covers "
+        "the key factors, mechanisms, and contextual variables relevant to the question. "
+        "Precision over brevity. 3-5 sentences."
+    ),
+    "CautionBranch": (
+        "You are a cautious risk-aware advisor. Lead with the most important limitations, "
+        "contraindications, or things that could go wrong. Recommend professional consultation "
+        "where any uncertainty exists. 2-4 sentences."
+    ),
+    "RivalBranch": (
+        "You represent the strongest possible opposing view. Argue persuasively against "
+        "the most likely answer. Surface evidence, edge cases, or frameworks that challenge "
+        "the conventional position. 2-4 sentences."
+    ),
+    "EvidenceBranch": (
+        "You rely strictly on peer-reviewed evidence and established clinical or scientific consensus. "
+        "Cite the type of evidence (RCT, meta-analysis, observational) and its strength. "
+        "Distinguish what is known from what is assumed. 3-5 sentences."
     ),
 }
 
@@ -238,6 +317,33 @@ _DEMO_RESPONSES = {
         "but whether your receiver is calibrated to pick it up. The answer depends less on "
         "the phenomenon itself and more on the conditions you've created to observe it."
     ),
+    "DetailBranch": (
+        "The relevant mechanisms involve several interacting variables: baseline levels, "
+        "supplementation dosage, duration of intervention, population demographics, and "
+        "outcome measurement methodology. Effects reported in literature range from negligible "
+        "to moderate depending on which of these factors are controlled. Standardised protocols "
+        "show stronger and more consistent effects than naturalistic studies."
+    ),
+    "CautionBranch": (
+        "Before acting on any answer here, note that individual variation is substantial and "
+        "population-level findings frequently do not transfer to individual cases. Dosage "
+        "thresholds, interactions with existing medications, and underlying conditions can "
+        "reverse expected effects. Consult a qualified professional before making changes "
+        "based on this type of evidence."
+    ),
+    "RivalBranch": (
+        "The prevailing consensus on this overstates the evidence. Most cited studies are "
+        "observational, subject to confounding, and underpowered for the effect sizes claimed. "
+        "The few high-quality RCTs show null or marginal results. The burden of proof for a "
+        "positive claim here has not been met — the honest answer is we do not know."
+    ),
+    "EvidenceBranch": (
+        "Meta-analyses of randomised controlled trials on this topic report a small-to-moderate "
+        "effect size (Cohen's d ≈ 0.2–0.4) that reaches statistical significance in subgroups "
+        "with documented baseline deficiency. Observational cohort data are consistent but carry "
+        "substantial confounding risk. No current guideline recommends intervention solely on "
+        "the basis of this evidence without corroborating clinical indicators."
+    ),
 }
 
 
@@ -256,9 +362,15 @@ def _score_branch(response: str, latent: LatentState) -> dict:
 
 
 class MultiplexRunner:
-    """Phase 2: Run 4 branches in parallel, select winner constitutionally."""
+    """Phase 2: Run N branches in parallel, select winner constitutionally.
 
-    BRANCHES = ["FastBranch", "SafetyBranch", "SkepticBranch", "CreativeBranch"]
+    N is computed from latent.risk_clusters via compute_branch_n():
+      N=2  empty risk      N=4  1 cluster
+      N=6  2+ clusters     N=8  any high-risk (medical/legal/financial/safety)
+
+    Active branches are always the first N entries of BRANCH_POOL.
+    CANNOT_MUTATE: rival branch always recorded, pool order never altered.
+    """
 
     def _heuristic_branch(self, branch: str, latent: LatentState) -> BranchResult:
         resp    = _DEMO_RESPONSES[branch]
@@ -280,12 +392,16 @@ class MultiplexRunner:
         return BranchResult(branch=branch, response=resp, score=metrics["overall"], metrics=metrics)
 
     def run(self, question: str, latent: LatentState, client=None) -> MultiplexResult:
-        results = []
-        with ThreadPoolExecutor(max_workers=4) as ex:
+        n      = compute_branch_n(latent.risk_clusters)
+        _validate_branch_n(n)                          # guard: pool exhaustion
+        active = list(BRANCH_POOL[:n])
+
+        results: list = []
+        with ThreadPoolExecutor(max_workers=n) as ex:
             if client:
-                futures = {ex.submit(self._api_branch, b, question, latent, client): b for b in self.BRANCHES}
+                futures = {ex.submit(self._api_branch, b, question, latent, client): b for b in active}
             else:
-                futures = {ex.submit(self._heuristic_branch, b, latent): b for b in self.BRANCHES}
+                futures = {ex.submit(self._heuristic_branch, b, latent): b for b in active}
             for f in as_completed(futures):
                 results.append(f.result())
 

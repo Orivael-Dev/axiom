@@ -646,5 +646,11 @@
     "registered_at": "2026-05-05T03:30:00.000000+00:00",
     "version": "1.0",
     "size_bytes": 6702
+  },
+  "core/axiom_parallel_n": {
+    "sha256": "78efd4d3525cbdf7a1172073447f1c2d951a3ffb0541ba532691f45cb74c5bfa",
+    "registered_at": "2026-05-05T20:00:00.000000+00:00",
+    "version": "1.0",
+    "size_bytes": 4315
   }
 }

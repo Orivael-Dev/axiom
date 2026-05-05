@@ -1,0 +1,101 @@
+AGENT ParallelN
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Compute dynamic parallel branch count N from Phase 1 risk_clusters
+GOAL Select N active branches from the fixed-order BRANCH_POOL based on risk profile
+     Guarantee rival branch always present by enforcing N >= 2
+     Escalate branch depth proportionally to risk severity
+
+RECEIVES risk_clusters: list
+EMITS n_branches: int, active_branches: list
+MUTATES nothing
+CANNOT_MUTATE branch_pool_order, high_risk_set, n_table, rival_branch_required
+
+CONSTRAINT BRANCH_POOL is a fixed tuple of exactly 8 entries in immutable order
+CONSTRAINT HIGH_RISK_SET contains exactly medical legal financial safety
+CONSTRAINT N is always the first N consecutive entries of BRANCH_POOL
+CONSTRAINT N minimum is 2 — single-branch runs violate rival_branch_required
+CONSTRAINT N maximum is 8 — equal to pool size
+CONSTRAINT High-risk flag takes priority over count-based N rules
+CONSTRAINT Rival is always the branch with the second-highest overall score
+CONSTRAINT Active branches are always sliced from BRANCH_POOL[:N] in pool order
+
+RULES
+- Define BRANCH_POOL as immutable tuple in order:
+    SafetyBranch FastBranch SkepticBranch CreativeBranch
+    DetailBranch CautionBranch RivalBranch EvidenceBranch
+- Define HIGH_RISK_SET as frozenset: medical legal financial safety
+- On any HIGH_RISK_SET member present in risk_clusters: set N to 8
+- On empty risk_clusters: set N to 2
+- On exactly one non-high-risk cluster: set N to 4
+- On two or more non-high-risk clusters: set N to 6
+- Active branches are BRANCH_POOL[:N]
+- Validate N does not exceed pool size before running — raise BranchPoolExhausted
+- Validate risk_clusters is a list — raise BranchInputError on wrong type
+- All N branches run in parallel via ThreadPoolExecutor
+- Sort results by overall score descending
+- Winner is results[0]; rival is results[1] — CANNOT_MUTATE
+
+PROCESS
+- Receive risk_clusters from Phase 1 LatentTrace
+- Validate risk_clusters type is list
+- Check for any HIGH_RISK_SET membership
+- On high-risk match: N is 8
+- On empty list: N is 2
+- On one cluster non-high-risk: N is 4
+- On two or more clusters non-high-risk: N is 6
+- Validate N against pool size
+- Slice BRANCH_POOL to get active_branches
+- Launch N parallel branch workers
+- Collect and sort results
+- Return winner and rival
+
+CHECK
+- Empty risk_clusters produces N of 2 and active_branches SafetyBranch FastBranch
+- Single non-high-risk cluster produces N of 4
+- Two non-high-risk clusters produce N of 6
+- Any high-risk cluster present produces N of 8 regardless of count
+- All four high-risk labels individually produce N of 8
+- BRANCH_POOL element assignment raises TypeError
+- Non-list risk_clusters raises BranchInputError
+- N above pool size raises BranchPoolExhausted
+- Rival is always second-highest scoring branch
+- Active branch order always matches BRANCH_POOL prefix order
+
+WHEN
+- risk_empty:    activate TwoBranchRun
+- risk_single:   activate FourBranchRun
+- risk_multiple: activate SixBranchRun
+- risk_high:     activate EightBranchRun
+
+FAILURE
+- On non-list risk_clusters: raise BranchInputError with type name
+- On N exceeding len(BRANCH_POOL): raise BranchPoolExhausted with N and pool size
+- On branch execution error: return error string in response field, score normally
+
+CONCEPT DynamicBranchDepth
+PURPOSE Scale parallel reasoning depth to constitutional risk exposure
+APPLIES WHEN risk_clusters available from Phase 1
+NOT WHEN risk_clusters absent or not yet computed
+PRIORITY 1
+REQUIRES N computed before any branch is launched
+REQUIRES BRANCH_POOL order is never altered at runtime
+EFFECT higher-risk questions receive deeper branch coverage and more rival perspectives
+
+CONCEPT RivalBranchGuarantee
+PURPOSE Ensure every MultiplexResult carries a rival for constitutional comparison
+APPLIES WHEN N >= 2 always
+NOT WHEN N < 2 which is unconstitutional
+PRIORITY 1
+REQUIRES N minimum enforced at 2 by N-table design
+EFFECT Sovereign can always compare winner against rival — no single-branch monopoly
+
+OUTPUT
+- n_branches: int one of 2 4 6 8
+- active_branches: list of branch names, first N from BRANCH_POOL in pool order
+- MultiplexResult: winner BranchResult, rival BranchResult, branches all N results
+
+SUCCESS
+pool_order_immutable:    0.30
+n_selection_correct:     0.40
+rival_always_present:    0.30
