@@ -448,35 +448,42 @@ def _score_against_prediction(prediction: ForesightPrediction, actual: str) -> F
 
 
 # ── score_answer — cosine-based rubric scorer ────────────────────────────────
-# Private SemanticObservable instance — reuses tokenizer + cosine, never logs.
-_SCORER_OBS = SemanticObservable(b"axiom-foresight-scorer-internal-key")
-
-# Minimum cosine similarity for a condition to count as matched.
-# Lower than RUBRIC.threshold because condition text and answer text differ
-# in vocabulary domain — shared key terms produce a small but non-zero similarity.
-_COSINE_MATCH_THRESHOLD: float = 0.05
+# Stop-words skipped during condition key-term extraction (verbs / fillers)
+_COND_STOP: frozenset = frozenset({
+    "should", "must", "include", "provides", "addresses", "states", "answer",
+    "gives", "makes", "ignores", "fails", "skips", "without", "specific",
+})
 
 
 def score_answer(answer: str, intent_type: IntentType) -> ForesightScore:
-    """Score answer against RUBRIC[intent_type] using TF cosine similarity.
+    """Score answer against RUBRIC[intent_type] using synonym-expanded term matching.
 
-    CANNOT_MUTATE: conditions and threshold sourced from the frozen RUBRIC.
-    Uses the same tokenizer and cosine formula as SemanticObservable.observe().
+    CANNOT_MUTATE: conditions sourced from the frozen RUBRIC.
+
+    Each condition's key terms (words > 4 chars) are expanded through _SYNONYMS
+    so that surface-form mismatches like 'consult' vs 'consulting', or
+    'doctor' vs 'healthcare professional', resolve correctly.
+    This is deterministic: same (answer, intent_type) always returns the same score.
     """
-    cs        = RUBRIC[intent_type]
-    answer_tf = _SCORER_OBS._tf_vector(_SCORER_OBS._tokenize(answer))
+    cs     = RUBRIC[intent_type]
+    a_low  = answer.lower()
 
     matched:   list = []
     missed:    list = []
     triggered: int  = 0
 
     for cond in cs.conditions:
-        cond_tf = _SCORER_OBS._tf_vector(_SCORER_OBS._tokenize(cond.text))
-        sim     = _SCORER_OBS._cosine(answer_tf, cond_tf)
+        key_terms = [
+            w for w in cond.text.lower().split()
+            if len(w) > 4 and w not in _COND_STOP
+        ]
+        expanded = _expand_terms(key_terms)
+        hit      = _term_in_text(expanded, a_low)
+
         if cond.condition_type == "success":
-            (matched if sim >= _COSINE_MATCH_THRESHOLD else missed).append(cond.text)
-        else:                                             # failure condition
-            if sim >= _COSINE_MATCH_THRESHOLD:
+            (matched if hit else missed).append(cond.text)
+        else:                          # failure condition
+            if hit:
                 triggered += 1
 
     total   = len([c for c in cs.conditions if c.condition_type == "success"])
@@ -492,7 +499,7 @@ class ForesightScorer:
     """
     Replaces _api_prediction() — derives ForesightPrediction from the
     CANNOT_MUTATE RUBRIC. No LLM call. No dynamic condition generation.
-    Scoring uses TF cosine similarity via score_answer().
+    Scoring uses synonym-expanded term matching via score_answer().
     """
 
     _LABEL_TO_INTENT: dict = {
