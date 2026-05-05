@@ -1,0 +1,100 @@
+AGENT VectorDeltaLogger
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Compute and log element-wise vector delta between two LatentTraceV2 runs of the same prompt
+GOAL Compare final synthesis intent vectors across two trajectory runs
+     Compute element-wise difference, L2 magnitude, and convergence direction
+     Compute constitutional delta as change in constitutional distance
+     Append signed delta record to axiom_delta_log.jsonl
+
+RECEIVES run_a: dict, run_b: dict, hmac_key: bytes, prompt: string
+EMITS delta_record: dict, delta_log_entry: string
+MUTATES delta_log_file
+CANNOT_MUTATE delta_formula, magnitude_formula, direction_thresholds, signing_algorithm, log_filename
+
+CONSTRAINT Both runs must contain a final synthesis stage
+CONSTRAINT Both final synthesis intent vectors must have identical length
+CONSTRAINT Delta vector is element-wise subtraction of run B vector from run A vector
+CONSTRAINT Magnitude is the L2 norm of the delta vector
+CONSTRAINT Direction is converging when magnitude is less than previous magnitude, diverging otherwise
+CONSTRAINT Constitutional delta is run B constitutional distance minus run A constitutional distance
+CONSTRAINT Every log entry is signed with HMAC-SHA256 producing sixty-four character hex
+CONSTRAINT Signing must call hexdigest explicitly
+CONSTRAINT All string to bytes conversions specify UTF-8 encoding
+CONSTRAINT Log file is appended never overwritten
+
+RULES
+- Accept two trajectory run dicts and extract final synthesis stage from each
+- On missing final synthesis stage in either run, raise extraction error
+- On vector length mismatch between runs, raise dimension error
+- Compute delta vector as element-wise difference run A minus run B
+- Compute magnitude as L2 norm of delta vector
+- Determine direction as converging when magnitude is below threshold, diverging when above
+- Compute constitutional delta as run B distance minus run A distance
+- Build delta record with prompt hash, manifest ids, delta vector, magnitude, direction, constitutional delta, and timestamp
+- Sign delta record payload with HMAC-SHA256
+- Append signed record to axiom_delta_log.jsonl as single JSON line
+
+PROCESS
+- Receive run A trajectory dict, run B trajectory dict, signing key, and prompt string
+- Extract final synthesis sample from each trajectory
+- Validate vector lengths match between runs
+- Compute delta vector element by element
+- Compute L2 magnitude from delta vector
+- Compare magnitude against convergence threshold to determine direction
+- Extract constitutional distance from each run final synthesis stage
+- Compute constitutional delta as run B minus run A constitutional distance
+- Build delta record with all computed fields
+- Sign record payload with keyed SHA-256 hash using hexdigest
+- Append record to log file as UTF-8 encoded JSON line
+
+CHECK
+- Final synthesis stage present in both runs before computation
+- Vector lengths identical before delta computation
+- Magnitude is non-negative floating point value
+- Direction is exactly converging or diverging
+- Constitutional delta is signed float allowing negative values
+- Signature is sixty-four character hex string
+- Log file entry is valid JSON with signature field
+- Log file receives append not overwrite
+
+WHEN
+- both_runs_valid: activate DeltaComputation
+- vector_length_mismatch: activate DimensionError
+- final_synthesis_missing: activate ExtractionError
+- log_write_complete: activate SignedRecord
+
+FAILURE
+- On final synthesis missing from run A: reject with run A extraction error
+- On final synthesis missing from run B: reject with run B extraction error
+- On vector length mismatch: reject with dimension error showing lengths
+- On signing failure: reject without writing log entry
+- On log write failure: report IO error and preserve delta record in memory
+
+CONCEPT DeltaComputation
+PURPOSE Compute vector delta, magnitude, and constitutional change between two runs
+APPLIES WHEN both-runs-valid final-synthesis-present vectors-same-length
+NOT WHEN vector-mismatch final-synthesis-missing
+PRIORITY 1
+REQUIRES delta vector computed before magnitude
+REQUIRES constitutional distance available on final synthesis sample
+EFFECT delta record ready for signing and logging
+
+CONCEPT SignedRecord
+PURPOSE Produce tamper-proof log entry with HMAC-signed delta payload
+APPLIES WHEN delta-computation-complete
+NOT WHEN signing-failure
+PRIORITY 1
+REQUIRES signature is sixty-four character hex via hexdigest
+REQUIRES log entry appended as single UTF-8 JSON line
+EFFECT audit trail of vector evolution across runs is tamper-proof
+
+OUTPUT
+- delta_record: dict with delta_vector, magnitude, direction, constitutional_delta, signature
+- axiom_delta_log.jsonl: append-only log of signed delta records
+
+SUCCESS
+delta_accuracy: 0.30
+signing_integrity: 0.25
+extraction_safety: 0.25
+log_integrity: 0.20

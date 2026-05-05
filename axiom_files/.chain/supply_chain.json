@@ -622,5 +622,11 @@
     "registered_at": "2026-05-04T21:55:04.315127+00:00",
     "version": "",
     "size_bytes": 5367
+  },
+  "core/axiom_vector_delta": {
+    "sha256": "596192f98c53b4004b1201e23356dc453362211011d3781a728cdc0d85d274a3",
+    "registered_at": "2026-05-05T00:00:36.771973+00:00",
+    "version": "1.0.0",
+    "size_bytes": 4811
   }
 }
