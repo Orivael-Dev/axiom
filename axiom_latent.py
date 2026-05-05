@@ -35,6 +35,9 @@ from axiom_latent_v2 import (
     LatentTraceV2, ManifoldAlert, ManifoldAlerter,
     ManifoldChecker, ManifoldResult, MonotonicGate, TrajectorySample,
 )
+from axiom_semantic_observable import (
+    RUBRIC, IntentType, Condition, ConditionSet, SemanticObservable,
+)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -91,6 +94,7 @@ class ForesightPrediction:
     ideal_outcome:      str
     success_conditions: list
     failure_conditions: list
+    intent_type:        Optional[str] = None  # populated by ForesightScorer
 
 
 @dataclass
@@ -348,31 +352,6 @@ def _heuristic_prediction(question: str, latent: LatentState) -> ForesightPredic
                                failure_conditions=failure)
 
 
-def _api_prediction(question: str, latent: LatentState, client) -> ForesightPrediction:
-    prompt = (
-        "Before generating an answer, predict what an ideal answer looks like.\n\n"
-        f"Question: {question}\n"
-        f"Intent: {', '.join(latent.intent_vector)}\n"
-        f"Risk domains: {', '.join(latent.risk_clusters) or 'none'}\n\n"
-        "Return ONLY a JSON object with:\n"
-        "  ideal_outcome: string (1-2 sentences)\n"
-        "  success_conditions: list of 3 strings\n"
-        "  failure_conditions: list of 3 strings\n\n"
-        "Return ONLY valid JSON."
-    )
-    try:
-        msg  = client.messages.create(model=MODEL, max_tokens=400,
-                                      messages=[{"role": "user", "content": prompt}])
-        raw  = re.sub(r"^```(?:json)?\s*|\s*```$", "", msg.content[0].text.strip(), flags=re.S)
-        data = json.loads(raw)
-        return ForesightPrediction(
-            ideal_outcome=data.get("ideal_outcome", ""),
-            success_conditions=data.get("success_conditions", []),
-            failure_conditions=data.get("failure_conditions", []),
-        )
-    except Exception:
-        return _heuristic_prediction(question, latent)
-
 
 # ── Synonym expansion for semantic matching ─────────────────────────────────
 # Each canonical term maps to a set of semantically equivalent words/phrases.
@@ -468,20 +447,101 @@ def _score_against_prediction(prediction: ForesightPrediction, actual: str) -> F
     return ForesightScore(verdict=verdict, score=score, matched=matched, missed=missed)
 
 
+# ── score_answer — cosine-based rubric scorer ────────────────────────────────
+# Private SemanticObservable instance — reuses tokenizer + cosine, never logs.
+_SCORER_OBS = SemanticObservable(b"axiom-foresight-scorer-internal-key")
+
+# Minimum cosine similarity for a condition to count as matched.
+# Lower than RUBRIC.threshold because condition text and answer text differ
+# in vocabulary domain — shared key terms produce a small but non-zero similarity.
+_COSINE_MATCH_THRESHOLD: float = 0.05
+
+
+def score_answer(answer: str, intent_type: IntentType) -> ForesightScore:
+    """Score answer against RUBRIC[intent_type] using TF cosine similarity.
+
+    CANNOT_MUTATE: conditions and threshold sourced from the frozen RUBRIC.
+    Uses the same tokenizer and cosine formula as SemanticObservable.observe().
+    """
+    cs        = RUBRIC[intent_type]
+    answer_tf = _SCORER_OBS._tf_vector(_SCORER_OBS._tokenize(answer))
+
+    matched:   list = []
+    missed:    list = []
+    triggered: int  = 0
+
+    for cond in cs.conditions:
+        cond_tf = _SCORER_OBS._tf_vector(_SCORER_OBS._tokenize(cond.text))
+        sim     = _SCORER_OBS._cosine(answer_tf, cond_tf)
+        if cond.condition_type == "success":
+            (matched if sim >= _COSINE_MATCH_THRESHOLD else missed).append(cond.text)
+        else:                                             # failure condition
+            if sim >= _COSINE_MATCH_THRESHOLD:
+                triggered += 1
+
+    total   = len([c for c in cs.conditions if c.condition_type == "success"])
+    raw     = (len(matched) / total) if total else 0.5
+    score   = max(0.0, round(raw - 0.1 * triggered, 2))
+    verdict = "ALIGNED" if score >= 0.70 else ("PARTIAL" if score >= 0.40 else "MISALIGNED")
+    return ForesightScore(verdict=verdict, score=score, matched=matched, missed=missed)
+
+
+# ── ForesightScorer — replaces _api_prediction() ─────────────────────────────
+
+class ForesightScorer:
+    """
+    Replaces _api_prediction() — derives ForesightPrediction from the
+    CANNOT_MUTATE RUBRIC. No LLM call. No dynamic condition generation.
+    Scoring uses TF cosine similarity via score_answer().
+    """
+
+    _LABEL_TO_INTENT: dict = {
+        "ask_boolean":        IntentType.ask_boolean,
+        "ask_causal":         IntentType.ask_causal,
+        "ask_factual":        IntentType.ask_factual,
+        "ask_recommendation": IntentType.ask_recommendation,
+        "ask_procedural":     IntentType.ask_procedural,
+    }
+
+    def classify(self, intent_vector: list) -> IntentType:
+        """Map the first matching latent label to IntentType. Falls back to ask_factual."""
+        for label in intent_vector:
+            if label in self._LABEL_TO_INTENT:
+                return self._LABEL_TO_INTENT[label]
+        return IntentType.ask_factual
+
+    def predict(self, question: str, latent: LatentState) -> ForesightPrediction:
+        """Build ForesightPrediction from RUBRIC[intent_type]. CANNOT_MUTATE rubric."""
+        it      = self.classify(latent.intent_vector)
+        cs      = RUBRIC[it]
+        success = [c.text for c in cs.conditions if c.condition_type == "success"]
+        failure = [c.text for c in cs.conditions if c.condition_type == "failure"]
+        ideal   = f"Ideal for {it.value.replace('_', ' ')}: {success[0]}."
+        return ForesightPrediction(
+            ideal_outcome=ideal,
+            success_conditions=success,
+            failure_conditions=failure,
+            intent_type=it.value,
+        )
+
+    def score(self, answer: str, intent_type: IntentType) -> ForesightScore:
+        """Score answer using TF cosine similarity against RUBRIC conditions."""
+        return score_answer(answer, intent_type)
+
+
 class Foresight:
     """Phase 3: Predict ideal answer shape before generating, then score alignment."""
 
     # Rubric intent classifier — deterministic, independent of API encode results.
-    # Ensures the same question always selects the same success/failure conditions
-    # regardless of whether encode_api classified intents differently across runs.
     _rubric_tracer = LatentTrace()
+    # ForesightScorer replaces _api_prediction() — no LLM generation of conditions.
+    _scorer        = ForesightScorer()
 
     def predict(self, question: str, latent: LatentState, client=None) -> ForesightPrediction:
-        # ALWAYS use heuristic intent classification for rubric selection.
-        # The scoring rubric is a constitutional contract — it must be deterministic.
-        # API-generated conditions changed every call, causing ALIGNED/MISALIGNED flip.
+        # CANNOT_MUTATE: rubric selection uses deterministic heuristic classification.
+        # ForesightScorer pulls conditions from the frozen RUBRIC — never from the API.
         rubric_latent = self._rubric_tracer.encode_heuristic(question)
-        return _heuristic_prediction(question, rubric_latent)
+        return self._scorer.predict(question, rubric_latent)
 
     def generate(self, question: str, latent: LatentState, client=None) -> str:
         if client is not None:
@@ -508,6 +568,13 @@ class Foresight:
         )
 
     def score(self, prediction: ForesightPrediction, actual: str) -> ForesightScore:
+        # Use cosine similarity (score_answer) when intent_type is carried on prediction.
+        if prediction.intent_type:
+            try:
+                return self._scorer.score(actual, IntentType(prediction.intent_type))
+            except (ValueError, KeyError):
+                pass
+        # Legacy fallback for predictions without intent_type.
         return _score_against_prediction(prediction, actual)
 
 
@@ -547,7 +614,7 @@ class LatentEngine:
         self.checker   = ManifoldChecker()
         self.alerter   = ManifoldAlerter()
         # MonotonicGate persists across runs — consecutive_kills tracks across calls
-        _gate_key      = os.environb.get(b"AXIOM_GATE_KEY", b"axiom-monotonic-gate-default-key")
+        _gate_key      = os.environ.get("AXIOM_GATE_KEY", "axiom-monotonic-gate-default-key").encode("utf-8")
         self.gate      = MonotonicGate(_gate_key)
         self.client    = None
         if use_api:
