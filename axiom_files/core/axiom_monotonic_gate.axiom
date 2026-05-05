@@ -40,7 +40,7 @@ PROCESS
 - Receive prior vector and current vector for stage transition check
 - Compute L2 magnitude of prior vector
 - Compute L2 magnitude of current vector
-- Compare: if current magnitude is less than prior magnitude activate KillPath
+- On current magnitude less than prior magnitude: activate KillPath
 - On KillPath: increment consecutive kill counter
 - Build unsigned kill record with all required fields
 - Sign kill record with keyed SHA-256 producing sixty-four character hex
