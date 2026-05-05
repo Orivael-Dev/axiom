@@ -1,0 +1,132 @@
+AGENT SemanticObservable
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Provide a frozen intent rubric and a signed coherence scorer for semantic alignment measurement
+GOAL Enforce CANNOT_MUTATE on the scoring rubric at runtime — no LLM regeneration
+     Measure text coherence across the three trajectory stages
+     Emit a signed observable signal per run for Sovereign consumption
+     Maintain append-only semantic log across sessions
+
+RECEIVES stage_texts: list, run_id: string, prompt_hash: string, hmac_key: bytes
+EMITS semantic_signal: dict
+MUTATES observable_log_file
+CANNOT_MUTATE rubric, rubric_version, threshold, coherence_formula, drift_formula,
+              stopword_list, tokenization_rules, signing_algorithm, append_only_contract
+
+CONSTRAINT RUBRIC is a frozen mapping from IntentType to ConditionSet — no runtime mutation allowed
+CONSTRAINT ConditionSet threshold is fixed at 0.65 for every intent type
+CONSTRAINT Every IntentType entry must have at least two success conditions and one failure condition
+CONSTRAINT Runtime assignment to RUBRIC, ConditionSet fields, or Condition fields raises ImmutabilityViolation
+CONSTRAINT Stage texts list must contain exactly three entries
+CONSTRAINT Each stage text must be a non-empty string
+CONSTRAINT Non-string stage text raises SemanticTypeError
+CONSTRAINT Coherence is mean cosine similarity between consecutive stage term vectors
+CONSTRAINT Drift is one minus coherence
+CONSTRAINT Direction is stable when drift below drift threshold, drifting otherwise
+CONSTRAINT Every emitted signal is HMAC-SHA256 signed producing sixty-four character hex
+CONSTRAINT Observable log is append-only
+
+RULES
+- Define IntentType enum with ask_boolean, ask_causal, ask_medical, ask_factual, ask_recommendation, ask_procedural
+- Define Condition with text, weight, condition_type fields frozen against mutation
+- Define ConditionSet with conditions list and threshold frozen against mutation
+- Define RUBRIC as frozen mapping of IntentType to ConditionSet
+- Set RUBRIC_VERSION constant to 1.0.0
+- On any attempt to assign to RUBRIC keys or ConditionSet or Condition fields: raise ImmutabilityViolation
+- Accept exactly three stage texts for preflight, mid_chain, final_synthesis
+- Validate: reject if count not three, reject if any entry is not a string, reject if any entry is empty
+- Tokenize each stage text: lowercase, remove punctuation, remove stopwords
+- Build term frequency vector for each tokenized stage
+- Compute cosine similarity between preflight and mid_chain vectors
+- Compute cosine similarity between mid_chain and final_synthesis vectors
+- Coherence score is mean of both similarities rounded to six decimal places
+- Drift score is one minus coherence rounded to six decimal places
+- Select dominant topic as most frequent non-stopword term across all stage texts
+- Classify direction as stable when drift below drift threshold, drifting otherwise
+- Build signal dict with all required fields and HMAC signature
+- Append signal to observable log as single UTF-8 JSON line
+- Emit signed signal dict to caller
+
+PROCESS
+- Receive three stage texts and run identification fields
+- Validate stage count equals three, each entry is a non-empty string
+- Tokenize each stage removing punctuation and stopwords
+- Compute term frequency vector per stage
+- Compute consecutive cosine similarities
+- Compute coherence and drift from similarities
+- Select dominant topic
+- Determine direction
+- Build unsigned signal payload
+- Sign with keyed SHA-256 via hexdigest
+- Append to log
+- Emit signal
+
+CHECK
+- Stage list with count not equal to three is rejected before processing
+- Empty string at any stage is rejected before processing
+- Non-string at any stage is rejected before processing
+- Identical texts produce coherence of one and drift of zero
+- Incoherent texts produce coherence below half and direction drifting
+- Signal contains run_id, prompt_hash, coherence_score, drift_score, direction, dominant_topic, stage_similarities, timestamp, signature
+- Signature is sixty-four character hex
+- RUBRIC assignment raises ImmutabilityViolation
+- ConditionSet field assignment raises ImmutabilityViolation
+- Condition field assignment raises ImmutabilityViolation
+- RUBRIC_VERSION equals 1.0.0
+- Every intent has threshold 0.65
+- Every intent has at least two success conditions and one failure condition
+
+WHEN
+- observe_request: activate ComputeCoherence
+- validation_failure: activate InputError
+- mutation_attempt: activate ImmutabilityViolation
+- signal_ready: activate AppendLog
+
+FAILURE
+- On stage count not three: raise SemanticStageError with expected count
+- On empty stage text: raise SemanticInputError identifying position
+- On non-string stage text: raise SemanticTypeError identifying position
+- On RUBRIC or ConditionSet or Condition mutation attempt: raise ImmutabilityViolation
+- On signing failure: append signal without signature and log signing error
+- On log write failure: report error, signal still returned to caller
+
+CONCEPT FrozenRubric
+PURPOSE Provide a deterministic, immutable scoring rubric that cannot be regenerated or altered at runtime
+APPLIES WHEN scoring-request rubric-access
+NOT WHEN rubric-mutation-attempted
+PRIORITY 1
+REQUIRES all ConditionSet and Condition objects reject attribute assignment
+REQUIRES RUBRIC mapping rejects key assignment
+REQUIRES threshold fixed at 0.65 across all intents
+EFFECT scoring is deterministic across all runs — no LLM regeneration possible
+
+CONCEPT CoherenceScorer
+PURPOSE Measure semantic agreement between consecutive reasoning stage texts
+APPLIES WHEN three-valid-stage-texts provided
+NOT WHEN validation-failed
+PRIORITY 1
+REQUIRES term frequency vectors computed from stopword-filtered tokenized text
+REQUIRES cosine similarity computed between consecutive stage vectors
+REQUIRES coherence as mean similarity, drift as complement
+EFFECT semantic coherence observable produced for Sovereign consumption
+
+CONCEPT ObservableLog
+PURPOSE Maintain append-only tamper-resistant record of semantic signals across sessions
+APPLIES WHEN signal-signed-and-ready
+NOT WHEN signing-failed
+PRIORITY 1
+REQUIRES log opened in append mode never write mode
+REQUIRES each entry is a single valid UTF-8 JSON line
+EFFECT Sovereign can audit full semantic history without accessing internal reasoning state
+
+OUTPUT
+- semantic signal: dict with run_id, prompt_hash, coherence_score, drift_score,
+                   direction, dominant_topic, stage_similarities, timestamp,
+                   module, signature
+- observable log entry: HMAC-signed JSONL record appended per run
+
+SUCCESS
+rubric_immutability:    0.30
+coherence_accuracy:     0.25
+drift_classification:   0.25
+sovereign_readability:  0.20

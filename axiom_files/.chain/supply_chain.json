@@ -640,5 +640,11 @@
     "registered_at": "2026-05-05T03:04:23.451430+00:00",
     "version": "1.0",
     "size_bytes": 5480
+  },
+  "core/axiom_semantic_observable": {
+    "sha256": "7c76d5c0f129fd9671373253957b400fa9d2173c63607e59dacf7ee41933ef40",
+    "registered_at": "2026-05-05T03:30:00.000000+00:00",
+    "version": "1.0",
+    "size_bytes": 6702
   }
 }
