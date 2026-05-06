@@ -1,0 +1,101 @@
+AGENT ConversationSeed
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Coordinate propagation across conversations via the Constitutional Conversation Graph
+GOAL Enable new conversations to inherit prior final_synthesis vectors as preflight seeds
+     so that constitutional reasoning accumulates across sessions rather than restarting cold
+
+RECEIVES conversation_id: str, current_vector: list, risk_clusters: list, threshold: float
+EMITS seed_record: dict, best_seed_node: dict, dampened_vector: list
+MUTATES preflight_vector in LatentEngine.run when seed_conversation_id is provided
+CANNOT_MUTATE dampen_factor, seed_signature_verification, cosine_threshold_default
+
+CONSTRAINT seed_from returns the full node dict including final_synthesis vector
+CONSTRAINT seed_from raises GraphNodeError when conversation_id does not exist in the graph
+CONSTRAINT seed_from verifies HMAC signature of the source node before returning
+CONSTRAINT seed_from raises GraphNodeError when source node signature is invalid
+CONSTRAINT find_best_seed computes cosine similarity of current_vector against all stored nodes
+CONSTRAINT find_best_seed prefers nodes that share at least one risk_cluster with the query
+CONSTRAINT find_best_seed returns None when no node meets the similarity threshold
+CONSTRAINT find_best_seed returns the single best-matching node dict
+CONSTRAINT Default cosine similarity threshold for seed search is 0.70 and is CANNOT_MUTATE
+CONSTRAINT Dampening factor for seed vectors is 0.5 and is CANNOT_MUTATE
+CONSTRAINT Dampened seed vector is element-wise multiplication of final_synthesis by 0.5
+CONSTRAINT LatentEngine.run accepts optional seed_conversation_id parameter
+CONSTRAINT When seed_conversation_id is provided the preflight vector uses the dampened seed
+CONSTRAINT When seed_conversation_id is None the preflight vector uses default 0.5 scaling
+CONSTRAINT seed_from and find_best_seed are methods on ConversationGraph
+
+RULES
+- Define DAMPEN_FACTOR as 0.5 float CANNOT_MUTATE
+- On seed_from with valid conversation_id: retrieve node, verify signature, return node dict
+- On seed_from with unknown conversation_id: raise GraphNodeError with the missing id
+- On seed_from with tampered node signature: raise GraphNodeError indicating signature invalid
+- On find_best_seed with matching nodes: return single node with highest cosine similarity
+- On find_best_seed with shared risk_clusters: boost similarity by 0.05 per shared cluster
+- On find_best_seed with no qualifying nodes: return None
+- On LatentEngine.run with seed_conversation_id: load seed via seed_from, dampen by DAMPEN_FACTOR, use as preflight vector
+- On LatentEngine.run without seed_conversation_id: use existing default preflight logic
+- All seed operations use the same HMAC signing as ConversationGraph
+
+PROCESS
+- Caller provides seed_conversation_id to LatentEngine.run
+- LatentEngine instantiates ConversationGraph and calls seed_from(conversation_id)
+- seed_from retrieves the node from graph store
+- seed_from verifies HMAC signature of the node entry
+- seed_from returns the full node dict including final_synthesis
+- LatentEngine extracts final_synthesis vector from the seed node
+- LatentEngine dampens each element by DAMPEN_FACTOR producing the preflight seed
+- LatentEngine uses dampened vector as the preflight intent_vector instead of default scaling
+- Alternatively caller provides current_vector and risk_clusters to find_best_seed
+- find_best_seed scans all nodes computing cosine similarity with risk_cluster boost
+- find_best_seed returns the single best node or None if none qualifies
+
+CHECK
+- seed_from with valid conversation_id returns the node dict with final_synthesis
+- seed_from with unknown conversation_id raises GraphNodeError
+- seed_from with tampered node raises GraphNodeError about signature
+- find_best_seed with similar vector returns the best matching node
+- find_best_seed with shared risk_clusters boosts the match score
+- find_best_seed with no qualifying nodes returns None
+- LatentEngine.run with seed_conversation_id uses dampened seed as preflight vector
+- LatentEngine.run without seed_conversation_id uses default preflight logic
+- DAMPEN_FACTOR is 0.5 and cannot be changed
+
+WHEN
+- seed_valid:       activate LoadAndDampen
+- seed_invalid:     activate RejectSeed
+- best_seed_found:  activate ReturnBestNode
+- no_seed_found:    activate ReturnNone
+
+FAILURE
+- On unknown conversation_id in seed_from: raise GraphNodeError with the missing id
+- On tampered node signature: raise GraphNodeError indicating signature verification failed
+- On no qualifying seed in find_best_seed: return None not raise
+
+CONCEPT CoordinatePropagation
+PURPOSE Allow constitutional reasoning to accumulate across sessions
+APPLIES WHEN a new conversation can benefit from a prior completed conversation
+NOT WHEN no prior conversations exist or all prior conversations are dissimilar
+PRIORITY 1
+REQUIRES final_synthesis vector from a completed conversation node in the graph
+EFFECT new conversation starts with informed preflight coordinates instead of cold start
+
+CONCEPT DampenedInheritance
+PURPOSE Prevent over-reliance on prior reasoning by scaling inherited vectors
+APPLIES WHEN seed vector is loaded for use as preflight coordinates
+NOT WHEN conversation runs without seed
+PRIORITY 1
+REQUIRES DAMPEN_FACTOR of 0.5 applied element-wise to inherited final_synthesis
+EFFECT staged progression from dampened seed toward the new conversation own final_synthesis
+
+OUTPUT
+- seed_record: dict full node dict from seed_from including final_synthesis and signature
+- best_seed_node: dict or None from find_best_seed
+- dampened_vector: list of floats after applying DAMPEN_FACTOR to seed final_synthesis
+
+SUCCESS
+seed_from_verified:          0.25
+find_best_seed_correct:      0.25
+dampen_factor_applied:       0.25
+engine_wiring_functional:    0.25

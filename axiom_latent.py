@@ -39,6 +39,7 @@ from axiom_semantic_observable import (
     RUBRIC, IntentType, Condition, ConditionSet, SemanticObservable,
 )
 from axiom_signing import derive_key
+from axiom_conversation_graph import ConversationGraph, GraphNodeError, DAMPEN_FACTOR
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -749,7 +750,8 @@ class LatentEngine:
                 pass
 
     def run(self, question: str, phases: Optional[list] = None,
-            trajectory: bool = False) -> dict:
+            trajectory: bool = False,
+            seed_conversation_id: Optional[str] = None) -> dict:
         phases = phases or ["trace", "multiplex", "foresight"]
         result: dict = {"question": question, "phases": {}}
         t0 = time.time()
@@ -765,15 +767,37 @@ class LatentEngine:
         base_intent = [round(float(int(hashlib.md5(i.encode("utf-8")).hexdigest()[:8], 16)) / 0xFFFFFFFF, 6)
                        for i in latent.intent_vector] if trajectory else []
 
+        # ── Coordinate propagation (ORVL-007 CCG Component 2) ──────────
+        # When seed_conversation_id is provided, load the prior conversation's
+        # final_synthesis and use it (dampened) as the preflight vector instead
+        # of the default 0.5 scaling of base_intent.
+        seed_vector = None
+        if seed_conversation_id and trajectory:
+            try:
+                ccg = ConversationGraph()
+                seed_node = ccg.seed_from(seed_conversation_id)
+                seed_vector = [round(v * DAMPEN_FACTOR, 6)
+                               for v in seed_node["final_synthesis"]]
+                result["seed"] = {
+                    "conversation_id": seed_conversation_id,
+                    "dampened_vector": seed_vector,
+                    "dampen_factor": DAMPEN_FACTOR,
+                }
+            except GraphNodeError:
+                # Seed not found or tampered — fall back to default preflight
+                seed_vector = None
+
         # Preflight sample — no rival yet, confidence is raw estimate
         trajectory_samples: List[TrajectorySample] = []
         if trajectory:
             preflight_dist = self.checker.compute_distance(
                 latent.confidence, rival_present=False, fields_clean=True,
             )
+            # Use seed vector if available, otherwise default 0.5 scaling
+            preflight_vec = seed_vector if seed_vector else [round(v * 0.5, 6) for v in base_intent]
             trajectory_samples.append(TrajectorySample(
                 stage="preflight",
-                intent_vector=[round(v * 0.5, 6) for v in base_intent],  # early-stage partial vector
+                intent_vector=preflight_vec,
                 token_cost=0,
                 latency_ms=round((t_preflight - t0) * 1000, 2),
                 constitutional_distance=preflight_dist,

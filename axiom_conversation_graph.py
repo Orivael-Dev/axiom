@@ -1,14 +1,14 @@
 """
-AXIOM ConversationGraph — ORVL-007 CCG Component 1
-====================================================
-Node and edge management for the Constitutional Conversation Graph.
+AXIOM ConversationGraph — ORVL-007 CCG Components 1 & 2
+========================================================
+Node, edge, and seed management for the Constitutional Conversation Graph.
 
-Nodes: completed conversations stored with their final_synthesis
-meaning coordinate, constitutional distance, verdict, and risk clusters.
+Component 1: Nodes and edges — append-only graph of completed conversations
+with cosine similarity edge detection and HMAC-SHA256 signing.
 
-Edges: directed constitutional relationships detected by cosine similarity
-between final_synthesis vectors (>= 0.70), shared risk_clusters, or
-explicit user links. Every entry is HMAC-SHA256 signed.
+Component 2: Coordinate propagation — seed_from() and find_best_seed()
+enable new conversations to inherit prior final_synthesis vectors as
+dampened preflight seeds (DAMPEN_FACTOR = 0.5).
 
 Storage: append-only axiom_conversation_graph.jsonl
 
@@ -18,6 +18,8 @@ Usage:
   g.add_node(conversation_record)
   g.add_edge(from_id, to_id, "vector_proximity")
   related = g.find_related([0.99, 0.77], threshold=0.70)
+  seed = g.seed_from("conv-001")
+  best = g.find_best_seed([0.99, 0.77], risk_clusters=["medical"])
 
 github.com/Orivael-Dev/axiom
 """
@@ -41,6 +43,7 @@ SIGNING_KEY = derive_key(b"axiom-conversation-graph-v1")
 # ── CANNOT_MUTATE constants ────────────────────────────────────────────────
 EDGE_REASONS: frozenset = frozenset({"vector_proximity", "shared_risk_cluster", "user_linked"})
 DEFAULT_THRESHOLD: float = 0.70
+DAMPEN_FACTOR: float = 0.5   # CANNOT_MUTATE — seed vectors scaled to 50% magnitude
 _REQUIRED_NODE_FIELDS = ("conversation_id", "prompt_hash", "final_synthesis")
 GRAPH_FILE = Path("axiom_conversation_graph.jsonl")
 
@@ -247,6 +250,75 @@ class ConversationGraph:
                 results.append((sim, node))
         results.sort(key=lambda x: -x[0])
         return [node for _, node in results]
+
+    # ── Seed operations (Component 2 — coordinate propagation) ──────────
+
+    def _verify_node_signature(self, node: dict) -> bool:
+        """Verify HMAC-SHA256 signature on a stored node entry."""
+        stored_sig = node.get("signature", "")
+        expected = _sign_entry(node)
+        return stored_sig == expected
+
+    def seed_from(self, conversation_id: str) -> dict:
+        """Retrieve a verified node for use as a preflight seed.
+
+        Args:
+            conversation_id: id of the source conversation to seed from.
+
+        Returns:
+            Full node dict including final_synthesis vector and signature.
+
+        Raises:
+            GraphNodeError: if the conversation_id does not exist or
+                            if the node signature verification fails.
+        """
+        node = self._nodes.get(conversation_id)
+        if node is None:
+            raise GraphNodeError(
+                f"Seed node not found: {conversation_id}"
+            )
+        if not self._verify_node_signature(node):
+            raise GraphNodeError(
+                f"Seed node signature verification failed: {conversation_id}"
+            )
+        return node
+
+    def find_best_seed(
+        self,
+        current_vector: List[float],
+        risk_clusters: Optional[List[str]] = None,
+        threshold: float = DEFAULT_THRESHOLD,
+    ) -> Optional[dict]:
+        """Find the single best seed node for coordinate propagation.
+
+        Computes cosine similarity of current_vector against all stored
+        node final_synthesis vectors. Nodes sharing risk_clusters with
+        the query get a +0.05 boost per shared cluster.
+
+        Args:
+            current_vector: the new conversation's intent vector.
+            risk_clusters:  risk clusters of the new conversation.
+            threshold:      minimum effective similarity (default 0.70).
+
+        Returns:
+            Best matching node dict, or None if no node qualifies.
+        """
+        risk_clusters = risk_clusters or []
+        best_score = -1.0
+        best_node = None
+
+        for node in self._nodes.values():
+            sim = _cosine_similarity(current_vector, node["final_synthesis"])
+            # Boost for shared risk clusters
+            node_clusters = node.get("risk_clusters", [])
+            shared = len(set(risk_clusters) & set(node_clusters))
+            effective_sim = sim + (shared * 0.05)
+
+            if effective_sim >= threshold and effective_sim > best_score:
+                best_score = effective_sim
+                best_node = node
+
+        return best_node
 
     def list_edges(self) -> List[dict]:
         """Return all stored edges."""
