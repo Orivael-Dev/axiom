@@ -34,7 +34,8 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-SIGNING_KEY   = b"axiom-dev-agent-v1"
+from axiom_signing import derive_key
+SIGNING_KEY   = derive_key(b"axiom-dev-agent-v1")
 TRAINING_FILE = Path("axiom_dev_training.jsonl")
 BUG_FILE      = Path("axiom_bugs.json")
 

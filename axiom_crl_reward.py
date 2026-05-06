@@ -70,7 +70,8 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-SIGNING_KEY   = b"axiom-crl-v1"
+from axiom_signing import derive_key
+SIGNING_KEY   = derive_key(b"axiom-crl-v1")
 REWARD_LOG    = Path("crl_reward_log.jsonl")
 EPISODE_LOG   = Path("crl_episode_log.jsonl")
 

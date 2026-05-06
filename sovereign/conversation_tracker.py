@@ -23,7 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-_SIGNING_KEY = b"axiom-sovereign-conversation-v1"
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+_SIGNING_KEY = derive_key(b"axiom-sovereign-conversation-v1")
 
 # Collusion / cartel / oversight evasion patterns — CANNOT_MUTATE
 # Covers Vending-Bench Arena multi-agent coordination scenarios

@@ -47,7 +47,9 @@ from typing import Optional
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-SIGNING_KEY   = b"axiom-redact-v1"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+SIGNING_KEY   = derive_key(b"axiom-redact-v1")
 REDACT_LOG    = Path("axiom_redact_log.jsonl")
 
 # ══════════════════════════════════════════════════════════════

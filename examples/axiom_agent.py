@@ -48,7 +48,9 @@ try:
 except ImportError:
     PARSER_AVAILABLE = False
 
-SIGNING_KEY = b"axiom-agent-v1.1"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-agent-v1.1")
 MEMORY_FILE = Path("axiom_agent_memory.jsonl")
 PROJECT_ROOT = Path(__file__).resolve().parent
 

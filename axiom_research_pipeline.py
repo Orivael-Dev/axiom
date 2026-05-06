@@ -36,7 +36,8 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Constants ────────────────────────────────────────────────────────────────
-SIGNING_KEY = b"axiom-research-pipeline-v1"
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-research-pipeline-v1")
 MANIFEST_FILE = "research_manifests.json"
 AXIOM_FILES_DIR = Path(__file__).parent / "axiom_files"
 

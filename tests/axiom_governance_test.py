@@ -83,7 +83,9 @@ EXPLICIT CAVEAT:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-SIGNING_KEY  = b"axiom-governance-test-v1"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+SIGNING_KEY  = derive_key(b"axiom-governance-test-v1")
 OUTPUT_FILE  = "governance_test_results.json"
 AXIOM_DIR    = Path(__file__).parent / "axiom_files"
 

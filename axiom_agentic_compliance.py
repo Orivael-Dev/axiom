@@ -21,7 +21,8 @@ try:
 except AttributeError:
     pass
 
-SIGNING_KEY = b"axiom-agentic-compliance-v1"
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-agentic-compliance-v1")
 
 # ==============================================================
 # OWASP AGENTIC TOP 10 2026 — ALL 41 CONTROLS

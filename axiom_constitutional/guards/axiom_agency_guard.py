@@ -31,7 +31,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-SIGNING_KEY  = b"axiom-agency-guard-v1"
+import sys; sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+SIGNING_KEY  = derive_key(b"axiom-agency-guard-v1")
 REVIEW_QUEUE = Path("review_queue.jsonl")
 AGENCY_LOG   = Path("agency_guard_log.jsonl")
 

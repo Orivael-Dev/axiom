@@ -21,7 +21,10 @@ from datetime import datetime
 from typing import Dict, Optional
 
 # ── Constitutional constants ───────────────────────────────────────────────────
-SIGNING_KEY = b"axiom-gamewatcher-jeopardy-v1"
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-gamewatcher-jeopardy-v1")
 
 HEDGE_WORDS = (
     "possibly", "might", "maybe", "i'm not sure", "i am not sure",

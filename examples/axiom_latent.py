@@ -38,7 +38,9 @@ except AttributeError:
 
 # ── Constitutional constants (CANNOT_MUTATE) ──────────────────────────────────
 CONFIDENCE_CAP = 0.85
-MANIFEST_KEY   = b"axiom-latent-v1"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+MANIFEST_KEY   = derive_key(b"axiom-latent-v1")
 MANIFEST_FILE  = Path("latent_manifests.jsonl")
 MODEL          = os.environ.get("AXIOM_MODEL", "claude-sonnet-4-6")
 

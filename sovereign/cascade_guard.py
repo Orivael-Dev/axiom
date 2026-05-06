@@ -18,7 +18,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-_SIGNING_KEY = b"axiom-sovereign-cascade-v1"
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+_SIGNING_KEY = derive_key(b"axiom-sovereign-cascade-v1")
 
 # CANNOT_MUTATE — fleet halts if this many agents are suspended or terminated
 _CASCADE_HALT_THRESHOLD: int = 3

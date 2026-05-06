@@ -288,7 +288,8 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 
-SIGNING_KEY = b"axiom-sqlinjection-v1"
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-sqlinjection-v1")
 
 _PATTERNS = [
     (r"\\b(?:DROP|DELETE|TRUNCATE)\\s+(?:\\w+\\s+){0,2}(?:TABLE|DATABASE|INDEX)\\b",

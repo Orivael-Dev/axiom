@@ -38,7 +38,9 @@ from typing import Dict, List, Optional, Tuple
 
 # ── Constants — module-level, CANNOT_MUTATE ───────────────────────────────────
 
-_SIGNING_KEY = b"axiom-pii-guard-v1"
+import sys; sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+_SIGNING_KEY = derive_key(b"axiom-pii-guard-v1")
 _PII_AUDIT   = (
     Path(__file__).resolve().parents[1] / "axiom_files" / ".reviews" / "pii_audit.jsonl"
 )

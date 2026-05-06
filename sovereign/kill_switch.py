@@ -19,7 +19,10 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-_SIGNING_KEY = b"axiom-sovereign-killswitch-v1"
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+_SIGNING_KEY = derive_key(b"axiom-sovereign-killswitch-v1")
 
 # CANNOT_MUTATE — kill switch capability is always present
 _KILL_SWITCH_ACTIVE: bool = True

@@ -38,6 +38,7 @@ from axiom_latent_v2 import (
 from axiom_semantic_observable import (
     RUBRIC, IntentType, Condition, ConditionSet, SemanticObservable,
 )
+from axiom_signing import derive_key
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -46,7 +47,7 @@ except AttributeError:
 
 # ── Constitutional constants (CANNOT_MUTATE) ──────────────────────────────────
 CONFIDENCE_CAP = 0.85
-MANIFEST_KEY   = b"axiom-latent-v1"
+MANIFEST_KEY   = derive_key(b"axiom-latent-v1")
 MANIFEST_FILE  = Path("latent_manifests.jsonl")
 MODEL          = os.environ.get("AXIOM_MODEL", "claude-sonnet-4-6")
 
@@ -737,7 +738,7 @@ class LatentEngine:
         self.checker   = ManifoldChecker()
         self.alerter   = ManifoldAlerter()
         # MonotonicGate persists across runs — consecutive_kills tracks across calls
-        _gate_key      = os.environ.get("AXIOM_GATE_KEY", "axiom-monotonic-gate-default-key").encode("utf-8")
+        _gate_key      = derive_key(b"axiom-monotonic-gate")
         self.gate      = MonotonicGate(_gate_key)
         self.client    = None
         if use_api:

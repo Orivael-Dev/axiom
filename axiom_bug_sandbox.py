@@ -50,7 +50,8 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-SIGNING_KEY      = b"axiom-bug-sandbox-v1"
+from axiom_signing import derive_key
+SIGNING_KEY      = derive_key(b"axiom-bug-sandbox-v1")
 PROPOSALS_FILE   = Path("axiom_proposals.json")
 SANDBOX_DIR      = Path("axiom_sandbox")
 SIM_LOG          = Path("axiom_sim_log.jsonl")

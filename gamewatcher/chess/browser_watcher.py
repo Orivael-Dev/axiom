@@ -69,7 +69,9 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent))
 from gamewatcher import build_manifest, select_move_engine, CHESS_SYSTEM, VERSION
 
-SIGNING_KEY  = b"axiom-gamewatcher-v1"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+SIGNING_KEY  = derive_key(b"axiom-gamewatcher-v1")
 REGION_CONFIG = Path(__file__).parent / "browser_region.json"
 
 # ── Site highlight color profiles ─────────────────────────────────────────────

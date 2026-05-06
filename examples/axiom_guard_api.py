@@ -104,7 +104,9 @@ except ImportError:
     AGENT_AVAILABLE = False
 
 # ── Constants ─────────────────────────────────────────────────
-SIGNING_KEY      = b"axiom-guard-api-v1"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+SIGNING_KEY      = derive_key(b"axiom-guard-api-v1")
 MANIFEST_STORE   = {}  # In memory — swap for Redis/DB in production
 VERSION          = "1.0.0"
 

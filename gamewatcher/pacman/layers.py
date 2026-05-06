@@ -25,7 +25,10 @@ import uuid
 from datetime import datetime
 
 # ── Constitutional constants ───────────────────────────────────────────────────
-SIGNING_KEY  = b"axiom-gamewatcher-pacman-v1"
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+SIGNING_KEY  = derive_key(b"axiom-gamewatcher-pacman-v1")
 FRAME_SAMPLE = 5
 COLS, ROWS   = 21, 21
 

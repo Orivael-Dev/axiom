@@ -31,7 +31,11 @@ from collections import OrderedDict
 from datetime import datetime
 
 # ── Signing ──────────────────────────────────────────────────────────────────
-SIGNING_KEY = b"axiom-efficiency-layer-v1"
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-efficiency-layer-v1")
 
 
 def _sign(manifest):

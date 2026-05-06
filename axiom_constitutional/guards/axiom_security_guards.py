@@ -28,7 +28,9 @@ from pathlib import Path
 from typing import Optional
 from collections import deque
 
-SIGNING_KEY = b"axiom-security-guards-v1"
+import sys; sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-security-guards-v1")
 DOS_LOG     = Path("dos_guard_log.jsonl")
 POISON_LOG  = Path("poison_guard_log.jsonl")
 PLUGIN_LOG  = Path("plugin_guard_log.jsonl")

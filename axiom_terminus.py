@@ -67,7 +67,8 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-SIGNING_KEY  = b"axiom-terminus-v1"
+from axiom_signing import derive_key
+SIGNING_KEY  = derive_key(b"axiom-terminus-v1")
 AUDIT_LOG    = Path("axiom_terminus_audit.jsonl")
 RESULTS_FILE = Path("axiom_terminus_results.json")
 

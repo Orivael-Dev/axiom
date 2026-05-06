@@ -64,7 +64,8 @@ try:
 except ImportError:
     SOVEREIGN_AVAILABLE = False
 
-SIGNING_KEY     = b"axiom-sovereign-starter-v1"
+from axiom_signing import derive_key
+SIGNING_KEY     = derive_key(b"axiom-sovereign-starter-v1")
 DEFAULT_CONFIG  = Path("sovereign_fleet.json")
 STATE_FILE      = Path("sovereign_state.json")
 LOG_FILE        = Path("sovereign_monitor.jsonl")

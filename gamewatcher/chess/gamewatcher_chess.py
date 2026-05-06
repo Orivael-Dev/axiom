@@ -38,7 +38,10 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-SIGNING_KEY = b"axiom-gamewatcher-v1"
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-gamewatcher-v1")
 
 
 # ══════════════════════════════════════════════════════════════

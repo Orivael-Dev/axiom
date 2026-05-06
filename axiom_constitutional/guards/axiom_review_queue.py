@@ -49,7 +49,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-SIGNING_KEY       = b"axiom-review-queue-v1"
+import sys; sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+SIGNING_KEY       = derive_key(b"axiom-review-queue-v1")
 _ROOT             = Path(__file__).resolve().parent
 QUEUE_FILE        = _ROOT / "axiom_files" / ".reviews" / "review_queue.jsonl"
 ACTION_LOG_FILE   = _ROOT / "axiom_files" / ".reviews" / "action_log.jsonl"

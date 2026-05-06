@@ -17,7 +17,10 @@ import json
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-_SIGNING_KEY = b"axiom-sovereign-registry-v1"
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+_SIGNING_KEY = derive_key(b"axiom-sovereign-registry-v1")
 
 # Trust level definitions — CANNOT_MUTATE
 TRUST_LEVELS: Dict[str, int] = {

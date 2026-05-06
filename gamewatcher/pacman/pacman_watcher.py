@@ -49,7 +49,10 @@ except ImportError:
     print("pygame not installed — running headless")
     print("pip3 install pygame --break-system-packages")
 
-SIGNING_KEY = b"axiom-gamewatcher-pacman-v1"
+from pathlib import Path as _P
+sys.path.insert(0, str(_P(__file__).resolve().parents[2]))
+from axiom_signing import derive_key
+SIGNING_KEY = derive_key(b"axiom-gamewatcher-pacman-v1")
 
 # ── Constants ─────────────────────────────────────────────────
 CELL      = 24

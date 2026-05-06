@@ -25,7 +25,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-_SIGNING_KEY = b"axiom-sovereign-due-process-v1"
+import sys as _sys; from pathlib import Path as _P
+_sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+from axiom_signing import derive_key
+_SIGNING_KEY = derive_key(b"axiom-sovereign-due-process-v1")
 
 # Level definitions — CANNOT_MUTATE
 LEVELS: Dict[int, str] = {
