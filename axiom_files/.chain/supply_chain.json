@@ -660,9 +660,15 @@
     "size_bytes": 5404
   },
   "axiom_files/core/axiom_conversation_seed.axiom": {
-    "sha256": "ba33b7d0aa3a29cf988f71ac7e4bcba15d80759bbc88e47f72122988f80c29c1",
-    "registered_at": "2026-05-06T20:15:56.760427+00:00",
+    "sha256": "abf8071a4425cb714857e700b9e6459fb08833b4f61d781007bf29bc6ee78ede",
+    "registered_at": "2026-05-06T21:31:10.744796+00:00",
     "version": "1.0",
+    "size_bytes": 5805
+  },
+  "core/axiom_conversation_seed": {
+    "sha256": "ba33b7d0aa3a29cf988f71ac7e4bcba15d80759bbc88e47f72122988f80c29c1",
+    "registered_at": "2026-05-06T21:12:55.610181+00:00",
+    "version": "",
     "size_bytes": 5828
   }
 }
