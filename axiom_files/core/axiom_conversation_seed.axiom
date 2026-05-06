@@ -49,7 +49,7 @@ PROCESS
 - LatentEngine uses dampened vector as the preflight intent_vector instead of default scaling
 - Alternatively caller provides current_vector and risk_clusters to find_best_seed
 - find_best_seed scans all nodes computing cosine similarity with risk_cluster boost
-- find_best_seed emits the single best node or None if none qualifies
+- Highest scoring node above threshold is the seed candidate
 
 CHECK
 - seed_from with valid conversation_id emits the node dict with final_synthesis
