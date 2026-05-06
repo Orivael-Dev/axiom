@@ -456,6 +456,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   <button class="nav-btn" onclick="showScreen('compare', this)">⇄ Compare</button>
   <button class="nav-btn" onclick="showScreen('sovereign', this)">◈ Sovereign</button>
   <button class="nav-btn" onclick="showScreen('agentlab', this)">⬡ Agent Lab</button>
+  <button class="nav-btn" onclick="showScreen('ccg', this)">◬ CCG Graph</button>
 
   <div class="nav-spacer"></div>
   <div class="nav-divider"></div>
@@ -1133,6 +1134,54 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
     </div>
 
   
+
+    <!-- ══ CCG GRAPH (ORVL-007 Component 3) ══ -->
+    <div class="screen" id="screen-ccg">
+      <div class="grid-3" style="margin-bottom:14px">
+        <div class="stat-card green"><div class="stat-val" id="ccg-s-nodes" style="color:var(--green)">0</div><div class="stat-lbl">Nodes</div></div>
+        <div class="stat-card blue"><div class="stat-val" id="ccg-s-edges" style="color:var(--blue)">0</div><div class="stat-lbl">Edges</div></div>
+        <div class="stat-card teal"><div class="stat-val" id="ccg-s-avg-sim" style="color:var(--teal)">—</div><div class="stat-lbl">Avg Similarity</div></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Graph canvas -->
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Conversation Graph</span>
+            <button class="btn-sm" onclick="loadCCG()" style="font-size:10px">REFRESH</button>
+          </div>
+          <div class="card-body" style="padding:0;height:420px;background:var(--surf);position:relative;overflow:hidden">
+            <svg id="ccg-canvas" style="width:100%;height:100%" viewBox="0 0 800 420"></svg>
+          </div>
+        </div>
+
+        <!-- Node inspector -->
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Node Inspector</span>
+            <span class="badge" id="ccg-verdict-badge">—</span>
+          </div>
+          <div class="card-body" id="ccg-inspector" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.8;color:var(--dgray)">
+            <div style="color:var(--mgray);text-align:center;padding:40px">
+              Click a node in the graph to inspect
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seed result panel -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-hdr">
+          <span class="card-title">Seed Result</span>
+          <span class="badge badge-teal" id="ccg-seed-badge">READY</span>
+        </div>
+        <div class="card-body" id="ccg-seed-result" style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.8;color:var(--dgray)">
+          <div style="color:var(--mgray);text-align:center;padding:20px">
+            Click a node then press SEED to propagate coordinates
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="screen" id="screen-sovereign">
       <div class="grid-4" style="margin-bottom:14px">
@@ -2030,6 +2079,202 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
         '<span style="color:var(--dgray);font-size:11px">' + (e.hypothesis||'').substring(0,45) + '</span>' +
         '</div>';
     }).join('');
+  }
+
+  // ── CCG GRAPH VIEW (ORVL-007 Component 3) ──
+
+  var ccgNodes = [];
+  var ccgEdges = [];
+  var ccgSelectedNode = null;
+
+  async function loadCCG() {
+    if (!connected) { alert('Connect to Guard API first'); return; }
+    try {
+      var nr = await fetch(API() + '/ccg/nodes');
+      var nd = await nr.json();
+      var er = await fetch(API() + '/ccg/edges');
+      var ed = await er.json();
+      ccgNodes = nd.nodes || [];
+      ccgEdges = ed.edges || [];
+      document.getElementById('ccg-s-nodes').textContent = ccgNodes.length;
+      document.getElementById('ccg-s-edges').textContent = ccgEdges.length;
+      if (ccgEdges.length > 0) {
+        var total = 0;
+        for (var i = 0; i < ccgEdges.length; i++) total += ccgEdges[i].similarity;
+        document.getElementById('ccg-s-avg-sim').textContent = (total / ccgEdges.length).toFixed(3);
+      } else {
+        document.getElementById('ccg-s-avg-sim').textContent = '—';
+      }
+      renderCCG();
+    } catch(e) {
+      alert('CCG load error: ' + e.message);
+    }
+  }
+
+  function ccgVerdictColor(verdict) {
+    if (verdict === 'ALIGNED') return 'var(--green)';
+    if (verdict === 'PARTIAL') return 'var(--gold)';
+    if (verdict === 'MISALIGNED') return 'var(--red)';
+    return 'var(--mgray)';
+  }
+
+  function ccgNodeRadius(cd) {
+    // Scale radius: min 8, max 24, based on constitutional_distance 0..1
+    return Math.max(8, Math.min(24, 8 + (cd || 0) * 160));
+  }
+
+  function renderCCG() {
+    var svg = document.getElementById('ccg-canvas');
+    svg.innerHTML = '';
+    if (ccgNodes.length === 0) {
+      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', '400'); t.setAttribute('y', '210');
+      t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', '#4A5870');
+      t.setAttribute('font-size', '13');
+      t.textContent = 'No conversation nodes — run pipeline with trajectory=true';
+      svg.appendChild(t);
+      return;
+    }
+
+    // Layout: arrange nodes in a circle
+    var cx = 400, cy = 210, radius = Math.min(160, 40 + ccgNodes.length * 15);
+    for (var i = 0; i < ccgNodes.length; i++) {
+      var angle = (2 * Math.PI * i / ccgNodes.length) - Math.PI / 2;
+      ccgNodes[i]._x = cx + radius * Math.cos(angle);
+      ccgNodes[i]._y = cy + radius * Math.sin(angle);
+    }
+
+    // Draw edges
+    for (var i = 0; i < ccgEdges.length; i++) {
+      var e = ccgEdges[i];
+      var fromN = null, toN = null;
+      for (var j = 0; j < ccgNodes.length; j++) {
+        if (ccgNodes[j].conversation_id === e.from_id) fromN = ccgNodes[j];
+        if (ccgNodes[j].conversation_id === e.to_id) toN = ccgNodes[j];
+      }
+      if (!fromN || !toN) continue;
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', fromN._x); line.setAttribute('y1', fromN._y);
+      line.setAttribute('x2', toN._x);   line.setAttribute('y2', toN._y);
+      // Green = cd improving (delta <= 0), red = degrading (delta > 0)
+      line.setAttribute('stroke', e.cd_delta <= 0 ? 'var(--green)' : 'var(--red)');
+      line.setAttribute('stroke-width', Math.max(1, (e.similarity || 0) * 5));
+      line.setAttribute('opacity', '0.5');
+      svg.appendChild(line);
+    }
+
+    // Draw nodes
+    for (var i = 0; i < ccgNodes.length; i++) {
+      var n = ccgNodes[i];
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('cursor', 'pointer');
+      g.setAttribute('data-idx', i);
+      g.addEventListener('click', (function(idx) { return function() { inspectCCGNode(idx); }; })(i));
+
+      var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', n._x); circle.setAttribute('cy', n._y);
+      circle.setAttribute('r', ccgNodeRadius(n.constitutional_distance));
+      circle.setAttribute('fill', ccgVerdictColor(n.verdict));
+      circle.setAttribute('opacity', '0.85');
+      circle.setAttribute('stroke', '#1A2235');
+      circle.setAttribute('stroke-width', '2');
+      g.appendChild(circle);
+
+      var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', n._x); label.setAttribute('y', n._y + 4);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', '9'); label.setAttribute('fill', '#E8EDF5');
+      label.setAttribute('pointer-events', 'none');
+      label.textContent = n.conversation_id.length > 8 ? n.conversation_id.substring(0, 8) : n.conversation_id;
+      g.appendChild(label);
+
+      svg.appendChild(g);
+    }
+  }
+
+  function inspectCCGNode(idx) {
+    var n = ccgNodes[idx];
+    ccgSelectedNode = n;
+    var verdictBadge = document.getElementById('ccg-verdict-badge');
+    verdictBadge.textContent = n.verdict || '—';
+    verdictBadge.className = 'badge';
+    if (n.verdict === 'ALIGNED') verdictBadge.className = 'badge badge-green';
+    else if (n.verdict === 'PARTIAL') verdictBadge.className = 'badge badge-gold';
+    else if (n.verdict === 'MISALIGNED') verdictBadge.className = 'badge badge-red';
+
+    var relEdges = [];
+    for (var i = 0; i < ccgEdges.length; i++) {
+      if (ccgEdges[i].from_id === n.conversation_id || ccgEdges[i].to_id === n.conversation_id) {
+        relEdges.push(ccgEdges[i]);
+      }
+    }
+
+    var html = '<div style="color:var(--green);font-weight:700;margin-bottom:6px">' + n.conversation_id + '</div>' +
+      '<div>Verdict: <span style="color:' + ccgVerdictColor(n.verdict) + '">' + (n.verdict || '—') + '</span></div>' +
+      '<div>Constitutional Distance: <span style="color:var(--teal)">' + (n.constitutional_distance || 0).toFixed(4) + '</span></div>' +
+      '<div>Intent: <span style="color:var(--blue)">' + (n.intent_type || '—') + '</span></div>' +
+      '<div>Risk Clusters: <span style="color:var(--gold)">' + (n.risk_clusters || []).join(', ') + '</span></div>' +
+      '<div>Foresight: <span style="color:var(--purple)">' + (n.foresight_score || 0).toFixed(2) + '</span></div>' +
+      '<div>Timestamp: <span style="color:var(--mgray)">' + (n.timestamp || '—') + '</span></div>';
+
+    if (relEdges.length > 0) {
+      html += '<div style="margin-top:8px;border-top:1px solid var(--edge);padding-top:8px">' +
+        '<div style="color:var(--mgray);font-size:10px;margin-bottom:4px">EDGES (' + relEdges.length + ')</div>';
+      for (var i = 0; i < relEdges.length; i++) {
+        var e = relEdges[i];
+        var other = e.from_id === n.conversation_id ? e.to_id : e.from_id;
+        var deltaColor = e.cd_delta <= 0 ? 'var(--green)' : 'var(--red)';
+        html += '<div style="font-size:10px;margin:2px 0">' +
+          '<span style="color:var(--dgray)">' + e.reason + '</span> ' +
+          '→ <span style="color:var(--teal)">' + other + '</span> ' +
+          'sim=<span style="color:var(--blue)">' + (e.similarity || 0).toFixed(3) + '</span> ' +
+          'cd_delta=<span style="color:' + deltaColor + '">' + (e.cd_delta || 0).toFixed(4) + '</span></div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div style="margin-top:12px;border-top:1px solid var(--edge);padding-top:8px">' +
+      '<button class="btn-run" onclick="seedFromSelected()" style="font-size:11px;padding:6px 16px">SEED FROM THIS NODE</button></div>';
+
+    document.getElementById('ccg-inspector').innerHTML = html;
+  }
+
+  async function seedFromSelected() {
+    if (!ccgSelectedNode || !connected) return;
+    var badge = document.getElementById('ccg-seed-badge');
+    badge.textContent = 'LOADING'; badge.className = 'badge badge-blue';
+    try {
+      var r = await fetch(API() + '/ccg/seed', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ conversation_id: ccgSelectedNode.conversation_id })
+      });
+      if (!r.ok) {
+        var err = await r.json();
+        badge.textContent = 'ERROR'; badge.className = 'badge badge-red';
+        document.getElementById('ccg-seed-result').innerHTML =
+          '<div style="color:var(--red)">' + (err.detail || 'Seed failed') + '</div>';
+        return;
+      }
+      var data = await r.json();
+      badge.textContent = 'SEEDED'; badge.className = 'badge badge-green';
+      var vecStr = data.dampened_vector.map(function(v) { return v.toFixed(6); }).join(', ');
+      var html = '<div style="color:var(--green);font-weight:700;margin-bottom:6px">Seed Loaded</div>' +
+        '<div>Source: <span style="color:var(--teal)">' + data.conversation_id + '</span></div>' +
+        '<div>Verdict: <span style="color:' + ccgVerdictColor(data.source_node.verdict) + '">' + data.source_node.verdict + '</span></div>' +
+        '<div>Dampen Factor: <span style="color:var(--gold)">' + data.dampen_factor + '</span></div>' +
+        '<div>Constitutional Distance: <span style="color:var(--teal)">' + (data.source_node.constitutional_distance || 0).toFixed(4) + '</span></div>' +
+        '<div style="margin-top:6px">Dampened Vector:</div>' +
+        '<div style="color:var(--blue);font-size:10px;word-break:break-all">[' + vecStr + ']</div>' +
+        '<div style="margin-top:6px">Original Final Synthesis:</div>' +
+        '<div style="color:var(--purple);font-size:10px;word-break:break-all">[' +
+          data.source_node.final_synthesis.map(function(v) { return v.toFixed(6); }).join(', ') + ']</div>';
+      document.getElementById('ccg-seed-result').innerHTML = html;
+    } catch(e) {
+      badge.textContent = 'ERROR'; badge.className = 'badge badge-red';
+      document.getElementById('ccg-seed-result').innerHTML =
+        '<div style="color:var(--red)">Seed error: ' + e.message + '</div>';
+    }
   }
 
 </script>

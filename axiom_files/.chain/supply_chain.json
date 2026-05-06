@@ -664,5 +664,11 @@
     "registered_at": "2026-05-06T21:46:14.631219+00:00",
     "version": "1.0",
     "size_bytes": 5796
+  },
+  "core/axiom_qcr_graph_view": {
+    "sha256": "c154a7d75659916fef586df10657f78f889def887b3a847d101702a310dff181",
+    "registered_at": "2026-05-06T22:06:56.825696+00:00",
+    "version": "1.0",
+    "size_bytes": 4778
   }
 }

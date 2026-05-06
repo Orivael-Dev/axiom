@@ -1,0 +1,94 @@
+AGENT QCRGraphView
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Visualize the Constitutional Conversation Graph in the QCR console
+GOAL Expose CCG node and edge data through API endpoints and render an
+     interactive SVG graph where conversations are nodes colored by verdict
+     and edges show constitutional relationships with similarity thickness
+
+RECEIVES api_request: dict
+EMITS nodes_list: list, edges_list: list, seed_info: dict
+MUTATES nothing — read-only view of the conversation graph
+CANNOT_MUTATE graph_store, node_signatures, edge_signatures
+
+CONSTRAINT GET /ccg/nodes emits all conversation nodes from the graph store
+CONSTRAINT GET /ccg/edges emits all edges with similarity scores and cd_delta
+CONSTRAINT POST /ccg/seed accepts conversation_id and emits seed info via seed_from
+CONSTRAINT POST /ccg/seed emits dampened_vector, source node, and dampen_factor
+CONSTRAINT POST /ccg/seed raises 404 when conversation_id is not found in graph
+CONSTRAINT POST /ccg/seed raises 409 when node signature verification fails
+CONSTRAINT Node color is determined by verdict: green for ALIGNED, gold for PARTIAL, red for MISALIGNED
+CONSTRAINT Node size scales with constitutional_distance
+CONSTRAINT Edge thickness scales with cosine similarity score
+CONSTRAINT Edge color is green when cd_delta is negative or zero (improving) and red when positive (degrading)
+CONSTRAINT Clicking a node triggers seed_from for that conversation
+
+RULES
+- On GET /ccg/nodes: load ConversationGraph and emit all nodes as JSON list
+- On GET /ccg/edges: load ConversationGraph and emit all edges as JSON list
+- On POST /ccg/seed with valid conversation_id: call seed_from, dampen by DAMPEN_FACTOR, emit seed info
+- On POST /ccg/seed with unknown conversation_id: emit HTTP 404 with error message
+- On POST /ccg/seed with tampered node: emit HTTP 409 with signature error
+- All API responses include request_id and timestamp
+- Node visualization maps verdict to color: ALIGNED is green, PARTIAL is gold, MISALIGNED is red
+- Edge visualization maps similarity to stroke width: higher similarity is thicker
+- Edge visualization maps cd_delta sign to color: non-positive is green, positive is red
+
+PROCESS
+- API receives request at CCG endpoint
+- ConversationGraph is instantiated from the default store path
+- For node listing: all nodes are loaded and serialized as JSON
+- For edge listing: all edges are loaded and serialized as JSON
+- For seed request: seed_from is called with the provided conversation_id
+- Seed final_synthesis is dampened by DAMPEN_FACTOR element-wise
+- Response includes dampened_vector, source_node summary, and dampen_factor
+- Console renders SVG circles for nodes with verdict-based fill colors
+- Console renders SVG lines for edges with similarity-based thickness
+- Console handles node click events to trigger seed_from via POST /ccg/seed
+
+CHECK
+- GET /ccg/nodes with populated graph emits non-empty node list
+- GET /ccg/edges with populated graph emits non-empty edge list
+- POST /ccg/seed with valid id emits seed info with dampened_vector
+- POST /ccg/seed with unknown id emits 404
+- POST /ccg/seed with tampered node emits 409
+- GET /ccg/nodes with empty graph emits empty list
+
+WHEN
+- nodes_requested:  activate NodeListing
+- edges_requested:  activate EdgeListing
+- seed_requested:   activate SeedLookup
+- seed_invalid:     activate RejectSeed
+
+FAILURE
+- On unknown conversation_id in seed request: emit HTTP 404 with conversation_id in message
+- On tampered node signature in seed request: emit HTTP 409 with signature warning
+- On graph store not found: emit empty lists for nodes and edges
+
+CONCEPT QCRVisualization
+PURPOSE Render constitutional conversation relationships as an interactive graph
+APPLIES WHEN the QCR console is open and the CCG Graph tab is selected
+NOT WHEN no conversations have been recorded in the graph store
+PRIORITY 2
+REQUIRES ConversationGraph loaded from axiom_conversation_graph.jsonl
+EFFECT Operators can visually inspect conversation relationships and seed new runs
+
+CONCEPT VerdictColorMapping
+PURPOSE Map conversation verdicts to visual indicators for rapid triage
+APPLIES WHEN rendering node circles in the SVG graph
+NOT WHEN listing raw data through API endpoints
+PRIORITY 2
+REQUIRES verdict field on each conversation node
+EFFECT ALIGNED nodes are green, PARTIAL are gold, MISALIGNED are red
+
+OUTPUT
+- nodes_list: list of node dicts with conversation_id, verdict, constitutional_distance, risk_clusters
+- edges_list: list of edge dicts with from_id, to_id, similarity, cd_delta, reason
+- seed_info: dict with conversation_id, dampened_vector, dampen_factor, source_node summary
+
+SUCCESS
+api_nodes_endpoint:     0.20
+api_edges_endpoint:     0.20
+api_seed_endpoint:      0.20
+console_graph_render:   0.20
+verdict_color_mapping:  0.20

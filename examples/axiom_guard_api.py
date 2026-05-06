@@ -103,6 +103,15 @@ except ImportError:
     _agent = None
     AGENT_AVAILABLE = False
 
+# ── Conversation Graph (ORVL-007 CCG) ────────────────────────
+try:
+    from axiom_conversation_graph import (
+        ConversationGraph, GraphNodeError, DAMPEN_FACTOR,
+    )
+    CCG_AVAILABLE = True
+except ImportError:
+    CCG_AVAILABLE = False
+
 # ── Constants ─────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from axiom_signing import derive_key
@@ -391,6 +400,9 @@ class RedactRequest(BaseModel):
     text:   str
     mode:   str = "REDACT"
     domain: Optional[str] = None
+
+class CCGSeedRequest(BaseModel):
+    conversation_id: str = Field(..., description="Conversation ID to seed from")
 
 
 # ── Endpoints ─────────────────────────────────────────────────
@@ -872,6 +884,91 @@ async def agent_bugs():
     if not AGENT_AVAILABLE or not _agent:
         raise HTTPException(503, "AXIOM Agent not available")
     return _agent.get_bugs()
+
+
+# ── CCG Graph View (ORVL-007 Component 3) ────────────────────
+
+@app.get("/ccg/nodes")
+async def ccg_nodes():
+    """List all conversation nodes in the Constitutional Conversation Graph."""
+    if not CCG_AVAILABLE:
+        raise HTTPException(503, "ConversationGraph not available")
+    g = ConversationGraph()
+    nodes = g.list_nodes()
+    return {
+        "request_id": str(uuid.uuid4()),
+        "timestamp":  datetime.utcnow().isoformat() + "Z",
+        "count":      len(nodes),
+        "nodes":      [
+            {
+                "conversation_id":        n["conversation_id"],
+                "verdict":                n.get("verdict", ""),
+                "constitutional_distance": n.get("constitutional_distance", 0.0),
+                "intent_type":            n.get("intent_type", ""),
+                "risk_clusters":          n.get("risk_clusters", []),
+                "foresight_score":        n.get("foresight_score", 0.0),
+                "timestamp":             n.get("timestamp", ""),
+            }
+            for n in nodes
+        ],
+    }
+
+
+@app.get("/ccg/edges")
+async def ccg_edges():
+    """List all edges with similarity scores and cd_delta."""
+    if not CCG_AVAILABLE:
+        raise HTTPException(503, "ConversationGraph not available")
+    g = ConversationGraph()
+    edges = g.list_edges()
+    return {
+        "request_id": str(uuid.uuid4()),
+        "timestamp":  datetime.utcnow().isoformat() + "Z",
+        "count":      len(edges),
+        "edges":      [
+            {
+                "edge_id":    e["edge_id"],
+                "from_id":    e["from_id"],
+                "to_id":      e["to_id"],
+                "similarity": e.get("similarity", 0.0),
+                "cd_delta":   e.get("cd_delta", 0.0),
+                "reason":     e.get("reason", ""),
+                "timestamp":  e.get("timestamp", ""),
+            }
+            for e in edges
+        ],
+    }
+
+
+@app.post("/ccg/seed")
+async def ccg_seed(req: CCGSeedRequest):
+    """Seed from a prior conversation — load and dampen its final_synthesis."""
+    if not CCG_AVAILABLE:
+        raise HTTPException(503, "ConversationGraph not available")
+    g = ConversationGraph()
+    try:
+        node = g.seed_from(req.conversation_id)
+    except GraphNodeError as exc:
+        msg = str(exc)
+        if "signature" in msg.lower():
+            raise HTTPException(409, f"Seed node signature verification failed: {req.conversation_id}")
+        raise HTTPException(404, f"Seed node not found: {req.conversation_id}")
+
+    dampened = [round(v * DAMPEN_FACTOR, 6) for v in node["final_synthesis"]]
+    return {
+        "request_id":      str(uuid.uuid4()),
+        "timestamp":       datetime.utcnow().isoformat() + "Z",
+        "conversation_id": req.conversation_id,
+        "dampen_factor":   DAMPEN_FACTOR,
+        "dampened_vector":  dampened,
+        "source_node": {
+            "conversation_id":        node["conversation_id"],
+            "verdict":                node.get("verdict", ""),
+            "constitutional_distance": node.get("constitutional_distance", 0.0),
+            "risk_clusters":          node.get("risk_clusters", []),
+            "final_synthesis":        node["final_synthesis"],
+        },
+    }
 
 
 # ── Entry point ───────────────────────────────────────────────
