@@ -135,7 +135,7 @@ _INTENT_MAP = {
 }
 
 _RISK_MAP = {
-    "medical":   r"\b(health|doctor|medicine|symptom|disease|treat|diagnose|pain|fever|vitamin|supplement|therapy|drug|dose|sleep)\b",
+    "medical":   r"\b(medical|health|doctor|medicine|symptom|disease|treat|diagnose|pain|fever|vitamin|supplement|therapy|drug|dose|sleep|hospital|clinic|nurse|patient|prescription|medication|pill|tablet|illness|injury|wound|infection|surgery|cancer|diabetes|blood|heart|mental|anxiety|depression|vaccine|vaccination|allergy|allergic|allergies|headache|nausea|hurt|hurts|ache|aches|healthcare|physician|specialist)\b",
     "financial": r"\b(money|invest|stock|tax|debt|loan|financial|savings|return|portfolio|crypto|cost|price)\b",
     "legal":     r"\b(law|illegal|crime|legal|court|sue|rights|contract|liability|regulation)\b",
     "safety":    r"\b(dangerous|risk|harm|safe|hazard|toxic|poison|accident|explosion)\b",
