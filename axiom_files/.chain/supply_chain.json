@@ -652,5 +652,11 @@
     "registered_at": "2026-05-05T20:00:00.000000+00:00",
     "version": "1.0",
     "size_bytes": 4368
+  },
+  "core/axiom_conversation_graph": {
+    "sha256": "a716d35258cc450989c6e5aca451668be35729b15b99480b7fb8ee67d81639f5",
+    "registered_at": "2026-05-06T19:42:14.295915+00:00",
+    "version": "1.0",
+    "size_bytes": 5404
   }
 }

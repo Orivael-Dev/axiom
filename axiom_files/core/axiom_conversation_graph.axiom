@@ -1,0 +1,109 @@
+AGENT ConversationGraph
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Manage nodes and edges of the Constitutional Conversation Graph
+GOAL Store completed conversations as signed nodes, detect constitutional
+     relationships via cosine similarity and shared risk clusters, create
+     signed directed edges, enable coordinate propagation across sessions
+
+RECEIVES conversation_record: dict, vector: list, threshold: float
+EMITS node_id: str, edge_id: str, related_nodes: list
+MUTATES graph_store via append-only writes
+CANNOT_MUTATE node_signatures, edge_signatures, cosine_threshold_default, edge_reason_set
+
+CONSTRAINT Storage is append-only JSONL at axiom_conversation_graph.jsonl
+CONSTRAINT Every node entry is HMAC-SHA256 signed at creation time
+CONSTRAINT Every edge entry is HMAC-SHA256 signed at creation time
+CONSTRAINT Node signatures are CANNOT_MUTATE after write
+CONSTRAINT Edge reason must be one of vector_proximity shared_risk_cluster user_linked
+CONSTRAINT Default cosine similarity threshold is 0.70 and is CANNOT_MUTATE
+CONSTRAINT Cosine similarity uses dot product over magnitude product of float vectors
+CONSTRAINT Edge cd_delta is always to_node.constitutional_distance minus from_node.constitutional_distance
+CONSTRAINT Nodes require conversation_id prompt_hash final_synthesis fields
+CONSTRAINT find_related compares query vector against all stored node final_synthesis vectors
+
+RULES
+- Define EDGE_REASONS as frozenset: vector_proximity shared_risk_cluster user_linked
+- Define DEFAULT_THRESHOLD as 0.70 float CANNOT_MUTATE
+- On add_node: validate required fields present then sign and append to store
+- On add_node with missing required field: raise GraphNodeError with field name
+- On add_edge with unknown from_id or to_id: raise GraphEdgeError with missing id
+- On add_edge with invalid reason: raise GraphEdgeError with reason and allowed set
+- On find_related: compute cosine similarity of query vector against every node final_synthesis
+- On find_related: emit nodes where similarity meets or exceeds threshold
+- On get_node with unknown conversation_id: emit None
+- All signing uses derive_key with salt axiom-conversation-graph-v1
+- All signing calls hexdigest explicitly per BUG-007
+- All encoding is explicit utf-8 per BUG-008
+
+PROCESS
+- Receive conversation_record dict from caller
+- Validate conversation_id and prompt_hash and final_synthesis are present
+- Generate timestamp in ISO-8601 UTC
+- Sign the node entry with HMAC-SHA256
+- Append node as JSON line to axiom_conversation_graph.jsonl
+- Receive from_id and to_id and reason for edge creation
+- Validate both nodes exist in store
+- Validate reason is member of EDGE_REASONS
+- Compute cosine similarity between the two node final_synthesis vectors
+- Compute cd_delta as to_node constitutional_distance minus from_node constitutional_distance
+- Sign the edge entry with HMAC-SHA256
+- Append edge as JSON line to axiom_conversation_graph.jsonl
+- Receive query vector and threshold for find_related
+- Load all nodes from store
+- Compute cosine similarity of query against each node final_synthesis
+- Emit list of nodes where similarity meets or exceeds threshold sorted by similarity descending
+
+CHECK
+- add_node with valid record returns a conversation_id string
+- add_node with missing conversation_id raises GraphNodeError
+- add_node with missing final_synthesis raises GraphNodeError
+- add_edge between two existing nodes returns an edge_id string
+- add_edge with nonexistent from_id raises GraphEdgeError
+- add_edge with invalid reason raises GraphEdgeError
+- find_related with high-similarity vector returns matching nodes
+- find_related with orthogonal vector returns empty list
+- get_node with valid id returns the node dict
+- get_node with unknown id returns None
+- list_nodes returns all stored nodes
+- EDGE_REASONS element assignment raises TypeError
+
+WHEN
+- node_valid:     activate AppendNode
+- node_invalid:   activate RejectNode
+- edge_valid:     activate AppendEdge
+- edge_invalid:   activate RejectEdge
+- query_vector:   activate CosineScan
+
+FAILURE
+- On missing required node field: raise GraphNodeError with field name
+- On unknown node id in edge creation: raise GraphEdgeError with the missing id
+- On invalid edge reason: raise GraphEdgeError with reason and allowed set
+- On file write error: propagate IOError to caller
+
+CONCEPT ConstitutionalEntanglement
+PURPOSE Detect and record constitutional relationships between conversations
+APPLIES WHEN two conversations share meaning coordinate proximity or risk domain
+NOT WHEN conversations are independent with low similarity and no shared clusters
+PRIORITY 1
+REQUIRES cosine similarity computed from final_synthesis float vectors
+EFFECT related conversations linked by signed directed edges enabling coordinate propagation
+
+CONCEPT AppendOnlyIntegrity
+PURPOSE Guarantee that no node or edge can be modified after creation
+APPLIES WHEN any write to the graph store
+NOT WHEN reading or querying the graph
+PRIORITY 1
+REQUIRES HMAC-SHA256 signature on every entry
+EFFECT tamper-evident audit trail of all constitutional relationships
+
+OUTPUT
+- node_id: str conversation_id of the stored node
+- edge_id: str unique identifier of the stored edge
+- related_nodes: list of node dicts sorted by cosine similarity descending
+
+SUCCESS
+node_signed_on_write:      0.25
+edge_signed_on_write:      0.25
+find_related_correct:      0.25
+append_only_enforced:      0.25
