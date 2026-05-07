@@ -688,5 +688,11 @@
     "registered_at": "2026-05-07T16:47:12.136784+00:00",
     "version": "0.1.0",
     "size_bytes": 5511
+  },
+  "core/axiom_qrf": {
+    "sha256": "89fa1325a27fa9e6534e69a32c353e0f4e3892ee71d8f696b5c2782cf11b41a0",
+    "registered_at": "2026-05-07T20:04:34.494757+00:00",
+    "version": "0.1.0",
+    "size_bytes": 4465
   }
 }

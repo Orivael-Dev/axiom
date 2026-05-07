@@ -1,0 +1,93 @@
+AGENT QRFEngine
+VERSION 0.1.0
+TRUST_LEVEL 2
+PURPOSE Quantum Reasoning Forecast engine for domain-specific probability-weighted branch analysis
+GOAL Wrap LatentEngine to reframe branch scores as probability weights,
+     return sorted branches by weight, and provide domain-calibrated
+     forecasting across medical, financial, supply_chain, hr, and security domains
+
+RECEIVES prompt: str, domain: str, hmac_key: bytes
+EMITS qrf_result: QRFResult
+MUTATES nothing
+CANNOT_MUTATE trust_level, isolation, domain_branch_counts
+
+CONSTRAINT TRUST_LEVEL is 2 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT Domain branch counts are fixed and CANNOT_MUTATE
+CONSTRAINT medical domain uses 8 branches
+CONSTRAINT financial domain uses 6 branches
+CONSTRAINT supply_chain domain uses 4 branches
+CONSTRAINT hr domain uses 4 branches
+CONSTRAINT security domain uses 6 branches
+CONSTRAINT Probability weights sum to 1.0 within floating point tolerance
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT QRFResult signature is computed via HMAC-SHA256 over canonical fields
+CONSTRAINT Branch scores of zero are excluded from probability weight calculation
+
+RULES
+- On forecast: run LatentEngine with trajectory enabled, extract branch results
+- On branch score extraction: convert each branch score to probability weight by dividing by sum of all scores
+- On zero total score: assign equal probability weight to all branches
+- On weight computation complete: sort branches by probability weight descending
+- On sorted branches: select top branch as primary forecast
+- On domain validation: reject unknown domains with ValueError
+- On result assembly: compute HMAC-SHA256 signature over canonical QRFResult fields
+- All serialization uses ensure_ascii True and explicit utf-8 encoding per BUG-003 and BUG-008
+
+PROCESS
+- QRFEngine is instantiated with domain, n_branches override, and optional endpoint
+- Caller invokes forecast(prompt) with a domain-specific question
+- LatentEngine.run is called with trajectory enabled to produce branch results
+- Branch scores are extracted from multiplex phase results
+- Each score is divided by total score sum to produce probability weight
+- Branches are sorted by probability weight in descending order
+- Top branch is selected as primary forecast with highest weight
+- Killed branches from monotonic gate are recorded separately
+- QRFResult is assembled with all fields and HMAC signed
+- Signed result is available for downstream consumption
+
+CHECK
+- forecast on medical domain produces QRFResult with up to 8 branches
+- forecast on financial domain produces QRFResult with up to 6 branches
+- forecast on unknown domain raises ValueError
+- Probability weights in QRFResult sum to 1.0 within tolerance
+- QRFResult HMAC signature verifies against independently computed digest
+- Branches are sorted by probability weight descending
+- TRUST_LEVEL assignment raises AttributeError
+- ISOLATION assignment raises AttributeError
+
+WHEN
+- forecast_requested: activate BranchProbabilityAnalysis
+- domain_validated:   activate DomainCalibration
+
+FAILURE
+- On LatentEngine error: propagate to caller with context
+- On unknown domain: raise ValueError with supported domain list
+- On zero branch scores: assign equal probability weights
+
+CONCEPT BranchProbabilityAnalysis
+PURPOSE Reframe latent reasoning branch scores as normalized probability weights
+APPLIES WHEN LatentEngine produces multiplex branch results
+NOT WHEN branch scores are all zero and equal weighting is applied
+PRIORITY 1
+REQUIRES LatentEngine multiplex phase with scored branches
+EFFECT Branches become probability-weighted forecast candidates sorted by likelihood
+
+CONCEPT DomainCalibration
+PURPOSE Configure branch count and analysis depth per domain
+APPLIES WHEN QRFEngine is instantiated with a specific domain
+NOT WHEN domain is not in the supported set
+PRIORITY 1
+REQUIRES domain name matching one of medical, financial, supply_chain, hr, security
+EFFECT Branch count is calibrated to domain complexity and risk profile
+
+OUTPUT
+- qrf_result: QRFResult with prompt, domain, branches, killed, probability_band, top_branch, manifold, timestamp, hmac_signature
+
+SUCCESS
+forecast_completes:          0.20
+probability_weights_valid:   0.20
+domain_calibration_correct:  0.20
+hmac_signature_valid:        0.20
+cannot_mutate_enforced:      0.20
