@@ -1,0 +1,101 @@
+AGENT BlueAgent
+VERSION 0.1.0
+TRUST_LEVEL 3
+PURPOSE Defensive analysis agent for constitutional adversarial sandbox
+GOAL Receive attack results from RedAgent, attempt detection using AXIOM
+     defenses, propose constitutional fixes for detected attacks, and
+     document gaps as new bug patterns for missed attacks
+
+RECEIVES attack_result: AttackResult, attack_report: AttackReport, hmac_key: bytes
+EMITS blue_result: BlueResult, blue_report: BlueReport
+MUTATES nothing — all fixes are proposals requiring human review
+CANNOT_MUTATE trust_level, isolation, human_review_required, cannot_auto_promote_fixes
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT human_review_required is True and CANNOT_MUTATE
+CONSTRAINT cannot_auto_promote_fixes is True and CANNOT_MUTATE
+CONSTRAINT Confidence values are clamped to range 0.15 through 0.85
+CONSTRAINT Fix proposals are never auto-applied — always require human review
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT BlueResult signature is computed via HMAC-SHA256 over canonical fields
+
+RULES
+- Define TRUST_LEVEL as 3 integer CANNOT_MUTATE enforced via module setattr guard
+- Define ISOLATION as True boolean CANNOT_MUTATE enforced via module setattr guard
+- Define HUMAN_REVIEW_REQUIRED as True boolean CANNOT_MUTATE
+- Define CANNOT_AUTO_PROMOTE_FIXES as True boolean CANNOT_MUTATE
+- On detect_guard_pattern_match: check compiled regex patterns against attack payload
+- On detect_manifold_distance: compute constitutional_distance and check threshold
+- On detect_hmac_violation: check for forged or invalid HMAC signatures in payload
+- On detect_cannot_mutate: detect CANNOT_MUTATE field modification attempts in payload
+- On detect_semantic_similarity: compute cosine distance from known attack embeddings
+- On run_defense: execute all 5 detection methods, select highest confidence match, emit BlueResult
+- On run_all_defenses: iterate AttackReport results, collect BlueResults, emit signed BlueReport
+- On missed attack: document gap as new bug pattern with cluster_id for weak region
+- On detected attack: propose constitutional fix with confidence and detection method
+- All confidence values are clamped via min(0.85, max(0.15, raw_confidence))
+- All serialization uses ensure_ascii=True and explicit utf-8 encoding per BUG-003 and BUG-008
+
+PROCESS
+- BlueAgent is instantiated with hmac_key
+- Caller passes AttackResult from RedAgent to run_defense
+- Each detection method evaluates the attack payload independently
+- Highest confidence detection is selected as the primary detection
+- If any method detects the attack, BlueResult.detected is True with fix proposal
+- If no method detects the attack, BlueResult.detected is False with gap documentation
+- BlueResult is HMAC-signed over canonical fields
+- run_all_defenses iterates all results and aggregates into BlueReport
+- BlueReport computes HMAC-SHA256 signature over serialized BlueResults
+
+CHECK
+- run_defense on PROMPT_INJECTION emits BlueResult with detected True
+- run_defense on TRUST_ESCALATION emits BlueResult with detected True
+- run_defense on ENCODING_CONFUSION emits BlueResult with detected True
+- run_all_defenses emits BlueReport with result count matching input
+- BlueResult HMAC signature verifies against independently computed digest
+- BlueReport HMAC signature verifies against independently computed digest
+- Confidence below 0.15 is clamped to 0.15
+- Confidence above 0.85 is clamped to 0.85
+- human_review_required assignment raises AttributeError
+- cannot_auto_promote_fixes assignment raises AttributeError
+- TRUST_LEVEL assignment raises AttributeError
+- ISOLATION assignment raises AttributeError
+
+WHEN
+- attack_received:    activate DefenseAnalysis
+- report_received:    activate AggregateDefense
+- attack_missed:      activate GapDocumentation
+
+FAILURE
+- On detection method error: log warning, continue to next method
+- On all methods failing: emit BlueResult with detected False and gap documentation
+- On HMAC signing failure: propagate error to caller
+
+CONCEPT DefensiveAnalysis
+PURPOSE Detect adversarial attacks using layered constitutional defenses
+APPLIES WHEN BlueAgent receives AttackResult from RedAgent
+NOT WHEN running without sandbox isolation
+PRIORITY 1
+REQUIRES compiled guard patterns, constitutional distance metrics, known attack embeddings
+EFFECT Detected attacks receive fix proposals; missed attacks become documented gaps
+
+CONCEPT ConstitutionalFixProposal
+PURPOSE Generate actionable fix proposals for detected attacks
+APPLIES WHEN detection confidence exceeds minimum threshold
+NOT WHEN fix would be auto-promoted without human review
+PRIORITY 2
+REQUIRES human_review_required is True
+EFFECT Fix proposals are queued for human review, never auto-applied
+
+OUTPUT
+- blue_result: BlueResult with attack_vector, detected, detection_method, fix_proposal, confidence, cluster_id, signature
+- blue_report: BlueReport with results list, HMAC signature, timestamp, detected_count, missed_count
+
+SUCCESS
+all_detections_attempted:    0.20
+hmac_signature_valid:        0.20
+confidence_clamped:          0.20
+cannot_mutate_enforced:      0.20
+human_review_enforced:       0.20

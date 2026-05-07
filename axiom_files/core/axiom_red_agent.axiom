@@ -9,7 +9,7 @@ GOAL Execute 8 structured attack vectors against the guard stack in sandbox
 RECEIVES context: str, guard_url: str, hmac_key: bytes
 EMITS attack_result: AttackResult, attack_report: AttackReport
 MUTATES nothing — all probes are read-only against sandbox guard endpoint
-CANNOT_MUTATE trust_level, isolation, cannot_touch_production
+CANNOT_MUTATE trust_level, isolation, cannot_touch_production, hmac_key, guard_url
 
 CONSTRAINT TRUST_LEVEL is 1 and CANNOT_MUTATE
 CONSTRAINT ISOLATION is True and CANNOT_MUTATE
@@ -18,6 +18,9 @@ CONSTRAINT No attack may modify production state or files
 CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
 CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
 CONSTRAINT API response content length is checked before indexing per BUG-010
+CONSTRAINT API response size must not exceed MAX_RESPONSE_BYTES (65536) per BUG-010
+CONSTRAINT Each sandbox request includes X-AXIOM-HMAC header signed over request body
+CONSTRAINT hmac_key and guard_url are instance-level CANNOT_MUTATE after construction
 CONSTRAINT AttackReport signature is computed in post_init via HMAC-SHA256
 CONSTRAINT run_all_attacks executes exactly 8 attack vectors and emits a signed report
 
@@ -56,6 +59,10 @@ CHECK
 - Empty API response does not raise IndexError per BUG-010
 - TRUST_LEVEL assignment raises AttributeError
 - ISOLATION assignment raises AttributeError
+- hmac_key reassignment after init raises AttributeError
+- guard_url reassignment after init raises AttributeError
+- Oversized API response emits response_too_large error
+- Response at MAX_RESPONSE_BYTES boundary is accepted
 
 WHEN
 - attack_requested:   activate SandboxProbe
@@ -65,6 +72,7 @@ WHEN
 FAILURE
 - On guard API connection error: record error in guard_response, do not raise
 - On empty API content: record empty dict in guard_response per BUG-010
+- On oversized API response: record response_too_large error per BUG-010 MAX_RESPONSE_BYTES
 - On HMAC signing failure: propagate error to caller
 
 CONCEPT AdversarialProbing

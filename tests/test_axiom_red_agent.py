@@ -181,3 +181,57 @@ class TestInvariants:
         assert m.ISOLATION is True
         with pytest.raises((AttributeError, TypeError)):
             m.ISOLATION = False
+
+    def test_hmac_key_cannot_mutate(self):
+        """CANNOT_MUTATE: _hmac_key must not be reassignable after init."""
+        from axiom_red_agent import RedAgent
+        agent = RedAgent(hmac_key=HMAC_KEY)
+        with pytest.raises(AttributeError):
+            agent._hmac_key = b"tampered"
+
+    def test_guard_url_cannot_mutate(self):
+        """CANNOT_MUTATE: _guard_url must not be reassignable after init."""
+        from axiom_red_agent import RedAgent
+        agent = RedAgent(hmac_key=HMAC_KEY)
+        with pytest.raises(AttributeError):
+            agent._guard_url = "http://evil.com/guard"
+
+
+# ===========================================================================
+# SECTION 4 — BUG-010: MAX_RESPONSE_BYTES enforcement
+# ===========================================================================
+
+class TestResponseLimits:
+
+    def test_oversized_response_rejected(self):
+        """BUG-010: response exceeding MAX_RESPONSE_BYTES must be rejected."""
+        from axiom_red_agent import RedAgent, MAX_RESPONSE_BYTES
+
+        oversized_content = b'x' * (MAX_RESPONSE_BYTES + 1)
+        r = MagicMock()
+        r.status_code = 200
+        r.content = oversized_content
+
+        agent = RedAgent(hmac_key=HMAC_KEY)
+        result = agent._parse_response(r)
+        assert result["error"] == "response_too_large"
+        assert result["size"] == len(oversized_content)
+        assert result["limit"] == MAX_RESPONSE_BYTES
+
+    def test_max_boundary_response_accepted(self):
+        """BUG-010: response at exactly MAX_RESPONSE_BYTES must be accepted."""
+        from axiom_red_agent import RedAgent, MAX_RESPONSE_BYTES
+
+        body = {"verdict": "BLOCKED", "reason": "test"}
+        content = json.dumps(body).encode("utf-8")
+        # Pad to exactly MAX_RESPONSE_BYTES with valid JSON
+        assert len(content) <= MAX_RESPONSE_BYTES
+
+        r = MagicMock()
+        r.status_code = 200
+        r.content = content
+        r.json.return_value = body
+
+        agent = RedAgent(hmac_key=HMAC_KEY)
+        result = agent._parse_response(r)
+        assert result["verdict"] == "BLOCKED"

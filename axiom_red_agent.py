@@ -9,7 +9,8 @@ BUG mitigations in this file:
   BUG-003 : sys.stdout reconfigured to utf-8; all open() calls use encoding="utf-8"
   BUG-007 : HMAC always finalised with .hexdigest() — never held as partial object
   BUG-008 : all payload strings encoded via .encode("utf-8") before HMAC/hashing
-  BUG-010 : _parse_response() checks len(resp.content) > 0 before any index access
+  BUG-010 : _parse_response() checks len(resp.content) > 0 before any index access;
+             MAX_RESPONSE_BYTES (65 536) enforces hard ceiling on response size
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import hmac as hmac_lib
 import json
+import logging
 import sys
 import time
 import types as _types
@@ -56,6 +58,8 @@ _mod.__class__ = type(
 # ── Guard API defaults ────────────────────────────────────────────────────
 _GUARD_URL: str = "http://localhost:8001/guard/check"
 _REQUEST_TIMEOUT_S: float = 5.0
+MAX_RESPONSE_BYTES: int = 65_536  # BUG-010: hard ceiling on response size
+LOG = logging.getLogger("axiom.red_agent")
 
 
 # ── Data structures ──────────────────────────────────────────────────────
@@ -104,9 +108,17 @@ class RedAgent:
     All probes are sandbox-only — no production writes.
     """
 
+    _INSTANCE_FROZEN: frozenset = frozenset({"_hmac_key", "_guard_url"})
+
     def __init__(self, hmac_key: bytes, guard_url: str = _GUARD_URL):
-        self._hmac_key = hmac_key
-        self._guard_url = guard_url
+        object.__setattr__(self, "_hmac_key", hmac_key)
+        object.__setattr__(self, "_guard_url", guard_url)
+        LOG.info("RedAgent initialised — ISOLATION mode, target=%s", guard_url)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self._INSTANCE_FROZEN:
+            raise AttributeError(f"{name} is CANNOT_MUTATE and may not be reassigned.")
+        super().__setattr__(name, value)
 
     # ── Internal helpers ──────────────────────────────────────────────
 
@@ -114,13 +126,25 @@ class RedAgent:
         """Submit adversarial payload to sandbox guard and record result."""
         t0 = time.time()
         try:
+            body: bytes = json.dumps(
+                {"text": payload, "direction": "INPUT"},
+                ensure_ascii=True,
+            ).encode("utf-8")  # BUG-008: explicit utf-8 encode
+            sig = hmac_lib.new(
+                self._hmac_key, body, hashlib.sha256
+            ).hexdigest()  # BUG-007: .hexdigest() finalises digest
             resp = requests.post(
                 self._guard_url,
-                json={"text": payload, "direction": "INPUT"},
+                data=body,
+                headers={
+                    "Content-Type": "application/json; charset=utf-8",
+                    "X-AXIOM-HMAC": sig,
+                },
                 timeout=_REQUEST_TIMEOUT_S,
             )
             guard_response = self._parse_response(resp)
         except Exception as exc:
+            LOG.warning("sandbox_submit error vector=%s err=%s", vector, exc)
             guard_response = {"error": str(exc)}
 
         latency_ms = round((time.time() - t0) * 1000, 2)
@@ -140,6 +164,13 @@ class RedAgent:
         # BUG-010: check content length before accessing
         if not resp.content or len(resp.content) == 0:
             return {"error": "empty response", "status_code": resp.status_code}
+        # BUG-010: hard ceiling on response size
+        if len(resp.content) > MAX_RESPONSE_BYTES:
+            LOG.warning("response_too_large: %d bytes", len(resp.content))
+            return {"error": "response_too_large",
+                    "size": len(resp.content),
+                    "limit": MAX_RESPONSE_BYTES,
+                    "status_code": resp.status_code}
         try:
             return resp.json()
         except (ValueError, json.JSONDecodeError):

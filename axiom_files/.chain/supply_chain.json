@@ -672,9 +672,21 @@
     "size_bytes": 4778
   },
   "core/axiom_red_agent": {
-    "sha256": "60bebf98142540cf5560ac319d487302914dc7770bace5154dd1aaca786c58fd",
-    "registered_at": "2026-05-07T14:05:44.302100+00:00",
+    "sha256": "0cb33ec4b68d0adbf89dd9b962794224f094764153dcf704246312e674f72fcb",
+    "registered_at": "2026-05-07T14:15:04.491334+00:00",
+    "version": "1.1.0",
+    "size_bytes": 5430
+  },
+  "core/axiom_blue_agent": {
+    "sha256": "759a924f48fa8f0dac28d20fc6e2335d1a001cdf1e83c8836562000825b3e6fc",
+    "registered_at": "2026-05-07T15:01:18.177107+00:00",
     "version": "0.1.0",
-    "size_bytes": 4836
+    "size_bytes": 5308
+  },
+  "core/axiom_cas_orchestrator": {
+    "sha256": "e42d061e23f6814c703623934acbf79db631c65995cd6cc3bc6d3c62321895ff",
+    "registered_at": "2026-05-07T16:47:12.136784+00:00",
+    "version": "0.1.0",
+    "size_bytes": 5511
   }
 }

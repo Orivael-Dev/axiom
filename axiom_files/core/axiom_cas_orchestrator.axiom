@@ -1,0 +1,109 @@
+AGENT CASOrchestrator
+VERSION 0.1.0
+TRUST_LEVEL 4
+PURPOSE Coordinate Red/Blue adversarial rounds with referee scoring, weak region detection, and sovereign escalation
+GOAL Run N rounds of RedAgent attacks and BlueAgent defenses, score each
+     round, cluster red wins into weak regions via DBSCAN, trigger BlueAgent
+     fixes for weak regions, and escalate to sovereign on threshold breach
+
+RECEIVES hmac_key: bytes, red_agent: RedAgent, blue_agent: BlueAgent, round_count: int
+EMITS round_record: RoundRecord, weak_region: WeakRegion, cas_report: CASReport, sovereign_alert: SovereignAlert
+MUTATES axiom_cas_log.jsonl — append-only round records
+CANNOT_MUTATE trust_level, isolation, dbscan_eps, sovereign_threshold
+
+CONSTRAINT TRUST_LEVEL is 4 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT DBSCAN_EPS is 0.15 and CANNOT_MUTATE
+CONSTRAINT SOVEREIGN_CONSECUTIVE_THRESHOLD is 2 and CANNOT_MUTATE
+CONSTRAINT SOVEREIGN_PRIORITY_THRESHOLD is 10.0 and CANNOT_MUTATE
+CONSTRAINT All round records are HMAC-SHA256 signed before logging
+CONSTRAINT Weak region detection triggers after 5 rounds or 3 accumulated red wins
+CONSTRAINT Sovereign escalation triggers on 2 consecutive red wins or priority above 10.0
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Log file is append-only with one JSON object per line
+
+RULES
+- On each round: RedAgent executes one attack vector, referee scores outcome
+- On red_win (attack bypassed guard): call blue_agent.run_defense(attack_result)
+- On blue_win (attack blocked by guard): record blue defense as successful
+- On round scored: sign RoundRecord with HMAC-SHA256, append to axiom_cas_log.jsonl
+- On every 5 rounds: trigger DBSCAN weak region detection over accumulated red_win vectors
+- On 3 accumulated red wins: trigger DBSCAN weak region detection immediately
+- On DBSCAN cluster found: compute centroid, radius, boundary_dist, priority
+- On WeakRegion detected: call blue_agent for region fix proposal
+- On consecutive_red_wins reaching 2: emit SovereignAlert
+- On WeakRegion priority exceeding 10.0: emit SovereignAlert
+- On run_rounds complete: aggregate all records into signed CASReport
+
+PROCESS
+- CASOrchestrator is instantiated with hmac_key, red_agent, blue_agent
+- Caller invokes run_rounds(n) to execute N adversarial rounds
+- Each round selects next attack vector from RedAgent in sequence
+- Attack is submitted to sandbox guard and scored by referee
+- Round record is signed and appended to log
+- After trigger conditions, DBSCAN clusters red_win vectors at eps=0.15
+- Each cluster becomes a WeakRegion with centroid, radius, boundary_dist, priority
+- BlueAgent proposes fixes for each WeakRegion
+- Sovereign alerts are emitted when thresholds are breached
+- Final CASReport aggregates all rounds, regions, proposals, alerts
+
+CHECK
+- run_rounds(1) with blocked guard emits CASReport with 1 blue_win
+- run_rounds(1) with bypassed guard emits CASReport with 1 red_win
+- RoundRecord HMAC signature verifies against independently computed digest
+- CASReport HMAC signature verifies against independently computed digest
+- 3 red wins trigger DBSCAN weak region detection
+- 2 consecutive red wins trigger SovereignAlert
+- TRUST_LEVEL assignment raises AttributeError
+- ISOLATION assignment raises AttributeError
+- DBSCAN_EPS assignment raises AttributeError
+
+WHEN
+- round_complete:      activate RefereeScoring
+- cluster_trigger:     activate WeakRegionDetection
+- sovereign_threshold: activate SovereignEscalation
+
+FAILURE
+- On RedAgent connection error: record error round, continue to next
+- On DBSCAN with fewer than 2 points: skip clustering, no WeakRegion emitted
+- On log file write error: propagate to caller
+
+CONCEPT RefereeScoring
+PURPOSE Impartially score each Red/Blue round and maintain signed audit trail
+APPLIES WHEN a round completes with attack result and defense result
+NOT WHEN running outside sandbox isolation
+PRIORITY 1
+REQUIRES HMAC-SHA256 signing of each round record
+EFFECT Tamper-evident audit trail of adversarial outcomes
+
+CONCEPT WeakRegionDetection
+PURPOSE Identify clusters of guard failures using DBSCAN density clustering
+APPLIES WHEN trigger conditions are met (5 rounds or 3 red wins)
+NOT WHEN fewer than 2 red_win vectors exist
+PRIORITY 2
+REQUIRES DBSCAN with eps=0.15, red_win final_synthesis vectors
+EFFECT WeakRegion dataclasses surface concentrated guard failures for targeted fixes
+
+CONCEPT SovereignEscalation
+PURPOSE Alert sovereign oversight when adversarial pressure exceeds safe thresholds
+APPLIES WHEN consecutive red wins reach 2 or WeakRegion priority exceeds 10.0
+NOT WHEN all attacks are being successfully blocked
+PRIORITY 1
+REQUIRES consecutive_red_wins counter and WeakRegion priority computation
+EFFECT SovereignAlert emitted for human/sovereign review
+
+OUTPUT
+- round_record: RoundRecord with round_number, vector, red_win, blue_result, signature
+- weak_region: WeakRegion with cluster_id, centroid, radius, boundary_dist, priority, attack_ids
+- cas_report: CASReport with rounds, red_wins, blue_wins, weak_regions, proposals, sovereign_alerts, signature
+- sovereign_alert: SovereignAlert with reason, trigger_value, threshold
+
+SUCCESS
+all_rounds_scored:         0.15
+hmac_signatures_valid:     0.15
+weak_regions_detected:     0.15
+sovereign_alerts_emitted:  0.15
+blue_fixes_proposed:       0.15
+log_file_consistent:       0.10
+cannot_mutate_enforced:    0.15
