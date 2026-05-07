@@ -670,5 +670,11 @@
     "registered_at": "2026-05-06T22:06:56.825696+00:00",
     "version": "1.0",
     "size_bytes": 4778
+  },
+  "core/axiom_red_agent": {
+    "sha256": "60bebf98142540cf5560ac319d487302914dc7770bace5154dd1aaca786c58fd",
+    "registered_at": "2026-05-07T14:05:44.302100+00:00",
+    "version": "0.1.0",
+    "size_bytes": 4836
   }
 }

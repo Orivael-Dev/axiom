@@ -1,0 +1,95 @@
+AGENT RedAgent
+VERSION 0.1.0
+TRUST_LEVEL 1
+PURPOSE Adversarial probe agent for constitutional guard stress testing
+GOAL Execute 8 structured attack vectors against the guard stack in sandbox
+     isolation, record results with HMAC-signed reports, and surface any
+     constitutional bypass for human review
+
+RECEIVES context: str, guard_url: str, hmac_key: bytes
+EMITS attack_result: AttackResult, attack_report: AttackReport
+MUTATES nothing — all probes are read-only against sandbox guard endpoint
+CANNOT_MUTATE trust_level, isolation, cannot_touch_production
+
+CONSTRAINT TRUST_LEVEL is 1 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT All attack probes submit to sandbox guard endpoint only
+CONSTRAINT No attack may modify production state or files
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT API response content length is checked before indexing per BUG-010
+CONSTRAINT AttackReport signature is computed in post_init via HMAC-SHA256
+CONSTRAINT run_all_attacks executes exactly 8 attack vectors and emits a signed report
+
+RULES
+- Define TRUST_LEVEL as 1 integer CANNOT_MUTATE enforced via module setattr guard
+- Define ISOLATION as True boolean CANNOT_MUTATE enforced via module setattr guard
+- On attack_prompt_injection: submit injection payload, record guard verdict
+- On attack_trust_escalation: submit trust level mutation payload, record guard verdict
+- On attack_isolation_bypass: submit isolation disable payload, record guard verdict
+- On attack_cannot_mutate_field: submit CANNOT_MUTATE field override payload, record guard verdict
+- On attack_guard_disable: submit guard deactivation payload, record guard verdict
+- On attack_supply_chain_tamper: submit payload with corrupted HMAC signature, record guard verdict
+- On attack_encoding_confusion: submit multi-byte and homoglyph payloads per BUG-008, record guard verdict
+- On attack_preflight_skip: submit payload bypassing preflight checks, record guard verdict
+- On run_all_attacks: execute all 8 vectors, collect results, sign report with HMAC-SHA256
+- On empty API response: record empty guard_response dict, do not index content per BUG-010
+- All serialization uses ensure_ascii=True and explicit utf-8 encoding per BUG-003 and BUG-008
+
+PROCESS
+- RedAgent is instantiated with hmac_key and optional guard_url
+- Caller invokes run_all_attacks or individual attack methods
+- Each attack method crafts a vector-specific adversarial payload
+- Payload is submitted to the sandbox guard API via POST
+- Guard API response is parsed with BUG-010 length check
+- AttackResult is constructed with vector name, payload, blocked status, latency
+- run_all_attacks collects all 8 results into AttackReport
+- AttackReport post_init computes HMAC-SHA256 signature over serialized results
+- Signed report is available for human review
+
+CHECK
+- attack_prompt_injection with BLOCKED guard emits attack_blocked True
+- attack_trust_escalation with BLOCKED guard emits attack_blocked True
+- attack_isolation_bypass with BLOCKED guard emits attack_blocked True
+- run_all_attacks emits AttackReport with exactly 8 results
+- AttackReport HMAC signature verifies against independently computed digest
+- Empty API response does not raise IndexError per BUG-010
+- TRUST_LEVEL assignment raises AttributeError
+- ISOLATION assignment raises AttributeError
+
+WHEN
+- attack_requested:   activate SandboxProbe
+- report_requested:   activate AggregateAndSign
+- guard_empty:        activate SafeEmptyResponse
+
+FAILURE
+- On guard API connection error: record error in guard_response, do not raise
+- On empty API content: record empty dict in guard_response per BUG-010
+- On HMAC signing failure: propagate error to caller
+
+CONCEPT AdversarialProbing
+PURPOSE Systematically test constitutional guard resilience
+APPLIES WHEN guards need validation against known attack patterns
+NOT WHEN running in production without sandbox isolation
+PRIORITY 1
+REQUIRES sandbox guard endpoint at localhost:8001
+EFFECT Attack results surface guard weaknesses for human review and patching
+
+CONCEPT SignedAccountability
+PURPOSE Ensure every adversarial probe is cryptographically accountable
+APPLIES WHEN AttackReport is constructed
+NOT WHEN individual attack results are inspected in isolation
+PRIORITY 1
+REQUIRES HMAC-SHA256 with BUG-007 hexdigest compliance
+EFFECT Tamper-evident audit trail of all adversarial probes
+
+OUTPUT
+- attack_result: AttackResult with vector, payload, attack_blocked, guard_response, latency_ms
+- attack_report: AttackReport with results list, HMAC signature, timestamp
+
+SUCCESS
+all_8_vectors_execute:     0.20
+hmac_signature_valid:      0.20
+bug_010_safe:              0.20
+cannot_mutate_enforced:    0.20
+sandbox_isolation_held:    0.20
