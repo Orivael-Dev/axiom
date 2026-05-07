@@ -43,8 +43,8 @@ PROCESS
 - Caller passes AttackResult from RedAgent to run_defense
 - Each detection method evaluates the attack payload independently
 - Highest confidence detection is selected as the primary detection
-- If any method detects the attack, BlueResult.detected is True with fix proposal
-- If no method detects the attack, BlueResult.detected is False with gap documentation
+- Detected attacks produce BlueResult with detected True and fix proposal
+- Undetected attacks produce BlueResult with detected False and gap documentation
 - BlueResult is HMAC-signed over canonical fields
 - run_all_defenses iterates all results and aggregates into BlueReport
 - BlueReport computes HMAC-SHA256 signature over serialized BlueResults

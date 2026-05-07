@@ -678,10 +678,10 @@
     "size_bytes": 5430
   },
   "core/axiom_blue_agent": {
-    "sha256": "759a924f48fa8f0dac28d20fc6e2335d1a001cdf1e83c8836562000825b3e6fc",
-    "registered_at": "2026-05-07T15:01:18.177107+00:00",
+    "sha256": "74c6263296e64b36fa87a700b0891e336a57aacc370964f3b55846910e49ff1b",
+    "registered_at": "2026-05-07T19:47:51.404948+00:00",
     "version": "0.1.0",
-    "size_bytes": 5308
+    "size_bytes": 5295
   },
   "core/axiom_cas_orchestrator": {
     "sha256": "e42d061e23f6814c703623934acbf79db631c65995cd6cc3bc6d3c62321895ff",
