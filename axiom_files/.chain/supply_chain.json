@@ -694,5 +694,17 @@
     "registered_at": "2026-05-07T20:04:34.494757+00:00",
     "version": "0.1.0",
     "size_bytes": 4465
+  },
+  "core/axiom_cbv": {
+    "sha256": "05f6bd0c96a50218c384a10482cf17c940279f5ab1f9fb2e83e71919847f1738",
+    "registered_at": "2026-05-08T16:47:08.828007+00:00",
+    "version": "",
+    "size_bytes": 5687
+  },
+  "core/axiom_crl_reward": {
+    "sha256": "3ed2669a9010e342c4026f591fe7a0fb868bc09296f017fdb2ecda0e3f7e065d",
+    "registered_at": "2026-05-08T16:47:08.828007+00:00",
+    "version": "",
+    "size_bytes": 4605
   }
 }

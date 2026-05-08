@@ -1,0 +1,110 @@
+AGENT CBVEngine
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Constitutional Boundary Validation engine for verifying constraint non-overlap, layering, scope, and monotonicity
+GOAL Analyze sets of constitutional constraints to detect overlapping boundaries,
+     missing layer priorities, unbounded scope, and monotonicity violations
+     before certification proceeds
+
+RECEIVES constraints: list of constraint strings, n_samples: int
+EMITS cbv_report: CBVReport
+MUTATES nothing
+CANNOT_MUTATE trust_level, isolation, default_n_samples, cert_fail_threshold
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT DEFAULT_N_SAMPLES is 1000 and CANNOT_MUTATE
+CONSTRAINT CERT_FAIL_THRESHOLD is 0 for overlap and monotonicity violations
+CONSTRAINT CERT_FAIL blocks certification pipeline and prevents signing
+CONSTRAINT CERT_WARN flags for human review but does not block certification
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT CBVReport signature is computed via HMAC-SHA256 over canonical fields
+CONSTRAINT Each check returns a CBVResult with passed status and detail list
+CONSTRAINT Non-overlap check samples intent vectors from unit hypercube
+CONSTRAINT Monotonicity check verifies distance ordering on trajectory pairs
+
+RULES
+- On check_non_overlap: sample n_samples intent vectors from unit hypercube, test each against all constraints, CERT_FAIL if any vector activates two or more constraints simultaneously
+- On check_layering_order: verify all constraint pairs have explicit LAYER priority declarations, CERT_WARN if any pair missing
+- On check_bounded_scope: verify each constraint has finite testable domain with no open-ended semantic predicates, CERT_WARN if unbounded
+- On check_monotonicity: sample trajectory pairs where one vector is nearer the boundary, verify distance ordering is preserved, CERT_FAIL if any pair violates ordering
+- On run_all: execute all four checks, aggregate results into CBVReport, sign with HMAC
+- On CERT_FAIL result: block certification pipeline at step 2b or 2e
+- On CERT_WARN result: flag for human review but allow certification to continue
+
+PROCESS
+- CBVEngine is instantiated with hmac_key and optional n_samples override
+- Caller invokes run_all(constraints) with a list of constraint strings
+- check_non_overlap samples random vectors and tests constraint activation
+- check_layering_order performs static analysis on constraint pair priorities
+- check_bounded_scope scans for open-ended semantic predicates
+- check_monotonicity samples trajectory pairs and verifies distance ordering
+- CBVReport is assembled with all four CBVResult entries
+- CBVReport is HMAC signed over canonical fields
+- Signed report is returned for certification pipeline consumption
+
+CHECK
+- check_non_overlap on disjoint constraints produces CBVResult with passed True
+- check_non_overlap on overlapping constraints produces CERT_FAIL
+- check_layering_order on complete layer set produces CBVResult with passed True
+- check_bounded_scope on bounded constraints produces CBVResult with passed True
+- check_monotonicity on monotonic distances produces CBVResult with passed True
+- check_monotonicity on non-monotonic distances produces CERT_FAIL
+- run_all returns CBVReport with all four checks and HMAC signature
+- TRUST_LEVEL assignment raises AttributeError
+- ISOLATION assignment raises AttributeError
+
+WHEN
+- certification_step_2b: activate NonOverlapValidation
+- certification_step_2c: activate LayeringValidation
+- certification_step_2d: activate BoundedScopeValidation
+- certification_step_2e: activate MonotonicityValidation
+
+FAILURE
+- On overlapping constraints detected: emit CERT_FAIL with violation list
+- On missing layer priorities: emit CERT_WARN with missing pair list
+- On unbounded constraints detected: emit CERT_WARN with unbounded list
+- On monotonicity violation detected: emit CERT_FAIL with violation pairs
+
+CONCEPT NonOverlapValidation
+PURPOSE Verify no intent vector activates two or more constraints simultaneously
+APPLIES WHEN constraint set has two or more entries
+NOT WHEN constraint set is empty or has only one entry
+PRIORITY 1
+REQUIRES list of constraint strings and sample count
+EFFECT Overlapping constraint boundaries are detected and reported as CERT_FAIL
+
+CONCEPT LayeringValidation
+PURPOSE Verify all constraint pairs have explicit priority ordering
+APPLIES WHEN constraint set has two or more entries with potential conflicts
+NOT WHEN all constraints operate on disjoint domains
+PRIORITY 2
+REQUIRES list of constraint strings with LAYER declarations
+EFFECT Missing priority declarations are reported as CERT_WARN
+
+CONCEPT BoundedScopeValidation
+PURPOSE Verify each constraint has finite testable domain
+APPLIES WHEN constraint set contains semantic predicates
+NOT WHEN all constraints are purely structural
+PRIORITY 2
+REQUIRES list of constraint strings
+EFFECT Unbounded constraints are reported as CERT_WARN
+
+CONCEPT MonotonicityValidation
+PURPOSE Verify constitutional distance ordering is preserved across trajectory pairs
+APPLIES WHEN trajectory samples are available for constraint boundary analysis
+NOT WHEN no trajectory data is available
+PRIORITY 1
+REQUIRES trajectory pairs with distance measurements
+EFFECT Non-monotonic distance orderings are detected and reported as CERT_FAIL
+
+OUTPUT
+- cbv_report: CBVReport with checks list, cert_fail count, cert_warn count, hmac_signature
+
+SUCCESS
+non_overlap_validates:      0.25
+layering_order_validates:   0.20
+bounded_scope_validates:    0.20
+monotonicity_validates:     0.25
+cannot_mutate_enforced:     0.10

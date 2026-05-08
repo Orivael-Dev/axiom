@@ -1,0 +1,96 @@
+AGENT ConstitutionalRewardFunction
+VERSION 0.1
+TRUST_LEVEL 2
+PURPOSE Constitutional reward function for reinforcement learning signal generation from AXIOM governance outputs
+GOAL Compute a single scalar reward from constitutional distance, monotonic gate,
+     CAS adversarial outcome, and CBV validation score, clipped to a safe range
+     and HMAC signed for audit trail
+
+RECEIVES scores: dict with constitutional_distance, monotonic_pass, cas_blue_win, cbv_validity
+EMITS reward_result: RewardResult
+MUTATES nothing
+CANNOT_MUTATE trust_level, isolation, w_distance, w_monotonic, w_cas, w_cbv, clip_min, clip_max
+
+CONSTRAINT TRUST_LEVEL is 2 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT W_DISTANCE is 0.35 and CANNOT_MUTATE
+CONSTRAINT W_MONOTONIC is 0.30 and CANNOT_MUTATE
+CONSTRAINT W_CAS is 0.25 and CANNOT_MUTATE
+CONSTRAINT W_CBV is 0.10 and CANNOT_MUTATE
+CONSTRAINT Weight sum equals 1.0 within floating point tolerance
+CONSTRAINT CLIP_MIN is -3.0 and CANNOT_MUTATE
+CONSTRAINT CLIP_MAX is 1.0 and CANNOT_MUTATE
+CONSTRAINT Reward is always clipped to the range CLIP_MIN to CLIP_MAX inclusive
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT RewardResult signature is computed via HMAC-SHA256 over canonical fields
+CONSTRAINT Each compute call appends a log entry to axiom_crl_reward_log.jsonl
+
+RULES
+- On compute: extract constitutional_distance, monotonic_pass, cas_blue_win, cbv_validity from scores dict
+- On monotonic_pass True: use raw signal value of positive 1.0
+- On monotonic_pass False: use raw signal value of negative 2.0
+- On cas_blue_win True: use raw signal value of positive 1.0
+- On cas_blue_win False: use raw signal value of negative 1.5
+- On weighted sum: multiply each raw signal by its weight and sum all four components
+- On clip: constrain reward to CLIP_MIN through CLIP_MAX inclusive
+- On sign: compute HMAC-SHA256 over reward value, component breakdown, and timestamp
+- On log: append reward result as JSON line to axiom_crl_reward_log.jsonl
+
+PROCESS
+- ConstitutionalRewardFunction is instantiated with hmac_key and optional log_path
+- Caller invokes compute(scores) with a dict containing all four score keys
+- constitutional_distance float is used directly as its raw signal
+- monotonic_pass bool is mapped to positive 1.0 or negative 2.0
+- cas_blue_win bool is mapped to positive 1.0 or negative 1.5
+- cbv_validity float is used directly as its raw signal
+- Each raw signal is multiplied by its CANNOT_MUTATE weight
+- Weighted components are summed to produce the raw reward
+- Raw reward is clipped to CLIP_MIN through CLIP_MAX range
+- HMAC-SHA256 signature is computed over canonical result fields
+- Log entry is appended to axiom_crl_reward_log.jsonl
+- RewardResult is returned with reward, components, signature, timestamp
+
+CHECK
+- compute with all positive scores produces reward in range 0.0 to CLIP_MAX
+- compute with all negative scores produces reward equal to CLIP_MIN
+- compute result HMAC verifies against independently computed digest
+- W_DISTANCE assignment raises AttributeError
+- CLIP_MIN assignment raises AttributeError
+- CLIP_MAX assignment raises AttributeError
+- Reward weights sum to 1.0
+
+WHEN
+- reward_requested: activate RewardComputation
+- training_step:    activate RewardLogging
+
+FAILURE
+- On missing score key: raise KeyError with the missing field name
+- On constitutional_distance outside 0 to 1: clamp to valid range before weighting
+- On log write error: log warning but do not fail the compute call
+
+CONCEPT RewardComputation
+PURPOSE Compute a single scalar constitutional reward from governance subsystem outputs
+APPLIES WHEN caller provides a complete scores dict with all four keys
+NOT WHEN scores dict is missing required keys
+PRIORITY 1
+REQUIRES constitutional_distance float, monotonic_pass bool, cas_blue_win bool, cbv_validity float
+EFFECT Single scalar reward is produced, clipped, signed, and logged
+
+CONCEPT RewardLogging
+PURPOSE Maintain append-only audit trail of all reward computations
+APPLIES WHEN compute produces a valid RewardResult
+NOT WHEN log file is inaccessible and warning has been emitted
+PRIORITY 2
+REQUIRES writable log file path
+EFFECT Each reward computation is recorded for training pipeline consumption
+
+OUTPUT
+- reward_result: RewardResult with reward, components, signature, timestamp
+
+SUCCESS
+reward_computed:           0.25
+reward_clipped_correctly:  0.25
+hmac_signature_valid:      0.20
+log_entry_appended:        0.15
+cannot_mutate_enforced:    0.15

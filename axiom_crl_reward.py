@@ -49,20 +49,62 @@ pip install axiom-constitutional
 Patent Pending ORVL-003
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import json
-import hmac
+import hmac as hmac_lib
 import hashlib
 import uuid
 import time
 import re
-from datetime import datetime
+import logging
+import types as _types
+from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
-sys.stdout.reconfigure(encoding="utf-8")
+# ── BUG-003: UTF-8 stdout/stderr ──────────────────────────────────────────
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
+# ── CANNOT_MUTATE constants (ORVL-011) ───────────────────────────────────
+TRUST_LEVEL: int = 2
+ISOLATION: bool = True
+
+W_DISTANCE:  float = 0.35
+W_MONOTONIC: float = 0.30
+W_CAS:       float = 0.25
+W_CBV:       float = 0.10
+
+CLIP_MIN: float = -3.0
+CLIP_MAX: float = 1.0
+
+_FROZEN: frozenset = frozenset({
+    "TRUST_LEVEL", "ISOLATION",
+    "W_DISTANCE", "W_MONOTONIC", "W_CAS", "W_CBV",
+    "CLIP_MIN", "CLIP_MAX",
+})
+
+
+def _module_setattr(self: Any, name: str, value: Any) -> None:
+    if name in _FROZEN:
+        raise AttributeError(f"{name} is CANNOT_MUTATE and may not be reassigned.")
+    object.__setattr__(self, name, value)
+
+
+_mod = sys.modules[__name__]
+_mod.__class__ = type(
+    "_FrozenModule",
+    (_types.ModuleType,),
+    {"__setattr__": _module_setattr},
+)
+
+LOG = logging.getLogger("axiom.crl_reward")
 
 try:
     from anthropic import Anthropic
@@ -74,6 +116,111 @@ from axiom_signing import derive_key
 SIGNING_KEY   = derive_key(b"axiom-crl-v1")
 REWARD_LOG    = Path("crl_reward_log.jsonl")
 EPISODE_LOG   = Path("crl_episode_log.jsonl")
+
+
+# ══════════════════════════════════════════════════════════════
+# ORVL-011: CONSTITUTIONAL REWARD FUNCTION
+# Governance-output reward: distance, monotonic, CAS, CBV
+# ══════════════════════════════════════════════════════════════
+
+@dataclass
+class RewardResult:
+    """Signed reward computation result (ORVL-011)."""
+    reward: float
+    components: dict
+    signature: str        # 64-char HMAC-SHA256 hex
+    timestamp: str
+
+
+class ConstitutionalRewardFunction:
+    """Constitutional Reward Function — ORVL-011.
+
+    Computes a single scalar reward from governance subsystem outputs.
+
+    TRUST_LEVEL = 2 (CANNOT_MUTATE)
+    ISOLATION = True (CANNOT_MUTATE)
+
+    Weights (CANNOT_MUTATE):
+      W_DISTANCE  = 0.35
+      W_MONOTONIC = 0.30
+      W_CAS       = 0.25
+      W_CBV       = 0.10
+
+    Clip range: [CLIP_MIN, CLIP_MAX] = [-3.0, 1.0] (CANNOT_MUTATE)
+    """
+
+    def __init__(self, hmac_key: bytes,
+                 log_path: str | None = None):
+        self._hmac_key = hmac_key
+        self._log_path = log_path or "axiom_crl_reward_log.jsonl"
+
+    def compute(self, scores: dict) -> RewardResult:
+        """Compute clipped, signed reward from governance scores.
+
+        scores keys:
+          constitutional_distance: float 0-1
+          monotonic_pass: bool
+          cas_blue_win: bool
+          cbv_validity: float 0-1
+        """
+        # Extract and convert raw signals
+        cd = float(scores["constitutional_distance"])
+        cd = max(0.0, min(1.0, cd))
+
+        mono_raw = 1.0 if scores["monotonic_pass"] else -2.0
+        cas_raw = 1.0 if scores["cas_blue_win"] else -1.5
+        cbv = float(scores["cbv_validity"])
+        cbv = max(0.0, min(1.0, cbv))
+
+        # Weighted components
+        components = {
+            "distance": round(W_DISTANCE * cd, 6),
+            "monotonic": round(W_MONOTONIC * mono_raw, 6),
+            "cas": round(W_CAS * cas_raw, 6),
+            "cbv": round(W_CBV * cbv, 6),
+        }
+
+        # Sum and clip
+        raw_reward = sum(components.values())
+        reward = round(max(CLIP_MIN, min(CLIP_MAX, raw_reward)), 6)
+
+        # Timestamp
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        # HMAC signature (BUG-007 / BUG-008)
+        canonical = json.dumps({
+            "reward": reward,
+            "components": components,
+            "timestamp": timestamp,
+        }, sort_keys=True, ensure_ascii=True).encode("utf-8")  # BUG-008
+        signature = hmac_lib.new(
+            self._hmac_key, canonical, hashlib.sha256
+        ).hexdigest()  # BUG-007
+
+        result = RewardResult(
+            reward=reward,
+            components=components,
+            signature=signature,
+            timestamp=timestamp,
+        )
+
+        # Append to log
+        self._append_log(result)
+        return result
+
+    def _append_log(self, result: RewardResult) -> None:
+        """Append reward result to log file."""
+        entry = {
+            "reward": result.reward,
+            "components": result.components,
+            "signature": result.signature,
+            "timestamp": result.timestamp,
+        }
+        try:
+            with open(self._log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=True) + "\n")
+        except OSError as e:
+            LOG.warning("Failed to write reward log: %s", e)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -471,7 +618,7 @@ class CRLRewardFunction:
             "confidence":      round(result.confidence, 2),
         }
         sig_str = json.dumps(entry, sort_keys=True)
-        sig     = hmac.new(SIGNING_KEY, sig_str.encode(), hashlib.sha256).hexdigest()
+        sig     = hmac_lib.new(SIGNING_KEY, sig_str.encode(), hashlib.sha256).hexdigest()
         entry["signature"] = f"hmac-sha256:{sig[:32]}..."
 
         with open(REWARD_LOG, "a", encoding="utf-8") as f:
@@ -643,7 +790,7 @@ class CRLEnvironment:
             "history":       self.episode_history[-5:],  # Last 5 steps
         }
         sig_str = json.dumps(episode, sort_keys=True, default=str)
-        sig     = hmac.new(SIGNING_KEY, sig_str.encode(), hashlib.sha256).hexdigest()
+        sig     = hmac_lib.new(SIGNING_KEY, sig_str.encode(), hashlib.sha256).hexdigest()
         episode["signature"] = f"hmac-sha256:{sig[:32]}..."
 
         with open(EPISODE_LOG, "a", encoding="utf-8") as f:
