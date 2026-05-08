@@ -706,5 +706,11 @@
     "registered_at": "2026-05-08T16:47:08.828007+00:00",
     "version": "",
     "size_bytes": 4605
+  },
+  "core/axiom_mkb": {
+    "sha256": "70fa9bb3778e142a010978da4e15358fd8a89e5d9039ac6e7a2151bc7b473bc7",
+    "registered_at": "2026-05-08T21:11:58.601939+00:00",
+    "version": "",
+    "size_bytes": 5815
   }
 }

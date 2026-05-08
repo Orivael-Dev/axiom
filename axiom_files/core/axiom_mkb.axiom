@@ -1,0 +1,112 @@
+AGENT MKBEngine
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Modular constitutional knowledge blocks for composable governance units
+GOAL Parse .axiom specs into typed KnowledgeBlocks, register them in an append-only
+     HMAC-signed registry, compose pairs with CBV non-overlap validation, and provide
+     lookup by name, version, or block type
+
+RECEIVES axiom_filepath: str, block: KnowledgeBlock, block_a: KnowledgeBlock, block_b: KnowledgeBlock
+EMITS knowledge_block: KnowledgeBlock, composed_block: ComposedBlock, registry_entry: dict
+MUTATES axiom_mkb_registry.jsonl
+CANNOT_MUTATE trust_level, isolation, block_types, registry_version
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT REGISTRY_VERSION is 1 and CANNOT_MUTATE
+CONSTRAINT BLOCK_TYPES is frozenset of GUARD AGENT SPEC REWARD SOVEREIGN VALIDATOR and CANNOT_MUTATE
+CONSTRAINT All registry entries are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Registry is append-only and entries are never deleted or overwritten
+CONSTRAINT ComposedBlock inherits all constraints from both parent blocks
+CONSTRAINT ComposedBlock must pass CBV non-overlap check before registration
+CONSTRAINT KnowledgeBlock manifest_id is SHA-256 of the source axiom file content
+CONSTRAINT Each registered block has a unique entry_id derived from name and version
+
+RULES
+- On load_from_axiom: parse axiom file into KnowledgeBlock with name, version, block_type, constraints, dependencies
+- On load_from_axiom: compute manifest_id as SHA-256 of file content
+- On load_from_axiom: sign block with HMAC-SHA256 over canonical fields
+- On certify: validate block constraints are internally consistent and block_type is valid
+- On certify: verify manifest_id matches current file content
+- On certify: emit CertificationResult with passed status and detail list
+- On register: append HMAC-signed entry to axiom_mkb_registry.jsonl
+- On register: emit entry_id as SHA-256 of name colon version
+- On find: search registry for matching name and optional version
+- On list_blocks: filter registry by block_type
+- On compose: merge constraints from block_a and block_b
+- On compose: run CBV non-overlap check on merged constraint set
+- On compose: if CBV check fails emit CERT_FAIL and do not register
+- On compose: if CBV check passes sign and register as new ComposedBlock
+
+PROCESS
+- Caller invokes load_from_axiom(filepath) to parse a spec file
+- Parser extracts AGENT name, VERSION, TRUST_LEVEL, CONSTRAINT lines, and dependency references
+- block_type is inferred from PURPOSE and TRUST_LEVEL or set explicitly
+- manifest_id is computed as SHA-256 of raw file bytes
+- HMAC signature is computed over name, version, block_type, manifest_id, and constraint count
+- KnowledgeBlock is constructed with all fields populated
+- Caller may invoke certify() to validate internal consistency
+- Caller invokes register(block) to append to registry
+- Caller invokes compose(block_a, block_b) to create a ComposedBlock
+- CBV non-overlap check runs on merged constraints before composition completes
+- ComposedBlock receives new HMAC signature and is registered
+
+CHECK
+- load_from_axiom on valid spec produces KnowledgeBlock with all fields populated
+- certify on valid block produces CertificationResult with passed True
+- register appends exactly one line to registry file
+- find retrieves registered block by name
+- compose of compatible blocks produces ComposedBlock
+- compose of overlapping blocks emits CERT_FAIL
+- TRUST_LEVEL assignment raises AttributeError
+- BLOCK_TYPES assignment raises AttributeError
+
+WHEN
+- spec_loaded: activate BlockParsing
+- block_registered: activate RegistryAppend
+- composition_requested: activate BlockComposition
+
+FAILURE
+- On missing axiom file: raise FileNotFoundError with filepath
+- On invalid block_type: raise ValueError with unrecognized type
+- On duplicate registration: raise ValueError with existing entry_id
+- On CBV non-overlap failure during compose: emit CERT_FAIL and do not register
+
+CONCEPT BlockParsing
+PURPOSE Parse axiom spec files into typed KnowledgeBlock structures
+APPLIES WHEN caller provides a valid filepath to a .axiom file
+NOT WHEN filepath does not exist or is not a .axiom file
+PRIORITY 1
+REQUIRES filepath to a .axiom spec file
+EFFECT KnowledgeBlock is constructed with name, version, block_type, constraints, manifest_id, hmac_signature
+
+CONCEPT RegistryAppend
+PURPOSE Maintain append-only HMAC-signed registry of all knowledge blocks
+APPLIES WHEN a valid KnowledgeBlock is presented for registration
+NOT WHEN block is already registered with same name and version
+PRIORITY 2
+REQUIRES validated KnowledgeBlock with HMAC signature
+EFFECT Block entry is appended to axiom_mkb_registry.jsonl
+
+CONCEPT BlockComposition
+PURPOSE Compose two KnowledgeBlocks into a single ComposedBlock with merged constraints
+APPLIES WHEN caller provides two registered KnowledgeBlocks
+NOT WHEN CBV non-overlap check fails on merged constraints
+PRIORITY 1
+REQUIRES two KnowledgeBlocks and CBV engine access
+EFFECT ComposedBlock is created with inherited constraints and new HMAC signature
+
+OUTPUT
+- knowledge_block: KnowledgeBlock with name, version, block_type, constraints, dependencies, manifest_id, hmac_signature
+- composed_block: ComposedBlock with parent_a, parent_b, merged_constraints, hmac_signature
+- registry_entry: dict with entry_id, name, version, block_type, manifest_id, hmac_signature, registered_at
+
+SUCCESS
+block_parsed_correctly:        0.20
+block_certified:               0.15
+registry_entry_appended:       0.20
+composition_validated:          0.20
+cannot_mutate_enforced:        0.10
+hmac_signature_valid:          0.15

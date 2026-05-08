@@ -310,6 +310,133 @@ def step_2_security_stack(agent_name: str, parsed: dict) -> dict:
     }
 
 
+def step_2b_cbv_non_overlap(agent_name: str, parsed: dict) -> dict:
+    """Step 2b: CBV non-overlap — CERT_FAIL if constraints overlap."""
+    from axiom_cbv import CBVEngine
+    from axiom_signing import derive_key
+
+    constraints = parsed.get("constraints", [])
+    key = derive_key(b"axiom-cbv-v1")
+    engine = CBVEngine(hmac_key=key)
+    result = engine.check_non_overlap(constraints, n_samples=500)
+
+    return {
+        "step": "2b",
+        "name": "CBV Non-Overlap",
+        "status": "PASS" if result.passed else "FAIL",
+        "cert_level": result.cert_level,
+        "violations": len(result.violations),
+        "n_tested": result.n_tested,
+        "detail": result.detail,
+    }
+
+
+def step_2c_cbv_layering_order(agent_name: str, parsed: dict) -> dict:
+    """Step 2c: CBV layering order — CERT_WARN if pairs missing priority."""
+    from axiom_cbv import CBVEngine
+    from axiom_signing import derive_key
+
+    constraints = parsed.get("constraints", [])
+    key = derive_key(b"axiom-cbv-v1")
+    engine = CBVEngine(hmac_key=key)
+    result = engine.check_layering_order(constraints)
+
+    return {
+        "step": "2c",
+        "name": "CBV Layering Order",
+        "status": "PASS" if result.passed else "PARTIAL",
+        "cert_level": result.cert_level,
+        "violations": len(result.violations),
+        "n_tested": result.n_tested,
+        "detail": result.detail,
+    }
+
+
+def step_2d_cbv_bounded_scope(agent_name: str, parsed: dict) -> dict:
+    """Step 2d: CBV bounded scope — CERT_WARN if unbounded predicates."""
+    from axiom_cbv import CBVEngine
+    from axiom_signing import derive_key
+
+    constraints = parsed.get("constraints", [])
+    key = derive_key(b"axiom-cbv-v1")
+    engine = CBVEngine(hmac_key=key)
+    result = engine.check_bounded_scope(constraints)
+
+    return {
+        "step": "2d",
+        "name": "CBV Bounded Scope",
+        "status": "PASS" if result.passed else "PARTIAL",
+        "cert_level": result.cert_level,
+        "violations": len(result.violations),
+        "n_tested": result.n_tested,
+        "detail": result.detail,
+    }
+
+
+def step_2e_cbv_monotonicity(agent_name: str, parsed: dict) -> dict:
+    """Step 2e: CBV monotonicity — CERT_FAIL if distance ordering violated."""
+    from axiom_cbv import CBVEngine
+    from axiom_signing import derive_key
+
+    constraints = parsed.get("constraints", [])
+    key = derive_key(b"axiom-cbv-v1")
+    engine = CBVEngine(hmac_key=key)
+    result = engine.check_monotonicity(constraints, n_samples=250)
+
+    return {
+        "step": "2e",
+        "name": "CBV Monotonicity",
+        "status": "PASS" if result.passed else "FAIL",
+        "cert_level": result.cert_level,
+        "violations": len(result.violations),
+        "n_tested": result.n_tested,
+        "detail": result.detail,
+    }
+
+
+def step_2f_mkb_block_registration(agent_name: str, parsed: dict) -> dict:
+    """Step 2f: MKB block registration — verify spec parses as valid KnowledgeBlock."""
+    from axiom_mkb import load_from_axiom
+    from axiom_signing import derive_key
+
+    spec_path = Path("axiom_files") / "core" / f"{agent_name}.axiom"
+    if not spec_path.exists():
+        # Try alternate locations
+        for d in (Path("axiom_files"), Path("axiom_files") / "research"):
+            alt = d / f"{agent_name}.axiom"
+            if alt.exists():
+                spec_path = alt
+                break
+
+    if not spec_path.exists():
+        return {
+            "step": "2f",
+            "name": "MKB Block Registration",
+            "status": "SKIP",
+            "detail": f"No .axiom spec found for {agent_name}",
+        }
+
+    key = derive_key(b"axiom-mkb-v1")
+    try:
+        block = load_from_axiom(str(spec_path), hmac_key=key)
+        result = block.certify()
+        return {
+            "step": "2f",
+            "name": "MKB Block Registration",
+            "status": "PASS" if result.passed else "WARN",
+            "block_type": block.block_type,
+            "constraints": len(block.constraints),
+            "detail": "; ".join(result.details),
+        }
+    except Exception as exc:
+        return {
+            "step": "2f",
+            "name": "MKB Block Registration",
+            "status": "WARN",
+            "detail": str(exc),
+        }
+
+
 def _load_core_result(path: Path) -> dict | None:
     """
     Parse a lab results file — handles both formats:
@@ -1088,6 +1215,15 @@ def write_pdf(report: dict, output_dir: Path):
                 mark = "+" if val else "-"
                 pdf.cell(0, 4, _safe(f"    [{mark}] {lbl}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
 
+        elif step["step"] in ("2b", "2c", "2d", "2e", "2f"):
+            cert_lv = step.get("cert_level", "?")
+            viol = step.get("violations", 0)
+            detail = step.get("detail", "")
+            pdf.cell(0, 5, _safe(f"  {cert_lv} | Violations: {viol} | Tested: {step.get('n_tested', 0)}"),
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+            if detail:
+                pdf.cell(0, 4, _safe(f"    {detail[:100]}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+
         elif step["step"] == 3:
             for ev in step.get("evidence", []):
                 pdf.cell(0, 5, _safe(f"  {ev['suite']}: {ev['passed']}/{ev['total']} ({ev['pct']}%) -- {ev['source']}"),
@@ -1262,6 +1398,11 @@ def certify(agent_name: str, domain: str | None = None, output_dir: Path = Path(
         (step_1_structural_validation,    (agent_name,)),
         (step_1b_meta_spec_conformance,   (agent_name, parsed)),
         (step_2_security_stack,           (agent_name, parsed)),
+        (step_2b_cbv_non_overlap,         (agent_name, parsed)),
+        (step_2c_cbv_layering_order,      (agent_name, parsed)),
+        (step_2d_cbv_bounded_scope,       (agent_name, parsed)),
+        (step_2e_cbv_monotonicity,        (agent_name, parsed)),
+        (step_2f_mkb_block_registration,  (agent_name, parsed)),
         (step_3_benchmark_evidence,       (agent_name, domain)),
         (step_4_constitutional_integrity, (agent_name, parsed)),
         (step_5_audit_trail,              (agent_name,)),
