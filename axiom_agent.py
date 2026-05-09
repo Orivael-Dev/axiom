@@ -37,10 +37,22 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 
 try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+try:
     from anthropic import Anthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
+
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 try:
     from axiom_files.parser import load_axiom, to_system_prompt
@@ -147,9 +159,33 @@ def _save_memory(entry: dict):
 class AxiomAgent:
     """AXIOM Agent runtime — implements axiom_agent.axiom."""
 
-    def __init__(self, api_key: str = None):
-        key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.client = Anthropic(api_key=key) if ANTHROPIC_AVAILABLE and key else None
+    def __init__(self, api_key: str = None, backend: str = "auto"):
+        """Initialize agent.
+
+        backend: 'auto' (try openai then anthropic), 'openai', or 'anthropic'
+        Environment variables checked:
+          OPENAI_API_KEY + AXIOM_BASE_URL + AXIOM_MODEL  — OpenAI-compatible (Qwen, etc.)
+          ANTHROPIC_API_KEY                               — Anthropic Claude
+        """
+        self.backend = None
+        self.client = None
+        self.model = None
+
+        if backend in ("auto", "openai"):
+            oai_key = api_key or os.environ.get("OPENAI_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+            if OPENAI_AVAILABLE and oai_key:
+                base_url = os.environ.get("AXIOM_BASE_URL") or os.environ.get("NVIDIA_BASE_URL")
+                self.client = OpenAI(api_key=oai_key, base_url=base_url) if base_url else OpenAI(api_key=oai_key)
+                self.model = os.environ.get("AXIOM_MODEL", "qwen/qwen3-235b-a22b")
+                self.backend = "openai"
+
+        if not self.client and backend in ("auto", "anthropic"):
+            ant_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+            if ANTHROPIC_AVAILABLE and ant_key:
+                self.client = Anthropic(api_key=ant_key)
+                self.model = "claude-sonnet-4-6"
+                self.backend = "anthropic"
+
         self.system_prompt = _load_system_prompt()
 
     def run_task(self, task: str, mode: str = "feature", context: str = "") -> dict:
@@ -175,11 +211,30 @@ class AxiomAgent:
                 "mode": mode,
                 "task": task,
                 "relevant_bugs": [b["id"] for b in relevant_bugs],
-                "note": "No API key — task logged for review",
+                "note": "No API key — set OPENAI_API_KEY or ANTHROPIC_API_KEY",
+            }
+        elif self.backend == "openai":
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=16000,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": user_msg},
+                ],
+            )
+            content = resp.choices[0].message.content if resp.choices else ""
+            result = {
+                "status": "complete",
+                "mode": mode,
+                "task": task,
+                "response": content,
+                "relevant_bugs": [b["id"] for b in relevant_bugs],
+                "model": self.model,
+                "backend": "openai",
             }
         else:
             resp = self.client.messages.create(
-                model="claude-sonnet-4-6",
+                model=self.model,
                 max_tokens=4000,
                 system=self.system_prompt,
                 messages=[{"role": "user", "content": user_msg}],
@@ -191,7 +246,8 @@ class AxiomAgent:
                 "task": task,
                 "response": content,
                 "relevant_bugs": [b["id"] for b in relevant_bugs],
-                "model": "claude-sonnet-4-6",
+                "model": self.model,
+                "backend": "anthropic",
             }
 
         # Sign and log
@@ -298,6 +354,8 @@ def main():
         result = agent.run_task(args.task, mode=args.mode)
         print(f"\n  Mode: {result['mode'].upper()}")
         print(f"  Manifest: {result['manifest_id']}")
+        if result.get("backend"):
+            print(f"  Backend: {result['backend']}  Model: {result.get('model', '?')}")
         if result.get("relevant_bugs"):
             print(f"  Bug checks: {', '.join(result['relevant_bugs'])}")
         if result["status"] == "offline":
