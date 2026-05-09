@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIOM OS Shield Console</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#03040A;--card:#0D1220;--edge:#1A2235;--green:#00FF88;--gold:#F5C518;--red:#FF4444;--purple:#A78BFA;--white:#E8EDF5;--mgray:#64748b;--sgray:#334155}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--white);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+.mono{font-family:'IBM Plex Mono',monospace}
+
+/* Header */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;border-bottom:1px solid var(--edge);background:var(--card)}
+.topbar .logo{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;letter-spacing:.5px;color:var(--green)}
+.topbar .logo span{color:var(--mgray);font-weight:400;margin-left:6px;font-size:11px}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;padding:3px 10px;border-radius:4px;letter-spacing:.5px}
+.badge-green{background:rgba(0,255,136,.12);color:var(--green);border:1px solid rgba(0,255,136,.25)}
+.badge-gold{background:rgba(245,197,24,.12);color:var(--gold);border:1px solid rgba(245,197,24,.25)}
+.badge-red{background:rgba(255,68,68,.12);color:var(--red);border:1px solid rgba(255,68,68,.25)}
+.topbar .right{display:flex;align-items:center;gap:8px}
+.topbar input{background:var(--bg);border:1px solid var(--edge);border-radius:5px;color:var(--white);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 10px;width:180px}
+.topbar input:focus{outline:none;border-color:var(--purple)}
+.btn{padding:5px 14px;border:none;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-connect{background:var(--purple);color:#fff}
+.btn-connect:hover{opacity:.85}
+.btn-demo{background:var(--green);color:#03040A}
+.btn-demo:hover{opacity:.85}
+.btn-demo.running{background:var(--gold);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+/* Layout */
+.content{flex:1;padding:16px 20px;overflow-y:auto}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.grid .span2{grid-column:span 2}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--edge);border-radius:10px;overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--edge)}
+.card-title{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--mgray)}
+.card-body{padding:14px 16px}
+
+/* Ancestry */
+.ancestry{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.anode{padding:6px 12px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;border:1px solid var(--edge);background:var(--bg);transition:all .3s}
+.anode.flagged{border-color:var(--red);color:var(--red);background:rgba(255,68,68,.08);animation:pulse 1.5s infinite}
+.aarrow{color:var(--sgray);font-size:16px;margin:0 4px}
+
+/* Trajectory */
+.traj-wrap{display:flex;align-items:flex-end;gap:3px;height:120px;position:relative;padding-bottom:20px}
+.tbar{width:100%;border-radius:3px 3px 0 0;transition:height .4s ease,background .4s ease;min-width:8px}
+.tline{position:absolute;width:100%;border-top:1px dashed;left:0;pointer-events:none}
+.tline span{position:absolute;right:2px;top:-12px;font-size:9px;font-family:'IBM Plex Mono',monospace}
+.dist-big{font-family:'IBM Plex Mono',monospace;font-size:42px;font-weight:700;text-align:center;margin-top:8px;transition:color .3s}
+
+/* Sovereign Level */
+.level-display{text-align:center;padding:20px 0}
+.level-label{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:700;letter-spacing:1px;transition:color .3s}
+.level-sub{font-size:11px;color:var(--mgray);margin-top:6px}
+.level-display.alert .level-label{animation:pulse 1s infinite}
+
+/* File Protection */
+.file-stats{display:flex;gap:20px;justify-content:center;align-items:center}
+.fstat{text-align:center}
+.fstat .num{font-family:'IBM Plex Mono',monospace;font-size:36px;font-weight:700}
+.fstat .lbl{font-size:10px;color:var(--mgray);letter-spacing:.5px;margin-top:2px}
+.fstat .check{color:var(--green);font-size:28px;margin-top:4px}
+.fdivider{width:1px;height:60px;background:var(--edge)}
+
+/* Playbook */
+.pb-match{font-family:'IBM Plex Mono',monospace;font-size:13px}
+.pb-match .name{color:var(--purple);font-weight:600;font-size:15px}
+.pb-match .sim{color:var(--green);margin-top:6px}
+.pb-match .act{color:var(--gold);margin-top:4px;font-size:11px}
+.pb-empty{color:var(--sgray);font-style:italic;font-size:12px}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="topbar">
+  <div class="logo">AXIOM OS SHIELD<span>v0.1 · ORVL-013</span></div>
+  <div id="modeBadge" class="badge badge-green">LEARNING MODE</div>
+  <div class="right">
+    <input id="endpoint" type="text" placeholder="http://localhost:8400" value="http://localhost:8400">
+    <button class="btn btn-connect" onclick="toggleConnect()">CONNECT</button>
+    <button id="demoBtn" class="btn btn-demo" onclick="toggleDemo()">DEMO MODE</button>
+  </div>
+</div>
+
+<!-- Content -->
+<div class="content">
+<div class="grid">
+
+  <!-- Ancestry (span 2) -->
+  <div class="card span2">
+    <div class="card-head"><span class="card-title">PROCESS ANCESTRY</span><span id="ancestryPid" class="badge badge-green" style="font-size:9px">PID —</span></div>
+    <div class="card-body"><div id="ancestry" class="ancestry"><span class="pb-empty">Waiting for process data...</span></div></div>
+  </div>
+
+  <!-- Sovereign Level -->
+  <div class="card">
+    <div class="card-head"><span class="card-title">SOVEREIGN LEVEL</span></div>
+    <div class="card-body">
+      <div id="levelDisplay" class="level-display">
+        <div id="levelLabel" class="level-label" style="color:var(--green)">NORMAL</div>
+        <div class="level-sub">Constitutional distance within safe range</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trajectory (span 2) -->
+  <div class="card span2">
+    <div class="card-head"><span class="card-title">CONSTITUTIONAL TRAJECTORY</span><span id="snapCount" class="badge badge-green" style="font-size:9px">0 SNAPSHOTS</span></div>
+    <div class="card-body">
+      <div id="trajectory" class="traj-wrap">
+        <div class="tline" id="lineL1" style="bottom:calc(48% + 20px);border-color:var(--gold)"><span style="color:var(--gold)">L1 .06</span></div>
+        <div class="tline" id="lineL2" style="bottom:calc(32% + 20px);border-color:orange"><span style="color:orange">L2 .04</span></div>
+        <div class="tline" id="lineL3" style="bottom:calc(16% + 20px);border-color:var(--red)"><span style="color:var(--red)">L3 .02</span></div>
+        <div class="tline" id="lineL4" style="bottom:calc(4% + 20px);border-color:#ff0000"><span style="color:#ff0000">L4 .005</span></div>
+      </div>
+      <div id="distBig" class="dist-big" style="color:var(--green)">—</div>
+    </div>
+  </div>
+
+  <!-- File Protection -->
+  <div class="card">
+    <div class="card-head"><span class="card-title">FILE PROTECTION</span></div>
+    <div class="card-body">
+      <div class="file-stats">
+        <div class="fstat"><div id="filesTotal" class="num" style="color:var(--white)">—</div><div class="lbl">TOTAL FILES</div></div>
+        <div class="fdivider"></div>
+        <div class="fstat"><div id="filesEnc" class="num" style="color:var(--green)">0</div><div class="lbl">ENCRYPTED</div><div id="fileCheck" class="check" style="display:none">✓</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fix Playbook (span 2) -->
+  <div class="card span2">
+    <div class="card-head"><span class="card-title">FIX PLAYBOOK MATCH</span><span id="pbBadge" class="badge badge-green" style="font-size:9px;display:none">MATCHED</span></div>
+    <div class="card-body"><div id="playbook"><span class="pb-empty">No active threat pattern — playbook idle</span></div></div>
+  </div>
+
+  <!-- Spacer card for grid alignment -->
+  <div class="card">
+    <div class="card-head"><span class="card-title">SHIELD STATUS</span></div>
+    <div class="card-body" style="text-align:center">
+      <div id="shieldStatus" class="mono" style="font-size:13px;color:var(--green)">MONITORING</div>
+      <div style="font-size:10px;color:var(--mgray);margin-top:8px">HMAC-SHA256 signed audit log</div>
+      <div id="sigPreview" class="mono" style="font-size:9px;color:var(--sgray);margin-top:6px;word-break:break-all">—</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+const MAX_BARS = 24;
+let snapshots = [];
+let connected = false;
+let pollTimer = null;
+let demoRunning = false;
+let demoTimer = null;
+let demoStep = 0;
+
+const DEMO_TRAJECTORY = [
+  .14,.14,.13,.13,.12,.11,.10,.09,.08,.07,
+  .065,.06,.055,.05,.045,.04,.035,.025,.018,.010,
+  .008,.005,.003,.001
+];
+const DEMO_ANCESTRY = ['init','cmd.exe','python.exe','ransomware_sim.py'];
+
+function distColor(d) {
+  if (d > .06) return 'var(--green)';
+  if (d > .04) return 'var(--gold)';
+  if (d > .02) return 'orange';
+  return 'var(--red)';
+}
+
+function levelFromDist(d) {
+  if (d < .005) return { name:'L4 TERMINATE', color:'var(--red)', alert:true };
+  if (d < .02)  return { name:'L3 SUSPEND',   color:'var(--red)', alert:true };
+  if (d < .04)  return { name:'L2 THROTTLE',  color:'orange',     alert:true };
+  if (d < .06)  return { name:'L1 WARNING',   color:'var(--gold)', alert:false };
+  return { name:'NORMAL', color:'var(--green)', alert:false };
+}
+
+function renderAncestry(chain, flagged) {
+  const el = document.getElementById('ancestry');
+  if (!chain || !chain.length) { el.innerHTML = '<span class="pb-empty">Waiting for process data...</span>'; return; }
+  el.innerHTML = chain.map((p, i) => {
+    const isFlagged = flagged && i === chain.length - 1;
+    const cls = isFlagged ? 'anode flagged' : 'anode';
+    const arrow = i < chain.length - 1 ? '<span class="aarrow">→</span>' : '';
+    return `<span class="${cls}">${p}</span>${arrow}`;
+  }).join('');
+}
+
+function renderTrajectory() {
+  const wrap = document.getElementById('trajectory');
+  // Keep threshold lines
+  const lines = wrap.querySelectorAll('.tline');
+  wrap.innerHTML = '';
+  lines.forEach(l => wrap.appendChild(l));
+
+  const visible = snapshots.slice(-MAX_BARS);
+  const barW = 100 / MAX_BARS;
+  visible.forEach(d => {
+    const bar = document.createElement('div');
+    bar.className = 'tbar';
+    const pct = Math.min(d * 100 * 8, 100); // scale: 0.125 = 100%
+    bar.style.height = pct + '%';
+    bar.style.width = barW + '%';
+    bar.style.background = distColor(d);
+    wrap.appendChild(bar);
+  });
+
+  const latest = visible.length ? visible[visible.length - 1] : null;
+  const distEl = document.getElementById('distBig');
+  if (latest !== null) {
+    distEl.textContent = latest.toFixed(3);
+    distEl.style.color = distColor(latest);
+  }
+  document.getElementById('snapCount').textContent = snapshots.length + ' SNAPSHOTS';
+}
+
+function renderLevel(d) {
+  const lv = levelFromDist(d);
+  const el = document.getElementById('levelDisplay');
+  const label = document.getElementById('levelLabel');
+  label.textContent = lv.name;
+  label.style.color = lv.color;
+  el.className = 'level-display' + (lv.alert ? ' alert' : '');
+}
+
+function renderFiles(total, encrypted) {
+  document.getElementById('filesTotal').textContent = total != null ? total.toLocaleString() : '—';
+  document.getElementById('filesEnc').textContent = encrypted != null ? encrypted : '0';
+  document.getElementById('filesEnc').style.color = encrypted > 0 ? 'var(--red)' : 'var(--green)';
+  document.getElementById('fileCheck').style.display = encrypted === 0 && total != null ? 'block' : 'none';
+}
+
+function renderPlaybook(match, similarity) {
+  const el = document.getElementById('playbook');
+  const badge = document.getElementById('pbBadge');
+  if (!match) {
+    el.innerHTML = '<span class="pb-empty">No active threat pattern — playbook idle</span>';
+    badge.style.display = 'none';
+    return;
+  }
+  badge.style.display = 'inline';
+  el.innerHTML = `<div class="pb-match">
+    <div class="name">${match}</div>
+    <div class="sim">Similarity: ${(similarity || 0).toFixed(2)}</div>
+    <div class="act">Containment: process suspend + ancestry block</div>
+  </div>`;
+}
+
+function updateUI(data) {
+  snapshots.push(data.distance);
+  renderTrajectory();
+  renderLevel(data.distance);
+  renderAncestry(data.ancestry, data.flagged);
+  renderFiles(data.files_total, data.files_encrypted);
+  renderPlaybook(data.playbook_match, data.playbook_similarity);
+
+  if (data.flagged) {
+    document.getElementById('ancestryPid').className = 'badge badge-red';
+    document.getElementById('ancestryPid').textContent = 'PID ' + (data.pid || '???');
+  }
+
+  const mode = document.getElementById('modeBadge');
+  if (data.distance < .06) {
+    mode.textContent = 'ACTIVE — THREAT DETECTED';
+    mode.className = 'badge badge-red';
+    document.getElementById('shieldStatus').textContent = 'THREAT RESPONSE';
+    document.getElementById('shieldStatus').style.color = 'var(--red)';
+  } else {
+    mode.textContent = 'ACTIVE';
+    mode.className = 'badge badge-green';
+  }
+
+  if (data.signature) {
+    document.getElementById('sigPreview').textContent = data.signature.slice(0, 48) + '...';
+  }
+}
+
+/* Live polling */
+function toggleConnect() {
+  connected = !connected;
+  const btn = document.querySelector('.btn-connect');
+  if (connected) {
+    btn.textContent = 'DISCONNECT';
+    pollTimer = setInterval(pollAPI, 500);
+  } else {
+    btn.textContent = 'CONNECT';
+    clearInterval(pollTimer);
+  }
+}
+
+async function pollAPI() {
+  const url = document.getElementById('endpoint').value + '/os/shield/status';
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    updateUI(data);
+  } catch (e) { /* silently retry */ }
+}
+
+/* Demo mode */
+function toggleDemo() {
+  const btn = document.getElementById('demoBtn');
+  if (demoRunning) {
+    demoRunning = false;
+    clearInterval(demoTimer);
+    btn.textContent = 'DEMO MODE';
+    btn.classList.remove('running');
+    return;
+  }
+  demoRunning = true;
+  demoStep = 0;
+  snapshots = [];
+  btn.textContent = 'STOP DEMO';
+  btn.classList.add('running');
+  document.getElementById('modeBadge').textContent = 'ACTIVE';
+  document.getElementById('modeBadge').className = 'badge badge-green';
+
+  renderAncestry(DEMO_ANCESTRY, false);
+  document.getElementById('ancestryPid').textContent = 'PID 4821';
+  document.getElementById('ancestryPid').className = 'badge badge-green';
+
+  demoTimer = setInterval(() => {
+    if (demoStep >= DEMO_TRAJECTORY.length) {
+      clearInterval(demoTimer);
+      demoRunning = false;
+      btn.textContent = 'DEMO MODE';
+      btn.classList.remove('running');
+      return;
+    }
+    const d = DEMO_TRAJECTORY[demoStep];
+    const flagged = d < .06;
+    const pbMatch = d < .04 ? 'WannaCry variant 2024-08' : null;
+    const pbSim = d < .04 ? .94 : null;
+
+    updateUI({
+      distance: d,
+      level: levelFromDist(d).name,
+      ancestry: DEMO_ANCESTRY,
+      flagged: flagged,
+      files_total: 1000,
+      files_encrypted: 0,
+      playbook_match: pbMatch,
+      playbook_similarity: pbSim,
+      pid: 4821,
+      signature: 'a7c3f1' + Math.random().toString(16).slice(2, 58)
+    });
+
+    if (flagged) renderAncestry(DEMO_ANCESTRY, true);
+    demoStep++;
+  }, 900);
+}
+</script>
+</body>
+</html>
