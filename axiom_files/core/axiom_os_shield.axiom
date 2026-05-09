@@ -1,0 +1,118 @@
+AGENT ConstitutionalOSShield
+VERSION 0.1
+TRUST_LEVEL 4
+PURPOSE Constitutional OS protection daemon that monitors process behavior against learned manifolds and escalates through sovereign levels on boundary violations
+GOAL Observe process behavior via psutil snapshots, compute constitutional distance
+     from learned baselines, escalate through L1-L4 sovereign response levels with
+     false-positive confidence gating, and maintain HMAC-signed audit log
+
+RECEIVES process_snapshot: ProcessSnapshot
+EMITS escalation_event: dict, shield_log_entry: dict
+MUTATES axiom_os_shield_log.jsonl
+CANNOT_MUTATE trust_level, isolation, safety_ceiling, learning_window_hours,
+             l1_threshold, l2_threshold, l3_threshold, l4_threshold,
+             fp_l1_cutoff, fp_l2_cutoff, fp_l3_cutoff
+
+CONSTRAINT TRUST_LEVEL is 4 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT SAFETY_CEILING is 0.25 and CANNOT_MUTATE
+CONSTRAINT LEARNING_WINDOW_HOURS is 72 and CANNOT_MUTATE
+CONSTRAINT L1_THRESHOLD is 0.06 and CANNOT_MUTATE
+CONSTRAINT L2_THRESHOLD is 0.04 and CANNOT_MUTATE
+CONSTRAINT L3_THRESHOLD is 0.02 and CANNOT_MUTATE
+CONSTRAINT L4_THRESHOLD is 0.005 and CANNOT_MUTATE
+CONSTRAINT FP_L1_CUTOFF is 0.40 and CANNOT_MUTATE
+CONSTRAINT FP_L2_CUTOFF is 0.70 and CANNOT_MUTATE
+CONSTRAINT FP_L3_CUTOFF is 0.90 and CANNOT_MUTATE
+CONSTRAINT All escalation events are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT FP calibration cannot widen manifold beyond SAFETY_CEILING
+CONSTRAINT L4 escalation is immediate and not gated by FP confidence
+CONSTRAINT Kernel access attempts always trigger L4 regardless of distance
+
+RULES
+- On establish_baseline: observe process via psutil for duration and record behavioral profile
+- On measure_distance: compare current snapshot to baseline and emit constitutional distance 0.0 to 1.0
+- On distance below L1_THRESHOLD: compute FP confidence and escalate if above FP_L1_CUTOFF
+- On distance below L2_THRESHOLD: compute FP confidence and escalate if above FP_L2_CUTOFF
+- On distance below L3_THRESHOLD: compute FP confidence and escalate if above FP_L3_CUTOFF
+- On distance below L4_THRESHOLD: escalate immediately without FP gating
+- On kernel access attempt detected: escalate to L4 immediately regardless of distance
+- On L1 escalation: log event and flag for review
+- On L2 escalation: throttle process and notify administrator
+- On L3 escalation: suspend process pending human review
+- On L4 escalation: kill process immediately
+- On FP calibration: review last 24 hours of L1 events and widen manifold if pattern repeats 3 or more days
+- On FP calibration widen: constrain new threshold to not exceed SAFETY_CEILING
+
+PROCESS
+- ConstitutionalOSShield is instantiated with manifests directory and learning mode flag
+- ProcessManifold is created per monitored process with baseline behavioral profile
+- All monitored processes are snapshotted every 500ms via psutil
+- Each snapshot is compared to the process manifold baseline
+- Constitutional distance is computed as normalized deviation from baseline
+- Distance below threshold triggers FP confidence computation
+- FP confidence combines historical FP rate and ancestry anomaly and trajectory consistency
+- Escalation level is determined by distance threshold crossed and FP confidence gate
+- All events are HMAC signed and appended to axiom_os_shield_log.jsonl
+- FP calibration runs periodically to tune manifold without exceeding SAFETY_CEILING
+
+CHECK
+- Ransomware enumeration pattern triggers L3 or higher escalation
+- Privilege escalation ancestry chain triggers L2 or higher escalation
+- Kernel access attempt triggers L4 escalation immediately
+- Antivirus scan with high file access does not trigger escalation above L1
+- Software update with self-modification does not trigger escalation above L1
+- Developer build with high CPU and process spawn does not trigger escalation
+- SAFETY_CEILING assignment raises AttributeError
+- L4_THRESHOLD assignment raises AttributeError
+- FP_L1_CUTOFF assignment raises AttributeError
+
+WHEN
+- process_anomaly_detected: activate ManifoldDistanceCheck
+- learning_window_active: activate BaselineCalibration
+- fp_calibration_due: activate FalsePositiveCalibration
+
+FAILURE
+- On psutil access denied: log warning and skip process without crashing
+- On missing baseline for process: enter learning mode for that process
+- On log write error: log warning but do not fail the escalation
+
+CONCEPT ManifoldDistanceCheck
+PURPOSE Compute constitutional distance between current process behavior and learned baseline
+APPLIES WHEN process snapshot deviates from established manifold
+NOT WHEN process is in learning window or explicitly whitelisted
+PRIORITY 1
+REQUIRES ProcessSnapshot and established ProcessManifold baseline
+EFFECT Constitutional distance computed and escalation triggered if below threshold
+
+CONCEPT BaselineCalibration
+PURPOSE Learn normal process behavior during initial observation window
+APPLIES WHEN process is first seen or learning mode is active
+NOT WHEN learning window has expired and baseline is established
+PRIORITY 2
+REQUIRES psutil process access and observation duration
+EFFECT ProcessManifold baseline established with behavioral profile
+
+CONCEPT FalsePositiveCalibration
+PURPOSE Tune manifold thresholds based on historical false positive patterns
+APPLIES WHEN FP rate for a process exceeds acceptable level over 3 or more days
+NOT WHEN calibration would widen manifold beyond SAFETY_CEILING
+PRIORITY 3
+REQUIRES Historical L1 event log for the process
+EFFECT Manifold widened within SAFETY_CEILING constraint
+
+OUTPUT
+- escalation_event: dict with level, process_name, pid, distance, fp_confidence, action, signature
+- shield_log_entry: dict with timestamp, event_type, process_name, distance, signature
+
+SUCCESS
+ransomware_detected:           0.20
+privilege_escalation_detected: 0.15
+kernel_access_blocked:         0.15
+antivirus_not_blocked:         0.15
+update_not_blocked:            0.10
+developer_not_blocked:         0.10
+cannot_mutate_enforced:        0.10
+hmac_signature_valid:          0.05

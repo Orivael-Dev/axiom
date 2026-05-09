@@ -712,5 +712,17 @@
     "registered_at": "2026-05-08T21:11:58.601939+00:00",
     "version": "",
     "size_bytes": 5815
+  },
+  "core/axiom_fix_playbook": {
+    "sha256": "545203db619466f7103621b54d1daf75c97d41b6ff6ca74e4b12a421ac0fe603",
+    "registered_at": "2026-05-08T23:41:55.327591+00:00",
+    "version": "",
+    "size_bytes": 4732
+  },
+  "core/axiom_os_shield": {
+    "sha256": "8b89810a13c936392ed13b636bb7f7b6eef68904145c3b731ced4080d26ebf3e",
+    "registered_at": "2026-05-09T16:52:46.590642+00:00",
+    "version": "",
+    "size_bytes": 6349
   }
 }
