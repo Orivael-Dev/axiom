@@ -26,7 +26,7 @@ CONSTRAINT
 
 SECURITY
 - Never store uncompressed conversation text
-- Never return packets with invalid HMAC
+- Never emit packets with invalid HMAC
 - Never skip decay computation on retrieval
 
 RULES
@@ -36,7 +36,7 @@ RULES
 - store() appends signed packet to axiom_memory_engine.jsonl
 - store() indexes packet in LSHIndex
 - recall() uses LSH + domain cluster focus
-- recall() returns None if no match above SIMILARITY_THRESHOLD
+- recall() emits None if no match above SIMILARITY_THRESHOLD
 - MemoryDecay applies domain-specific exponential decay
 - Boundary risk when decayed proximity <= DECAY_FLOOR
 
@@ -45,7 +45,7 @@ PROCESS
 - Compress: strip text, preserve governance fields, quantize vector
 - Sign packet with HMAC-SHA256
 - Store to JSONL and index in LSH
-- On recall: hash query vector, search nearby buckets, apply decay, return best match
+- Recall: hash query vector, search nearby buckets, apply decay, emit best match
 
 CHECK
 - compression_ratio <= COMPRESSION_TARGET
