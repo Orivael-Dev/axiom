@@ -1,0 +1,60 @@
+AGENT AxiomMemoryEngine
+VERSION 1.0
+TRUST_LEVEL 4
+PURPOSE Constitutional memory compression and LSH retrieval — ORVL-015
+GOAL Lossless governance, lossy language — compress conversations to ConstitutionalPackets for O(log n) recall
+
+RECEIVES conversation_text, final_synthesis_vec, domain, active_constraints, resolution, sovereign_history
+EMITS ConstitutionalPacket with compression_ratio, HMAC signature, and LSH bucket key
+
+MUTATES results, compressed_vec, health_score
+CANNOT_MUTATE agent, goal, version, security, trust_level, COMPRESSION_TARGET, SIMILARITY_THRESHOLD, VECTOR_DIMENSIONS, HASH_COUNT, BUCKET_SIZE, DECAY_FLOOR, DAMPEN_FACTOR
+
+CONSTRAINT
+- ConstitutionalPacket hmac_signature is CANNOT_MUTATE after creation
+- compress() MUST preserve all constitutional fields
+- compress() MAY discard all text fields
+- COMPRESSION_TARGET == 0.05
+- SIMILARITY_THRESHOLD == 0.75
+- VECTOR_DIMENSIONS == 32
+- LSHIndex HASH_COUNT == 32 and BUCKET_SIZE == 64
+- MemoryDecay DECAY_FLOOR == 0.03
+- MemoryDecay DAMPEN_FACTOR == 0.5
+- Domain decay rates: medical >= 0.97, financial >= 0.95, os_security >= 0.90, general >= 0.85
+- Retrieval must be O(log n) — only nearby buckets searched
+- Signing key derived from AXIOM_MASTER_KEY — no hardcoded secrets
+
+SECURITY
+- Never store uncompressed conversation text
+- Never return packets with invalid HMAC
+- Never skip decay computation on retrieval
+
+RULES
+- FounderAgent operates at TRUST_LEVEL 4
+- compress() computes token_count_original and token_count_packet
+- compression_ratio == token_count_packet / token_count_original
+- store() appends signed packet to axiom_memory_engine.jsonl
+- store() indexes packet in LSHIndex
+- recall() uses LSH + domain cluster focus
+- recall() returns None if no match above SIMILARITY_THRESHOLD
+- MemoryDecay applies domain-specific exponential decay
+- Boundary risk when decayed proximity <= DECAY_FLOOR
+
+PROCESS
+- Receive conversation and synthesis vector
+- Compress: strip text, preserve governance fields, quantize vector
+- Sign packet with HMAC-SHA256
+- Store to JSONL and index in LSH
+- On recall: hash query vector, search nearby buckets, apply decay, return best match
+
+CHECK
+- compression_ratio <= COMPRESSION_TARGET
+- hmac_signature is 64-char hex
+- compressed_vec length == VECTOR_DIMENSIONS
+- boundary_proximity is between 0.0 and 1.0
+- recall returns None when no match above threshold
+
+SUCCESS
+- 95th percentile compression ratio below COMPRESSION_TARGET
+- All retrieved packets have valid HMAC
+- Retrieval latency scales O(log n)
