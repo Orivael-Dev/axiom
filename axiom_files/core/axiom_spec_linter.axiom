@@ -1,0 +1,58 @@
+AGENT AxiomSpecLinter
+VERSION 1.0
+PURPOSE Authorship-time constitutional spec evaluation — DNA scanner Layer 1 + Layer 2
+GOAL Detect unbounded scope, missing layers, open predicates, overlap, and monotonicity violations before specs reach runtime
+
+RECEIVES axiom spec file path
+EMITS SpecLintReport with health_score, HMAC signature, and per-constraint LintResult list
+
+MUTATES results, health_score
+CANNOT_MUTATE agent, goal, version, security, trust_level, HEALTH_SCORE_FAIL_THRESHOLD, CERT_FAIL_CODES
+
+CONSTRAINT
+- Every constraint must have measurable domain — no vague predicates
+- Two constraints on the same field require explicit LAYER declaration
+- IS and CONTAINS predicates must include bounded comparison
+- Overlap check must sample at least 200 intent vectors
+- Monotonicity pre-check must sample at least 100 trajectory pairs
+- Health score floor is 0.0 — never negative
+- CERT_FAIL deducts 0.2 from health score
+- CERT_WARN deducts 0.05 from health score
+- Reports must be HMAC-SHA256 signed before emission
+
+SECURITY
+- Never skip a check to improve health score
+- Never fabricate passing results
+- Signing key derived from AXIOM_MASTER_KEY — no hardcoded secrets
+
+RULES
+- Layer 1 checks run per-line as typed — real-time feedback
+- Layer 2 checks run on full file — on-save structural scan
+- L1_UNBOUNDED_SCOPE fires when constraint uses vague terms without threshold
+- L1_MISSING_LAYER fires when two constraints share a field without LAYER
+- L1_OPEN_PREDICATE fires when IS or CONTAINS lacks bounded comparison
+- overlap_check fires CERT_FAIL when any intent vector activates 2+ constraints
+- layering_check fires CERT_WARN when conflicting pairs lack LAYER declaration
+- scope_check fires CERT_WARN when constraint has no measurable domain
+- monotonicity_pre_check fires CERT_FAIL when distance does not increase with magnitude
+
+PROCESS
+- Parse axiom file into constraint list
+- Run Layer 1 checks on each constraint line
+- Run Layer 2 structural checks on full constraint set
+- Compute health_score from fail and warn counts
+- HMAC sign the report
+- Emit SpecLintReport
+
+CHECK
+- health_score is between 0.0 and 1.0
+- cert_fail_count equals number of ERROR results
+- cert_warn_count equals number of WARN results
+- hmac_signature is valid SHA256
+- HEALTH_SCORE_FAIL_THRESHOLD is 0.60
+- CERT_FAIL_CODES is frozen and immutable
+
+SUCCESS
+- All constraints have measurable scope
+- No unresolved overlaps
+- Health score above HEALTH_SCORE_FAIL_THRESHOLD
