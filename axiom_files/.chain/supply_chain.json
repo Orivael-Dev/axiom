@@ -724,5 +724,17 @@
     "registered_at": "2026-05-09T16:52:46.590642+00:00",
     "version": "",
     "size_bytes": 6349
+  },
+  "core/axiom_spec_linter": {
+    "sha256": "e0dc8655a69aa8c9366b61400a2467c0eb89a610698801be7407e1669b36e0d5",
+    "registered_at": "2026-05-10T11:55:03.963236+00:00",
+    "version": "",
+    "size_bytes": 2480
+  },
+  "core/axiom_memory_engine": {
+    "sha256": "9ea0cb537aab7ff33d49fcdbe2757390a66a4017f58783dad4ff8e4c58cbff8d",
+    "registered_at": "2026-05-10T12:10:29.265268+00:00",
+    "version": "",
+    "size_bytes": 2520
   }
 }
