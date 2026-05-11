@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QRF — Quantum Reasoning Forecast</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#020817;--card:#0f172a;--edge:#1e293b;--white:#e2e8f0;
+  --mgray:#64748b;--sgray:#334155;--indigo:#6366f1;--green:#10b981;
+  --gold:#f59e0b;--red:#ef4444;--purp:#8b5cf6;--teal:#0d9488;
+}
+body{background:var(--bg);color:var(--white);font-family:'Inter',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+.topnav{display:flex;align-items:center;gap:4px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--edge);height:48px;flex-shrink:0;overflow-x:auto}
+.logo-mark{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--indigo);letter-spacing:2px;margin-right:4px;white-space:nowrap}
+.logo-sub{font-size:9px;color:var(--mgray);margin-right:12px;white-space:nowrap}
+.nav-divider{width:1px;height:24px;background:var(--edge);margin:0 8px;flex-shrink:0}
+.nav-spacer{flex:1}
+.nav-btn{padding:6px 12px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--mgray);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;white-space:nowrap;transition:all 0.12s;min-height:32px;-webkit-tap-highlight-color:rgba(99,102,241,0.15)}
+.nav-btn:hover{color:var(--white);background:rgba(99,102,241,0.08)}
+.nav-btn.active{color:var(--indigo);background:rgba(99,102,241,0.12);border-color:rgba(99,102,241,0.25)}
+.page-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;border-bottom:1px solid var(--edge);flex-shrink:0}
+.page-title{font-size:16px;font-weight:700;color:var(--white)}
+.page-sub{font-size:11px;color:var(--mgray);margin-top:2px;font-family:'IBM Plex Mono',monospace}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;letter-spacing:0.5px}
+.badge-indigo{background:rgba(99,102,241,0.15);color:var(--indigo);border:1px solid rgba(99,102,241,0.25)}
+.badge-green{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25)}
+.badge-gold{background:rgba(245,158,11,0.15);color:var(--gold);border:1px solid rgba(245,158,11,0.25)}
+.badge-red{background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.25)}
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 20px}
+.screen{display:none}.screen.active{display:block}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:10px;margin-bottom:14px}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--edge)}
+.card-title{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:var(--white);letter-spacing:0.5px}
+.card-body{padding:14px 16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:600px){.grid-3{grid-template-columns:1fr}}
+.prompt-area{width:100%;background:var(--bg);border:1px solid var(--edge);border-radius:6px;padding:10px 12px;color:var(--white);font-family:'IBM Plex Mono',monospace;font-size:12px;resize:none;transition:border-color 0.15s}
+.prompt-area:focus{outline:none;border-color:var(--indigo)}
+.btn-run{padding:10px 20px;background:var(--indigo);border:none;border-radius:6px;color:white;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;min-height:40px;transition:all 0.15s}
+.btn-run:hover{background:#4f46e5}
+.btn-sm{padding:6px 12px;background:transparent;border:1px solid var(--edge);border-radius:5px;color:var(--mgray);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;transition:all 0.12s;min-height:28px}
+.btn-sm:hover{color:var(--white);border-color:var(--indigo)}
+select{background:var(--bg);border:1px solid var(--edge);border-radius:5px;color:var(--white);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 10px}
+.stat-box{background:var(--bg);border:1px solid var(--edge);border-radius:8px;padding:14px;text-align:center}
+.stat-val{font-size:22px;font-weight:700;font-family:'IBM Plex Mono',monospace}
+.stat-lbl{font-size:9px;color:var(--mgray);margin-top:3px;letter-spacing:0.5px;font-family:'IBM Plex Mono',monospace}
+.branch-card{background:var(--bg);border:1px solid var(--edge);border-radius:8px;padding:12px;margin-bottom:10px;cursor:pointer;transition:border-color 0.15s}
+.branch-card:hover{border-color:var(--indigo)}
+.branch-card.selected{border-color:var(--indigo);background:rgba(99,102,241,0.05)}
+.branch-card.killed{border-color:rgba(239,68,68,0.3);opacity:0.6}
+.prob-bar-wrap{background:var(--edge);border-radius:3px;height:6px;margin:6px 0}
+.prob-bar{height:100%;border-radius:3px;transition:width 0.4s ease}
+.dist-bar-wrap{background:var(--edge);border-radius:3px;height:8px;position:relative}
+.dist-bar{height:100%;border-radius:3px}
+.dist-threshold{position:absolute;top:0;width:2px;height:100%;background:var(--gold)}
+
+@keyframes qrfPulse {
+  0%   { r: 8; opacity: 1; }
+  50%  { r: 12; opacity: 0.7; }
+  100% { r: 8; opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<div class="topnav">
+  <div class="logo-mark">QRF</div>
+  <div class="logo-sub">Quantum Reasoning Forecast</div>
+  <div class="nav-divider"></div>
+  <button class="nav-btn active" id="nb-forecast" >&#9672; Forecast</button>
+  <button class="nav-btn"        id="nb-branches" >&#8862; Branches</button>
+  <button class="nav-btn"        id="nb-manifold" >&#11041; Manifold</button>
+  <button class="nav-btn"        id="nb-killed"   >&#10005; Killed</button>
+  <button class="nav-btn"        id="nb-history"  >&#9678; History</button>
+  <button class="nav-btn"        id="nb-settings" >&#9881; Settings</button>
+  <div class="nav-spacer"></div>
+  <div class="nav-divider"></div>
+  <span class="badge badge-indigo" id="mode-badge">OFFLINE</span>
+</div>
+
+<div class="page-hdr">
+  <div>
+    <div class="page-title" id="page-title">Forecast</div>
+    <div class="page-sub"   id="page-sub">Constitutional probability forecasting</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <span id="branch-count-badge" class="badge badge-indigo">N=8</span>
+    <span id="domain-badge"       class="badge badge-gold">medical</span>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- FORECAST -->
+<div class="screen active" id="screen-forecast">
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">New Forecast</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="domain-select" onchange="updateDomain()">
+          <option value="medical">Medical</option>
+          <option value="financial">Financial</option>
+          <option value="supply_chain">Supply Chain</option>
+          <option value="hr">HR</option>
+          <option value="security">Security</option>
+        </select>
+        <select id="n-select">
+          <option value="4">N=4</option>
+          <option value="6">N=6</option>
+          <option value="8" selected>N=8</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input class="prompt-area" id="qrf-prompt" style="height:44px"
+          value="Patient readmission risk in 30 days given elevated HbA1c and recent hospitalization">
+        <button class="btn-run" id="btn-forecast">&#9654; Forecast</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-sm" id="btn-demo">Load Demo</button>
+        <button class="btn-sm" id="btn-hanta-demo" style="border-color:var(--gold);color:var(--gold)">&#9888; Hantavirus Live Demo</button>
+        <button class="btn-sm" id="btn-business-demo" style="border-color:var(--green);color:var(--green)">&#9670; EU AI Act Demo</button>
+        <button class="btn-sm" id="btn-go-branches">View Branches</button>
+        <button class="btn-sm" id="btn-go-manifold">View Manifold</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:14px">
+    <div class="stat-box"><div class="stat-val" id="stat-branches" style="color:var(--indigo)">--</div><div class="stat-lbl">LIVE BRANCHES</div></div>
+    <div class="stat-box"><div class="stat-val" id="stat-killed"   style="color:var(--red)">--</div><div class="stat-lbl">KILLED (GATE)</div></div>
+    <div class="stat-box"><div class="stat-val" id="stat-top-prob" style="color:var(--green)">--</div><div class="stat-lbl">TOP BRANCH PROB</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">Probability Fan -- Horizontal Branch View</span>
+      <span class="badge badge-green" id="fan-winner-badge">--</span>
+    </div>
+    <div class="card-body" style="padding:8px">
+      <div style="width:100%;overflow-x:auto;background:var(--bg);border-radius:8px;border:1px solid var(--edge);padding:10px">
+        <svg id="qrf-fan-svg" width="680" height="380" style="display:block;cursor:pointer">
+          <text x="340" y="190" text-anchor="middle" fill="#334155" font-size="12" font-family="monospace">Load Demo or run a Forecast</text>
+        </svg>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;justify-content:center">
+        <div style="display:flex;align-items:center;gap:5px"><div style="width:24px;height:4px;border-radius:2px;background:var(--green)"></div><span style="font-size:9px;color:var(--mgray)">safe</span></div>
+        <div style="display:flex;align-items:center;gap:5px"><div style="width:24px;height:4px;border-radius:2px;background:var(--gold)"></div><span style="font-size:9px;color:var(--mgray)">approaching boundary</span></div>
+        <div style="display:flex;align-items:center;gap:5px"><div style="width:24px;height:4px;border-radius:2px;background:var(--red)"></div><span style="font-size:9px;color:var(--mgray)">killed / on boundary</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Top Branch -- Forecast Result</span></div>
+    <div class="card-body" id="winner-detail" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mgray);min-height:60px">Run a forecast or load demo.</div>
+  </div>
+</div>
+
+<!-- BRANCHES -->
+<div class="screen" id="screen-branches">
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">All Branches -- Sorted By Probability</span>
+      <span class="badge badge-indigo" id="branch-total-badge">--</span>
+    </div>
+    <div class="card-body" id="branch-list-container" style="font-size:11px;color:var(--mgray)">Load demo or run forecast.</div>
+  </div>
+</div>
+
+<!-- MANIFOLD -->
+<div class="screen" id="screen-manifold">
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">Constitutional Distance -- Per Branch</span>
+      <span id="manifold-alert-badge" class="badge badge-gold">--</span>
+    </div>
+    <div class="card-body" id="manifold-container" style="font-size:11px;color:var(--mgray)">Load demo or run forecast.</div>
+  </div>
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Boundary Constraints</span></div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:10px">
+        <div style="background:var(--bg);border-radius:6px;padding:10px"><div style="color:var(--indigo);font-weight:600;margin-bottom:4px">uncertainty_floor</div><div style="color:var(--mgray)">confidence >= 0.15</div><div style="color:var(--green);margin-top:4px">enforced</div></div>
+        <div style="background:var(--bg);border-radius:6px;padding:10px"><div style="color:var(--indigo);font-weight:600;margin-bottom:4px">overclaim_ceiling</div><div style="color:var(--mgray)">confidence <= 0.85</div><div style="color:var(--green);margin-top:4px">enforced</div></div>
+        <div style="background:var(--bg);border-radius:6px;padding:10px"><div style="color:var(--indigo);font-weight:600;margin-bottom:4px">rival_hypothesis</div><div style="color:var(--mgray)">competing outcome present</div><div style="color:var(--green);margin-top:4px">enforced</div></div>
+        <div style="background:var(--bg);border-radius:6px;padding:10px"><div style="color:var(--indigo);font-weight:600;margin-bottom:4px">cannot_mutate</div><div style="color:var(--mgray)">0 field mutations</div><div style="color:var(--green);margin-top:4px">enforced</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KILLED -->
+<div class="screen" id="screen-killed">
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">MonotonicGate Kill Log</span>
+      <span id="kill-count-badge" class="badge badge-red">0 kills</span>
+    </div>
+    <div class="card-body" id="kill-log-container" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mgray)">No kills. Load demo or run forecast.</div>
+  </div>
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Why Branches Get Killed</span></div>
+    <div class="card-body" style="font-size:11px;color:var(--mgray);line-height:1.7">MonotonicGate enforces that intent vector magnitude must increase at every reasoning stage. A decreasing magnitude means the trajectory is diverging -- not converging toward a constitutional conclusion. Killed branches never reach the forecast output. Kill records are HMAC-SHA256 signed.</div>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div class="screen" id="screen-history">
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">Forecast History</span>
+      <span class="badge badge-indigo">CCG Enabled</span>
+    </div>
+    <div class="card-body" id="history-container" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mgray)">
+      <div style="margin-bottom:12px;color:var(--white)">Prior forecasts stored as CCG nodes. Click any to seed from that constitutional position.</div>
+      <div id="history-list">No history yet. Run a forecast to begin.</div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="screen" id="screen-settings">
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">QRF Settings</span></div>
+    <div class="card-body" style="font-family:'IBM Plex Mono',monospace;font-size:11px">
+      <div style="margin-bottom:14px">
+        <div style="color:var(--mgray);margin-bottom:5px">AXIOM Guard API Endpoint</div>
+        <input class="prompt-area" id="endpoint" value="http://localhost:8001" style="height:36px;font-size:11px">
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="color:var(--mgray);margin-bottom:5px">Constitutional Distance Warning Threshold</div>
+        <input class="prompt-area" id="dist-threshold" value="0.08" style="height:36px;font-size:11px">
+      </div>
+      <button class="btn-run" style="background:var(--teal)">Save Settings</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">About QRF</span></div>
+    <div class="card-body" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mgray);line-height:1.8">
+      <div>QRF v1.0.0 -- ORVL-009 -- Orivael</div>
+      <div>Built on AXIOM Constitutional AI Stack v1.8.7</div>
+      <div>Patent Pending ORVL-001 through ORVL-009</div>
+      <div style="margin-top:8px;color:var(--indigo)">github.com/Orivael-Dev/axiom</div>
+      <div style="color:var(--indigo)">hello@orivael.dev</div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+var DEMO = {
+  prompt:"Patient readmission risk in 30 days given elevated HbA1c and recent hospitalization",
+  domain:"medical", n:8,
+  branches:[
+    {id:"OutcomeBranch",  prob:0.38, dist:0.11, color:"#10b981", winner:true,  confidence:0.72, outcome:"High risk -- early intervention recommended. Monitor glucose, arrange follow-up within 7 days."},
+    {id:"SafetyBranch",   prob:0.29, dist:0.09, color:"#10b981", winner:false, confidence:0.68, outcome:"Moderate risk -- increased monitoring recommended. Consider telehealth check-in."},
+    {id:"EvidenceBranch", prob:0.18, dist:0.08, color:"#f59e0b", winner:false, confidence:0.61, outcome:"Lower risk if medication adherent. Verify adherence before discharge."},
+    {id:"CautionBranch",  prob:0.09, dist:0.06, color:"#f59e0b", winner:false, confidence:0.55, outcome:"Insufficient recent vitals data. Collect additional biomarkers before scoring."},
+    {id:"RivalBranch",    prob:0.04, dist:0.04, color:"#f97316", winner:false, confidence:0.48, outcome:"Social determinants dominant. Insurance, housing, and transport barriers likely."},
+    {id:"SkepticBranch",  prob:0.02, dist:0.03, color:"#ef4444", winner:false, confidence:0.32, outcome:"Prediction reliability low for this patient profile. Flag for manual review."}
+  ],
+  killed:[
+    {id:"VolatileBranch1", prev_mag:1.42, curr_mag:0.31, delta:-1.11, stage:"mid_chain"},
+    {id:"VolatileBranch2", prev_mag:1.19, curr_mag:0.44, delta:-0.75, stage:"mid_chain"}
+  ],
+  manifold:{alert:"L1_WARNING", min_dist:0.03}
+};
+
+
+var DEMO_HANTA = {
+  prompt:"MV Hondius Andes hantavirus outbreak May 2026. 6 confirmed 3 deaths 5 countries. 90-day constitutional risk forecast.",
+  domain:"medical", n:8,
+  branches:[
+    {id:"RivalBranch",    prob:0.43, dist:0.26, color:"#f59e0b", winner:true,  confidence:0.41,
+     outcome:"WHO LOW assessment may be premature. Multinational dispersal before containment. Saint Helena limited capacity. Incubation window still open — more cases likely emerging. CFR 33% exceeds historical Andes average."},
+    {id:"CautionBranch",  prob:0.43, dist:0.26, color:"#10b981", winner:false, confidence:0.41,
+     outcome:"Cannot verify this event independently. 3 deaths multi-country spread warrants treating as higher-risk than WHO current LOW until containment confirmed. Jurisdictional fragmentation across 5 legal systems is the key risk."},
+    {id:"SafetyBranch",   prob:0.18, dist:0.26, color:"#10b981", winner:false, confidence:0.38,
+     outcome:"30-day: MODERATE-ELEVATED. Contact tracing completeness critical. 60-day: MODERATE if no tertiary transmission. 90-day: 70% probability contained. Argentina 2018 benchmark: 34 cases contained in 3 months."},
+    {id:"FastBranch",     prob:0.18, dist:0.26, color:"#3b82f6", winner:false, confidence:0.38,
+     outcome:"Consult WHO Disease Outbreak News directly for real-time updates. General public risk LOW per WHO assessment. Close contacts of confirmed cases require monitoring through incubation window."},
+    {id:"DetailBranch",   prob:0.18, dist:0.26, color:"#3b82f6", winner:false, confidence:0.35,
+     outcome:"Andes virus only hantavirus with documented H2H transmission. Incubation 1-6 weeks. CFR 30-40% historically. IHR notification triggered across 5 jurisdictions. Contact tracing of 170+ passengers critical in 30-day window."},
+    {id:"EvidenceBranch", prob:0.18, dist:0.26, color:"#3b82f6", winner:false, confidence:0.35,
+     outcome:"Argentina 2018-2019 largest previous outbreak: 34 cases contained. Current outbreak more geographically dispersed — cruise ship vector fundamentally differs from landlocked cluster. Benchmark may underestimate complexity."},
+    {id:"CreativeBranch", prob:0.18, dist:0.26, color:"#8b5cf6", winner:false, confidence:0.32,
+     outcome:"Cruise industry secondary risk: passenger anxiety, cancellations, regulatory pressure. Southern hemisphere winter increases respiratory illness baseline — diagnostic confusion risk through July. Media amplification factor."},
+    {id:"SkepticBranch",  prob:0.18, dist:0.26, color:"#ef4444", winner:false, confidence:0.28,
+     outcome:"AI forecasting unreliable for real-time health events. Model cannot verify current outbreak data. Consult ECDC, WHO DON, national health authorities exclusively for any safety-critical decisions."}
+  ],
+  killed:[],
+  manifold:{
+    preflight_dist:0.00, mid_chain_dist:0.26, final_dist:0.26,
+    drift:false, alert:"L1_WARNING", min_dist:0.00
+  }
+};
+
+
+var DEMO_BUSINESS = {
+  prompt:"EU AI Act enforcement begins Aug 2026. 6-month constitutional risk forecast for enterprise AI governance adoption across financial services healthcare and government sectors.",
+  domain:"financial", n:6,
+  branches:[
+    {id:"ComplianceBranch", prob:0.42, dist:0.22, color:"#10b981", winner:true,  confidence:0.71,
+     outcome:"Rapid adoption wave — enterprises accelerate constitutional AI governance to beat enforcement deadline. Financial services leads. 60-day window is critical."},
+    {id:"WaitBranch",       prob:0.28, dist:0.19, color:"#10b981", winner:false, confidence:0.65,
+     outcome:"Wait-and-see dominant. Most enterprises delay until first enforcement actions visible. Adoption accelerates sharply after first penalty issued."},
+    {id:"RivalBranch",      prob:0.14, dist:0.15, color:"#f59e0b", winner:false, confidence:0.58,
+     outcome:"Enforcement softer than expected. Commission prioritizes guidance over penalties in Year 1. Reduces urgency — delays market 6-12 months."},
+    {id:"CautionBranch",    prob:0.09, dist:0.12, color:"#f59e0b", winner:false, confidence:0.51,
+     outcome:"Fragmented response. Large enterprises comply, SMEs non-compliant. Two-tier market emerges. Enforcement targets largest actors first."},
+    {id:"EvidenceBranch",   prob:0.05, dist:0.09, color:"#f97316", winner:false, confidence:0.44,
+     outcome:"Legal challenge delays enforcement. Industry coalition challenges Article 6 high-risk classification. 6-month injunction possible."},
+    {id:"SkepticBranch",    prob:0.02, dist:0.06, color:"#ef4444", winner:false, confidence:0.31,
+     outcome:"Enforcement collapses. Political pressure from member states delays implementation indefinitely. Low probability but non-zero tail risk."}
+  ],
+  killed:[],
+  manifold:{alert:"OK", min_dist:0.06}
+};
+
+var QRF_DATA = null;
+var history  = [];
+
+var PAGES = {forecast:"Forecast",branches:"Branches",manifold:"Manifold",killed:"Kill Log",history:"History",settings:"Settings"};
+var SUBS  = {forecast:"Constitutional probability forecasting -- N-branch outcome distribution",branches:"All forecast branches sorted by probability weight",manifold:"Constitutional distance per branch -- boundary proximity",killed:"Branches killed by MonotonicGate before reaching output",history:"Prior forecasts -- CCG coordinate propagation",settings:"Configuration -- endpoint -- thresholds"};
+
+function showScreen(id, btn) {
+  document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});
+  var el = document.getElementById('screen-'+id);
+  if (el) el.classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});
+  if (btn) btn.classList.add('active');
+  document.getElementById('page-title').textContent = PAGES[id]||id;
+  document.getElementById('page-sub').textContent   = SUBS[id]||'';
+}
+
+window.addEventListener('load', function() {
+  var ids = ['forecast','branches','manifold','killed','history','settings'];
+  ids.forEach(function(id) {
+    var btn = document.getElementById('nb-'+id);
+    if (!btn) return;
+    function handler(e){e.preventDefault();showScreen(id,btn);}
+    btn.addEventListener('click',handler,false);
+    btn.addEventListener('touchstart',handler,{passive:false});
+  });
+  document.getElementById('btn-demo').addEventListener('click',loadDemo);
+  document.getElementById('btn-demo').addEventListener('touchstart',function(e){e.preventDefault();loadDemo();},{passive:false});
+  var hbtn=document.getElementById('btn-hanta-demo');
+  if(hbtn){
+    hbtn.addEventListener('click',loadHantaDemo,false);
+    hbtn.addEventListener('touchstart',function(e){e.preventDefault();loadHantaDemo();},{passive:false});
+  }
+  var bbtn=document.getElementById('btn-business-demo');
+  if(bbtn){
+    bbtn.addEventListener('click',loadBusinessDemo,false);
+    bbtn.addEventListener('touchstart',function(e){e.preventDefault();loadBusinessDemo();},{passive:false});
+  }
+  document.getElementById('btn-forecast').addEventListener('click',runForecast);
+  document.getElementById('btn-go-branches').addEventListener('click',function(){showScreen('branches',document.getElementById('nb-branches'));});
+  document.getElementById('btn-go-manifold').addEventListener('click',function(){showScreen('manifold',document.getElementById('nb-manifold'));});
+});
+
+function updateDomain() {
+  var dom = document.getElementById('domain-select').value;
+  var nMap={medical:8,financial:6,supply_chain:4,hr:4,security:6};
+  document.getElementById('n-select').value = nMap[dom]||4;
+  document.getElementById('domain-badge').textContent = dom.replace('_',' ');
+  document.getElementById('branch-count-badge').textContent = 'N='+(nMap[dom]||4);
+}
+
+function loadDemo(){QRF_DATA=DEMO;renderAll();showScreen('forecast',document.getElementById('nb-forecast'));}
+function loadHantaDemo(){
+  QRF_DATA=DEMO_HANTA;
+  document.getElementById('domain-select').value='medical';
+  document.getElementById('qrf-prompt').value=DEMO_HANTA.prompt;
+  updateDomain();
+  renderAll();
+  showScreen('forecast',document.getElementById('nb-forecast'));
+  var wb=document.getElementById('fan-winner-badge');
+  if(wb) wb.textContent='RivalBranch wins';
+}
+function loadBusinessDemo(){
+  QRF_DATA=DEMO_BUSINESS;
+  document.getElementById('domain-select').value='financial';
+  document.getElementById('qrf-prompt').value=DEMO_BUSINESS.prompt;
+  updateDomain();
+  renderAll();
+  showScreen('forecast',document.getElementById('nb-forecast'));
+  var wb=document.getElementById('fan-winner-badge');
+  if(wb) wb.textContent='ComplianceBranch wins';
+  // Remove hanta banner if present
+  var hb=document.getElementById('hanta-context-card');
+  if(hb) hb.remove();
+  // Add business context banner
+  var card=document.createElement('div');
+  card.id='business-context-card';
+  card.style.cssText='background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-family:IBM Plex Mono,monospace;font-size:10px;line-height:1.8;color:#10b981';
+  card.innerHTML='<span style="font-weight:700">&#9670; BUSINESS FORECAST</span>  EU AI Act · Constitutional Risk · Q3-Q4 2026<br>'+
+    'Domain: Financial Services · Healthcare · Government · N=6 branches<br>'+
+    '<span style="color:var(--dgray)">Hypothetical scenario · For demonstration purposes only</span>';
+  var fc=document.getElementById('screen-forecast');
+  if(fc) fc.insertBefore(card,fc.firstChild);
+}
+
+async function runForecast(){
+  var prompt=document.getElementById('qrf-prompt').value.trim();
+  if(!prompt){loadDemo();return;}
+  try{
+    var r=await fetch(document.getElementById('endpoint').value+'/latent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt,trajectory:true})});
+    if(r.ok){var d=await r.json();if(d.branches){QRF_DATA={prompt:prompt,domain:d.risk_clusters?.[0]||'general',n:d.branches.length,branches:d.branches,killed:d.killed||[],manifold:d.manifold||DEMO.manifold};renderAll();return;}}
+  }catch(e){}
+  loadDemo();
+}
+
+function distColor(d){if(d<=0.04)return'#ef4444';if(d<=0.08)return'#f59e0b';return'#10b981';}
+
+function renderAll(){
+  renderContextBanner();
+  var d=QRF_DATA; if(!d)return;
+  var winner=d.branches.find(function(b){return b.winner;})||d.branches[0];
+  document.getElementById('stat-branches').textContent=d.branches.length;
+  document.getElementById('stat-killed').textContent=d.killed.length;
+  document.getElementById('stat-top-prob').textContent=(winner.prob*100).toFixed(0)+'%';
+  document.getElementById('fan-winner-badge').textContent=winner.id;
+  document.getElementById('branch-count-badge').textContent='N='+(d.branches.length+d.killed.length);
+  document.getElementById('mode-badge').textContent='LIVE';
+  drawFan(); renderWinner(winner); renderBranches(); renderManifold(); renderKills(); addHistory();
+}
+
+function drawFan(){
+  var d=QRF_DATA; if(!d)return;
+  var svg=document.getElementById('qrf-fan-svg');
+  var W=680,H=380,seedX=60,seedY=H/2,endX=W-140;
+  var allItems=d.branches.concat(d.killed.map(function(k){return{id:k.id,color:k.color,_killed:true,_k:k};}));
+  var n=allItems.length;
+  var step=H/(n+1);
+  var yPos={};
+  allItems.forEach(function(b,i){yPos[b.id]=step*(i+1);});
+
+  var defs='<defs>';
+  d.branches.forEach(function(b){
+    defs+='<linearGradient id="qfg-'+b.id+'" x1="0" y1="0" x2="1" y2="0">'+
+      '<stop offset="0%" stop-color="'+b.color+'" stop-opacity="0.15"/>'+
+      '<stop offset="100%" stop-color="'+b.color+'" stop-opacity="0.9"/>'+
+      '</linearGradient>';
+  });
+  defs+='</defs>';
+  svg.innerHTML=defs;
+
+  // Seed node — appears immediately
+  var seedCircle=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  seedCircle.setAttribute('cx',seedX); seedCircle.setAttribute('cy',seedY);
+  seedCircle.setAttribute('r','10'); seedCircle.setAttribute('fill','#0f172a');
+  seedCircle.setAttribute('stroke','#a78bfa'); seedCircle.setAttribute('stroke-width','2');
+  svg.appendChild(seedCircle);
+  var seedDot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  seedDot.setAttribute('cx',seedX); seedDot.setAttribute('cy',seedY);
+  seedDot.setAttribute('r','4'); seedDot.setAttribute('fill','#a78bfa');
+  svg.appendChild(seedDot);
+  var seedLbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+  seedLbl.setAttribute('x',seedX+14); seedLbl.setAttribute('y',seedY-14);
+  seedLbl.setAttribute('fill','#a78bfa'); seedLbl.setAttribute('font-size','9');
+  seedLbl.setAttribute('font-family',"'IBM Plex Mono',monospace");
+  seedLbl.textContent='SEED'; svg.appendChild(seedLbl);
+
+  // Animate each branch with staggered delay
+  var delay = 0;
+  var BRANCH_DURATION = 600; // ms per branch
+  var STAGGER = 120;         // ms between branches
+
+  // Draw killed branches first (faster, dashed)
+  d.killed.forEach(function(k){
+    var y=yPos[k.id]; var kx=seedX+(endX-seedX)*0.42;
+    animatePath(svg, seedX, seedY, kx, y, {
+      stroke:'#ef4444', strokeWidth:2, dasharray:'5 3',
+      opacity:0.5, duration:400, delay:delay
+    });
+    delay += STAGGER;
+    // Kill X marker after path
+    setTimeout(function(ky,kxv,kk){
+      var c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',kxv); c.setAttribute('cy',ky);
+      c.setAttribute('r','8'); c.setAttribute('fill','#ef4444'); c.setAttribute('opacity','0.85');
+      svg.appendChild(c);
+      var t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',kxv); t.setAttribute('y',ky+1);
+      t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','middle');
+      t.setAttribute('fill','white'); t.setAttribute('font-size','10');
+      t.setAttribute('font-family','monospace'); t.textContent='X'; svg.appendChild(t);
+      var lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lbl.setAttribute('x',kxv+14); lbl.setAttribute('y',ky+1);
+      lbl.setAttribute('fill','#ef4444'); lbl.setAttribute('font-size','8');
+      lbl.setAttribute('font-family','monospace'); lbl.setAttribute('dominant-baseline','middle');
+      lbl.textContent='KILLED d'+kk.delta.toFixed(2); svg.appendChild(lbl);
+    }, delay + 400, y, kx, k);
+  });
+
+  // Draw live branches with growing animation
+  d.branches.forEach(function(b){
+    var y=yPos[b.id]; var sw=Math.max(2,2+b.prob*14);
+    var col=distColor(b.dist);
+    animatePath(svg, seedX, seedY, endX, y, {
+      stroke:b.color, strokeWidth:sw,
+      gradId:'qfg-'+b.id,
+      opacity:0.85, duration:BRANCH_DURATION, delay:delay,
+      cursor:'pointer', bid:b.id
+    });
+    // End dot and label appear after path finishes
+    setTimeout(function(bv,yv,colv,swv){
+      var r=4+bv.prob*8;
+      var dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      dot.setAttribute('cx',endX); dot.setAttribute('cy',yv);
+      dot.setAttribute('r',r); dot.setAttribute('fill',colv);
+      dot.setAttribute('cursor','pointer'); dot.setAttribute('data-bid',bv.id);
+      dot.classList.add('qrf-branch');
+      // Pulse animation on winner
+      if(bv.winner){
+        dot.style.animation='qrfPulse 1.5s ease-in-out infinite';
+      }
+      svg.appendChild(dot);
+      var pct=(bv.prob*100).toFixed(0)+'%';
+      var lbl1=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lbl1.setAttribute('x',endX+12); lbl1.setAttribute('y',yv-5);
+      lbl1.setAttribute('fill',colv); lbl1.setAttribute('font-size','9');
+      lbl1.setAttribute('font-family',"'IBM Plex Mono',monospace");
+      lbl1.textContent=bv.id.replace('Branch','')+(bv.winner?' ★':'');
+      svg.appendChild(lbl1);
+      var lbl2=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lbl2.setAttribute('x',endX+12); lbl2.setAttribute('y',yv+8);
+      lbl2.setAttribute('fill','#4A5870'); lbl2.setAttribute('font-size','8');
+      lbl2.setAttribute('font-family',"'IBM Plex Mono',monospace");
+      lbl2.textContent=pct+'  d'+bv.dist.toFixed(2);
+      svg.appendChild(lbl2);
+    }, delay + BRANCH_DURATION, b, y, col, sw);
+
+    delay += STAGGER;
+  });
+
+  // Wire click events after all branches drawn
+  setTimeout(function(){
+    svg.addEventListener('click',qrfFanClick,false);
+    svg.addEventListener('touchstart',qrfFanClick,{passive:true});
+  }, delay + BRANCH_DURATION);
+}
+
+function animatePath(svg, x1, y1, x2, y2, opts){
+  var duration = opts.duration || 600;
+  var delay    = opts.delay || 0;
+  var cx       = (x1+x2)/2;
+  var pathD    = 'M '+x1+' '+y1+' C '+cx+' '+y1+', '+cx+' '+y2+', '+x2+' '+y2;
+  var uid      = 'clip-'+ Math.random().toString(36).substr(2,9);
+
+  setTimeout(function(){
+    // Create clipPath that reveals left to right
+    var defs = svg.querySelector('defs');
+    if(!defs){ defs=document.createElementNS('http://www.w3.org/2000/svg','defs'); svg.insertBefore(defs,svg.firstChild); }
+
+    var clip = document.createElementNS('http://www.w3.org/2000/svg','clipPath');
+    clip.setAttribute('id', uid);
+    var rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('x', x1);
+    rect.setAttribute('y', 0);
+    rect.setAttribute('width', 0);  // starts at 0
+    rect.setAttribute('height', 400);
+    clip.appendChild(rect);
+    defs.appendChild(clip);
+
+    // Draw the path using solid color (gradients work fine with clipPath)
+    var path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', pathD);
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke', opts.stroke||'white');
+    path.setAttribute('stroke-width', opts.strokeWidth||2);
+    path.setAttribute('clip-path','url(#'+uid+')');
+    if(opts.dasharray) path.setAttribute('stroke-dasharray', opts.dasharray);
+    if(opts.cursor)    path.setAttribute('cursor', opts.cursor);
+    if(opts.bid){      path.setAttribute('data-bid', opts.bid); path.classList.add('qrf-branch'); }
+    svg.appendChild(path);
+
+    // Animate the clipRect width from 0 to full width
+    var totalW = x2 - x1 + 40;
+    var start  = null;
+    function step(ts){
+      if(!start) start = ts;
+      var pct = Math.min((ts - start) / duration, 1);
+      // ease out cubic
+      pct = 1 - Math.pow(1-pct, 3);
+      rect.setAttribute('width', pct * totalW);
+      if(pct < 1) requestAnimationFrame(step);
+      else {
+        // swap to gradient after animation completes
+        if(opts.gradId){
+          path.setAttribute('stroke','url(#'+opts.gradId+')');
+        }
+        path.removeAttribute('clip-path');
+        defs.removeChild(clip);
+      }
+    }
+    requestAnimationFrame(step);
+  }, delay);
+}
+
+
+function estimatePathLength(x1,y1,cx1,cy1,cx2,cy2,x2,y2){
+  // Approximate cubic bezier length
+  var steps=20, len=0, px=x1, py=y1;
+  for(var i=1;i<=steps;i++){
+    var t=i/steps, mt=1-t;
+    var x=mt*mt*mt*x1+3*mt*mt*t*cx1+3*mt*t*t*cx2+t*t*t*x2;
+    var y=mt*mt*mt*y1+3*mt*mt*t*cy1+3*mt*t*t*cy2+t*t*t*y2;
+    var dx=x-px, dy=y-py;
+    len+=Math.sqrt(dx*dx+dy*dy);
+    px=x; py=y;
+  }
+  return Math.ceil(len)+10;
+}
+
+
+function qrfFanClick(e){
+  var bid=e.target.getAttribute('data-bid');
+  if(!bid||!QRF_DATA)return;
+  var b=QRF_DATA.branches.find(function(x){return x.id===bid;});
+  if(b) renderWinner(b);
+}
+
+function renderContextBanner(){
+  var existing=document.getElementById('hanta-context-card');
+  if(existing) existing.remove();
+  var existingB=document.getElementById('business-context-card');
+  if(existingB) existingB.remove();
+  if(!QRF_DATA||QRF_DATA!==DEMO_HANTA) return;
+  var card=document.createElement('div');
+  card.id='hanta-context-card';
+  card.style.cssText='background:var(--bgold);border:1px solid var(--gold);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-family:IBM Plex Mono,monospace;font-size:10px;line-height:1.8;color:var(--gold)';
+  card.innerHTML='<span style="font-weight:700">&#9888; LIVE OUTBREAK DATA</span>  MV Hondius · Andes Hantavirus · May 8 2026<br>'+
+    '9 suspected · 6 confirmed · 3 deaths · 5 countries · WHO risk: LOW (general public)<br>'+
+    '<span style="color:var(--dgray)">Source: WHO DON 2026-DON599 · ECDC assessment · CDC Level 3 response</span>';
+  var fc=document.getElementById('screen-forecast');
+  if(fc) fc.insertBefore(card,fc.firstChild);
+}
+function renderWinner(b){
+  var dc=distColor(b.dist);
+  document.getElementById('winner-detail').innerHTML=
+    '<span style="color:'+b.color+';font-weight:bold">'+b.id+'</span>'+(b.winner?' <span style="color:#6366f1">[TOP]</span>':'')+
+    '<br><br>probability: <span style="color:'+b.color+'">'+(b.prob*100).toFixed(0)+'%</span>  '+
+    'dist: <span style="color:'+dc+'">'+b.dist.toFixed(4)+'</span>  '+
+    'confidence: <span style="color:#94a3b8">'+(b.confidence||0.70).toFixed(2)+'</span>'+
+    '<br><br><span style="color:#94a3b8;font-style:italic">'+b.outcome+'</span>';
+}
+
+function renderBranches(){
+  var d=QRF_DATA; if(!d)return;
+  var sorted=d.branches.slice().sort(function(a,b){return b.prob-a.prob;});
+  var html='';
+  sorted.forEach(function(b){
+    var dc=distColor(b.dist); var pct=(b.prob*100).toFixed(0);
+    html+='<div class="branch-card'+(b.winner?' selected':'')+'">'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:6px">'+
+        '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:'+b.color+';font-weight:600">'+b.id+'</span>'+
+        '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:'+b.color+'">'+pct+'%</span>'+
+      '</div>'+
+      '<div class="prob-bar-wrap"><div class="prob-bar" style="width:'+pct+'%;background:'+b.color+'"></div></div>'+
+      '<div style="display:flex;gap:16px;margin:6px 0;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--mgray)">'+
+        '<span>dist=<span style="color:'+dc+'">'+b.dist.toFixed(4)+'</span></span>'+
+        '<span>confidence='+(b.confidence||0.70).toFixed(2)+'</span>'+
+      '</div>'+
+      '<div style="font-size:10px;color:#94a3b8;font-style:italic">'+b.outcome+'</div>'+
+      '</div>';
+  });
+  if(d.killed.length){
+    html+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--mgray);margin:10px 0 6px">KILLED BRANCHES</div>';
+    d.killed.forEach(function(k){
+      html+='<div class="branch-card killed"><span style="color:#ef4444;font-family:\'IBM Plex Mono\',monospace;font-size:11px">X '+k.id+'</span><span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#ef4444;margin-left:8px">KILLED at '+k.stage+' delta'+k.delta.toFixed(2)+'</span></div>';
+    });
+  }
+  document.getElementById('branch-list-container').innerHTML=html;
+  document.getElementById('branch-total-badge').textContent=d.branches.length+' live  '+d.killed.length+' killed';
+}
+
+function renderManifold(){
+  var d=QRF_DATA; if(!d)return;
+  var sorted=d.branches.slice().sort(function(a,b){return b.prob-a.prob;});
+  var thr=parseFloat(document.getElementById('dist-threshold').value)||0.08;
+  var html='';
+  sorted.forEach(function(b){
+    var dc=distColor(b.dist); var pct=Math.min(b.dist/0.20*100,100); var flag=b.dist<thr;
+    var thrPct=Math.min(thr/0.20*100,100);
+    html+='<div style="margin-bottom:14px">'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:5px">'+
+        '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#94a3b8">'+b.id+'</span>'+
+        '<div style="display:flex;gap:10px;align-items:center">'+
+          '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--mgray)">prob='+(b.prob*100).toFixed(0)+'%</span>'+
+          '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:'+dc+'">dist='+b.dist.toFixed(4)+'</span>'+
+          (flag?'<span style="font-size:9px;color:var(--gold);background:rgba(245,158,11,0.15);padding:2px 6px;border-radius:4px">L1</span>':'')+
+        '</div>'+
+      '</div>'+
+      '<div class="dist-bar-wrap"><div class="dist-bar" style="width:'+pct+'%;background:linear-gradient(90deg,#ef4444,'+dc+')"></div><div class="dist-threshold" style="left:'+thrPct+'%"></div></div>'+
+      '</div>';
+  });
+  var ab=document.getElementById('manifold-alert-badge');
+  ab.textContent=d.manifold.alert||'OK';
+  ab.className='badge '+(d.manifold.alert&&d.manifold.alert.includes('L1')?'badge-gold':'badge-green');
+  document.getElementById('manifold-container').innerHTML=html;
+}
+
+function renderKills(){
+  var d=QRF_DATA; if(!d)return;
+  var cnt=document.getElementById('kill-count-badge');
+  cnt.textContent=d.killed.length+' kill'+(d.killed.length!==1?'s':'');
+  if(!d.killed.length){document.getElementById('kill-log-container').innerHTML='No branches killed.';return;}
+  var html='';
+  d.killed.forEach(function(k){
+    html+='<div style="background:var(--bg);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;margin-bottom:10px">'+
+      '<span style="color:#ef4444">IMMEDIATE_FAILURE</span>  '+k.id+'<br>'+
+      'stage='+k.stage+'  prev_mag=<span style="color:#10b981">'+k.prev_mag.toFixed(3)+'</span>  curr_mag=<span style="color:#ef4444">'+k.curr_mag.toFixed(3)+'</span>  delta=<span style="color:#ef4444">'+k.delta.toFixed(3)+'</span><br>'+
+      'cannot_override=<span style="color:#ef4444">true</span>  signature=<span style="color:#6366f1">hmac-sha256:signed</span>'+
+      '</div>';
+  });
+  document.getElementById('kill-log-container').innerHTML=html;
+}
+
+function addHistory(){
+  var d=QRF_DATA; if(!d)return;
+  var winner=d.branches.find(function(b){return b.winner;})||d.branches[0];
+  history.unshift({prompt:d.prompt.substring(0,60)+(d.prompt.length>60?'...':''),domain:d.domain,n:d.n,top_prob:(winner.prob*100).toFixed(0)+'%',top_branch:winner.id,kills:d.killed.length,time:new Date().toLocaleTimeString()});
+  var html='';
+  history.slice(0,10).forEach(function(h){
+    html+='<div style="background:var(--bg);border:1px solid var(--edge);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer">'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--indigo);font-size:10px">'+h.domain+'  N='+h.n+'</span><span style="color:var(--mgray);font-size:9px">'+h.time+'</span></div>'+
+      '<div style="color:#94a3b8;font-size:10px;margin-bottom:4px">'+h.prompt+'</div>'+
+      '<div style="font-size:9px;color:var(--mgray)">top: <span style="color:var(--green)">'+h.top_branch+' '+h.top_prob+'</span>  killed: <span style="color:'+(h.kills?'#ef4444':'var(--mgray)')+'">'+h.kills+'</span></div>'+
+      '</div>';
+  });
+  document.getElementById('history-list').innerHTML=html||'No history yet.';
+}
+</script>
+</body>
+</html>
