@@ -409,11 +409,15 @@ function loadBusinessDemo(){
 
 async function runForecast(){
   var prompt=document.getElementById('qrf-prompt').value.trim();
+  var domain=document.getElementById('domain-select').value;
+  var n=document.getElementById('n-select').value;
+  var ep=document.getElementById('endpoint').value.trim();
   if(!prompt){loadDemo();return;}
   try{
-    var r=await fetch(document.getElementById('endpoint').value+'/latent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt,trajectory:true})});
-    if(r.ok){var d=await r.json();if(d.branches){QRF_DATA={prompt:prompt,domain:d.risk_clusters?.[0]||'general',n:d.branches.length,branches:d.branches,killed:d.killed||[],manifold:d.manifold||DEMO.manifold};renderAll();return;}}
-  }catch(e){}
+    var url=ep+'/qrf/run?prompt='+encodeURIComponent(prompt)+'&domain='+domain+'&n='+n;
+    var r=await fetch(url,{method:'GET',signal:AbortSignal.timeout(8000)});
+    if(r.ok){var d=await r.json();if(d.branches&&d.branches.length){QRF_DATA=d;renderAll();return;}}
+  }catch(e){console.log('QRF API offline:',e);}
   // Offline: generate simulated forecast from user prompt
   generateOfflineForecast(prompt);
 }
@@ -462,10 +466,12 @@ function generateOfflineForecast(prompt){
   for(var i=0;i<picked.length;i++){
     var prob=Math.round(raw[i]/total*100)/100;
     var dist=0.04+rng()*0.18;
+    dist=Math.round(dist*100)/100;
     var conf=0.30+rng()*0.45;
+    var color=dist>0.08?'#10b981':dist>0.04?'#f59e0b':'#ef4444';
     branches.push({
-      id:picked[i].id, prob:prob, dist:Math.round(dist*100)/100,
-      color:picked[i].color, winner:i===0,
+      id:picked[i].id, prob:prob, dist:dist,
+      color:color, winner:i===0,
       confidence:Math.round(conf*100)/100,
       outcome:outcomes[i%outcomes.length]+" (simulated — connect Guard API for live forecast)"
     });
