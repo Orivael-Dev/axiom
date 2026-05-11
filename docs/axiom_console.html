@@ -1413,8 +1413,21 @@ async function connect() {
     badge.textContent = 'ONLINE';
     badge.className = 'badge badge-green';
 
-    // Load dashboard data
+    // Update dashboard stats
+    var agents = d.available_agents || {};
+    var sa = document.getElementById('s-agents');
+    if (sa) sa.textContent = Object.keys(agents).length;
     loadDashAgents();
+
+    // Load manifest count
+    try {
+      var mr = await fetch(API() + '/guard/manifests?limit=1');
+      if (mr.ok) {
+        var md = await mr.json();
+        var sm = document.getElementById('s-manifests');
+        if (sm) sm.textContent = (md.manifests || []).length > 0 ? md.total || md.manifests.length : 0;
+      }
+    } catch(e2) {}
 
   } catch(e) {
     connected = false;
@@ -1437,30 +1450,6 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ── NAVIGATION ──
-const pages = {
-    latent: 'Reasoning Monitor',
-    sovereign: 'Sovereign Fleet Governance',
-  dashboard: 'Dashboard',
-  run:       'Run Axiom',
-  guard:     'Guard Monitor',
-  agents:    'Agents',
-  audit:     'Audit Trail',
-  benchmark: 'Benchmarks',
-  compare:   'Model Compare',
-};
-
-const subs = {
-    sovereign: 'Fleet status · Due process · Kill switch · Drift detection',
-    latent: 'Latent trace · Multiplex branches · Foresight prediction',
-  dashboard: 'Constitutional AI governance control room',
-  run:       'Test constitutional enforcement · View pipeline flow',
-  guard:     'Live constitutional monitor · Mode control',
-  agents:    'Browse .axiom specifications · CANNOT_MUTATE fields',
-  audit:     'Searchable signed manifests · HMAC-SHA256 verified',
-  benchmark: 'ACB v1.0 · COMPL-AI · Guard stack tests',
-  compare:   'Model upgrade reports · Constitutional delta',
-};
-
 function goScreen(id) {
   var all = document.querySelectorAll('.screen');
   for (var i = 0; i < all.length; i++) {
@@ -1479,10 +1468,26 @@ function goScreen(id) {
   var titles = {
     dashboard:'Dashboard', run:'Run Axiom', guard:'Guard Monitor',
     agents:'Agents', audit:'Audit Trail', benchmark:'Benchmarks',
-    latent:'Reasoning Monitor', compare:'Model Compare', sovereign:'Sovereign'
+    latent:'Reasoning Monitor', compare:'Model Compare', sovereign:'Sovereign',
+    agentlab:'Agent Lab', qcr:'QCR Graph View'
+  };
+  var subtitles = {
+    dashboard:'Constitutional AI governance control room',
+    run:'Test constitutional enforcement · View pipeline flow',
+    guard:'Live constitutional monitor · Mode control',
+    agents:'Browse .axiom specifications · CANNOT_MUTATE fields',
+    audit:'Searchable signed manifests · HMAC-SHA256 verified',
+    benchmark:'ACB v1.0 · COMPL-AI · Guard stack tests',
+    latent:'Latent trace · Multiplex branches · Foresight prediction',
+    compare:'Model upgrade reports · Constitutional delta',
+    sovereign:'Fleet status · Due process · Kill switch · Drift detection',
+    agentlab:'Feature · Bug Hunt · Efficiency · Reasoning Lab',
+    qcr:'Trajectory visualization · Branch tree · Manifold distance'
   };
   var pt = document.getElementById('page-title');
   if (pt) pt.textContent = titles[id] || id;
+  var ps = document.getElementById('page-sub');
+  if (ps) ps.textContent = subtitles[id] || '';
 
   if (id === 'audit' && connected) loadManifests();
   if (id === 'agents' && connected) loadAgentsPage();
@@ -1559,10 +1564,11 @@ function quickRun(text) {
 
 async function animatePipeline(text, dir) {
   const stages = ['input','destruct','inject','pii','const','out'];
+  const badgeMap = {input:'fi',destruct:'fd',inject:'fj',pii:'fp',const:'fc',out:'fo'};
   const resetStage = (id) => {
     const el = document.getElementById('flow-' + id);
     if (el) el.style.borderColor = '';
-    const b = document.getElementById('f' + id[0] + '-badge');
+    const b = document.getElementById(badgeMap[id] + '-badge');
     if (b) { b.textContent = '—'; b.className = 'badge'; }
   };
   stages.forEach(resetStage);
@@ -1573,7 +1579,7 @@ async function animatePipeline(text, dir) {
   // Animate through stages
   const setStage = (id, status, label) => {
     const el = document.getElementById('flow-' + id);
-    const badge = document.getElementById('f' + id[0] + '-badge');
+    const badge = document.getElementById(badgeMap[id] + '-badge');
     if (el) {
       el.style.borderColor = status === 'pass' ? 'var(--green)' :
                              status === 'block' ? 'var(--red)' : 'var(--blue)';
@@ -2028,10 +2034,6 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
     } catch(e) { alert('Registration failed'); }
   }
 
-  // Auto-refresh sovereign when screen is shown
-  const origShowScreen = showScreen;
-
-
   // ── AGENT LAB ──
   var agentMode = 'feature';
   var agentModeDescs = {
@@ -2252,6 +2254,17 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
       drift:false, alert:"L1_WARNING"
     }
   };
+
+  function qcrTab(tab) {
+    var map = {
+      tree:     'qcr-tree-card',
+      manifold: 'qcr-detail-card',
+      signals:  'qcr-detail-card',
+      kills:    'qcr-kill-card'
+    };
+    var el = document.getElementById(map[tab]);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   function loadQCRDemo() {
     QCR_DATA = QCR_DEMO;
