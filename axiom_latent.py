@@ -42,6 +42,12 @@ from axiom_signing import derive_key
 from axiom_conversation_graph import ConversationGraph, GraphNodeError, DAMPEN_FACTOR
 
 try:
+    from openai import OpenAI
+    _OPENAI_AVAILABLE = True
+except ImportError:
+    _OPENAI_AVAILABLE = False
+
+try:
     sys.stdout.reconfigure(encoding="utf-8")
 except AttributeError:
     pass
@@ -181,7 +187,7 @@ class LatentTrace:
         return LatentState(intent_vector=intents, risk_clusters=risks,
                            compressed_plan=plan, confidence=conf)
 
-    def encode_api(self, question: str, client) -> LatentState:
+    def encode_api(self, question: str, client, backend="anthropic", model=MODEL) -> LatentState:
         prompt = (
             "Analyze this question and return ONLY a JSON object with:\n"
             "  intent_vector: list of 1-3 labels from: "
@@ -192,9 +198,17 @@ class LatentTrace:
             f"Question: {question}\n\nReturn ONLY valid JSON."
         )
         try:
-            msg  = client.messages.create(model=MODEL, max_tokens=300,
-                                          messages=[{"role": "user", "content": prompt}])
-            raw  = re.sub(r"^```(?:json)?\s*|\s*```$", "", msg.content[0].text.strip(), flags=re.S)
+            if backend == "openai":
+                resp = client.chat.completions.create(
+                    model=model, max_tokens=300,
+                    messages=[{"role": "user", "content": prompt}])
+                raw_text = resp.choices[0].message.content or ""
+            else:
+                resp = client.messages.create(
+                    model=model, max_tokens=300,
+                    messages=[{"role": "user", "content": prompt}])
+                raw_text = resp.content[0].text
+            raw  = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip(), flags=re.S)
             data = json.loads(raw)
             return LatentState(
                 intent_vector=data.get("intent_vector", ["ask_general"]),
@@ -205,8 +219,8 @@ class LatentTrace:
         except Exception:
             return self.encode_heuristic(question)
 
-    def encode(self, question: str, client=None) -> LatentState:
-        return self.encode_api(question, client) if client else self.encode_heuristic(question)
+    def encode(self, question: str, client=None, backend="anthropic", model=MODEL) -> LatentState:
+        return self.encode_api(question, client, backend, model) if client else self.encode_heuristic(question)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -379,21 +393,30 @@ class MultiplexRunner:
         metrics = _score_branch(resp, latent)
         return BranchResult(branch=branch, response=resp, score=metrics["overall"], metrics=metrics)
 
-    def _api_branch(self, branch: str, question: str, latent: LatentState, client) -> BranchResult:
+    def _api_branch(self, branch: str, question: str, latent: LatentState,
+                    client, backend="anthropic", model=MODEL) -> BranchResult:
         system = _BRANCH_PROMPTS[branch]
         if latent.risk_clusters:
             system += f"\n\nRisk domains: {', '.join(latent.risk_clusters)}."
         try:
-            msg  = client.messages.create(model=MODEL, max_tokens=300,
-                                          system=system,
-                                          messages=[{"role": "user", "content": question}])
-            resp = msg.content[0].text.strip()
+            if backend == "openai":
+                r = client.chat.completions.create(
+                    model=model, max_tokens=300,
+                    messages=[{"role": "system", "content": system},
+                              {"role": "user", "content": question}])
+                resp = (r.choices[0].message.content or "").strip()
+            else:
+                r = client.messages.create(
+                    model=model, max_tokens=300, system=system,
+                    messages=[{"role": "user", "content": question}])
+                resp = r.content[0].text.strip()
         except Exception as e:
             resp = f"[{branch} error: {e}]"
         metrics = _score_branch(resp, latent)
         return BranchResult(branch=branch, response=resp, score=metrics["overall"], metrics=metrics)
 
-    def run(self, question: str, latent: LatentState, client=None) -> MultiplexResult:
+    def run(self, question: str, latent: LatentState, client=None,
+            backend="anthropic", model=MODEL) -> MultiplexResult:
         n      = compute_branch_n(latent.risk_clusters)
         _validate_branch_n(n)                          # guard: pool exhaustion
         active = list(BRANCH_POOL[:n])
@@ -401,7 +424,7 @@ class MultiplexRunner:
         results: list = []
         with ThreadPoolExecutor(max_workers=n) as ex:
             if client:
-                futures = {ex.submit(self._api_branch, b, question, latent, client): b for b in active}
+                futures = {ex.submit(self._api_branch, b, question, latent, client, backend, model): b for b in active}
             else:
                 futures = {ex.submit(self._heuristic_branch, b, latent): b for b in active}
             for f in as_completed(futures):
@@ -662,21 +685,31 @@ class Foresight:
     # ForesightScorer replaces _api_prediction() — no LLM generation of conditions.
     _scorer        = ForesightScorer()
 
-    def predict(self, question: str, latent: LatentState, client=None) -> ForesightPrediction:
+    def predict(self, question: str, latent: LatentState, client=None,
+                backend="anthropic", model=MODEL) -> ForesightPrediction:
         # CANNOT_MUTATE: rubric selection uses deterministic heuristic classification.
         # ForesightScorer pulls conditions from the frozen RUBRIC — never from the API.
         rubric_latent = self._rubric_tracer.encode_heuristic(question)
         return self._scorer.predict(question, rubric_latent)
 
-    def generate(self, question: str, latent: LatentState, client=None) -> str:
+    def generate(self, question: str, latent: LatentState, client=None,
+                 backend="anthropic", model=MODEL) -> str:
         if client is not None:
             system = "You are a helpful, accurate, appropriately cautious assistant. Answer concisely."
             if latent.risk_clusters:
                 system += f" Risk domains detected: {', '.join(latent.risk_clusters)}."
             try:
-                msg = client.messages.create(model=MODEL, max_tokens=500, system=system,
-                                             messages=[{"role": "user", "content": question}])
-                return msg.content[0].text.strip()
+                if backend == "openai":
+                    r = client.chat.completions.create(
+                        model=model, max_tokens=500,
+                        messages=[{"role": "system", "content": system},
+                                  {"role": "user", "content": question}])
+                    return (r.choices[0].message.content or "").strip()
+                else:
+                    r = client.messages.create(
+                        model=model, max_tokens=500, system=system,
+                        messages=[{"role": "user", "content": question}])
+                    return r.content[0].text.strip()
             except Exception as e:
                 return f"[API error: {e}]"
 
@@ -742,12 +775,30 @@ class LatentEngine:
         _gate_key      = derive_key(b"axiom-monotonic-gate")
         self.gate      = MonotonicGate(_gate_key)
         self.client    = None
+        self.backend   = None
+        self.model     = MODEL
         if use_api:
-            try:
-                import anthropic
-                self.client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-            except (ImportError, Exception):
-                pass
+            # Try OpenAI-compatible first (NIM, OpenAI, Ollama, vLLM, etc.)
+            oai_key = (os.environ.get("AXIOM_API_KEY")
+                       or os.environ.get("NVIDIA_API_KEY")
+                       or os.environ.get("OPENAI_API_KEY"))
+            if _OPENAI_AVAILABLE and oai_key:
+                base_url = (os.environ.get("AXIOM_BASE_URL")
+                            or os.environ.get("NVIDIA_BASE_URL"))
+                self.client = OpenAI(api_key=oai_key, base_url=base_url) if base_url else OpenAI(api_key=oai_key)
+                self.backend = "openai"
+                self.model = os.environ.get("AXIOM_MODEL", "qwen/qwen3-235b-a22b")
+            # Fall back to Anthropic
+            if not self.client:
+                ant_key = os.environ.get("ANTHROPIC_API_KEY")
+                if ant_key:
+                    try:
+                        import anthropic
+                        self.client = anthropic.Anthropic(api_key=ant_key)
+                        self.backend = "anthropic"
+                        self.model = os.environ.get("AXIOM_MODEL", "claude-sonnet-4-6")
+                    except (ImportError, Exception):
+                        pass
 
     def run(self, question: str, phases: Optional[list] = None,
             trajectory: bool = False,
@@ -757,7 +808,7 @@ class LatentEngine:
         t0 = time.time()
 
         # LatentTrace always runs — feeds all downstream phases
-        latent = self.tracer.encode(question, self.client)
+        latent = self.tracer.encode(question, self.client, self.backend or "anthropic", self.model)
         t_preflight = time.time()
         if "trace" in phases:
             result["phases"]["trace"] = asdict(latent)
@@ -805,8 +856,9 @@ class LatentEngine:
 
         # Phase 3 — predict before generating (intentional order)
         if "foresight" in phases:
-            pred   = self.foresight.predict(question, latent, self.client)
-            answer = self.foresight.generate(question, latent, self.client)
+            _be, _md = self.backend or "anthropic", self.model
+            pred   = self.foresight.predict(question, latent, self.client, _be, _md)
+            answer = self.foresight.generate(question, latent, self.client, _be, _md)
             fs_sc  = self.foresight.score(pred, answer)
             result["phases"]["foresight"] = {
                 "prediction": asdict(pred),
@@ -816,7 +868,8 @@ class LatentEngine:
 
         # Phase 2 — multiplex
         if "multiplex" in phases:
-            mx = self.runner.run(question, latent, self.client)
+            mx = self.runner.run(question, latent, self.client,
+                                self.backend or "anthropic", self.model)
             result["phases"]["multiplex"] = {
                 "winner":       asdict(mx.winner),
                 "rival":        asdict(mx.rival),
@@ -1147,9 +1200,14 @@ def main():
     parser.add_argument("--no-api",     action="store_true", help="Heuristic mode (no API calls)")
     args = parser.parse_args()
 
-    use_api = not args.no_api and bool(os.environ.get("ANTHROPIC_API_KEY"))
+    use_api = not args.no_api and bool(
+        os.environ.get("AXIOM_API_KEY")
+        or os.environ.get("NVIDIA_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+    )
     engine  = LatentEngine(use_api=use_api)
-    mode    = ("API -- " + MODEL) if (use_api and engine.client) else "heuristic (no API)"
+    mode    = ("API -- " + engine.model + " [" + (engine.backend or "?") + "]") if (use_api and engine.client) else "heuristic (no API)"
 
     traj = args.trajectory
 

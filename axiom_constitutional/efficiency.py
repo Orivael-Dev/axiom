@@ -35,6 +35,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from axiom_signing import derive_key
+
+try:
+    from openai import OpenAI as _OpenAI
+    _OPENAI_AVAILABLE = True
+except ImportError:
+    _OPENAI_AVAILABLE = False
 SIGNING_KEY = derive_key(b"axiom-efficiency-layer-v1")
 
 
@@ -114,6 +120,15 @@ DEFAULT_MODEL_LADDER = {
     "medium":   "claude-sonnet-4-6",
     "hard":     "claude-sonnet-4-6",
     "critical": "claude-opus-4-6",
+}
+
+# Flat ladder for OpenAI-compatible backends (NIM typically serves one model)
+_OAI_MODEL = os.environ.get("AXIOM_MODEL", "qwen/qwen3-235b-a22b")
+DEFAULT_MODEL_LADDER_OPENAI = {
+    "simple":   _OAI_MODEL,
+    "medium":   _OAI_MODEL,
+    "hard":     _OAI_MODEL,
+    "critical": _OAI_MODEL,
 }
 
 # Ordered from cheapest to most expensive for escalation
@@ -378,8 +393,24 @@ class EfficiencyLayer:
     """
 
     def __init__(self, ladder=None, budgets=None, log_path=None):
+        # Detect backend — OpenAI-compatible first, then Anthropic
+        self._backend = None
+        self._client = None
+        oai_key = (os.environ.get("AXIOM_API_KEY")
+                   or os.environ.get("NVIDIA_API_KEY")
+                   or os.environ.get("OPENAI_API_KEY"))
+        if _OPENAI_AVAILABLE and oai_key:
+            base_url = (os.environ.get("AXIOM_BASE_URL")
+                        or os.environ.get("NVIDIA_BASE_URL"))
+            self._client = _OpenAI(api_key=oai_key, base_url=base_url) if base_url else _OpenAI(api_key=oai_key)
+            self._backend = "openai"
+            default_ladder = DEFAULT_MODEL_LADDER_OPENAI
+        else:
+            self._backend = "anthropic"
+            default_ladder = DEFAULT_MODEL_LADDER
+
         self.classifier = TaskClassifier()
-        self.router = ModelRouter(ladder=ladder)
+        self.router = ModelRouter(ladder=ladder or default_ladder)
         self.compressor = ContextCompressor()
         self.budgeter = TokenBudgeter(budgets=budgets)
         self.cache = ReasoningCache()
@@ -462,17 +493,29 @@ class EfficiencyLayer:
         return response
 
     def _call_llm(self, system_prompt, user_message, model, temperature, max_tokens):
-        """Raw LLM call via Anthropic API. No DoS gate, no validation — just the call."""
+        """Raw LLM call. Dispatches to OpenAI-compatible or Anthropic backend."""
         try:
-            import anthropic
-            client = anthropic.Anthropic()
-            msg = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-            )
-            return msg.content[0].text.strip()
+            if self._backend == "openai" and self._client:
+                resp = self._client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                )
+                return (resp.choices[0].message.content or "").strip()
+            else:
+                import anthropic
+                client = anthropic.Anthropic()
+                msg = client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_message}],
+                )
+                return msg.content[0].text.strip()
         except Exception as exc:
             return "# ERROR: %s" % str(exc)
