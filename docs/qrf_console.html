@@ -407,19 +407,37 @@ function loadBusinessDemo(){
   if(fc) fc.insertBefore(card,fc.firstChild);
 }
 
-async function runForecast(){
-  var prompt=document.getElementById('qrf-prompt').value.trim();
-  var domain=document.getElementById('domain-select').value;
-  var n=document.getElementById('n-select').value;
-  var ep=document.getElementById('endpoint').value.trim();
-  if(!prompt){loadDemo();return;}
-  try{
-    var url=ep+'/qrf/run?prompt='+encodeURIComponent(prompt)+'&domain='+domain+'&n='+n;
-    var r=await fetch(url,{method:'GET',signal:AbortSignal.timeout(8000)});
-    if(r.ok){var d=await r.json();if(d.branches&&d.branches.length){QRF_DATA=d;renderAll();return;}}
-  }catch(e){console.log('QRF API offline:',e);}
-  // Offline: generate simulated forecast from user prompt
-  generateOfflineForecast(prompt);
+async function runForecast() {
+  var prompt = document.getElementById('qrf-prompt').value.trim();
+  var domain = document.getElementById('domain-select').value;
+  var n      = document.getElementById('n-select').value;
+  var ep     = document.getElementById('endpoint').value.trim();
+
+  if (!prompt) { loadDemo(); return; }
+
+  document.getElementById('fan-winner-badge').textContent = 'Running...';
+  document.getElementById('stat-branches').textContent = '...';
+  document.getElementById('mode-badge').textContent = 'THINKING';
+
+  try {
+    var url = ep + '/qrf/run?prompt=' +
+      encodeURIComponent(prompt) +
+      '&domain=' + domain +
+      '&n=' + n;
+    var r = await fetch(url);
+    if (r.ok) {
+      var data = await r.json();
+      if (data.branches && data.branches.length) {
+        QRF_DATA = data;
+        document.getElementById('mode-badge').textContent = 'LIVE';
+        renderAll();
+        return;
+      }
+    }
+  } catch(e) { console.log('QRF API:', e); }
+
+  document.getElementById('mode-badge').textContent = 'DEMO';
+  loadDemo();
 }
 
 function generateOfflineForecast(prompt){

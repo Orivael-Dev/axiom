@@ -321,10 +321,15 @@ function renderPlaybook(match, similarity) {
 }
 
 function updateUI(data) {
+  if (data.status === 'offline') return;
   snapshots.push(data.distance);
   renderTrajectory();
-  renderLevel(data.distance);
-  renderAncestry(data.ancestry, data.flagged);
+  if (data.level) {
+    setLevel(data.level.replace('_FLAG','').replace('_THROTTLE','').replace('_SUSPEND','').replace('_KILL',''));
+  } else {
+    renderLevel(data.distance);
+  }
+  renderAncestry(data.ancestry || [], data.flagged ? (data.ancestry||[])[(data.ancestry||[]).length-1] : null);
   renderFiles(data.files_total, data.files_encrypted);
   renderPlaybook(data.playbook_match, data.playbook_similarity);
 
@@ -335,7 +340,7 @@ function updateUI(data) {
 
   const mode = document.getElementById('modeBadge');
   if (data.distance < .06) {
-    mode.textContent = 'ACTIVE — THREAT DETECTED';
+    mode.textContent = 'ACTIVE \u2014 THREAT DETECTED';
     mode.className = 'badge badge-red';
     document.getElementById('shieldStatus').textContent = 'THREAT RESPONSE';
     document.getElementById('shieldStatus').style.color = 'var(--red)';
