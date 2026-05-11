@@ -1391,6 +1391,42 @@ let connected = false;
 let sessionBlocked = 0, sessionVerified = 0, sessionSuspicious = 0;
 let allManifests = [];
 
+// ── CONNECT ──
+async function connect() {
+  const btn  = document.getElementById('btn-connect');
+  const badge = document.getElementById('mode-badge');
+  btn.textContent = 'CONNECTING...';
+  btn.style.borderColor = 'var(--gold)';
+  btn.style.color = 'var(--gold)';
+  btn.style.background = 'var(--bgold)';
+
+  try {
+    const r = await fetch(API() + '/guard/agents', { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+
+    connected = true;
+    btn.textContent = 'CONNECTED';
+    btn.style.borderColor = 'var(--green)';
+    btn.style.color = 'var(--green)';
+    btn.style.background = 'var(--bgreen)';
+    badge.textContent = 'ONLINE';
+    badge.className = 'badge badge-green';
+
+    // Load dashboard data
+    loadDashAgents();
+
+  } catch(e) {
+    connected = false;
+    btn.textContent = 'CONNECT';
+    btn.style.borderColor = 'var(--red)';
+    btn.style.color = 'var(--red)';
+    btn.style.background = 'var(--bred)';
+    badge.textContent = 'OFFLINE';
+    badge.className = 'badge badge-red';
+  }
+}
+
 // ── CLOCK ──
 function updateClock() {
   const now = new Date();
