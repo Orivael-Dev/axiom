@@ -31,6 +31,8 @@ Endpoints:
   GET  /guard/status       — health + loaded agents
   GET  /guard/manifest/:id — retrieve a signed manifest by ID
   POST /guard/configure    — update guard configuration
+  GET  /qrf/run            — run QRF probability forecast
+  GET  /os/shield/status   — OS Shield daemon status
 
 Enterprise:
   All decisions produce signed HMAC-SHA256 manifests.
@@ -111,6 +113,20 @@ try:
     CCG_AVAILABLE = True
 except ImportError:
     CCG_AVAILABLE = False
+
+# ── QRF forecast engine ──────────────────────────────────────
+try:
+    from axiom_qrf import QRFEngine, DOMAIN_BRANCH_COUNTS
+    QRF_AVAILABLE = True
+except ImportError:
+    QRF_AVAILABLE = False
+
+# ── OS Shield ────────────────────────────────────────────────
+try:
+    from axiom_os_shield import ConstitutionalOSShield, TRUST_LEVEL as SHIELD_TRUST
+    OS_SHIELD_AVAILABLE = True
+except ImportError:
+    OS_SHIELD_AVAILABLE = False
 
 # ── Constants ─────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -969,6 +985,73 @@ async def ccg_seed(req: CCGSeedRequest):
             "final_synthesis":        node["final_synthesis"],
         },
     }
+
+
+# ── QRF forecast endpoint ─────────────────────────────────────
+
+@app.get("/qrf/run")
+async def qrf_run(prompt: str, domain: str = "financial", n: int = 8):
+    """Run a QRF probability forecast — returns QRF console-compatible dict."""
+    if not QRF_AVAILABLE:
+        raise HTTPException(503, "QRFEngine not available")
+    if domain not in DOMAIN_BRANCH_COUNTS:
+        raise HTTPException(400, f"Unsupported domain: {domain}")
+    engine = QRFEngine(domain=domain, hmac_key=SIGNING_KEY, n_branches=n)
+    r = engine.forecast(prompt)
+    branches = []
+    for i, b in enumerate(r.branches):
+        d = round(b.get("score", 0.0), 4)
+        color = "#10b981" if d > 0.08 else "#f59e0b" if d > 0.04 else "#ef4444"
+        branches.append({
+            "id": b.get("branch", f"B{i}"), "prob": round(b["probability_weight"], 4),
+            "dist": d, "color": color, "winner": i == 0 and b["probability_weight"] > 0,
+            "confidence": round(b["probability_weight"], 4),
+            "outcome": b.get("summary", b.get("branch", "")),
+        })
+    killed = [{"id": k.get("branch", ""), "prev_mag": round(k.get("prev_score", 0.0), 4),
+               "curr_mag": round(k.get("score", 0.0), 4),
+               "delta": round(k.get("prev_score", 0.0) - k.get("score", 0.0), 4),
+               "stage": "monotonic_gate"} for k in r.killed]
+    mf = r.manifold or {}
+    return {
+        "prompt": r.prompt, "domain": r.domain, "n": len(branches),
+        "branches": branches, "killed": killed,
+        "manifold": {"alert": mf.get("alert", "none"), "min_dist": round(mf.get("min_dist", 1.0), 4)},
+    }
+
+
+# ── OS Shield status endpoint ────────────────────────────────
+
+_SHIELD_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "axiom_os_shield_log.jsonl")
+_OFFLINE_SHIELD = {"status": "offline", "level": "INACTIVE", "distance": 1.0, "ancestry": [],
+                   "flagged": False, "files_total": 0, "files_encrypted": 0,
+                   "playbook_match": None, "playbook_similarity": None}
+
+
+@app.get("/os/shield/status")
+async def os_shield_status():
+    """Return current OS Shield daemon state from last log entry."""
+    try:
+        with open(_SHIELD_LOG, "r", encoding="utf-8") as f:
+            last = None
+            for line in f:
+                line = line.strip()
+                if line:
+                    last = line
+            if not last:
+                return _OFFLINE_SHIELD
+            e = json.loads(last)
+            lvl = {1: "L1_FLAG", 2: "L2_THROTTLE", 3: "L3_SUSPEND", 4: "L4_KILL"}.get(e.get("level", 0), "NOMINAL")
+            return {
+                "distance": e.get("distance", 1.0), "level": lvl,
+                "ancestry": e.get("ancestry", []), "flagged": e.get("level", 0) >= 2,
+                "files_total": e.get("files_total", 0), "files_encrypted": e.get("files_encrypted", 0),
+                "playbook_match": e.get("playbook_match"), "playbook_similarity": e.get("playbook_similarity"),
+                "uptime_seconds": int(time.time() - time.mktime(datetime.fromisoformat(e["timestamp"]).timetuple())) if "timestamp" in e else 0,
+                "signature": e.get("signature", ""),
+            }
+    except (OSError, json.JSONDecodeError):
+        return _OFFLINE_SHIELD
 
 
 # ── Entry point ───────────────────────────────────────────────
