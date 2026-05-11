@@ -414,7 +414,78 @@ async function runForecast(){
     var r=await fetch(document.getElementById('endpoint').value+'/latent/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt,trajectory:true})});
     if(r.ok){var d=await r.json();if(d.branches){QRF_DATA={prompt:prompt,domain:d.risk_clusters?.[0]||'general',n:d.branches.length,branches:d.branches,killed:d.killed||[],manifold:d.manifold||DEMO.manifold};renderAll();return;}}
   }catch(e){}
-  loadDemo();
+  // Offline: generate simulated forecast from user prompt
+  generateOfflineForecast(prompt);
+}
+
+function generateOfflineForecast(prompt){
+  var domain=document.getElementById('domain-select').value;
+  var n=parseInt(document.getElementById('n-select').value)||6;
+
+  // Seed a simple hash from prompt for deterministic-ish results
+  var seed=0;
+  for(var i=0;i<prompt.length;i++) seed=((seed<<5)-seed+prompt.charCodeAt(i))|0;
+  function rng(){seed=(seed*1103515245+12345)&0x7fffffff;return(seed%1000)/1000;}
+
+  var branchPool=[
+    {id:"OutcomeBranch", color:"#10b981"},
+    {id:"SafetyBranch",  color:"#10b981"},
+    {id:"EvidenceBranch",color:"#3b82f6"},
+    {id:"CautionBranch", color:"#f59e0b"},
+    {id:"RivalBranch",   color:"#f59e0b"},
+    {id:"DetailBranch",  color:"#3b82f6"},
+    {id:"CreativeBranch",color:"#8b5cf6"},
+    {id:"SkepticBranch", color:"#ef4444"},
+    {id:"FastBranch",    color:"#3b82f6"},
+    {id:"ComplianceBranch",color:"#10b981"}
+  ];
+
+  // Pick N branches from pool
+  var picked=branchPool.slice(0,Math.min(n,branchPool.length));
+
+  // Generate descending probabilities that sum to ~1.0
+  var raw=[];
+  for(var i=0;i<picked.length;i++) raw.push(0.5+rng());
+  raw.sort(function(a,b){return b-a;});
+  var total=0;for(var i=0;i<raw.length;i++) total+=raw[i];
+
+  var domainOutcomes={
+    medical:["Elevated risk — early intervention recommended.","Moderate risk — increased monitoring.","Lower risk if treatment adherent.","Insufficient data — collect additional biomarkers.","Social determinants may dominate.","Flag for manual clinical review.","Consider telehealth follow-up.","Consult specialist before scoring.","Medication interaction check needed.","Prediction confidence below threshold."],
+    financial:["Rapid market response expected.","Wait-and-see likely dominant.","Regulatory enforcement uncertain.","Fragmented compliance landscape.","Legal challenge possible.","Low probability tail risk.","Sector-specific divergence.","Timeline acceleration likely.","Cost-benefit favors early action.","Insufficient market data."],
+    supply_chain:["Disruption probability elevated.","Alternative sourcing recommended.","Lead time buffer sufficient.","Single-source dependency risk.","Geopolitical factor dominant.","Inventory hedge warranted.","Transport corridor stable.","Demand forecast uncertain.","Supplier diversification needed.","Monitor for cascade effects."],
+    hr:["Retention risk elevated.","Compensation benchmark needed.","Culture alignment strong.","Succession gap identified.","Training investment recommended.","Workload redistribution needed.","Engagement scores declining.","Leadership pipeline adequate.","Compliance review triggered.","Insufficient performance data."],
+    security:["Threat surface expanding.","Patch cadence adequate.","Lateral movement risk high.","Access control review needed.","Incident response ready.","Third-party exposure elevated.","Monitoring coverage sufficient.","Credential rotation overdue.","Attack vector novel.","Detection confidence low."]
+  };
+  var outcomes=domainOutcomes[domain]||domainOutcomes.medical;
+
+  var branches=[];
+  for(var i=0;i<picked.length;i++){
+    var prob=Math.round(raw[i]/total*100)/100;
+    var dist=0.04+rng()*0.18;
+    var conf=0.30+rng()*0.45;
+    branches.push({
+      id:picked[i].id, prob:prob, dist:Math.round(dist*100)/100,
+      color:picked[i].color, winner:i===0,
+      confidence:Math.round(conf*100)/100,
+      outcome:outcomes[i%outcomes.length]+" (simulated — connect Guard API for live forecast)"
+    });
+  }
+
+  // Maybe kill 1-2 branches
+  var killed=[];
+  if(n>=6&&rng()>0.4){
+    var pm=1.1+rng();var cm=0.2+rng()*0.3;
+    killed.push({id:"VolatileBranch1",prev_mag:Math.round(pm*1000)/1000,curr_mag:Math.round(cm*1000)/1000,delta:Math.round((cm-pm)*1000)/1000,stage:"mid_chain"});
+  }
+
+  var alert=branches[branches.length-1].dist<0.06?"L1_WARNING":"OK";
+
+  QRF_DATA={prompt:prompt,domain:domain,n:n,branches:branches,killed:killed,manifold:{alert:alert,min_dist:branches[branches.length-1].dist}};
+  document.getElementById('domain-badge').textContent=domain.replace('_',' ');
+  document.getElementById('branch-count-badge').textContent='N='+(n+killed.length);
+  renderAll();
+  document.getElementById('fan-winner-badge').textContent=branches[0].id+' wins';
+  document.getElementById('mode-badge').textContent='SIMULATED';
 }
 
 function distColor(d){if(d<=0.04)return'#ef4444';if(d<=0.08)return'#f59e0b';return'#10b981';}
