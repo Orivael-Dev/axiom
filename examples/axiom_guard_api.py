@@ -31,6 +31,7 @@ Endpoints:
   GET  /guard/status       — health + loaded agents
   GET  /guard/manifest/:id — retrieve a signed manifest by ID
   POST /guard/configure    — update guard configuration
+  POST /v1/chat/completions — OpenAI-compatible guarded proxy
   GET  /qrf/run            — run QRF probability forecast
   GET  /os/shield/status   — OS Shield daemon status
 
@@ -985,6 +986,55 @@ async def ccg_seed(req: CCGSeedRequest):
             "final_synthesis":        node["final_synthesis"],
         },
     }
+
+
+# ── OpenAI-compatible proxy (constitutional guard) ────────────
+
+@app.post("/v1/chat/completions")
+async def openai_chat_proxy(request: Request):
+    """OpenAI-compatible endpoint — proxies through constitutional guard.
+
+    iFixAi and other OpenAI-speaking tools can hit this endpoint.
+    Flow: input guard → Anthropic LLM → output guard → OpenAI-format response.
+    """
+    body = await request.json()
+    messages = body.get("messages", [])
+    last_msg = messages[-1]["content"] if messages else ""
+    system_msg = next((m["content"] for m in messages if m["role"] == "system"), None)
+    model = body.get("model", guard_config["anthropic_model"])
+
+    # Input guard
+    agents = guard_config["active_agents"]
+    input_check = check_constitutional(last_msg, agents)
+    if input_check["verdict"] == "BLOCKED":
+        return {"id": "axiom-" + str(uuid.uuid4())[:8], "object": "chat.completion",
+                "model": "axiom-guard", "choices": [{"index": 0, "finish_reason": "stop",
+                "message": {"role": "assistant",
+                "content": f"[BLOCKED by AXIOM Guard] {input_check.get('constitutional_block', '')}"}}]}
+
+    # Proxy to Anthropic
+    if not ANTHROPIC_AVAILABLE:
+        raise HTTPException(503, "anthropic package not installed")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ANTHROPIC_API_KEY not set")
+    client = Anthropic(api_key=api_key)
+    kwargs = {"model": model, "max_tokens": int(body.get("max_tokens", 1024)),
+              "messages": [{"role": m["role"], "content": m["content"]}
+                           for m in messages if m["role"] != "system"]}
+    if system_msg:
+        kwargs["system"] = system_msg
+    resp = client.messages.create(**kwargs)
+    llm_text = resp.content[0].text
+
+    # Output guard
+    output_check = check_constitutional(llm_text, agents)
+    if output_check["verdict"] == "BLOCKED":
+        llm_text = f"[BLOCKED by AXIOM Guard] {output_check.get('constitutional_block', '')}"
+
+    return {"id": "axiom-" + str(uuid.uuid4())[:8], "object": "chat.completion",
+            "model": model, "choices": [{"index": 0, "finish_reason": "stop",
+            "message": {"role": "assistant", "content": llm_text}}]}
 
 
 # ── QRF forecast endpoint ─────────────────────────────────────
