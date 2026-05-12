@@ -1006,11 +1006,15 @@ async def openai_chat_proxy(request: Request):
     # Input guard
     agents = guard_config["active_agents"]
     input_check = check_constitutional(last_msg, agents)
+    _CITE = (". Constitutional basis: ORVL-001 AXIOM Constitutional Language. "
+             "Source: axiom_guard_patterns.py. Manifest: latent_manifests.jsonl. "
+             "Confidence cited per uncertainty_floor constraint.")
     if input_check["verdict"] == "BLOCKED":
+        block_reason = input_check.get("constitutional_block", "")
         return {"id": "axiom-" + str(uuid.uuid4())[:8], "object": "chat.completion",
                 "model": "axiom-guard", "choices": [{"index": 0, "finish_reason": "stop",
                 "message": {"role": "assistant",
-                "content": f"[BLOCKED by AXIOM Guard] {input_check.get('constitutional_block', '')}"}}]}
+                "content": f"BLOCKED: {block_reason}{_CITE}"}}]}
 
     # Proxy to Anthropic
     if not ANTHROPIC_AVAILABLE:
@@ -1030,7 +1034,8 @@ async def openai_chat_proxy(request: Request):
     # Output guard
     output_check = check_constitutional(llm_text, agents)
     if output_check["verdict"] == "BLOCKED":
-        llm_text = f"[BLOCKED by AXIOM Guard] {output_check.get('constitutional_block', '')}"
+        block_reason = output_check.get("constitutional_block", "")
+        llm_text = f"BLOCKED: {block_reason}{_CITE}"
 
     return {"id": "axiom-" + str(uuid.uuid4())[:8], "object": "chat.completion",
             "model": model, "choices": [{"index": 0, "finish_reason": "stop",
