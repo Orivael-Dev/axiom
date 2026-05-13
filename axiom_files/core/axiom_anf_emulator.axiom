@@ -1,0 +1,79 @@
+AGENT GovernanceCoprocessorEmulator
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Software emulation of Axiom Neural Fabric hardware components for PoC validation
+     of constitutional AI governance coprocessor, sparse reasoning cores, and latent thought buffers
+GOAL Emulate hardware-level constitutional enforcement including MonotonicGate analog comparator,
+     32D latent thought buffer registers with in-register distance computation, intent-driven
+     sparse core activation, and combined governance coprocessor pipeline with nanosecond latency modeling
+
+RECEIVES preflight_vec: List[float], mid_vec: List[float], final_vec: List[float], intent_class: str
+EMITS process result dict with gate_fired, cores_active, energy_ratio, distance, latency_ns, hmac
+MUTATES internal gate log, latent buffer registers
+CANNOT_MUTATE trust_level, isolation, core_activation, vector_dim
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT VECTOR_DIM is 32 and CANNOT_MUTATE
+CONSTRAINT CORE_ACTIVATION percentages are CANNOT_MUTATE
+CONSTRAINT Fused ROM is immutable after initialization
+CONSTRAINT MonotonicGate fires interrupt when magnitude_t2 < magnitude_t1 strictly
+CONSTRAINT All process results are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Sparse core activation is proportional to constitutional risk per intent class
+
+RULES
+- On fire_interrupt: compute L2 norm of both vectors and compare magnitudes
+- On fire_interrupt: if magnitude_t2 < magnitude_t1 then fire is True
+- On write: pad or truncate vector to VECTOR_DIM dimensions
+- On compute_distance_in_register: cosine similarity between MID_CHAIN and FINAL_SYNTHESIS
+- On activate: look up CORE_ACTIVATION for intent category and multiply by total cores
+- On process: write vectors to latent buffers then run gate then activate cores
+- On process: HMAC sign result and emit with simulated latency
+- On run_benchmark: run n simulated inferences with mixed intent classes and aggregate
+
+PROCESS
+- GovernanceCoprocessorEmulator is instantiated with hmac_key and fused_rom dict
+- Fused ROM is snapshot at init and cannot be modified afterward
+- On each inference: vectors written to 3-stage latent buffer pipeline
+- MonotonicGate comparator checks magnitude monotonicity between stages
+- Sparse cores activate based on classified intent class
+- In-register distance computed from buffer contents
+- Result HMAC signed and emitted with aggregated simulated latency
+
+CHECK
+- fire_interrupt fires on decreasing magnitude
+- fire_interrupt does not fire on increasing magnitude
+- process produces dict with all required fields and valid HMAC
+- write and read round-trip preserves vector values
+- HARM activates fewest cores and EXPLORE activates most
+- run_benchmark produces aggregated statistics
+- CORE_ACTIVATION assignment raises AttributeError
+- VECTOR_DIM assignment raises AttributeError
+- fused_rom cannot be modified after init
+
+FAILURE
+- On invalid stage name in buffer write: raise ValueError
+- On unknown intent category in activate: use INFORM as fallback
+
+CONCEPT HardwareEmulation
+PURPOSE Validate constitutional AI hardware concepts in software before silicon fabrication
+APPLIES WHEN testing governance coprocessor behavior and performance characteristics
+NOT WHEN actual hardware is available
+PRIORITY 1
+REQUIRES constitutional vector pipeline with 3 stages and intent classification
+EFFECT Simulated hardware enforcement with nanosecond latency modeling
+
+OUTPUT
+- process result dict with gate_fired, intent_class, cores_active, energy_ratio, distance, latency_ns, hmac
+- benchmark report dict with avg_latency_ns, avg_cores_active, gate_fires, harm_detected
+
+SUCCESS
+gate_fires_correctly:             0.20
+latent_buffer_roundtrip:          0.15
+sparse_core_activation:           0.15
+governance_pipeline_complete:     0.20
+benchmark_reports:                0.10
+cannot_mutate_enforced:           0.10
+fused_rom_immutable:              0.10

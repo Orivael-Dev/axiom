@@ -772,5 +772,11 @@
     "registered_at": "2026-05-13T03:00:05.207718+00:00",
     "version": "",
     "size_bytes": 4143
+  },
+  "core/axiom_anf_emulator": {
+    "sha256": "73bda84e9b12cf43edddf311e8b77a296f5a0a74752b3ed806d08ae0ea385f84",
+    "registered_at": "2026-05-13T15:27:14.821812+00:00",
+    "version": "",
+    "size_bytes": 4112
   }
 }
