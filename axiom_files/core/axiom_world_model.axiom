@@ -1,0 +1,81 @@
+AGENT ConstitutionalWorldModel
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Forward simulation of constitutional state evolution using causal graph traversal
+     and branch-level monotonic enforcement to predict violations before they occur
+GOAL Simulate forward evolution of constitutional world state across multiple branches,
+     kill non-monotonic branches, score survivors by constitutional distance, identify
+     causal root of violations, and evaluate intervention effectiveness
+
+RECEIVES current_state: WorldState, n_steps: int, n_branches: int, intervention: str
+EMITS SimulationResult
+MUTATES causal_graph edges
+CANNOT_MUTATE trust_level, isolation, simulation_depth, min_branch_probability, causal_decay
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT SIMULATION_DEPTH is 5 and CANNOT_MUTATE
+CONSTRAINT MIN_BRANCH_PROBABILITY is 0.02 and CANNOT_MUTATE
+CONSTRAINT CAUSAL_DECAY is 0.85 and CANNOT_MUTATE
+CONSTRAINT Non-monotonic branches must be killed during simulation
+CONSTRAINT All WorldState instances are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Branches below MIN_BRANCH_PROBABILITY are pruned
+CONSTRAINT Causal edges propagate with CAUSAL_DECAY attenuation per hop
+
+RULES
+- On simulate_forward: project current_state n_steps using causal_graph rules
+- On simulate_forward: create n_branches parallel trajectories with perturbation
+- On simulate_forward: kill branches where constitutional_distance decreases between steps
+- On simulate_forward: prune branches below MIN_BRANCH_PROBABILITY
+- On simulate_forward: emit probability band over surviving branches
+- On simulate_intervention: run simulate_forward without intervention as baseline
+- On simulate_intervention: run simulate_forward with intervention applied
+- On simulate_intervention: emit both results with delta showing intervention value
+- On find_causal_root: traverse causal_graph backward from violated state
+- On find_causal_root: identify block with largest constitutional distance drop
+- On add_causal_edge: add directed edge to causal_graph and HMAC sign
+
+PROCESS
+- ConstitutionalWorldModel is instantiated with hmac_key
+- Causal graph is built via add_causal_edge calls or loaded from WorldState
+- simulate_forward projects state evolution with branch-level monotonic check
+- Non-monotonic branches are killed and logged
+- Surviving branches are weighted by constitutional distance
+- simulate_intervention compares baseline vs intervention trajectories
+- find_causal_root traces backward through causal graph for root cause
+
+CHECK
+- simulate_forward returns SimulationResult with branches and probability_band
+- Non-monotonic branches appear in killed_branches list
+- Branches below MIN_BRANCH_PROBABILITY are pruned
+- simulate_intervention returns delta between baseline and intervention
+- find_causal_root returns block_id with largest distance drop
+- SIMULATION_DEPTH assignment raises AttributeError
+- MIN_BRANCH_PROBABILITY assignment raises AttributeError
+- CAUSAL_DECAY assignment raises AttributeError
+
+FAILURE
+- On empty causal_graph: simulate with identity transitions
+- On all branches killed: emit empty SimulationResult with warning
+- On no causal root found: emit empty string
+
+CONCEPT CausalProjection
+PURPOSE Forward simulation of constitutional state through causal dependency graph
+APPLIES WHEN constitutional distance is monitored and future violations need prediction
+NOT WHEN causal graph is empty or state has no block dependencies
+PRIORITY 1
+REQUIRES populated causal_graph and current WorldState
+EFFECT Predicted future states with probability band and killed branch list
+
+OUTPUT
+- SimulationResult with branches, probability_band, killed_branches, recommended_intervention
+
+SUCCESS
+forward_simulation_correct:       0.25
+non_monotonic_branches_killed:    0.20
+intervention_delta_computed:      0.20
+causal_root_identified:           0.15
+cannot_mutate_enforced:           0.10
+probability_band_valid:           0.10

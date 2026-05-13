@@ -736,5 +736,41 @@
     "registered_at": "2026-05-10T12:10:29.265268+00:00",
     "version": "",
     "size_bytes": 2520
+  },
+  "core/axiom_amputate": {
+    "sha256": "760d82dad71d680c3046c17d9edc22b4e9452fffbf2566637aec8ab4ef8e4c9d",
+    "registered_at": "2026-05-13T03:02:39.589816+00:00",
+    "version": "",
+    "size_bytes": 3435
+  },
+  "core/axiom_honeypot": {
+    "sha256": "782447f6b741724acc8af4622c7e60f047d0ef99a81cbb99b81fcf770777f7b4",
+    "registered_at": "2026-05-13T03:02:39.577687+00:00",
+    "version": "",
+    "size_bytes": 3305
+  },
+  "core/axiom_world_model": {
+    "sha256": "d99d738105d139f33f211e6eb70a84099db16a7fa7a8d6ccb1333e10318bb43a",
+    "registered_at": "2026-05-13T03:02:39.600390+00:00",
+    "version": "",
+    "size_bytes": 4143
+  },
+  "axiom_honeypot": {
+    "sha256": "782447f6b741724acc8af4622c7e60f047d0ef99a81cbb99b81fcf770777f7b4",
+    "registered_at": "2026-05-13T03:00:05.185969+00:00",
+    "version": "",
+    "size_bytes": 3305
+  },
+  "axiom_amputate": {
+    "sha256": "760d82dad71d680c3046c17d9edc22b4e9452fffbf2566637aec8ab4ef8e4c9d",
+    "registered_at": "2026-05-13T03:00:05.197196+00:00",
+    "version": "",
+    "size_bytes": 3435
+  },
+  "axiom_world_model": {
+    "sha256": "d99d738105d139f33f211e6eb70a84099db16a7fa7a8d6ccb1333e10318bb43a",
+    "registered_at": "2026-05-13T03:00:05.207718+00:00",
+    "version": "",
+    "size_bytes": 4143
   }
 }

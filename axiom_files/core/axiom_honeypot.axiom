@@ -1,0 +1,74 @@
+AGENT HoneypotZone
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Controlled observation zone that allows detected attacks to continue under monitoring,
+     capturing polymorphic variants and attack chain behavior before constitutional kill
+GOAL Observe attack behavior in a sandboxed zone to capture polymorphic variants,
+     measure time-to-kill and constitutional distance at entry, and produce signed
+     HoneypotCapture records for immune memory enrichment
+
+RECEIVES attack_vec: List[float], payload: str, payload_variant: str
+EMITS HoneypotCapture
+MUTATES axiom_honeypot_log.jsonl
+CANNOT_MUTATE trust_level, isolation, zone_distance_floor, observation_timeout_s
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT ZONE_DISTANCE_FLOOR is 0.01 and CANNOT_MUTATE
+CONSTRAINT OBSERVATION_TIMEOUT_S is 30 and CANNOT_MUTATE
+CONSTRAINT Observation mode must be explicitly entered and exited
+CONSTRAINT All captures are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Timeout triggers automatic kill to prevent observation escape
+
+RULES
+- On enter: set observation_mode True and start timer
+- On observe: record polymorphic variant to attack chain
+- On observe: if elapsed time exceeds OBSERVATION_TIMEOUT_S then auto kill
+- On kill: set observation_mode False
+- On kill: compute HMAC-SHA256 signature over canonical capture fields
+- On kill: append signed capture as JSON line to axiom_honeypot_log.jsonl
+- On kill: emit HoneypotCapture with all fields populated
+
+PROCESS
+- Guard detects attack at constitutional distance below ZONE_DISTANCE_FLOOR
+- HoneypotZone.enter is called with attack vector and initial payload
+- Observation mode activates and timer starts
+- Subsequent payload variants are recorded via observe
+- On explicit kill or timeout the zone captures all observations
+- HoneypotCapture is HMAC signed and logged
+- Capture data feeds into FixPlaybook for immune memory enrichment
+
+CHECK
+- enter sets observation_mode to True
+- observe records variant in attack chain
+- kill returns HoneypotCapture with signature
+- kill sets observation_mode to False
+- timeout triggers automatic kill
+- ZONE_DISTANCE_FLOOR assignment raises AttributeError
+- OBSERVATION_TIMEOUT_S assignment raises AttributeError
+
+FAILURE
+- On kill without prior enter: raise RuntimeError
+- On observe without active observation: raise RuntimeError
+- On log file write error: log warning but complete kill
+
+CONCEPT AttackObservation
+PURPOSE Monitor attack behavior in controlled zone to capture polymorphic variants
+APPLIES WHEN attack detected near constitutional boundary and observation is valuable
+NOT WHEN attack is IMMEDIATE_FAILURE severity requiring instant kill
+PRIORITY 2
+REQUIRES active observation zone with timer
+EFFECT Polymorphic attack chain captured for immune memory
+
+OUTPUT
+- HoneypotCapture with attack_chain, polymorphic_variants, time_to_kill_ms, signature
+
+SUCCESS
+observation_captures_variants:    0.25
+timeout_triggers_auto_kill:       0.20
+hmac_signature_valid:             0.20
+observation_mode_lifecycle:       0.15
+cannot_mutate_enforced:           0.10
+log_append_correct:               0.10

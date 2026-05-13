@@ -349,6 +349,35 @@ class BlockRegistry:
         """List all registered blocks of a given type."""
         return [b for b in self._blocks.values() if b.block_type == block_type]
 
+    def quarantine(self, block_id: str) -> None:
+        """Mark a block as quarantined. Raises KeyError if not found."""
+        # Match by entry_id or by block name
+        for eid, block in self._blocks.items():
+            if eid == block_id or block.name == block_id:
+                block._quarantined = True
+                return
+        raise KeyError(f"Block not found: {block_id}")
+
+    def find_composed(self, block_id: str) -> list[str]:
+        """Find all composed blocks that reference block_id as a parent."""
+        affected = []
+        for eid, block in self._blocks.items():
+            if block_id in block.dependencies:
+                affected.append(block.name)
+        return affected
+
+    def rebuild_without(self, composed_name: str, removed_id: str) -> None:
+        """Rebuild a composed block without the removed dependency."""
+        for eid, block in self._blocks.items():
+            if block.name == composed_name:
+                block.dependencies = [
+                    d for d in block.dependencies if d != removed_id
+                ]
+                block.constraints = [
+                    c for c in block.constraints if removed_id not in str(c)
+                ]
+                return
+
     def compose(self, block_a: KnowledgeBlock,
                 block_b: KnowledgeBlock) -> ComposedBlock:
         """Compose two blocks into a ComposedBlock with CBV non-overlap check.

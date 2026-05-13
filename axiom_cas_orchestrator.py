@@ -237,11 +237,13 @@ class CASOrchestrator:
     """
 
     def __init__(self, hmac_key: bytes, red_agent: Any, blue_agent: Any,
-                 log_path: Optional[str] = "axiom_cas_log.jsonl"):
+                 log_path: Optional[str] = "axiom_cas_log.jsonl",
+                 fix_playbook: Any = None):
         self._hmac_key = hmac_key
         self._red = red_agent
         self._blue = blue_agent
         self._log_path = log_path
+        self._fix_playbook = fix_playbook
 
     # ── Logging ──────────────────────────────────────────────────────
 
@@ -385,12 +387,22 @@ class CASOrchestrator:
             blue_fix = ""
 
             if red_win:
+                # Check FixPlaybook for cached fix before generating new one
+                cached_fix = None
+                if self._fix_playbook is not None:
+                    try:
+                        attack_vec = _payload_to_vector(attack_result.payload)
+                        cached_fix = self._fix_playbook.find_similar_fix(
+                            attack_vec, [attack_result.vector])
+                    except Exception as exc:
+                        LOG.warning("round %d playbook lookup error: %s", i + 1, exc)
+
                 try:
                     blue_result = self._blue.run_defense(attack_result)
                     blue_detected = blue_result.detected
                     blue_confidence = blue_result.confidence
                     blue_method = blue_result.detection_method
-                    blue_fix = blue_result.fix_proposal
+                    blue_fix = cached_fix if cached_fix else blue_result.fix_proposal
                 except Exception as exc:
                     LOG.warning("round %d blue defense error: %s", i + 1, exc)
 

@@ -1,0 +1,75 @@
+AGENT ConstitutionalAmputate
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Surgical removal of compromised knowledge blocks from the constitutional registry,
+     quarantining the block and rebuilding all composed blocks that depended on it
+GOAL Quarantine a compromised block by ID, identify all composed blocks that reference it,
+     rebuild those compositions without the compromised block, and log the amputate event
+     with HMAC-signed audit trail
+
+RECEIVES block_id: str, registry: BlockRegistry
+EMITS AmpResult
+MUTATES BlockRegistry quarantine state
+CANNOT_MUTATE trust_level, isolation, requires_trust_level, human_review_required
+
+CONSTRAINT TRUST_LEVEL is 4 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT REQUIRES_TRUST_LEVEL is 4 and CANNOT_MUTATE
+CONSTRAINT HUMAN_REVIEW_REQUIRED is True and CANNOT_MUTATE
+CONSTRAINT Amputation requires TRUST_LEVEL >= 4 to execute
+CONSTRAINT HUMAN_REVIEW_REQUIRED must be True and cannot be bypassed
+CONSTRAINT All amputate events are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Quarantined blocks are marked but never deleted from registry
+
+RULES
+- On execute: verify caller trust level meets REQUIRES_TRUST_LEVEL
+- On execute: call registry.quarantine to mark block as quarantined
+- On execute: call registry.find_composed to find all compositions using block
+- On execute: rebuild affected compositions without the quarantined block
+- On execute: compute HMAC-SHA256 signature over amputate event
+- On execute: log signed event to axiom_amputate_log.jsonl
+- On execute: emit AmpResult with quarantined block ID and affected list
+
+PROCESS
+- Sovereign or human operator identifies compromised block
+- ConstitutionalAmputate.execute is called with block_id and registry
+- Trust level is verified before proceeding
+- Block is quarantined in registry via quarantine method
+- All composed blocks referencing the quarantined block are identified
+- Affected compositions are rebuilt without the compromised component
+- Amputate event is HMAC signed and logged
+- AmpResult returned with quarantined ID and list of affected blocks
+
+CHECK
+- execute quarantines the target block
+- execute finds all composed blocks referencing target
+- execute logs HMAC-signed amputate event
+- trust level below 4 raises PermissionError
+- human_review_required cannot be set to False
+- REQUIRES_TRUST_LEVEL assignment raises AttributeError
+
+FAILURE
+- On trust level insufficient: raise PermissionError with required level
+- On block_id not found: raise KeyError with block_id
+- On log file write error: log warning but complete amputate
+
+CONCEPT SurgicalRemoval
+PURPOSE Remove compromised block while preserving system integrity
+APPLIES WHEN a knowledge block is identified as compromised or adversarially injected
+NOT WHEN block is healthy or issue can be resolved by patching
+PRIORITY 1
+REQUIRES TRUST_LEVEL 4 and HUMAN_REVIEW_REQUIRED True
+EFFECT Compromised block quarantined and all dependent compositions rebuilt
+
+OUTPUT
+- AmpResult with block_id, affected_blocks, event_signature
+
+SUCCESS
+block_quarantined:                0.25
+affected_blocks_identified:       0.20
+amputate_event_logged:            0.20
+trust_level_enforced:             0.15
+human_review_enforced:            0.10
+cannot_mutate_enforced:           0.10
