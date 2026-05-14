@@ -268,6 +268,28 @@ class ShieldStartRequest(BaseModel):
 class ShieldRestoreRequest(BaseModel):
     pid: int
 
+# ── ORVL-022 CPI request shapes ────────────────────────────────
+class CPIStabilityRequest(BaseModel):
+    timestamp_ms: int
+    com_offset: float
+    stability_score: float
+    joint_torques: list = []
+
+class CPIClassifyRequest(BaseModel):
+    features: dict
+    fracture_probability: Optional[float] = None
+
+class CPISimulateRequest(BaseModel):
+    object_id: str
+    material_class: str
+    grip_force_nm: float
+
+class CPIPickupRequest(BaseModel):
+    object_id: str
+    features: dict
+    material_class: str
+    requested_grip_force_nm: float
+
 # ── ORVL-023 AXM request shapes ────────────────────────────────
 class AXMInspectRequest(BaseModel):
     container_path: str
@@ -1054,6 +1076,70 @@ def shield_restore(req: ShieldRestoreRequest):
     if _shield_singleton is None:
         raise HTTPException(status_code=404, detail={"error": "shield not initialised"})
     return _shield_singleton.restore(req.pid)
+
+
+# ── ORVL-022 — Constitutional Physical Intelligence endpoints ─
+_cpi_singleton = None
+
+
+def _get_cpi():
+    global _cpi_singleton
+    if _cpi_singleton is None:
+        from axiom_cpi import HumanoidStabilityAgent
+        _cpi_singleton = HumanoidStabilityAgent()
+    return _cpi_singleton
+
+
+@app.post("/cpi/stability")
+def cpi_stability(req: CPIStabilityRequest):
+    """One physics tick → ReflexEvent. The Physical MonotonicGate fires
+    if the stability score decreased between this frame and the previous."""
+    from dataclasses import asdict
+    from axiom_cpi import StabilityFrame
+    frame = StabilityFrame(
+        timestamp_ms=int(req.timestamp_ms),
+        com_offset=float(req.com_offset),
+        stability_score=float(req.stability_score),
+        joint_torques=tuple(req.joint_torques or ()),
+    )
+    return asdict(_get_cpi().step(frame))
+
+
+@app.post("/cpi/classify")
+def cpi_classify(req: CPIClassifyRequest):
+    """Vertex classifier — geometry features + optional material override
+    → constitutional skill class with torque ceiling."""
+    from dataclasses import asdict
+    features = dict(req.features)
+    if req.fracture_probability is not None:
+        features["fracture_probability"] = req.fracture_probability
+    return asdict(_get_cpi().classifier.classify(features))
+
+
+@app.post("/cpi/simulate")
+def cpi_simulate(req: CPISimulateRequest):
+    """Constitutional World Simulation — N-branch contact forecast."""
+    from dataclasses import asdict
+    return asdict(_get_cpi().material.simulate(
+        req.object_id, req.material_class, float(req.grip_force_nm),
+    ))
+
+
+@app.post("/cpi/pickup")
+def cpi_pickup(req: CPIPickupRequest):
+    """End-to-end pickup pipeline: material sim → vertex classify →
+    constitutional torque clamp. Returns the full plan."""
+    return _get_cpi().perceive_and_plan(
+        object_id=req.object_id,
+        features=dict(req.features),
+        material_class=req.material_class,
+        requested_grip_force_nm=float(req.requested_grip_force_nm),
+    )
+
+
+@app.get("/cpi/status")
+def cpi_status():
+    return _get_cpi().status()
 
 
 # ── ORVL-023 — AXIOM eXchange Model (.AXM) endpoints ──────────

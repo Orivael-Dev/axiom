@@ -108,6 +108,36 @@ TOOLS = [
      "description": "Inspect the CMAA fleet — trust levels per container, currently "
                     "suspended containers, and the human-review queue depth.",
      "inputSchema": {"type": "object", "properties": {}}},
+    # ── ORVL-022 — Constitutional Physical Intelligence ──────────
+    {"name": "axiom_cpi",
+     "description": "Constitutional Physical Intelligence (ORVL-022) — "
+                    "physical-AI governance for humanoids/robotics/AV. "
+                    "action='stability' records one stability frame and "
+                    "returns the Physical MonotonicGate verdict; "
+                    "action='classify' runs vertex classification; "
+                    "action='simulate' runs an N-branch material contact "
+                    "forecast; action='pickup' runs the full perceive-and-"
+                    "plan pipeline (material sim → vertex class → "
+                    "constitutional torque clamp); action='status' returns "
+                    "the agent state.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action": {"type": "string",
+                         "enum": ["stability", "classify", "simulate",
+                                   "pickup", "status"]},
+             "frame":  {"type": "object",
+                         "description": "required for action=stability — "
+                                         "{timestamp_ms, com_offset, "
+                                         "stability_score, joint_torques}"},
+             "features": {"type": "object",
+                           "description": "required for classify/pickup"},
+             "material_class":          {"type": "string"},
+             "object_id":               {"type": "string"},
+             "grip_force_nm":           {"type": "number"},
+             "requested_grip_force_nm": {"type": "number"},
+             "fracture_probability":    {"type": "number"},
+         },
+         "required": ["action"]}},
     # ── ORVL-023 — AXIOM eXchange Model (.AXM) container ─────────
     {"name": "axiom_axm",
      "description": "Operate an AXM model container (ORVL-023). "
@@ -443,6 +473,70 @@ def _get_phone():
     return _phone_singleton
 
 
+# ── ORVL-022 — Constitutional Physical Intelligence handler ──
+_cpi_singleton_mcp = None
+
+
+def _get_cpi_mcp():
+    global _cpi_singleton_mcp
+    if _cpi_singleton_mcp is None:
+        from axiom_cpi import HumanoidStabilityAgent
+        _cpi_singleton_mcp = HumanoidStabilityAgent()
+    return _cpi_singleton_mcp
+
+
+def _handle_cpi(args: dict) -> dict:
+    """ORVL-022 — operate the Constitutional Physical Intelligence agent."""
+    from dataclasses import asdict
+    from axiom_cpi import StabilityFrame
+    action = args.get("action")
+    if action not in ("stability", "classify", "simulate", "pickup", "status"):
+        out = {"error": "action must be one of: stability, classify, "
+                         "simulate, pickup, status"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    agent = _get_cpi_mcp()
+    try:
+        if action == "status":
+            out = {"action": "status", **agent.status()}
+        elif action == "stability":
+            frame = args.get("frame") or {}
+            sf = StabilityFrame(
+                timestamp_ms=int(frame.get("timestamp_ms", 0)),
+                com_offset=float(frame.get("com_offset", 0.0)),
+                stability_score=float(frame.get("stability_score", 1.0)),
+                joint_torques=tuple(frame.get("joint_torques") or ()),
+            )
+            out = {"action": "stability", **asdict(agent.step(sf))}
+        elif action == "classify":
+            features = dict(args.get("features") or {})
+            if "fracture_probability" in args and args["fracture_probability"] is not None:
+                features["fracture_probability"] = float(args["fracture_probability"])
+            out = {"action": "classify",
+                    **asdict(agent.classifier.classify(features))}
+        elif action == "simulate":
+            out = {"action": "simulate",
+                    **asdict(agent.material.simulate(
+                        args.get("object_id", ""),
+                        args.get("material_class", "UNKNOWN"),
+                        float(args.get("grip_force_nm", 0.0)),
+                    ))}
+        else:  # pickup
+            out = {"action": "pickup",
+                    **agent.perceive_and_plan(
+                        object_id=args.get("object_id", ""),
+                        features=dict(args.get("features") or {}),
+                        material_class=args.get("material_class", "UNKNOWN"),
+                        requested_grip_force_nm=float(
+                            args.get("requested_grip_force_nm", 0.0)),
+                    )}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"action": action,
+                                    "trust_level": 4})
+    return out
+
+
 # ── ORVL-023 — AXM container handler ─────────────────────────
 _axm_cache_mcp: dict = {}
 
@@ -593,7 +687,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_validate": _handle_validate,
              "axiom_phone_gate": _handle_phone_gate,
              "axiom_shield": _handle_shield,
-             "axiom_axm": _handle_axm}
+             "axiom_axm": _handle_axm,
+             "axiom_cpi": _handle_cpi}
 
 
 class AxiomMCPServer:

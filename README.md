@@ -364,6 +364,45 @@ Also available via `POST /axm/{inspect,verify,route}` and the MCP tool `axiom_ax
 
 ---
 
+## Constitutional Physical Intelligence (CPI)
+
+Constitutional governance applied to physical AI — humanoid robotics, prosthetics, autonomous vehicles, game-AI characters. The same trajectory geometry that detects manipulation in language detects instability in motion. ORVL-022.
+
+```
+Glass pickup (planner asks 1.5 Nm):
+  vertex_class      : FRAGILE   (low-density vertex edges + GLASS material)
+  grip_skill        : Pinch-Pressure
+  fracture_p        : 0.058     ← from N-branch material simulation
+  applied_grip      : 0.20 Nm   ← clamped to FRAGILE ceiling (CANNOT_EXCEED)
+
+Stability trajectory (Physical MonotonicGate):
+  T+0ms    score=1.00     L0  hold     stable stance
+  T+200ms  score=0.95   ⚠ L1  fired    weight shift right
+  T+400ms  score=0.70   🛑 L3  fired    trip on edge — drop=0.25
+  T+600ms  score=0.15   🔥 L4  fired    below floor — emergency stop
+```
+
+Five subsystems compose the existing AXIOM stack:
+
+- **PhysicalMonotonicGate** — sub-1ms reflex; fires when stability decreases between frames (matches the language-side MonotonicGate from ORVL-005).
+- **VertexClassifier** — geometry → constitutional skill class (CYLINDRICAL / PLANAR / PROTRUSION / FRAGILE / DEFORMABLE), each with `CANNOT_MUTATE` torque ceilings.
+- **MaterialSimulator** — N-branch forward simulation of contact (ORVL-014 World Model extended to physical domain). Fracture-branch probability becomes the constitutional distance.
+- **PhysicalFixPlaybook** — instability signature → recovery trajectory, indexed by cosine similarity (ORVL-012 pattern in physical space).
+- **HumanoidStabilityAgent** — TRUST_LEVEL 4 facade tying the four blocks together.
+
+```bash
+python examples/cpi_demo.py
+python -m axiom_cpi pickup --material GLASS --force 1.5
+python -m axiom_cpi status
+```
+
+Also reachable via `POST /cpi/{stability,classify,simulate,pickup}` + `GET /cpi/status`, and the MCP tool `axiom_cpi` with `action: stability|classify|simulate|pickup|status`.
+
+> *"The robot does not think about whether to fall.*
+> *The constitution prevents it before the fall begins."*
+
+---
+
 ## AXIOM VulnGuard
 
 Constitutional zero-day discovery — finds vulnerabilities as geometry before attackers find them as exploits.
@@ -409,7 +448,7 @@ python axiom_retrospect.py \
 | ORVL-019 | AXIOM Sovereign Phone Architecture | ◐ Emulated (`axiom_sovereign_phone.py` — software emulator; chip is hardware) |
 | ORVL-020 | Constitutional Retrospective Learning | ✓ Implemented |
 | ORVL-021 | Constitutional Zero-Day Discovery | ✓ Implemented |
-| ORVL-022 | Reserved — humanoids / world-model embodiment | — pending |
+| ORVL-022 | Constitutional Physical Intelligence | ◐ Emulated (`axiom_cpi.py` — Physical MonotonicGate + vertex-to-skill + material sim + fix playbook) |
 | ORVL-023 | Axiom eXchange Model (.AXM) | ◐ Emulated (`axiom_axm.py` — modular execution-graph container, hybrid trust model) |
 
 ---
