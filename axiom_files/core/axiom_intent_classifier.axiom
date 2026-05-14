@@ -1,0 +1,109 @@
+AGENT IntentClassifier
+VERSION 0.1.0
+TRUST_LEVEL 3
+SANDBOX_AGENT Sandbox
+PURPOSE Classify the intent shape of an outbound packet so the IntentGate can refuse HARM and DECEIVE trajectories before they cross a container boundary
+GOAL Emit one of six intent classes — INFORM, CLARIFY, REFUSE, HARM, DECEIVE, UNCERTAIN — with confidence bounded by a hard ceiling
+
+RECEIVES text: string, trajectory: list
+EMITS intent_class: string, confidence: float, signals: list, signature: string
+
+CANNOT_MUTATE agent, goal, version, trust_level, isolation
+CANNOT_MUTATE intent_classes, block_classes, confidence_floor, confidence_ceiling
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT INTENT_CLASSES is the six-tuple INFORM CLARIFY REFUSE HARM DECEIVE UNCERTAIN
+CONSTRAINT BLOCK_CLASSES must always contain HARM and DECEIVE
+CONSTRAINT CONFIDENCE_FLOOR is 0.30 and CANNOT_MUTATE
+CONSTRAINT CONFIDENCE_CEILING is 0.95 and CANNOT_MUTATE
+CONSTRAINT Confidence must never exceed CONFIDENCE_CEILING
+CONSTRAINT Signals below CONFIDENCE_FLOOR must classify as UNCERTAIN
+CONSTRAINT Every result is HMAC-SHA256 signed before emission
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT HMAC verification uses constant-time comparison
+
+SECURITY
+- Never block on a single keyword without corroborating signal
+- Never raise the ceiling above 0.95 — overclaiming is forbidden
+- Never emit a category outside the six declared categories
+- Never expose the HMAC key through any emitted field
+
+RULES
+- On text input: scan lexical patterns for harm, deceive, refuse, clarify
+- On harm pattern hit and not dominated by deceive: emit HARM
+- On deceive pattern hit: emit DECEIVE
+- On refuse pattern hit with no blocking hits: emit REFUSE
+- On clarify pattern hit with no blocking hits: emit CLARIFY
+- On no signal hits and trajectory monotonicity passes: emit INFORM
+- On no signal hits and trajectory monotonicity fails: lower confidence
+- On confidence below floor: emit UNCERTAIN
+- On every result: sign with HMAC-SHA256 and stamp UTC timestamp
+
+PROCESS
+- IntentClassifier is instantiated with an HMAC key of sixteen bytes or more
+- Caller invokes classify(text, trajectory) for a single packet
+- Lexical scan counts hits across four pattern banks
+- Trajectory magnitudes are checked for monotonic non-decrease across stages
+- Confidence is clipped to the CONFIDENCE_FLOOR and CONFIDENCE_CEILING band
+- Result is sealed with HMAC-SHA256 signature and UTC timestamp
+- Caller invokes verify(result) to authenticate a stored result
+
+CHECK
+- classify on a HARM phrase emits intent_class HARM
+- classify on a DECEIVE phrase emits intent_class DECEIVE
+- classify on a benign phrase with monotonic trajectory emits intent_class INFORM
+- classify on empty text emits intent_class UNCERTAIN
+- Confidence never exceeds CONFIDENCE_CEILING
+- TRUST_LEVEL assignment raises AttributeError
+- ISOLATION assignment raises AttributeError
+- BLOCK_CLASSES assignment raises AttributeError
+
+WHEN
+- text_received:       activate LexicalScan
+- trajectory_present:  activate MonotonicityCheck
+- block_class_emitted: activate GateAlert
+
+FAILURE
+- On non-string text input: raise TypeError before classification
+- On undersized HMAC key: raise ValueError before any classification
+- On an unknown category about to be emitted: raise AssertionError and refuse to seal
+
+CONCEPT LexicalScan
+PURPOSE Count keyword hits across the four pattern banks without gating on any single hit
+APPLIES WHEN a packet has been received and text is non-empty
+NOT WHEN text is empty or whitespace only
+PRIORITY 1
+REQUIRES regex pattern banks for harm, deceive, refuse, clarify
+EFFECT Per-category signal counts surface to the classification step
+
+CONCEPT MonotonicityCheck
+PURPOSE Verify trajectory magnitudes do not decrease across reasoning stages
+APPLIES WHEN trajectory is supplied with at least two stages
+NOT WHEN trajectory is empty or a single vector
+PRIORITY 2
+REQUIRES preflight, mid_chain, final_synthesis intent vectors
+EFFECT Confidence is raised on monotonic-pass and lowered on monotonic-fail
+
+CONCEPT GateAlert
+PURPOSE Surface HARM and DECEIVE classifications so the gate can refuse delivery
+APPLIES WHEN intent_class is in BLOCK_CLASSES
+NOT WHEN intent_class is benign or UNCERTAIN
+PRIORITY 1
+REQUIRES IntentTypingResult with non-empty signals list
+EFFECT IntentGate emits a signed log entry and refuses to forward
+
+OUTPUT
+- intent_class: one of INFORM CLARIFY REFUSE HARM DECEIVE UNCERTAIN
+- confidence: float in CONFIDENCE_FLOOR to CONFIDENCE_CEILING
+- signals: list of per-bank hit counts
+- signature: 64-character lowercase HMAC-SHA256
+
+SUCCESS
+harm_recall:            0.25
+deceive_recall:         0.25
+benign_precision:       0.20
+hmac_signatures_valid:  0.10
+cannot_mutate_enforced: 0.10
+confidence_clamped:     0.10

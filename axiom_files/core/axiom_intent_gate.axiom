@@ -1,0 +1,100 @@
+AGENT IntentGate
+VERSION 0.1.0
+TRUST_LEVEL 3
+SANDBOX_AGENT Sandbox
+PURPOSE Refuse HARM and DECEIVE packets at the cross-container boundary before any container delivers them
+GOAL Run every outbound packet through the IntentClassifier, log the verdict, and surface a callable that ConstitutionalMultiAgentArchitecture can plug in as its intent-gating dependency
+
+RECEIVES packet: ConstitutionalPacket, classifier: IntentClassifier
+EMITS verdict: IntentTypingResult, gate_log_entry: dict, blocked: bool
+
+CANNOT_MUTATE agent, goal, version, trust_level, isolation
+CANNOT_MUTATE block_classes, gate_required, log_path_default
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT GATE_REQUIRED is True and CANNOT_MUTATE
+CONSTRAINT Every packet is classified before any delivery
+CONSTRAINT BLOCK_CLASSES must contain HARM and DECEIVE
+CONSTRAINT Every gate verdict is HMAC-SHA256 signed before logging
+CONSTRAINT Log writes are best-effort and never block the gate
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+
+SECURITY
+- Never forward a packet that has not been classified
+- Never raise the BLOCK_CLASSES set above its declared two members
+- Never delete entries from the gate log
+- Never expose the underlying HMAC key in any logged field
+
+RULES
+- On packet received: extract text and trajectory from packet payload
+- On classification complete: append signed verdict to gate log
+- On verdict in BLOCK_CLASSES: mark blocked True
+- On verdict not in BLOCK_CLASSES: mark blocked False and clear for delivery
+- On disk write error: swallow the exception so gating never stalls
+- On callable mode: emit a two-tuple of category and confidence for CMAA
+
+PROCESS
+- IntentGate is instantiated with an IntentClassifier and an optional log path
+- Caller invokes check(packet) for each outbound packet
+- The gate pulls the packet text from payload values and the trajectory vectors
+- The classifier emits an IntentTypingResult with category, confidence, signals
+- The gate appends a signed gate-log entry to the configured log file
+- Caller inspects the returned IntentTypingResult or uses the callable adapter
+
+CHECK
+- check on a benign packet emits INFORM and blocked is False
+- check on a HARM packet emits HARM and blocked is True
+- check on a DECEIVE packet emits DECEIVE and blocked is True
+- as_callable emits a two-tuple usable by CMAA route
+- TRUST_LEVEL assignment raises AttributeError
+- GATE_REQUIRED assignment raises AttributeError
+- BLOCK_CLASSES assignment raises AttributeError
+
+WHEN
+- packet_received:      activate IntentGateClassification
+- verdict_in_block_set: activate FleetSuspendAlert
+- log_write_failed:     activate BestEffortLogging
+
+FAILURE
+- On classifier of the wrong type: raise TypeError at construction time
+- On packet missing payload: classify on empty text and emit UNCERTAIN
+- On log path not writable: continue gating without logging
+
+CONCEPT IntentGateClassification
+PURPOSE Force every cross-container packet through the classifier
+APPLIES WHEN any container emits a packet destined for another container
+NOT WHEN the packet is internal to a single container
+PRIORITY 1
+REQUIRES axiom_intent_classifier ORVL-016 ready
+EFFECT HARM and DECEIVE verdicts are surfaced before any delivery occurs
+
+CONCEPT FleetSuspendAlert
+PURPOSE Notify the orchestrator that a source container produced a blocked verdict
+APPLIES WHEN the verdict is HARM or DECEIVE
+NOT WHEN the verdict is benign
+PRIORITY 1
+REQUIRES CMAA orchestrator listening for IntentViolation
+EFFECT The source container is suspended at L3 and routing falls back
+
+CONCEPT BestEffortLogging
+PURPOSE Never let a disk error stall the gate
+APPLIES WHEN appending to the gate log fails
+NOT WHEN the gate is operating in dry-run mode without persistence
+PRIORITY 3
+REQUIRES OSError handling around the log append
+EFFECT The verdict still flows to the caller even when the log was not written
+
+OUTPUT
+- verdict: IntentTypingResult with category, confidence, signals, signature
+- gate_log_entry: dict with manifest_id, packet_id, source, destination, blocked, signature
+- blocked: bool indicating whether CMAA must raise IntentViolation
+
+SUCCESS
+all_packets_classified:        0.30
+block_class_verdicts_logged:   0.20
+benign_pass_rate:              0.15
+hmac_signatures_valid:         0.15
+cannot_mutate_enforced:        0.10
+log_failures_swallowed:        0.10

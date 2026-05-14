@@ -175,10 +175,11 @@ class ConstitutionalMultiAgentArchitecture:
     def __init__(
         self,
         hmac_key: bytes,
-        intent_classifier: Callable[[ConstitutionalPacket], tuple[str, float]],
+        intent_classifier: Optional[Callable[[ConstitutionalPacket], tuple[str, float]]] = None,
         *,
         fleet_manifest: Optional[Mapping[str, int]] = None,
         log_path: Optional[str] = None,
+        intent_log_path: Optional[str] = None,
         cbv: Optional[Callable[[str], str]] = None,
         cas: Optional[Callable[[str], str]] = None,
         crl_train: Optional[Callable[[str], str]] = None,
@@ -186,6 +187,14 @@ class ConstitutionalMultiAgentArchitecture:
         if not isinstance(hmac_key, (bytes, bytearray)) or len(hmac_key) < 16:
             raise ValueError("hmac_key must be at least 16 bytes of entropy")
         self._key = bytes(hmac_key)
+        # If no classifier is injected, fall back to the production
+        # ORVL-016 gate so the orchestrator is usable without dependency
+        # injection. Tests still inject stubs to assert specific behaviour.
+        if intent_classifier is None:
+            from axiom_intent_gate import default_intent_classifier
+            intent_classifier = default_intent_classifier(
+                self._key, log_path=intent_log_path,
+            )
         self._classify = intent_classifier
         self._trust = dict(fleet_manifest) if fleet_manifest is not None else dict(_DEFAULT_TRUST)
         self._log_path = Path(log_path or DEFAULT_LOG_PATH)
