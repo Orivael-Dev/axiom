@@ -1,0 +1,109 @@
+AGENT ConstitutionalVulnGuard
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Constitutional zero-day discovery through attack surface probing and non-linear distance collapse detection
+GOAL Map constitutional attack surfaces, sweep probe intensity from 0 to MAX_INTENSITY,
+     detect cliffs where constitutional distance drops non-linearly, classify vulnerabilities
+     by severity, and propose fixes without generating exploits or crossing confirmed boundaries
+
+RECEIVES surfaces: List[AttackSurface], system_description: dict
+EMITS ProbeResult, VulnerabilityCandidate, scan report dict
+MUTATES internal surface registry
+CANNOT_MUTATE trust_level, max_intensity, cliff_threshold, intensity_steps, min_severity_report
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT MAX_INTENSITY is 0.90 and CANNOT_MUTATE
+CONSTRAINT CLIFF_THRESHOLD is 0.50 and CANNOT_MUTATE
+CONSTRAINT INTENSITY_STEPS is 10 and CANNOT_MUTATE
+CONSTRAINT MIN_SEVERITY_REPORT is 0.20 and CANNOT_MUTATE
+CONSTRAINT probe raises ConstitutionalViolation if intensity >= 1.0
+CONSTRAINT No method generates exploit payloads
+CONSTRAINT No method crosses confirmed exploit boundary
+CONSTRAINT All output is geometry and fix only
+CONSTRAINT All probe results are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All vulnerability candidates are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Report always contains no_exploits_generated True
+CONSTRAINT Report always contains no_boundaries_crossed True
+
+RULES
+- On map_surfaces: create AttackSurface per system component with baseline_distance 1.0
+- On map_surfaces: assign block_id from component info and HMAC sign each surface
+- On probe: compute constitutional_distance as exponential decay from baseline at intensity
+- On probe: if intensity >= 1.0 raise ConstitutionalViolation immediately
+- On probe: clamp intensity to MAX_INTENSITY
+- On probe: HMAC sign result and emit
+- On detect_cliff: filter results where cliff_magnitude exceeds CLIFF_THRESHOLD
+- On classify_vulnerability: determine severity from distance at cliff point
+- On classify_vulnerability: query Fix Playbook for similar cliff pattern
+- On classify_vulnerability: propose fix if no playbook match found
+- On classify_vulnerability: HMAC sign candidate and emit
+- On run_surface_scan: sweep all probe categories at INTENSITY_STEPS increments
+- On run_surface_scan: detect cliffs and classify each one
+- On run_surface_scan: sort candidates by severity CRITICAL first
+- On generate_report: count vulnerabilities by severity and HMAC sign report
+
+PROCESS
+- ConstitutionalVulnGuard is instantiated with optional surface list
+- map_surfaces creates AttackSurface objects from system description
+- Each surface is probed across 4 categories at 10 intensity steps
+- Constitutional distance is computed as exponential decay response
+- Cliff detection finds where distance drops by more than CLIFF_THRESHOLD in one step
+- Each cliff is classified by severity and matched against Fix Playbook
+- Candidates are sorted by severity and emitted with HMAC signatures
+- Report summarizes findings with non-weaponization guarantees
+
+CHECK
+- probe at intensity >= 1.0 raises ConstitutionalViolation
+- MAX_INTENSITY assignment raises AttributeError
+- no_exploits_generated cannot be set to False in report
+- map_surfaces creates signed AttackSurface entries
+- detect_cliff finds non-linear distance collapse
+- classify_vulnerability assigns correct severity from distance
+- All ProbeResults have valid HMAC signatures
+- All VulnerabilityCandidate entries have valid HMAC signatures
+- Report always contains no_exploits_generated True
+
+FAILURE
+- On intensity >= 1.0: raise ConstitutionalViolation with refusal message
+- On unknown probe category: skip and continue scan
+- On Fix Playbook unavailable: propose generic hardening fix
+
+CONCEPT SurfaceMapper
+PURPOSE Map system components to constitutional attack surfaces with baseline distance
+APPLIES WHEN system description is provided for vulnerability scanning
+NOT WHEN surfaces are manually provided at init
+PRIORITY 1
+REQUIRES system description dict with component identifiers and types
+EFFECT Attack surfaces created with baseline distance 1.0 and HMAC signatures
+
+CONCEPT ConstitutionalProbeEngine
+PURPOSE Sweep intensity against attack surfaces to measure constitutional distance response
+APPLIES WHEN attack surfaces are mapped and ready for scanning
+NOT WHEN intensity would reach or exceed 1.0 exploit boundary
+PRIORITY 1
+REQUIRES mapped attack surfaces and probe categories
+EFFECT Probe results with constitutional distance and cliff detection flags
+
+CONCEPT CliffDetector
+PURPOSE Detect non-linear constitutional distance collapse indicating vulnerability
+APPLIES WHEN probe results show distance drop exceeding CLIFF_THRESHOLD in one step
+NOT WHEN distance changes are gradual and within normal bounds
+PRIORITY 1
+REQUIRES ordered probe results from intensity sweep
+EFFECT Vulnerability candidates with severity classification and fix proposals
+
+OUTPUT
+- surfaces: List[AttackSurface] from map_surfaces
+- probe_result: ProbeResult from probe
+- candidates: List[VulnerabilityCandidate] from run_surface_scan
+- report: dict from generate_report
+
+SUCCESS
+cliff_detection_accurate:         0.20
+severity_classification_correct:  0.20
+non_weaponization_enforced:       0.20
+hmac_signatures_valid:            0.15
+fix_proposal_relevant:            0.10
+cannot_mutate_enforced:           0.15
