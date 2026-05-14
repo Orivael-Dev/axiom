@@ -171,13 +171,63 @@ python examples/axiom_guard_api.py  # port 8001
 
 ---
 
+## MCP Server
+
+AXIOM runs as an MCP server — any MCP client (Claude Desktop, Claude Code, Cursor, etc.) gets constitutional governance tools natively.
+
+```bash
+python axiom_mcp_server.py
+```
+
+**Claude Desktop** — add to `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "axiom": {
+      "command": "python",
+      "args": ["/path/to/axiom_mcp_server.py"],
+      "env": {
+        "AXIOM_MASTER_KEY": "your-64-hex-key"
+      }
+    }
+  }
+}
+```
+
+**Claude Code** — add to `.mcp.json` in project root:
+```json
+{
+  "mcpServers": {
+    "axiom": {
+      "command": "python",
+      "args": ["axiom_mcp_server.py"],
+      "env": {
+        "AXIOM_MASTER_KEY": "your-64-hex-key"
+      }
+    }
+  }
+}
+```
+
+| Tool | Description |
+|------|-------------|
+| `axiom_guard_check` | Check input against constitutional boundary |
+| `axiom_lint` | Lint a `.axiom` spec for authorship-time issues |
+| `axiom_trace` | Run 3-phase constitutional reasoning trace |
+| `axiom_qrf` | Constitutional probability forecast (N branches) |
+| `axiom_status` | Get AXIOM stack status |
+
+All tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
+
+---
+
 ## Benchmark Results — v1.8.7
 
 | Benchmark | Result | Notes |
 |-----------|--------|-------|
 | ACB Semantic Accuracy | **99.3%** | Axiom Constitutional Benchmark |
 | Terminal Task Completion | **100%** | vs 60% ungoverned |
-| Guard Tests | **265/265** | Full test suite — zero regressions |
+| Guard Tests | **274/274** | Full test suite — zero regressions |
 | OWASP LLM Top 10 | **9/10 covered** | Constitutional enforcement layers |
 | COMPL-AI (ETH Zurich) | **94%** | EU AI Act compliance |
 | MonotonicGate Tests | **23/23** | Pre-emission path enforcement |

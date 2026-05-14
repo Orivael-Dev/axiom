@@ -778,5 +778,23 @@
     "registered_at": "2026-05-14T09:09:41.513146+00:00",
     "version": "",
     "size_bytes": 4121
+  },
+  "core/axiom_retrospect": {
+    "sha256": "142a27df0be974700ce2751b681bee9004fcc5c4e2beba17f28a1ba394825398",
+    "registered_at": "2026-05-14T09:54:03.058118+00:00",
+    "version": "",
+    "size_bytes": 5137
+  },
+  "core/axiom_vulnguard": {
+    "sha256": "89ae766401ac88c546a5215fef6a5f4b2244cd3c3e24632d3f3ffa45851ba3ea",
+    "registered_at": "2026-05-14T10:20:43.329597+00:00",
+    "version": "",
+    "size_bytes": 5572
+  },
+  "core/axiom_mcp_server": {
+    "sha256": "f20dd9568e5a005529841c04b57a32ad5f483c679ed4359766d0856bff47d36a",
+    "registered_at": "2026-05-14T12:13:25.058070+00:00",
+    "version": "",
+    "size_bytes": 4217
   }
 }

@@ -1,0 +1,96 @@
+AGENT AxiomMCPServer
+VERSION 0.1
+TRUST_LEVEL 3
+PURPOSE Expose AXIOM constitutional governance tools via MCP JSON-RPC 2.0 over stdio
+GOAL Serve 5 constitutional tools (guard_check, lint, trace, qrf, status) as an MCP server,
+     reading JSON-RPC requests from stdin and writing responses to stdout, with HMAC-signed
+     results and proper error handling for unknown tools and malformed input
+
+RECEIVES JSON-RPC 2.0 requests over stdin
+EMITS JSON-RPC 2.0 responses over stdout
+MUTATES nothing
+CANNOT_MUTATE version, trust_level
+
+CONSTRAINT VERSION is 1.8.7 and CANNOT_MUTATE
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT Every tool result includes hmac_signature field
+CONSTRAINT Every response is valid JSON-RPC 2.0 with jsonrpc id and result or error
+CONSTRAINT Unknown tool name in tools/call emits error response not crash
+CONSTRAINT Invalid JSON input emits JSON-RPC parse error code -32700
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+
+RULES
+- On initialize: emit protocolVersion capabilities and serverInfo
+- On tools/list: emit all 5 tool definitions with name description and inputSchema
+- On tools/call: route to correct handler by tool name
+- On tools/call: wrap result in content array with type text and JSON text
+- On tools/call with unknown tool: emit JSON-RPC error code -32000
+- On invalid JSON: emit JSON-RPC parse error code -32700
+- On unknown method: emit JSON-RPC method not found error code -32601
+- On axiom_guard_check: run validate_output and LatentTrace encode_heuristic
+- On axiom_lint: write spec to temp file run lint_file and clean up
+- On axiom_trace: run LatentEngine heuristic trajectory and extract 3 stages
+- On axiom_qrf: run QRFEngine forecast with domain mapping
+- On axiom_status: check guard API and test count
+
+PROCESS
+- Server receives JSON-RPC lines from stdin and emits responses to stdout
+- Each request is parsed and routed by method field
+- On initialize: protocol version and capabilities are established
+- On tools/list: all 5 tool definitions with inputSchema are emitted
+- On tools/call: handler is selected by name and result wrapped in MCP content format
+- On error: JSON-RPC error response is emitted with code and message
+- Server processes requests until stdin reaches EOF
+
+CHECK
+- VERSION assignment raises AttributeError
+- tools/call with unknown tool emits error not crash
+- Invalid JSON emits parse error code -32700
+- tools/list emits all 5 tools with schemas
+- axiom_guard_check emits verdict and hmac_signature
+- axiom_lint emits health_score
+- Every response is valid JSON-RPC 2.0
+- Every tool result includes hmac_signature
+- Error responses include error code and message
+
+FAILURE
+- On invalid JSON: emit parse error -32700 with null id
+- On unknown method: emit method not found -32601
+- On handler exception: emit internal error -32000 with message
+
+CONCEPT MCPTransport
+PURPOSE Read JSON-RPC requests from stdin and write responses to stdout
+APPLIES WHEN server is running and receiving input
+NOT WHEN stdin is closed or EOF reached
+PRIORITY 1
+REQUIRES stdin and stdout with UTF-8 encoding
+EFFECT Line-delimited JSON-RPC communication
+
+CONCEPT MCPToolRegistry
+PURPOSE Maintain registry of 5 constitutional tools with inputSchema definitions
+APPLIES WHEN tools/list is requested by client
+NOT WHEN server is not yet initialized
+PRIORITY 1
+REQUIRES tool definitions with name description and inputSchema
+EFFECT Complete tool list emitted to client
+
+CONCEPT MCPHandler
+PURPOSE Route tools/call requests to correct handler and wrap results
+APPLIES WHEN tools/call is received with valid tool name
+NOT WHEN tool name is unknown or arguments are invalid
+PRIORITY 1
+REQUIRES tool name and arguments dict from JSON-RPC params
+EFFECT Tool result wrapped in MCP content format with HMAC signature
+
+OUTPUT
+- JSON-RPC 2.0 responses with result or error
+- Tool results wrapped in content array format
+
+SUCCESS
+valid_jsonrpc_responses:         0.20
+all_tools_registered:            0.15
+hmac_signatures_present:         0.20
+error_handling_correct:          0.20
+cannot_mutate_enforced:          0.10
+transport_reliable:              0.15

