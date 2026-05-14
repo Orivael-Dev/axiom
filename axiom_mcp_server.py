@@ -108,6 +108,20 @@ TOOLS = [
      "description": "Inspect the CMAA fleet — trust levels per container, currently "
                     "suspended containers, and the human-review queue depth.",
      "inputSchema": {"type": "object", "properties": {}}},
+    # ── AXIOM Language Strict Mode validator ────────────────────
+    {"name": "axiom_validate",
+     "description": "Validate raw .axiom spec content against the language validator "
+                    "(syntax, purity, semantic). Set strict=true to also reject syntactic "
+                    "external-code patterns and promote vague-term warnings to errors, "
+                    "per axiom_files/core/strict_mode.axiom. Returns status, signed "
+                    "issues list, and the resolved strict_mode flag.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "spec_content": {"type": "string", "description": "Raw .axiom file contents"},
+             "filename":     {"type": "string", "description": "Optional filename for reporting"},
+             "strict":       {"type": "boolean", "description": "Enable strict mode"},
+         },
+         "required": ["spec_content"]}},
 ]
 
 
@@ -300,12 +314,61 @@ def _handle_cmaa_fleet(_args: dict) -> dict:
     return out
 
 
+def _handle_validate(args: dict) -> dict:
+    """Validate raw .axiom content through the language validator (with strict mode)."""
+    import uuid
+    from pathlib import Path as _Path
+    content = args.get("spec_content", "")
+    strict  = bool(args.get("strict", False))
+    if not isinstance(content, str) or not content.strip():
+        out = {"error": "spec_content must be a non-empty string", "strict_mode": strict}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    from axiom_files.parser import load_axiom
+    from axiom_files.validator import validate_parsed
+
+    # Use a tempfile inside axiom_files/ so the parser's path resolver finds it.
+    # Name is randomized to avoid colliding with real specs and is removed in
+    # finally{} regardless of validation outcome.
+    project_root = _Path(__file__).resolve().parent
+    axfiles_dir  = project_root / "axiom_files"
+    tmp_name = f"_mcp_validate_{uuid.uuid4().hex}"
+    tmp_path = axfiles_dir / f"{tmp_name}.axiom"
+    try:
+        tmp_path.write_text(content, encoding="utf-8")
+        parsed = load_axiom(tmp_name)
+        result = validate_parsed(parsed, strict=strict)
+    except Exception as e:
+        out = {"error": f"validation failed: {type(e).__name__}: {e}", "strict_mode": strict}
+        out["hmac_signature"] = _sign(out)
+        return out
+    finally:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    out = {
+        "status":       result["status"],
+        "strict_mode":  result.get("strict_mode", False),
+        "issue_count":  len(result.get("issues", [])),
+        "issues":       result.get("issues", []),
+        "suggestions":  result.get("suggestions", []),
+    }
+    out["hmac_signature"] = _sign({"status": out["status"],
+                                    "strict_mode": out["strict_mode"],
+                                    "issue_count": out["issue_count"]})
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
              "axiom_intent_gate_check": _handle_intent_gate_check,
              "axiom_cmaa_route": _handle_cmaa_route,
-             "axiom_cmaa_fleet": _handle_cmaa_fleet}
+             "axiom_cmaa_fleet": _handle_cmaa_fleet,
+             "axiom_validate": _handle_validate}
 
 
 class AxiomMCPServer:

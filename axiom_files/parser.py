@@ -295,6 +295,8 @@ def load_axiom(agent_name: str, verify: bool = False) -> dict:
             parsed["version"] = line.replace("VERSION ", "").strip()
         elif line.startswith("TRUST_LEVEL "):
             parsed["trust_level"] = line.replace("TRUST_LEVEL ", "").strip()
+        elif line.upper().strip() in ("STRICT MODE", "STRICT_MODE"):
+            parsed["_strict_mode"] = True
         elif line.startswith("SANDBOX_AGENT "):
             parsed["sandbox_agent"] = line.replace("SANDBOX_AGENT ", "").strip()
         elif line.startswith("PURPOSE "):

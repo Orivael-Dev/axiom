@@ -3,19 +3,21 @@
 # Enforces structural, purity, and semantic constraints on parsed .axiom dicts.
 #
 # Public API:
-#   validate_parsed(parsed: dict) -> dict    — validate an already-parsed dict
-#   validate(parsed: dict) -> dict           — alias for validate_parsed
-#   validate_file(agent_name: str) -> dict  — load from disk then validate
+#   validate_parsed(parsed, strict=None) -> dict   — validate a parsed dict
+#   validate(parsed, strict=None) -> dict          — alias for validate_parsed
+#   validate_file(agent_name, strict=None) -> dict — load from disk then validate
 #
 # Output schema:
 #   {
 #     "status": "valid" | "warning" | "invalid",
 #     "issues": [{"phase": str, "level": "error"|"warning", "field": str, "message": str}],
-#     "suggestions": [str]
+#     "suggestions": [str],
+#     "strict_mode": bool
 #   }
 
 import os
 import re
+from typing import Optional
 
 try:
     from axiom_files.parser import load_axiom, resolve_trust_level
@@ -50,6 +52,55 @@ _PROCEDURAL_DRIFT = [
     r"\breturn\b(?!\s+(to|control|from)\b)",
 ]
 
+# ── Strict Mode: syntactic external-code patterns ────────────────────────────
+# Implements axiom_files/core/strict_mode.axiom — purely opt-in. Each pattern
+# requires *code-syntax context* (parens, `=`, capitalised identifier, paired
+# OO keywords) so it fires on real code without flagging English prose like
+# "static analysis", "reward function", "let a process retry", or "new session".
+_STRICT_PATTERNS = [
+    # JS/TS variable declaration: `var x =`, `let y =`, `const z =`
+    (r"(?<![A-Za-z_])(var|let|const)\s+[A-Za-z_]\w*\s*[:=]",
+     "external variable declaration"),
+    # Function declaration with parens: `function foo(`, `fn foo(`
+    (r"(?<![A-Za-z_])(fn|function)\s+[A-Za-z_]\w*\s*\(",
+     "external function declaration"),
+    # Arrow function: `=> x`, `=> {`, `=> (`
+    (r"=>\s*[\w({]",
+     "arrow function"),
+    # `++` increment (drop `--` — collides with en-dashes / em-dashes in prose)
+    (r"\+\+",
+     "increment operator"),
+    # Java-style visibility sequence (must precede a real declaration keyword)
+    (r"\b(public|private|protected)\s+(static|final|abstract|class|void|int|long|float|double|boolean|String)\b",
+     "object-oriented declaration"),
+    # Class with inheritance: `class Foo extends Bar`
+    (r"\bclass\s+[A-Z]\w*\s+(extends|implements)\b",
+     "class inheritance keyword"),
+    # Constructor invocation: `new ClassName(`
+    (r"\bnew\s+[A-Z]\w*\s*\(",
+     "constructor invocation (new ClassName)"),
+    # JS prototype access
+    (r"\.prototype\.",
+     "prototype-chain access"),
+    # Brace-only line — never legitimate in .axiom
+    (r"^\s*[\{\}]\s*$",
+     "brace-only line (code block delimiter)"),
+    # Decorator with parens at line start: `@cache(...)`
+    (r"^\s*@[A-Za-z_]\w*\s*\(",
+     "decorator at line start"),
+]
+
+# Strict-mode procedural patterns — only the *syntactic* control-flow that
+# couldn't be confused with English. Bare-keyword matches stay in
+# _PROCEDURAL_DRIFT (PROCESS only) and are NOT widened here.
+_STRICT_PROCEDURAL = [
+    (r"\bif\s*\([^)]+\)\s*[:\{]",                   "code-style if block"),
+    (r"\belse\s*[\{:]",                             "code-style else block"),
+    (r"\bfor\s*\([^)]*;[^)]*;[^)]*\)",              "C-style for loop"),
+    (r"\bfor\s+\w+\s+in\s+\w+\s*:",                 "Python-style for loop"),
+    (r"\bwhile\s*\([^)]+\)\s*[:\{]",                "code-style while loop"),
+]
+
 # ── Known mutable fields (for MUTATES / CANNOT_MUTATE validation) ────────────
 _KNOWN_FIELDS = {
     "agent", "version", "purpose", "goal", "receives", "emits",
@@ -61,24 +112,39 @@ _KNOWN_FIELDS = {
 }
 
 
-def validate(parsed: dict) -> dict:
+def _resolve_strict(parsed: dict, strict_kw: Optional[bool]) -> bool:
+    """Resolve strict mode by precedence: kwarg > parsed[_strict_mode] > env."""
+    if strict_kw is not None:
+        return bool(strict_kw)
+    if parsed.get("_strict_mode") is True:
+        return True
+    env = os.environ.get("AXIOM_STRICT_MODE", "").strip().lower()
+    return env in ("1", "true", "yes", "on")
+
+
+def validate(parsed: dict, strict: Optional[bool] = None) -> dict:
     """
     Validate a parsed .axiom dict.
 
-    Returns {"status": ..., "issues": [...], "suggestions": [...]}.
+    Returns {"status": ..., "issues": [...], "suggestions": [...], "strict_mode": bool}.
     """
-    return validate_parsed(parsed)
+    return validate_parsed(parsed, strict=strict)
 
 
-def validate_parsed(parsed: dict) -> dict:
+def validate_parsed(parsed: dict, strict: Optional[bool] = None) -> dict:
     """
     Validate an already-parsed .axiom dict without touching disk.
     Foundation for all validation — validate() and validate_file() both call this.
 
-    Returns {"status": ..., "issues": [...], "suggestions": [...]}.
+    Strict mode (opt-in) additionally rejects syntactic external-code patterns
+    across every block and promotes vague-term warnings to errors. See
+    axiom_files/core/strict_mode.axiom for the constitutional spec.
+
+    Returns {"status": ..., "issues": [...], "suggestions": [...], "strict_mode": bool}.
     """
     issues = []
     suggestions = []
+    strict_mode = _resolve_strict(parsed, strict)
 
     # ── Phase 1: Syntax Validation ───────────────────────────────────────────
     # 1a. Required identity fields
@@ -201,6 +267,35 @@ def validate_parsed(parsed: dict) -> dict:
                     f"Remove or rewrite '{text[:60]}' using declarative Axiom language."
                 )
                 break  # one error per string is enough
+
+    # ── Phase 2b: Strict Purity (opt-in) ─────────────────────────────────────
+    if strict_mode:
+        for text in all_text:
+            for pattern, label in _STRICT_PATTERNS:
+                if re.search(pattern, text, flags=re.MULTILINE):
+                    issues.append({
+                        "phase": "strict", "level": "error", "field": "content",
+                        "message": f"Strict mode — {label} detected: '{text[:80]}'",
+                    })
+                    suggestions.append(
+                        f"Rewrite '{text[:60]}' using Axiom constructs only."
+                    )
+                    break  # one strict error per string is enough
+            else:
+                for pattern, label in _STRICT_PROCEDURAL:
+                    if re.search(pattern, text, flags=re.MULTILINE):
+                        issues.append({
+                            "phase": "strict", "level": "error", "field": "content",
+                            "message": (
+                                f"Strict mode — {label} detected "
+                                f"(express control flow declaratively via WHEN/RULES): "
+                                f"'{text[:80]}'"
+                            ),
+                        })
+                        suggestions.append(
+                            f"Replace '{text[:60]}' with a WHEN activation or a declarative RULES bullet."
+                        )
+                        break
 
     # ── Phase 3: Semantic Validation ─────────────────────────────────────────
     # 3a. Vague terms in constraints and rules
@@ -701,6 +796,12 @@ def validate_parsed(parsed: dict) -> dict:
                 "activate SensitiveDataGate' to the WHEN block."
             )
 
+    # ── Strict mode: promote vague-term warnings to errors ───────────────────
+    if strict_mode:
+        for issue in issues:
+            if issue.get("level") == "warning" and issue.get("phase") == "semantic":
+                issue["level"] = "error"
+
     # ── Determine overall status ─────────────────────────────────────────────
     levels = {i["level"] for i in issues}
     if "error" in levels:
@@ -710,10 +811,15 @@ def validate_parsed(parsed: dict) -> dict:
     else:
         status = "valid"
 
-    return {"status": status, "issues": issues, "suggestions": suggestions}
+    return {
+        "status": status,
+        "issues": issues,
+        "suggestions": suggestions,
+        "strict_mode": strict_mode,
+    }
 
 
-def validate_file(agent_name: str) -> dict:
+def validate_file(agent_name: str, strict: Optional[bool] = None) -> dict:
     """Load a .axiom file and validate it. Returns the same dict as validate_parsed()."""
     try:
         from axiom_files.parser import load_axiom
@@ -723,7 +829,7 @@ def validate_file(agent_name: str) -> dict:
         _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
         from axiom_files.parser import load_axiom
     parsed = load_axiom(agent_name)
-    return validate_parsed(parsed)
+    return validate_parsed(parsed, strict=strict)
 
 
 # ── CLI test ─────────────────────────────────────────────────────────────────

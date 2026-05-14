@@ -223,6 +223,7 @@ class RunRequest(BaseModel):
 
 class ValidateRequest(BaseModel):
     agent: str
+    strict: Optional[bool] = False
 
 class ChaosRequest(BaseModel):
     iterations: Optional[int] = 5
@@ -561,13 +562,14 @@ def run_axiom(req: RunRequest):
 def validate(req: ValidateRequest):
     """Validate a single agent .axiom file."""
     try:
-        result = validate_file(req.agent)
+        result = validate_file(req.agent, strict=req.strict)
         return {
             "agent": req.agent,
             "status": result["status"],
             "issues": result["issues"],
             "suggestions": result.get("suggestions", []),
             "issue_count": len(result["issues"]),
+            "strict_mode": result.get("strict_mode", False),
         }
     except ValueError as e:
         # Path-traversal / illegal agent_name from sanitiser.
