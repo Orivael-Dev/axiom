@@ -74,7 +74,16 @@ def _sign_packet(p) -> str:
     return hmac.new(SIGNING_KEY, payload, hashlib.sha256).hexdigest()
 
 def _verify_packet(p) -> bool:
-    return p.hmac_signature == _sign_packet(p)
+    """Constant-time verify of a packet's HMAC signature.
+
+    Uses ``hmac.compare_digest`` so a partial-match attacker cannot
+    learn signature bytes by timing successive equality checks.
+    """
+    stored = getattr(p, "hmac_signature", "")
+    expected = _sign_packet(p)
+    if not isinstance(stored, str) or len(stored) != len(expected):
+        return False
+    return hmac.compare_digest(stored, expected)
 
 def _quantize_vec(vec, dim=_VECTOR_DIMENSIONS):
     if len(vec) > dim:

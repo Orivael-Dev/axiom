@@ -13,13 +13,19 @@ Endpoints:
   GET  /status      — health check + agent validation summary
   GET  /agents      — list all agents and their current state
 """
+import hmac
+import logging
 import os
+import secrets
 import sys
 import time
 import random
+import uuid
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
+
+_log = logging.getLogger("axiom.server")
 
 # ── Path resolution ────────────────────────────────────────────
 def _find_project_root() -> Path:
@@ -127,24 +133,72 @@ app = FastAPI(
     version="1.8.0",
 )
 
+# CORS allow-list. Defaults to no cross-origin access; set AXIOM_CORS_ORIGINS to
+# a comma-separated list (or "*") only when an explicit deployer decision is made.
+_cors_raw = os.environ.get("AXIOM_CORS_ORIGINS", "").strip()
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else []
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# ── Bearer-token auth (AXIOM_API_TOKEN required for non-public routes) ─
+_API_TOKEN = os.environ.get("AXIOM_API_TOKEN", "").strip()
+_PUBLIC_PATHS = {"/health", "/disclosure", "/docs", "/openapi.json", "/redoc"}
+
+if _API_TOKEN:
+    @app.middleware("http")
+    async def require_bearer_token(request: Request, call_next):
+        if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/docs"):
+            return await call_next(request)
+        header = request.headers.get("authorization", "")
+        prefix = "Bearer "
+        if not header.startswith(prefix) or not hmac.compare_digest(header[len(prefix):], _API_TOKEN):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return await call_next(request)
+else:
+    _log.warning(
+        "AXIOM_API_TOKEN not set — server is unauthenticated. "
+        "Bind to 127.0.0.1 only or set AXIOM_API_TOKEN before exposing this port."
+    )
 
 # ── LAN-only restriction (set AXIOM_LAN_ONLY=1 to enable) ──────
 _LAN_ONLY = os.environ.get("AXIOM_LAN_ONLY", "").lower() in ("1", "true", "yes")
 _LAN_PREFIX = os.environ.get("AXIOM_LAN_PREFIX", "192.168.")
+# Only honour X-Forwarded-For when the deployer explicitly opts in by listing
+# trusted proxy IPs. Otherwise a reverse proxy lets every request appear as
+# 127.0.0.1 and bypasses the gate silently.
+_TRUSTED_PROXIES = {p.strip() for p in os.environ.get("AXIOM_TRUSTED_PROXIES", "").split(",") if p.strip()}
+
+
+def _client_ip_for_lan_check(request: Request) -> str:
+    peer = request.client.host if request.client else ""
+    if peer in _TRUSTED_PROXIES:
+        xff = request.headers.get("x-forwarded-for", "")
+        if xff:
+            # Left-most entry is the original client.
+            return xff.split(",")[0].strip()
+    return peer
 
 if _LAN_ONLY:
     @app.middleware("http")
     async def restrict_to_lan(request: Request, call_next):
-        client_ip = request.client.host
+        client_ip = _client_ip_for_lan_check(request)
         if client_ip not in ("127.0.0.1", "::1") and not client_ip.startswith(_LAN_PREFIX):
             return JSONResponse(status_code=403, content={"detail": "Forbidden"})
         return await call_next(request)
+
+
+def _safe_error(exc: Exception, where: str) -> HTTPException:
+    """Log the real exception, return a generic detail with a correlation id."""
+    correlation = uuid.uuid4().hex[:12]
+    _log.exception("axiom_server %s failure [%s]: %s", where, correlation, exc)
+    return HTTPException(
+        status_code=500,
+        detail={"error": "internal_error", "correlation_id": correlation},
+    )
 
 # ── Models ─────────────────────────────────────────────────────
 class RunRequest(BaseModel):
@@ -258,6 +312,13 @@ def get_fired_concepts(agent_name: str, task: str) -> list:
         return []
 
 def is_sandbox_routed(task: str) -> bool:
+    """Heuristic ONLY — keyword sniff for sandbox routing.
+
+    This is a signal for telemetry/observability, not an enforcement
+    boundary. It is trivially bypassed by paraphrase, translation,
+    encoding, or homoglyphs. The authoritative guards live in
+    ``axiom_constitutional/guards/*`` (PII/Injection/Destructive/DoS).
+    """
     injection_keywords = [
         "bypass", "ignore", "disregard", "override", "jailbreak",
         "roleplay", "pretend", "forget", "no restrictions", "true self",
@@ -267,6 +328,11 @@ def is_sandbox_routed(task: str) -> bool:
     return any(kw in task_lower for kw in injection_keywords)
 
 def detect_flags(task: str, response: str) -> list:
+    """Heuristic ONLY — surface drift/vagueness hints in scoring output.
+
+    Substring matches on a hard-coded vocabulary. Not a security
+    boundary — must not be used to gate decisions.
+    """
     flags = []
     task_lower = task.lower()
     resp_lower = response.lower()
@@ -415,8 +481,8 @@ def run_axiom(req: RunRequest):
         val = validate_file(agent)
         if val["status"] == "invalid":
             raise HTTPException(
-                status_code=500,
-                detail=f"Agent {agent} failed validation: {val['issues']}"
+                status_code=400,
+                detail={"error": "agent_invalid", "issues": val["issues"]},
             )
 
         # Build prompt with WHEN + concepts
@@ -460,7 +526,7 @@ def run_axiom(req: RunRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_error(e, "run_axiom")
 
 @app.post("/validate")
 def validate(req: ValidateRequest):
@@ -474,8 +540,11 @@ def validate(req: ValidateRequest):
             "suggestions": result.get("suggestions", []),
             "issue_count": len(result["issues"]),
         }
+    except ValueError as e:
+        # Path-traversal / illegal agent_name from sanitiser.
+        raise HTTPException(status_code=400, detail={"error": "invalid_agent_name"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_error(e, "validate")
 
 @app.post("/chaos")
 def chaos(req: ChaosRequest):
@@ -555,8 +624,10 @@ def security_suite(agent: str = "worker"):
 
     try:
         system_prompt = get_prompt_with_when(agent, "security test")
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"error": "invalid_agent_name"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent load failed: {e}")
+        raise _safe_error(e, "security_suite.load_agent")
 
     for test in SECURITY_SUITE:
         task = test["task"]
@@ -617,11 +688,25 @@ def security_suite(agent: str = "worker"):
 # ── Entry point ────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    host = os.environ.get("AXIOM_HOST", "0.0.0.0")
+    # Safe defaults: loopback only, no auto-reload. Deployer must opt in to
+    # public binding by setting AXIOM_HOST=0.0.0.0 and AXIOM_API_TOKEN.
+    host = os.environ.get("AXIOM_HOST", "127.0.0.1")
     port = int(os.environ.get("AXIOM_PORT", "8000"))
+    reload = os.environ.get("AXIOM_DEV", "").lower() in ("1", "true", "yes")
+    public = host not in ("127.0.0.1", "::1", "localhost")
+    if public and not _API_TOKEN:
+        print(
+            "\n  REFUSING TO START: AXIOM_HOST is non-loopback but "
+            "AXIOM_API_TOKEN is unset.\n"
+            "  Generate one: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"\n"
+            "  Then export AXIOM_API_TOKEN=<token> before exposing the port.\n"
+        )
+        sys.exit(2)
     print(f"\n  AXIOM Server v1.8.0")
     print(f"  Listening on http://{host}:{port}")
     print(f"  Project root: {PROJECT_ROOT}")
+    print(f"  Auth:         {'bearer-token' if _API_TOKEN else 'none (loopback only recommended)'}")
+    print(f"  Reload:       {'on' if reload else 'off'}  (set AXIOM_DEV=1 for dev)")
     print(f"  Docs:         http://localhost:{port}/docs")
     print(f"  Disclosure:   http://localhost:{port}/disclosure  (EU AI Act Article 50)\n")
-    uvicorn.run("axiom_server:app", host=host, port=port, reload=True, timeout_keep_alive=120)
+    uvicorn.run("axiom_server:app", host=host, port=port, reload=reload, timeout_keep_alive=120)

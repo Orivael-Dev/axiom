@@ -41,27 +41,72 @@ class HumanReviewRequired(Exception):
 
 AXIOM_DIR = os.environ.get("AXIOM_FILES_DIR", "axiom_files")
 
+
+class AxiomAgentNameViolation(ValueError):
+    """Raised when agent_name contains path-traversal or invalid characters."""
+    pass
+
+
+def _sanitize_agent_name(agent_name: str) -> str:
+    """Reject agent names containing path-traversal or absolute-path components.
+
+    Allowed: lowercase letters, digits, ``_``, ``-``, ``.`` and a single ``/``
+    separating an optional subdirectory (e.g. ``core/worker``). Anything else
+    — ``..`` segments, leading ``/``, backslashes, NUL bytes, drive letters,
+    URL-encoded traversal — is refused so attacker-controlled inputs from the
+    REST/MCP API cannot escape AXIOM_DIR.
+    """
+    if not isinstance(agent_name, str) or not agent_name.strip():
+        raise AxiomAgentNameViolation("agent_name must be a non-empty string")
+    base = agent_name.strip().lower()
+    if "\x00" in base or "\\" in base:
+        raise AxiomAgentNameViolation(f"agent_name contains illegal characters: {agent_name!r}")
+    if base.startswith("/") or base.startswith("./") or os.path.isabs(base):
+        raise AxiomAgentNameViolation(f"agent_name must be relative: {agent_name!r}")
+    parts = base.split("/")
+    if len(parts) > 2 or any(p in ("", "..", ".") for p in parts):
+        raise AxiomAgentNameViolation(f"agent_name has illegal path component: {agent_name!r}")
+    if not _re.fullmatch(r"[a-z0-9._\-/]+", base):
+        raise AxiomAgentNameViolation(f"agent_name contains illegal characters: {agent_name!r}")
+    return base
+
+
 def _resolve_axiom_path(agent_name: str) -> str:
     """Resolve agent name to .axiom path, searching core/ and research/ subdirs."""
-    base = agent_name.lower()
+    base = _sanitize_agent_name(agent_name)
+    axiom_root = Path(AXIOM_DIR).resolve()
     # Strip subdir prefix if already included (e.g. "core/worker" -> "worker")
     if "/" in base:
         rel = base
         path = os.path.join(AXIOM_DIR, f"{rel}.axiom")
-        if os.path.exists(path):
+        if os.path.exists(path) and _within(path, axiom_root):
             return path
         # Try as-is without extension
-        if os.path.exists(os.path.join(AXIOM_DIR, rel)):
-            return os.path.join(AXIOM_DIR, rel)
+        alt = os.path.join(AXIOM_DIR, rel)
+        if os.path.exists(alt) and _within(alt, axiom_root):
+            return alt
     candidates = [
         os.path.join(AXIOM_DIR, f"{base}.axiom"),
         os.path.join(AXIOM_DIR, "core", f"{base}.axiom"),
         os.path.join(AXIOM_DIR, "research", f"{base}.axiom"),
     ]
     for p in candidates:
-        if os.path.exists(p):
+        if os.path.exists(p) and _within(p, axiom_root):
             return p
     return candidates[0]  # caller handles missing file
+
+
+def _within(candidate: str, root: Path) -> bool:
+    """Return True iff candidate resolves inside root (post-symlink)."""
+    try:
+        resolved = Path(candidate).resolve()
+    except (OSError, RuntimeError):
+        return False
+    try:
+        resolved.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 
