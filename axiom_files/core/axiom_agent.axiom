@@ -238,6 +238,7 @@ DELEGATES
 - AxiomAgent -> GuardEngineer on: bug_hunt, security_gap
 - AxiomAgent -> EfficiencyProfiler on: efficiency_mode
 - AxiomAgent -> ReasoningExplorer on: reasoning_lab
+- AxiomAgent -> AxiomDev on: code_task, dev_cycle
 
 HUMAN_REVIEW
 - require on: new_cannot_mutate_field

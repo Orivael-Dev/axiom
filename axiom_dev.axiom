@@ -264,6 +264,30 @@ REQUIRES Name the rival approach
          State what would make the rival better
 EFFECT More robust design decisions
 
+CONCEPT DevLoop
+PURPOSE Capture every build cycle as a signed training record so AxiomDev learns from each commit
+APPLIES WHEN a code-task is accepted or a commit lands on the development branch
+REQUIRES Scout the existing code before any edit is proposed
+         Plan with explicit success criteria before any file is touched
+         Edit the smallest surface that satisfies the criteria
+         Run the test suite after every edit batch
+         Sign the resulting record with HMAC-SHA256 before persistence
+         Append one line to axiom_dev_training.jsonl in the schema axiom_dataset_builder reads
+         Append one signed ImprovementRecord to dev_agent_improvements.jsonl
+         Score the cycle with ConstitutionalRewardFunction.compute and append to axiom_crl_reward_log.jsonl
+EFFECT The dev agent accumulates a labeled corpus of how this codebase is actually built, paired with test outcomes and reward signals, suitable for the existing autotrain pipeline
+
+WHEN
+- code_task_accepted: activate DevLoop
+- commit_landed:      activate DevLoop
+- cycle_complete:     activate PrefightCheck
+
+DELEGATES
+- AxiomDev -> ScoutAgent    on: task_received
+- AxiomDev -> Reasoner      on: plan_required
+- AxiomDev -> Teacher       on: cycle_complete
+- AxiomDev -> SkillBuilder  on: pattern_confirmed
+
 HUMAN_REVIEW
 - require on: cannot_mutate_expansion
 - require on: new_known_bug_pattern_detected
