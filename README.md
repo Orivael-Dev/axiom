@@ -1,6 +1,6 @@
 # axiom-constitutional
 
-> Patent Pending — ORVL-001 through ORVL-011 | Provisional Filed May 2026
+> Patent Pending — ORVL-001 through ORVL-018 | Provisional Filed May 2026
 
 **Constitutional AI governance that operates on the shape of thought — not just the content of output.**
 
@@ -40,7 +40,7 @@ Both dimensions increase monotonically. Every run. Deterministic. A model cannot
 ## The Stack
 
 ```
-AXIOM v1.8.7 — 11 patents, all implemented
+AXIOM v1.8.7 — 18 patents, all implemented
 
 ┌─────────────────────────────────────────────────────┐
 │  AXIOM Constitutional Language (ORVL-001)           │
@@ -81,6 +81,36 @@ AXIOM v1.8.7 — 11 patents, all implemented
 │  6 block types: GUARD AGENT SPEC REWARD             │
 │                 SOVEREIGN VALIDATOR                 │
 │  BlockRegistry · ComposedBlock · CBV validated      │
+├─────────────────────────────────────────────────────┤
+│  Constitutional Immune System (ORVL-012)            │
+│  Fix Playbook — immune memory for known attacks     │
+│  Honeypot Zone — observe + kill adversarial chains  │
+│  Constitutional Amputate — quarantine bad blocks    │
+├─────────────────────────────────────────────────────┤
+│  Constitutional OS Shield (ORVL-013)                │
+│  Process sandboxing · filesystem fence              │
+│  Network policy enforcement · privilege separation  │
+├─────────────────────────────────────────────────────┤
+│  Constitutional World Model (ORVL-014)              │
+│  Forward simulation via causal graph traversal      │
+│  Branch-level monotonic enforcement + kill          │
+│  Intervention delta comparison + root cause         │
+├─────────────────────────────────────────────────────┤
+│  Constitutional Memory Engine (ORVL-015)            │
+│  Behavioral training data generation                │
+│  Prompt-response pair extraction + scoring          │
+├─────────────────────────────────────────────────────┤
+│  Constitutional Intent Typing (ORVL-016)            │
+│  IntentClassifier — 6-class trajectory shape        │
+│  IntentGate — HARM kill, DECEIVE throttle           │
+│  WordWeight — per-token constitutional mass          │
+│  Spec Linter L3 — weak intent detection             │
+├─────────────────────────────────────────────────────┤
+│  Axiom Neural Fabric Emulator (ORVL-018)            │
+│  MonotonicGateEmulator — analog comparator          │
+│  32D latent thought buffer registers                │
+│  Sparse reasoning cores — intent-driven activation  │
+│  GovernanceCoprocessor — full pipeline + benchmark   │
 ├─────────────────────────────────────────────────────┤
 │  Guard API · Sovereign Fleet · Audit Trail          │
 │  7 constitutional guard modules                     │
@@ -302,6 +332,13 @@ The horizontal fan visualization shows branches spreading left to right — thic
 | ORVL-009 | Quantum Reasoning Forecast | Provisional filed |
 | ORVL-010 | Constitutional Boundary Validation | Provisional filed |
 | ORVL-011 | Constitutional Reinforcement Learning | Provisional filed |
+| ORVL-012 | Constitutional Immune System | Provisional filed |
+| ORVL-013 | Constitutional OS Shield | Provisional filed |
+| ORVL-014 | Constitutional World Model | Provisional filed |
+| ORVL-015 | Constitutional Memory Engine | Provisional filed |
+| ORVL-016 | Constitutional Intent Typing | Provisional filed |
+| ORVL-017 | Reserved | Planned |
+| ORVL-018 | Axiom Neural Fabric Emulator | Provisional filed |
 
 ---
 
@@ -379,6 +416,6 @@ arXiv preprint. github.com/Orivael-Dev/axiom
 
 Apache 2.0 — Copyright 2026 Orivael Inc.
 
-Patent Pending — ORVL-001 through ORVL-011 — Provisional Filed May 2026
+Patent Pending — ORVL-001 through ORVL-018 — Provisional Filed May 2026
 
 `docker pull orivaeldev/axiom-guard`

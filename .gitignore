@@ -70,10 +70,12 @@ axiom_sandbox/
 # Claude Code internal
 .claude/
 
-# Certs (runtime-generated)
-certs/worker_cert_*.json
-certs/worker_cert_*.pdf
-certs/worker_fria_*.json
+# Certs (runtime-generated — no crypto keys, all AXIOM reports)
+certs/
+*.pem
+*.key
+*.p12
+*.master_key
 
 
 # IDE
