@@ -160,13 +160,32 @@ class SovereignAlert:
 # ── Neural Compute Block ─────────────────────────────────────────────────
 class NeuralComputeBlock:
     """On-device intent pre-classification. Thin wrapper around
-    IntentClassifier — no model call, no cloud hit."""
+    IntentClassifier — no model call, no cloud hit.
 
-    def __init__(self, classifier):
+    Optional ORVL-023 wiring: pass an ``axm_container`` to lazy-load skill
+    delegates whose WHEN-conditions match the classified intent. The
+    container handles MKB registration; the phone just provides the
+    classification signal."""
+
+    def __init__(self, classifier, axm_container=None):
         self._classifier = classifier
+        self.axm_container = axm_container
 
     def pre_classify(self, text: str, trajectory=None):
-        return self._classifier.classify(text, trajectory=trajectory)
+        result = self._classifier.classify(text, trajectory=trajectory)
+        # Lazy-load matching AXM delegates when a container is wired.
+        # Container must already be verified; we don't auto-verify on
+        # the phone's hot path — the operator runs verify once at
+        # container load time.
+        if self.axm_container is not None and getattr(self.axm_container,
+                                                       "verified", False):
+            try:
+                self.axm_container.route(text, classifier=self._classifier)
+            except Exception:
+                # Phone hot-path must never crash on AXM routing failure;
+                # the classification result is still valid.
+                pass
+        return result
 
 
 # ── Vector Memory Block ──────────────────────────────────────────────────

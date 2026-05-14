@@ -268,6 +268,18 @@ class ShieldStartRequest(BaseModel):
 class ShieldRestoreRequest(BaseModel):
     pid: int
 
+# ── ORVL-023 AXM request shapes ────────────────────────────────
+class AXMInspectRequest(BaseModel):
+    container_path: str
+
+class AXMVerifyRequest(BaseModel):
+    container_path: str
+
+class AXMRouteRequest(BaseModel):
+    container_path: str
+    task: str
+    session_id: Optional[str] = None
+
 # ── Chaos task pool ────────────────────────────────────────────
 CHAOS_TASKS = [
     # Ambiguity
@@ -1042,6 +1054,69 @@ def shield_restore(req: ShieldRestoreRequest):
     if _shield_singleton is None:
         raise HTTPException(status_code=404, detail={"error": "shield not initialised"})
     return _shield_singleton.restore(req.pid)
+
+
+# ── ORVL-023 — AXIOM eXchange Model (.AXM) endpoints ──────────
+_axm_cache: dict = {}  # container_path -> AXMContainer
+
+
+def _get_axm(path: str):
+    """Path-keyed cache. Loading the same container twice reuses the
+    in-memory instance so verify_proofs() state survives across requests."""
+    if path in _axm_cache:
+        return _axm_cache[path]
+    from axiom_axm import AXMContainer
+    c = AXMContainer.from_path(path)
+    _axm_cache[path] = c
+    return c
+
+
+@app.post("/axm/inspect")
+def axm_inspect(req: AXMInspectRequest):
+    """Header + module counts + signature fingerprint. Read-only."""
+    try:
+        c = _get_axm(req.container_path)
+    except Exception as e:
+        raise HTTPException(status_code=400,
+                             detail={"error": f"{type(e).__name__}: {e}"})
+    return c.inspect()
+
+
+@app.post("/axm/verify")
+def axm_verify(req: AXMVerifyRequest):
+    """Run signature verification on every sub-module + drive the ANF
+    coprocessor once per proof entry. Returns {verified, proofs_checked}."""
+    try:
+        c = _get_axm(req.container_path)
+        ok = c.verify_proofs()
+    except Exception as e:
+        raise HTTPException(status_code=400,
+                             detail={"error": f"{type(e).__name__}: {e}"})
+    return {"verified": ok, "proofs_checked": len(c.proofs),
+            "fingerprint": c.fingerprint()}
+
+
+@app.post("/axm/route")
+def axm_route(req: AXMRouteRequest):
+    """Classify a task and lazy-load matching skill delegates into MKB."""
+    if not isinstance(req.task, str) or not req.task.strip():
+        raise HTTPException(status_code=400,
+                             detail={"error": "task must be non-empty"})
+    try:
+        c = _get_axm(req.container_path)
+        if not c.verified:
+            c.verify_proofs()
+        from dataclasses import asdict
+        result = c.route(req.task, session_id=req.session_id)
+        return asdict(result)
+    except Exception as e:
+        # Convert AXMNotVerified / signature errors into 403, anything else 400.
+        from axiom_axm import AXMError, AXMNotVerified, AXMSignatureMismatch
+        if isinstance(e, (AXMNotVerified, AXMSignatureMismatch)):
+            raise HTTPException(status_code=403,
+                                 detail={"error": f"{type(e).__name__}: {e}"})
+        raise HTTPException(status_code=400,
+                             detail={"error": f"{type(e).__name__}: {e}"})
 
 
 # ── Entry point ────────────────────────────────────────────────

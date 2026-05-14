@@ -108,6 +108,27 @@ TOOLS = [
      "description": "Inspect the CMAA fleet — trust levels per container, currently "
                     "suspended containers, and the human-review queue depth.",
      "inputSchema": {"type": "object", "properties": {}}},
+    # ── ORVL-023 — AXIOM eXchange Model (.AXM) container ─────────
+    {"name": "axiom_axm",
+     "description": "Operate an AXM model container (ORVL-023). "
+                    "action='inspect' returns header + module counts; "
+                    "action='verify' checks every signature and drives the "
+                    "ANF governance coprocessor once per proof; action='route' "
+                    "classifies a task and lazy-loads matching skill delegates "
+                    "into the MKB BlockRegistry. Hybrid trust model — open "
+                    "container, signed delegates.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":         {"type": "string",
+                                 "enum": ["inspect", "verify", "route"]},
+             "container_path": {"type": "string",
+                                 "description": "filesystem path to a .axm directory"},
+             "task":           {"type": "string",
+                                 "description": "required when action='route'"},
+             "session_id":     {"type": "string",
+                                 "description": "optional session id for route"},
+         },
+         "required": ["action", "container_path"]}},
     # ── ORVL-013 — Constitutional OS Shield ──────────────────────
     {"name": "axiom_shield",
      "description": "Operate the AXIOM OS Shield daemon (ORVL-013). action='tick' "
@@ -422,6 +443,55 @@ def _get_phone():
     return _phone_singleton
 
 
+# ── ORVL-023 — AXM container handler ─────────────────────────
+_axm_cache_mcp: dict = {}
+
+
+def _handle_axm(args: dict) -> dict:
+    """ORVL-023 — operate an AXM container via MCP."""
+    from dataclasses import asdict
+    action = args.get("action")
+    container_path = args.get("container_path", "")
+    if action not in ("inspect", "verify", "route"):
+        out = {"error": "action must be one of: inspect, verify, route"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    if not isinstance(container_path, str) or not container_path.strip():
+        out = {"error": "container_path must be a non-empty string"}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    try:
+        from axiom_axm import AXMContainer, AXMNotVerified, AXMSignatureMismatch
+        if container_path in _axm_cache_mcp:
+            c = _axm_cache_mcp[container_path]
+        else:
+            c = AXMContainer.from_path(container_path)
+            _axm_cache_mcp[container_path] = c
+        if action == "inspect":
+            out = {"action": "inspect", **c.inspect()}
+        elif action == "verify":
+            ok = c.verify_proofs()
+            out = {"action": "verify", "verified": ok,
+                    "proofs_checked": len(c.proofs),
+                    "fingerprint": c.fingerprint()}
+        else:  # route
+            task = args.get("task", "")
+            if not isinstance(task, str) or not task.strip():
+                out = {"error": "task required for action=route"}
+                out["hmac_signature"] = _sign(out)
+                return out
+            if not c.verified:
+                c.verify_proofs()
+            result = c.route(task, session_id=args.get("session_id"))
+            out = {"action": "route", **asdict(result)}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"action": action,
+                                    "container_path": container_path[:120]})
+    return out
+
+
 def _handle_phone_gate(args: dict) -> dict:
     """ORVL-019 outbound/inbound gate — drives the ANF emulator for outbound."""
     from dataclasses import asdict
@@ -522,7 +592,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_cmaa_fleet": _handle_cmaa_fleet,
              "axiom_validate": _handle_validate,
              "axiom_phone_gate": _handle_phone_gate,
-             "axiom_shield": _handle_shield}
+             "axiom_shield": _handle_shield,
+             "axiom_axm": _handle_axm}
 
 
 class AxiomMCPServer:

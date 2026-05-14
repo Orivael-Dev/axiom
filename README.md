@@ -333,6 +333,37 @@ python examples/hello_operator_demo.py
 
 ---
 
+## AXIOM eXchange Model (.AXM)
+
+A successor-to-GGUF container format. Treats a model as a living execution graph rather than a frozen block of numbers — Core Logic Module always resident + Skill Delegates lazy-loaded on WHEN match + Trajectory Blocks (pre-compiled reasoning paths) + Vector-Vertex DB + Proof Ledger + Hardware Map. ORVL-023.
+
+```bash
+python examples/axm_pack_starter.py /tmp/starter.axm
+python -m axiom_axm inspect /tmp/starter.axm
+python -m axiom_axm verify  /tmp/starter.axm
+python -m axiom_axm route   /tmp/starter.axm "Explain transformers briefly"
+```
+
+Sample route output:
+
+```
+intent=INFORM   conf=0.55
+loaded   = ['anf_governance', 'pii_redactor']     ← matched WHEN condition
+skipped  = ['vector_recall']                      ← gates on UNCERTAIN, not loaded
+anf_cores=20  anf_distance=0.000                  ← ANF coprocessor driven per route
+```
+
+**Trust model: hybrid.** Container header signed under one derived key, each skill delegate signed independently under another, proof ledger signed under a third — all derived from `AXIOM_MASTER_KEY` via `axiom_signing.derive_key`. No encryption; open container, signed sub-modules, sandboxed activation.
+
+**Cross-patent wiring:**
+- ORVL-004 MKB — loaded skill delegates register as `KnowledgeBlock`s with `block_type="AXM_SKILL"` in the existing `BlockRegistry`.
+- ORVL-018 ANF — `verify_proofs()` drives `GovernanceCoprocessorEmulator.process()` once per proof entry; `header.hardware_map` selects the ANF dispatch path.
+- ORVL-019 Mobile — `NeuralComputeBlock.__init__` accepts an optional `axm_container=…`; lazy-load runs on each `pre_classify()`.
+
+Also available via `POST /axm/{inspect,verify,route}` and the MCP tool `axiom_axm` with `action: inspect|verify|route`.
+
+---
+
 ## AXIOM VulnGuard
 
 Constitutional zero-day discovery — finds vulnerabilities as geometry before attackers find them as exploits.
@@ -378,6 +409,8 @@ python axiom_retrospect.py \
 | ORVL-019 | AXIOM Sovereign Phone Architecture | ◐ Emulated (`axiom_sovereign_phone.py` — software emulator; chip is hardware) |
 | ORVL-020 | Constitutional Retrospective Learning | ✓ Implemented |
 | ORVL-021 | Constitutional Zero-Day Discovery | ✓ Implemented |
+| ORVL-022 | Reserved — humanoids / world-model embodiment | — pending |
+| ORVL-023 | Axiom eXchange Model (.AXM) | ◐ Emulated (`axiom_axm.py` — modular execution-graph container, hybrid trust model) |
 
 ---
 
