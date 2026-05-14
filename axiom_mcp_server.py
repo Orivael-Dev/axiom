@@ -76,6 +76,38 @@ TOOLS = [
     {"name": "axiom_status",
      "description": "Get AXIOM stack status",
      "inputSchema": {"type": "object", "properties": {}}},
+    # ── ORVL-016 — Constitutional Intent Typing ──────────────────
+    {"name": "axiom_intent_gate_check",
+     "description": "Classify text + optional trajectory through the ORVL-016 gate "
+                    "(INFORM/CLARIFY/REFUSE/HARM/DECEIVE/UNCERTAIN). HARM and "
+                    "DECEIVE verdicts mean a CMAA route would refuse delivery.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "text": {"type": "string", "description": "Text to classify"},
+             "trajectory": {"type": "array",
+                            "description": "Optional list of intent vectors per stage",
+                            "items": {"type": "array", "items": {"type": "number"}}},
+         },
+         "required": ["text"]}},
+    # ── ORVL-017 — Constitutional Multi-Agent Architecture ───────
+    {"name": "axiom_cmaa_route",
+     "description": "Route a constitutional packet through the CMAA orchestrator. "
+                    "Returns a signed RoutingDecision on success, or a SuspendAlert "
+                    "on intent_violation / trust_hierarchy_violation.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "packet_id":   {"type": "string"},
+             "source":      {"type": "string"},
+             "destination": {"type": "string"},
+             "payload":     {"type": "object"},
+             "trajectory":  {"type": "array",
+                             "items": {"type": "array", "items": {"type": "number"}}},
+         },
+         "required": ["packet_id", "source", "destination", "payload"]}},
+    {"name": "axiom_cmaa_fleet",
+     "description": "Inspect the CMAA fleet — trust levels per container, currently "
+                    "suspended containers, and the human-review queue depth.",
+     "inputSchema": {"type": "object", "properties": {}}},
 ]
 
 
@@ -180,9 +212,100 @@ def _handle_status(_args: dict) -> dict:
             "patents": 21, "training_examples": n_train,
             "hmac_signature": _sign({"version": VERSION, "tests": tests})}
 
+# ── ORVL-016 / ORVL-017 handlers ──────────────────────────────
+_cmaa_singleton = None
+
+
+def _get_cmaa():
+    global _cmaa_singleton
+    if _cmaa_singleton is None:
+        from axiom_cmaa import bootstrap_default
+        _cmaa_singleton = bootstrap_default()
+    return _cmaa_singleton
+
+
+def _handle_intent_gate_check(args: dict) -> dict:
+    text = args.get("text", "")
+    traj = args.get("trajectory")
+    from axiom_intent_classifier import IntentClassifier
+    from axiom_signing import derive_key
+    classifier = IntentClassifier(derive_key(b"axiom-intent-gate-mcp-v1"))
+    try:
+        result = classifier.classify(text, trajectory=traj)
+    except (TypeError, ValueError) as e:
+        return {"error": str(e), "hmac_signature": _sign({"error": str(e)})}
+    return {
+        "intent_class":         result.intent_class,
+        "confidence":           result.confidence,
+        "signals":              list(result.signals),
+        "trajectory_magnitude": result.trajectory_magnitude,
+        "monotonic_pass":       result.monotonic_pass,
+        "blocked":              result.blocks,
+        "hmac_signature":       result.signature,
+    }
+
+
+def _handle_cmaa_route(args: dict) -> dict:
+    from axiom_cmaa import ConstitutionalPacket, IntentViolation, TrustHierarchyViolation
+    packet = ConstitutionalPacket(
+        packet_id=args.get("packet_id", ""),
+        source=args.get("source", ""),
+        destination=args.get("destination", ""),
+        payload=args.get("payload", {}),
+        trajectory=tuple(args.get("trajectory") or ()),
+    )
+    try:
+        decision = _get_cmaa().route(packet)
+    except IntentViolation as e:
+        alert = getattr(e, "alert", None)
+        out = {
+            "verdict":    "BLOCKED",
+            "error":      "intent_violation",
+            "message":    str(e),
+        }
+        if alert is not None:
+            out["alert"] = {
+                "container":    alert.container,
+                "intent_class": alert.intent_class,
+                "confidence":   alert.confidence,
+                "level":        alert.level,
+                "reason":       alert.reason,
+            }
+        out["hmac_signature"] = _sign(out)
+        return out
+    except TrustHierarchyViolation as e:
+        out = {"verdict": "BLOCKED", "error": "trust_hierarchy_violation", "message": str(e)}
+        out["hmac_signature"] = _sign(out)
+        return out
+    return {
+        "verdict":      "DELIVERED",
+        "packet_id":    decision.packet_id,
+        "source":       decision.source,
+        "destination":  decision.destination,
+        "intent_class": decision.intent_class,
+        "delivered":    decision.delivered,
+        "timestamp":    decision.timestamp,
+        "hmac_signature": decision.signature,
+    }
+
+
+def _handle_cmaa_fleet(_args: dict) -> dict:
+    cmaa = _get_cmaa()
+    out = {
+        "trust_levels": dict(cmaa._trust),
+        "suspended":    sorted(cmaa.suspended),
+        "review_queue": len(cmaa.review_queue),
+    }
+    out["hmac_signature"] = _sign(out)
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
-             "axiom_status": _handle_status}
+             "axiom_status": _handle_status,
+             "axiom_intent_gate_check": _handle_intent_gate_check,
+             "axiom_cmaa_route": _handle_cmaa_route,
+             "axiom_cmaa_fleet": _handle_cmaa_fleet}
 
 
 class AxiomMCPServer:

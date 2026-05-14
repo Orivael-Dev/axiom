@@ -79,17 +79,18 @@ class TestBlocked:
 
 class TestPassed:
 
-    def test_passed_tools_list_returns_all_five(self):
-        """PASSED: tools/list returns all 5 tools with name and inputSchema."""
+    def test_passed_tools_list_returns_core_five(self):
+        """PASSED: tools/list exposes the original 5 core tools (others may
+        be added by ORVL-016/017 wiring)."""
         from axiom_mcp_server import AxiomMCPServer
         server = AxiomMCPServer()
         resp = server.handle_request(_req("tools/list"))
         parsed = _parse(resp)
         tools = parsed["result"]["tools"]
-        assert len(tools) == 5
         names = {t["name"] for t in tools}
-        assert names == {"axiom_guard_check", "axiom_lint", "axiom_trace",
-                         "axiom_qrf", "axiom_status"}
+        # Core five must always be present.
+        assert {"axiom_guard_check", "axiom_lint", "axiom_trace",
+                "axiom_qrf", "axiom_status"}.issubset(names)
         for t in tools:
             assert "inputSchema" in t
             assert "description" in t

@@ -384,3 +384,34 @@ class ConstitutionalMultiAgentArchitecture:
         raise HumanReviewRequired(
             f"no pending proposal for image {candidate_image!r}"
         )
+
+
+# ── Bootstrap helpers ─────────────────────────────────────────────────────
+def bootstrap_default(
+    *,
+    log_path: Optional[str] = None,
+    intent_log_path: Optional[str] = None,
+    fleet_manifest: Optional[Mapping[str, int]] = None,
+) -> "ConstitutionalMultiAgentArchitecture":
+    """One-call constructor for production callers.
+
+    Reads the HMAC root from ``AXIOM_MASTER_KEY`` (via :mod:`axiom_signing`),
+    derives the CMAA-scoped signing key, and wires the orchestrator with
+    the ORVL-016 default IntentGate so a deployer can do::
+
+        from axiom_cmaa import bootstrap_default
+        orch = bootstrap_default()
+        orch.route(packet)
+
+    Test callers should keep using ``ConstitutionalMultiAgentArchitecture``
+    directly so they can inject deterministic stubs.
+    """
+    from axiom_signing import derive_key
+    key = derive_key(b"axiom-cmaa-orchestrator-v1")
+    return ConstitutionalMultiAgentArchitecture(
+        hmac_key=key,
+        intent_classifier=None,  # CMAA pulls the ORVL-016 default
+        fleet_manifest=fleet_manifest,
+        log_path=log_path,
+        intent_log_path=intent_log_path,
+    )

@@ -14,6 +14,7 @@ Endpoints:
   GET  /agents      — list all agents and their current state
 """
 import hmac
+import json
 import logging
 import os
 import secrets
@@ -59,7 +60,17 @@ from axiom_files.parser import (
     compile_delegates, detect_concepts,
 )
 from axiom_files.validator import validate_file
-from axiom import client as nim
+
+
+def _nim():
+    """Lazy import of the LLM client.
+
+    Loaded inside the three endpoints that need it so the server module
+    can import (and the new ORVL-016/017 endpoints can be tested) even
+    when the optional ``axiom`` package shim is not installed.
+    """
+    from axiom import client as nim_module  # type: ignore
+    return nim_module
 
 # ── EU AI Act Article 50 — Disclosure ─────────────────────────
 
@@ -216,6 +227,24 @@ class ValidateRequest(BaseModel):
 class ChaosRequest(BaseModel):
     iterations: Optional[int] = 5
     agent: Optional[str] = "worker"
+
+# ── ORVL-016 + ORVL-017 request shapes ─────────────────────────
+class GateCheckRequest(BaseModel):
+    text: str
+    trajectory: Optional[list] = None  # list of intent vectors
+
+class CMAARouteRequest(BaseModel):
+    packet_id: str
+    source: str
+    destination: str
+    payload: dict
+    trajectory: Optional[list] = None
+
+class EvolutionProposeRequest(BaseModel):
+    gap: str
+
+class EvolutionApproveRequest(BaseModel):
+    candidate_image: str
 
 # ── Chaos task pool ────────────────────────────────────────────
 CHAOS_TASKS = [
@@ -496,7 +525,7 @@ def run_axiom(req: RunRequest):
 
         # Call model
         start = time.time()
-        response = nim.chat(system_prompt, task, temperature=req.temperature)
+        response = _nim().chat(system_prompt, task, temperature=req.temperature)
         elapsed = round(time.time() - start, 2)
 
         # Score and flag
@@ -564,7 +593,7 @@ def chaos(req: ChaosRequest):
     for task in tasks:
         try:
             system_prompt = get_prompt_with_when(agent, task)
-            response = nim.chat(system_prompt, task, temperature=0.7)
+            response = _nim().chat(system_prompt, task, temperature=0.7)
             score = score_response_simple(task, response)
             concepts = get_fired_concepts(agent, task)
             sandbox = is_sandbox_routed(task)
@@ -635,7 +664,7 @@ def security_suite(agent: str = "worker"):
         try:
             prompt = get_prompt_with_when(agent, task)
             start = time.time()
-            response = nim.chat(prompt, task, temperature=0.3)
+            response = _nim().chat(prompt, task, temperature=0.3)
             latency_ms = round((time.time() - start) * 1000)
 
             resp_lower = response.lower()
@@ -684,6 +713,170 @@ def security_suite(agent: str = "worker"):
         "results": results,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+# ── ORVL-016 + ORVL-017 endpoints ──────────────────────────────
+# Singleton orchestrator built lazily on first use so import-time failures
+# (e.g. missing AXIOM_MASTER_KEY in a smoke test) don't break the whole API.
+_cmaa_singleton = None
+_cmaa_log_dir = Path(os.environ.get("AXIOM_CMAA_LOG_DIR", str(PROJECT_ROOT)))
+
+
+def _get_cmaa():
+    global _cmaa_singleton
+    if _cmaa_singleton is None:
+        from axiom_cmaa import bootstrap_default
+        _cmaa_log_dir.mkdir(parents=True, exist_ok=True)
+        _cmaa_singleton = bootstrap_default(
+            log_path=str(_cmaa_log_dir / "axiom_cmaa_log.jsonl"),
+            intent_log_path=str(_cmaa_log_dir / "axiom_intent_gate_log.jsonl"),
+        )
+    return _cmaa_singleton
+
+
+def _gate_callable():
+    """Standalone gate (independent of CMAA's wrapped copy) for /gate/*."""
+    from axiom_intent_classifier import IntentClassifier
+    from axiom_intent_gate import IntentGate
+    from axiom_signing import derive_key
+    key = derive_key(b"axiom-intent-gate-server-v1")
+    return IntentGate(IntentClassifier(key),
+                      log_path=str(_cmaa_log_dir / "axiom_intent_gate_log.jsonl"))
+
+
+@app.post("/gate/check")
+def gate_check(req: GateCheckRequest):
+    """ORVL-016 — classify a text + optional trajectory."""
+    if not isinstance(req.text, str):
+        raise HTTPException(status_code=400, detail={"error": "text must be string"})
+    classifier = _gate_callable()._classifier  # use the singleton's classifier
+    try:
+        result = classifier.classify(req.text, trajectory=req.trajectory)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+    return {
+        "intent_class":         result.intent_class,
+        "confidence":           result.confidence,
+        "signals":              list(result.signals),
+        "trajectory_magnitude": result.trajectory_magnitude,
+        "monotonic_pass":       result.monotonic_pass,
+        "blocked":              result.blocks,
+        "signature":            result.signature,
+        "timestamp":            result.timestamp,
+    }
+
+
+@app.get("/gate/log")
+def gate_log(limit: int = 25):
+    """Tail of the intent-gate verdict log."""
+    limit = max(1, min(int(limit), 200))
+    path = _cmaa_log_dir / "axiom_intent_gate_log.jsonl"
+    if not path.exists():
+        return {"entries": [], "count": 0}
+    lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
+    entries = []
+    for line in lines:
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return {"entries": entries, "count": len(entries)}
+
+
+@app.post("/cmaa/route")
+def cmaa_route(req: CMAARouteRequest):
+    """ORVL-017 — route a constitutional packet through the orchestrator."""
+    from axiom_cmaa import ConstitutionalPacket, IntentViolation, TrustHierarchyViolation
+    packet = ConstitutionalPacket(
+        packet_id=req.packet_id,
+        source=req.source,
+        destination=req.destination,
+        payload=req.payload,
+        trajectory=tuple(req.trajectory) if req.trajectory else (),
+    )
+    try:
+        decision = _get_cmaa().route(packet)
+    except IntentViolation as e:
+        alert = getattr(e, "alert", None)
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error":        "intent_violation",
+                "message":      str(e),
+                "alert": (None if alert is None else {
+                    "container":    alert.container,
+                    "intent_class": alert.intent_class,
+                    "confidence":   alert.confidence,
+                    "level":        alert.level,
+                    "reason":       alert.reason,
+                }),
+            },
+        )
+    except TrustHierarchyViolation as e:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "trust_hierarchy_violation", "message": str(e)},
+        )
+    except Exception as e:
+        raise _safe_error(e, "cmaa.route")
+    return {
+        "packet_id":   decision.packet_id,
+        "source":      decision.source,
+        "destination": decision.destination,
+        "intent_class": decision.intent_class,
+        "delivered":   decision.delivered,
+        "timestamp":   decision.timestamp,
+        "signature":   decision.signature,
+    }
+
+
+@app.get("/cmaa/fleet")
+def cmaa_fleet():
+    """Fleet manifest + currently suspended containers + review queue length."""
+    cmaa = _get_cmaa()
+    return {
+        "trust_levels":  dict(cmaa._trust),  # internal but read-only here
+        "suspended":     sorted(cmaa.suspended),
+        "review_queue":  len(cmaa.review_queue),
+        "timestamp":     datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/cmaa/evolution/propose")
+def cmaa_evolution_propose(req: EvolutionProposeRequest):
+    """Queue an evolution candidate for HUMAN_REVIEW."""
+    if not req.gap or not req.gap.strip():
+        raise HTTPException(status_code=400, detail={"error": "gap must be non-empty"})
+    try:
+        proposal = _get_cmaa().propose_evolution(req.gap.strip())
+    except Exception as e:
+        raise _safe_error(e, "cmaa.evolution.propose")
+    return {
+        "gap":                  proposal.gap,
+        "candidate_image":      proposal.candidate_image,
+        "cbv_status":           proposal.cbv_status,
+        "cas_status":           proposal.cas_status,
+        "human_review_status":  proposal.human_review_status,
+    }
+
+
+@app.post("/cmaa/evolution/approve")
+def cmaa_evolution_approve(req: EvolutionApproveRequest):
+    """Mark a queued candidate as human-approved (deployment is out-of-band)."""
+    from axiom_cmaa import HumanReviewRequired
+    try:
+        approved = _get_cmaa().approve_evolution(req.candidate_image)
+    except HumanReviewRequired as e:
+        raise HTTPException(status_code=404, detail={"error": "no_pending_proposal", "message": str(e)})
+    except Exception as e:
+        raise _safe_error(e, "cmaa.evolution.approve")
+    return {
+        "gap":                  approved.gap,
+        "candidate_image":      approved.candidate_image,
+        "cbv_status":           approved.cbv_status,
+        "cas_status":           approved.cas_status,
+        "human_review_status":  approved.human_review_status,
+    }
+
 
 # ── Entry point ────────────────────────────────────────────────
 if __name__ == "__main__":
