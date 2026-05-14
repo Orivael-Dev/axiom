@@ -21,7 +21,7 @@ CONSTRAINT MonotonicGate fires interrupt when magnitude_t2 < magnitude_t1 strict
 CONSTRAINT All process results are HMAC-SHA256 signed over canonical fields
 CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
 CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
-CONSTRAINT Sparse core activation is proportional to constitutional risk per intent class
+CONSTRAINT Sparse core activation is proportional to constitutional risk per intent category
 
 RULES
 - On fire_interrupt: compute L2 norm of both vectors and compare magnitudes
@@ -31,14 +31,14 @@ RULES
 - On activate: look up CORE_ACTIVATION for intent category and multiply by total cores
 - On process: write vectors to latent buffers then run gate then activate cores
 - On process: HMAC sign result and emit with simulated latency
-- On run_benchmark: run n simulated inferences with mixed intent classes and aggregate
+- On run_benchmark: run n simulated inferences with mixed intent categories and aggregate
 
 PROCESS
 - GovernanceCoprocessorEmulator is instantiated with hmac_key and fused_rom dict
 - Fused ROM is snapshot at init and cannot be modified afterward
 - On each inference: vectors written to 3-stage latent buffer pipeline
 - MonotonicGate comparator checks magnitude monotonicity between stages
-- Sparse cores activate based on classified intent class
+- Sparse cores activate based on classified intent category
 - In-register distance computed from buffer contents
 - Result HMAC signed and emitted with aggregated simulated latency
 

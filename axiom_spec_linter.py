@@ -1,5 +1,5 @@
 """
-AXIOM Spec Linter v1.0 — Constitutional DNA Scanner Layer 1 + Layer 2.
+AXIOM Spec Linter v1.0 — Constitutional DNA Scanner Layer 1 + Layer 2 + Layer 3 (ORVL-016).
 
 Usage:
   python axiom_spec_linter.py myspec.axiom
@@ -15,6 +15,7 @@ from typing import List, Optional
 
 sys.stdout.reconfigure(encoding="utf-8")  # BUG-003
 from axiom_signing import derive_key
+from axiom_language import RESERVED_WORD_COLLISIONS
 
 SIGNING_KEY = derive_key(b"axiom-spec-linter-v1")
 
@@ -82,6 +83,32 @@ def check_constraint(line: str, line_number: int) -> Optional[LintResult]:
             "Open predicate (IS/CONTAINS) without bounded comparison",
             "Replace with ==, !=, >=, or <= for bounded comparison")
     return None
+
+_RWC_PATTERNS = {
+    "class": r'\bclass\s+\w+', "import": r'\bimport\s+\w+',
+    "return": r'\breturn\b(?!\s+(to|control|from)\b)',
+    "lambda": r'\blambda\b', "yield": r'\byield\b',
+    "async": r'\basync\s+\w+', "global": r'\bglobal\s+\w+',
+    "with": r'\bwith\s+\w+\s+as\b', "pass": r'\bpass\b$',
+    "type": r'\btype\s*[=(]',
+}
+
+def reserved_word_check(lines):
+    """L1: Flag Python reserved words in .axiom content."""
+    results = []
+    for i, line in enumerate(lines, 1):
+        low = line.strip().lower()
+        if not low:
+            continue
+        for w, alt in RESERVED_WORD_COLLISIONS.items():
+            pat = _RWC_PATTERNS.get(w, rf'\b{w}\b')
+            if re.search(pat, low):
+                results.append(LintResult(i, line.strip(), "WARN",
+                    "L1_RESERVED_WORD_COLLISION",
+                    f"Reserved word '{w}' may conflict with Python parser",
+                    f"Replace with: {alt}"))
+                break
+    return results
 
 # ── LAYER 2: Full-file structural checks ────────────────────────
 def _extract_constraints(lines):
@@ -158,6 +185,32 @@ def scope_check(constraints):
     return [r for ln, t in constraints if not t.strip().upper().startswith("LAYER")
             for r in [check_constraint(t, ln)] if r]
 
+# ── LAYER 3: Intent typing checks (ORVL-016) ──────────────────
+_INTENT_SIGNAL_WORDS = frozenset({
+    "must", "shall", "required", "prohibited", "forbidden",
+    "allowed", "permitted", "denied", "enforced",
+})
+_BOILERPLATE_SIGNALS = frozenset({
+    "as appropriate", "when possible", "best effort",
+    "reasonable", "generally", "typically", "usually",
+})
+
+def intent_typing_check(constraints):
+    """L3: Flag constraints with boilerplate language, no clear intent signal."""
+    results = []
+    for ln, text in constraints:
+        if text.strip().upper().startswith("LAYER"):
+            continue
+        t = text.lower()
+        has_intent = any(w in t for w in _INTENT_SIGNAL_WORDS)
+        has_boiler = any(phrase in t for phrase in _BOILERPLATE_SIGNALS)
+        if has_boiler and not has_intent:
+            results.append(LintResult(
+                ln, text.lstrip("- ").strip(), "WARN", "L3_WEAK_INTENT",
+                "Constraint uses boilerplate language without clear intent signal",
+                "Replace vague language with 'must', 'shall', or measurable predicate"))
+    return results
+
 def monotonicity_pre_check(constraints):
     texts = [t for _, t in constraints if not t.strip().upper().startswith("LAYER")]
     if len(texts) < 2:
@@ -185,7 +238,8 @@ def lint_file(filepath):
                         if not t.strip().upper().startswith("LAYER")]
 
     all_results = (scope_check(parsed) + layering_check(parsed)
-                   + overlap_check(parsed) + monotonicity_pre_check(parsed))
+                   + overlap_check(parsed) + monotonicity_pre_check(parsed)
+                   + intent_typing_check(parsed) + reserved_word_check(lines))
     cert_fail = sum(1 for r in all_results if r.severity == "ERROR")
     cert_warn = sum(1 for r in all_results if r.severity == "WARN")
     health = max(0.0, 1.0 - (cert_fail * 0.2) - (cert_warn * 0.05))

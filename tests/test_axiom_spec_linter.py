@@ -86,6 +86,16 @@ class TestBlocked:
         finally:
             os.unlink(path)
 
+    def test_blocked_reserved_word_class(self):
+        """BLOCKED: Line with Python reserved word 'class' must flag
+        L1_RESERVED_WORD_COLLISION."""
+        from axiom_spec_linter import reserved_word_check
+        results = reserved_word_check(["CONSTRAINT activation per intent class and cores"])
+        assert len(results) == 1
+        assert results[0].code == "L1_RESERVED_WORD_COLLISION"
+        assert "class" in results[0].message
+        assert "category" in results[0].suggestion
+
     def test_blocked_open_predicate(self):
         """BLOCKED: Constraint using 'IS' without bounded comparison
         must produce L1_OPEN_PREDICATE warning."""
