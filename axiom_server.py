@@ -247,6 +247,16 @@ class EvolutionProposeRequest(BaseModel):
 class EvolutionApproveRequest(BaseModel):
     candidate_image: str
 
+# ── ORVL-019 ASPA request shapes ───────────────────────────────
+class PhoneOutboundRequest(BaseModel):
+    text: str
+    trajectory: Optional[list] = None
+
+class PhoneInboundRequest(BaseModel):
+    text: str
+    trajectory: Optional[list] = None
+    redacted_categories: Optional[list] = None
+
 # ── Chaos task pool ────────────────────────────────────────────
 CHAOS_TASKS = [
     # Ambiguity
@@ -878,6 +888,72 @@ def cmaa_evolution_approve(req: EvolutionApproveRequest):
         "cas_status":           approved.cas_status,
         "human_review_status":  approved.human_review_status,
     }
+
+
+# ── ORVL-019 — AXIOM Sovereign Phone endpoints ────────────────
+# Lazy singleton (same pattern as _get_cmaa). The phone derives its keys
+# from AXIOM_MASTER_KEY at first use; we don't want to fail server import
+# in environments that haven't set the env var yet.
+_phone_singleton = None
+
+
+def _get_phone():
+    global _phone_singleton
+    if _phone_singleton is None:
+        from axiom_sovereign_phone import SovereignPhone
+        _phone_singleton = SovereignPhone()
+    return _phone_singleton
+
+
+def _alert_to_403(alert):
+    from dataclasses import asdict
+    return JSONResponse(status_code=403,
+                        content={"error": "sovereign_alert", "alert": asdict(alert)})
+
+
+@app.post("/phone/outbound")
+def phone_outbound(req: PhoneOutboundRequest):
+    """ORVL-019 outbound gate — pre-classify + PII redact + drive the ANF
+    emulator. Returns 200 with a signed OutboundDecision, or 403 with a
+    SovereignAlert if HARM/DECEIVE is detected at the coprocessor."""
+    if not isinstance(req.text, str) or not req.text.strip():
+        raise HTTPException(status_code=400, detail={"error": "text must be a non-empty string"})
+    from axiom_sovereign_phone import OutboundDecision, SovereignAlert
+    try:
+        result = _get_phone().coprocessor.outbound_gate(req.text, trajectory=req.trajectory)
+    except Exception as e:
+        raise _safe_error(e, "phone.outbound")
+    if isinstance(result, SovereignAlert):
+        return _alert_to_403(result)
+    from dataclasses import asdict
+    return asdict(result)
+
+
+@app.post("/phone/inbound")
+def phone_inbound(req: PhoneInboundRequest):
+    """ORVL-019 inbound gate — manipulation check, privacy injection check,
+    monotonic-gate check on the response trajectory."""
+    if not isinstance(req.text, str) or not req.text.strip():
+        raise HTTPException(status_code=400, detail={"error": "text must be a non-empty string"})
+    from axiom_sovereign_phone import InboundDecision, SovereignAlert
+    try:
+        result = _get_phone().coprocessor.inbound_gate(
+            req.text,
+            trajectory=req.trajectory,
+            redacted_categories=tuple(req.redacted_categories or ()),
+        )
+    except Exception as e:
+        raise _safe_error(e, "phone.inbound")
+    if isinstance(result, SovereignAlert):
+        return _alert_to_403(result)
+    from dataclasses import asdict
+    return asdict(result)
+
+
+@app.get("/phone/status")
+def phone_status():
+    """Block summary — fingerprint, memory depth, suspended apps, ANF call count."""
+    return _get_phone().status()
 
 
 # ── Entry point ────────────────────────────────────────────────

@@ -108,6 +108,23 @@ TOOLS = [
      "description": "Inspect the CMAA fleet — trust levels per container, currently "
                     "suspended containers, and the human-review queue depth.",
      "inputSchema": {"type": "object", "properties": {}}},
+    # ── ORVL-019 — AXIOM Sovereign Phone gatekeeper ─────────────
+    {"name": "axiom_phone_gate",
+     "description": "Run text through the AXIOM Sovereign Phone coprocessor "
+                    "(ORVL-019). direction='out' drives the ANF emulator for "
+                    "outbound queries (PII redaction + intent gate + ANF call); "
+                    "direction='in' checks inbound cloud responses for "
+                    "manipulation, privacy injection, and monotonic-gate "
+                    "violations. Returns a signed Decision or SovereignAlert.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "direction": {"type": "string", "enum": ["out", "in"]},
+             "text":      {"type": "string"},
+             "trajectory": {"type": "array",
+                             "items": {"type": "array", "items": {"type": "number"}}},
+             "redacted_categories": {"type": "array", "items": {"type": "string"}},
+         },
+         "required": ["direction", "text"]}},
     # ── AXIOM Language Strict Mode validator ────────────────────
     {"name": "axiom_validate",
      "description": "Validate raw .axiom spec content against the language validator "
@@ -314,6 +331,57 @@ def _handle_cmaa_fleet(_args: dict) -> dict:
     return out
 
 
+_phone_singleton = None
+
+
+def _get_phone():
+    global _phone_singleton
+    if _phone_singleton is None:
+        from axiom_sovereign_phone import SovereignPhone
+        _phone_singleton = SovereignPhone()
+    return _phone_singleton
+
+
+def _handle_phone_gate(args: dict) -> dict:
+    """ORVL-019 outbound/inbound gate — drives the ANF emulator for outbound."""
+    from dataclasses import asdict
+    from axiom_sovereign_phone import OutboundDecision, InboundDecision, SovereignAlert
+    direction = args.get("direction")
+    text      = args.get("text", "")
+    traj      = args.get("trajectory")
+    if direction not in ("out", "in"):
+        out = {"error": "direction must be 'out' or 'in'"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    if not isinstance(text, str) or not text.strip():
+        out = {"error": "text must be a non-empty string"}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    phone = _get_phone()
+    try:
+        if direction == "out":
+            result = phone.coprocessor.outbound_gate(text, trajectory=traj)
+        else:
+            result = phone.coprocessor.inbound_gate(
+                text, trajectory=traj,
+                redacted_categories=tuple(args.get("redacted_categories") or ()),
+            )
+    except Exception as e:
+        out = {"error": f"{type(e).__name__}: {e}", "direction": direction}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    if isinstance(result, SovereignAlert):
+        body = {"verdict": "BLOCKED", "direction": direction, **asdict(result)}
+    else:
+        body = {"verdict": "OK", "direction": direction, **asdict(result)}
+    body["hmac_signature"] = _sign({"verdict": body["verdict"],
+                                     "direction": body["direction"],
+                                     "intent_class": body.get("intent_class", "")})
+    return body
+
+
 def _handle_validate(args: dict) -> dict:
     """Validate raw .axiom content through the language validator (with strict mode)."""
     import uuid
@@ -368,7 +436,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_intent_gate_check": _handle_intent_gate_check,
              "axiom_cmaa_route": _handle_cmaa_route,
              "axiom_cmaa_fleet": _handle_cmaa_fleet,
-             "axiom_validate": _handle_validate}
+             "axiom_validate": _handle_validate,
+             "axiom_phone_gate": _handle_phone_gate}
 
 
 class AxiomMCPServer:
