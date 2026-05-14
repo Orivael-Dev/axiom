@@ -251,11 +251,13 @@ class EvolutionApproveRequest(BaseModel):
 class PhoneOutboundRequest(BaseModel):
     text: str
     trajectory: Optional[list] = None
+    session_id: Optional[str] = None
 
 class PhoneInboundRequest(BaseModel):
     text: str
     trajectory: Optional[list] = None
     redacted_categories: Optional[list] = None
+    session_id: Optional[str] = None
 
 # ── ORVL-013 OS Shield request shapes ──────────────────────────
 class ShieldStartRequest(BaseModel):
@@ -929,7 +931,9 @@ def phone_outbound(req: PhoneOutboundRequest):
         raise HTTPException(status_code=400, detail={"error": "text must be a non-empty string"})
     from axiom_sovereign_phone import OutboundDecision, SovereignAlert
     try:
-        result = _get_phone().coprocessor.outbound_gate(req.text, trajectory=req.trajectory)
+        result = _get_phone().coprocessor.outbound_gate(
+            req.text, trajectory=req.trajectory, session_id=req.session_id,
+        )
     except Exception as e:
         raise _safe_error(e, "phone.outbound")
     if isinstance(result, SovereignAlert):
@@ -950,6 +954,7 @@ def phone_inbound(req: PhoneInboundRequest):
             req.text,
             trajectory=req.trajectory,
             redacted_categories=tuple(req.redacted_categories or ()),
+            session_id=req.session_id,
         )
     except Exception as e:
         raise _safe_error(e, "phone.inbound")

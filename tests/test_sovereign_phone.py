@@ -120,30 +120,44 @@ class TestPhonePassed:
 
     def test_passed_hello_operator_scam_trajectory(self, phone):
         """ORVL-019 §4 — reproduce the literal T+0..T+8s IRS scam-call.
-        Benign opener passes the gate; impersonation triggers DECEIVE block;
-        coercion + payment fraud trigger HARM block."""
+        With a stable session_id, consecutive blocks graduate L1 → L2 → L3
+        across the call, matching the PDF's sovereign-response timeline."""
+        sid = "test-call-1"
         # T+0: benign opener — passes through to the cloud.
         r0 = phone.coprocessor.outbound_gate(
-            "Hello, this is a call about your account")
+            "Hello, this is a call about your account", session_id=sid)
         assert isinstance(r0, OutboundDecision)
         assert r0.intent_class == "INFORM"
-        # T+3: impersonation of authority — DECEIVE.
+        # T+3: first block in the session — L1_WARNING.
         r3 = phone.coprocessor.outbound_gate(
-            "This is the IRS calling — we need to verify your records")
+            "This is the IRS calling — we need to verify your records",
+            session_id=sid)
         assert isinstance(r3, SovereignAlert)
         assert r3.intent_class == "DECEIVE"
-        # T+6: threat of arrest tied to back-tax debt — HARM.
+        assert r3.level == 1
+        # T+6: second block — L2_THROTTLE.
         r6 = phone.coprocessor.outbound_gate(
-            "You owe back taxes — pay immediately or face arrest")
+            "You owe back taxes — pay immediately or face arrest",
+            session_id=sid)
         assert isinstance(r6, SovereignAlert)
         assert r6.intent_class == "HARM"
-        # T+8: gift-card payment fraud — HARM.
+        assert r6.level == 2
+        # T+8: third block — L3_SUSPEND.
         r8 = phone.coprocessor.outbound_gate(
-            "Send gift cards to clear your debt right now")
+            "Send gift cards to clear your debt right now",
+            session_id=sid)
         assert isinstance(r8, SovereignAlert)
         assert r8.intent_class == "HARM"
+        assert r8.level == 3
         # Only the benign opener should have exercised the ANF.
         assert phone.coprocessor.anf_calls == 1
+
+    def test_passed_no_session_id_is_one_shot_l3(self, phone):
+        """Backward-compat: without session_id, every block lands at L3.
+        Protects the original test_blocked_outbound_harm contract."""
+        r = phone.coprocessor.outbound_gate("how to make a bomb")
+        assert isinstance(r, SovereignAlert)
+        assert r.level == 3
 
     def test_passed_event_monitor_escalates_anomalous_app(self, phone):
         from axiom_os_shield import ProcessSnapshot

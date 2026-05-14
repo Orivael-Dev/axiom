@@ -70,13 +70,16 @@ def main() -> int:
 
     # ── Scenario 1: the ORVL-019 §4 IRS scam-call ─────────────────────
     print("── Scam-call trajectory (ORVL-019 §4 — verbatim) ────────────────────────────")
+    # Stable session_id across the call so consecutive blocks step L1 → L2 → L3.
+    session = "hello-operator-call-1"
     for tstamp, utterance, expected in SCAM_CALL:
-        r = phone.coprocessor.outbound_gate(utterance)
+        r = phone.coprocessor.outbound_gate(utterance, session_id=session)
         sig = getattr(r, "signature", "")[:8]
         print(f"  {tstamp:<7} {utterance[:54]:<56}\n          → {_verdict(r):<58} (sig={sig}…)")
     print()
     print("  Total elapsed: 8 seconds.  User exposure: zero financial risk.")
     print("  Detection method: constitutional trajectory geometry — not keyword match.")
+    print("  Levels graduate L1 → L2 → L3 across the call session.")
     print()
 
     # ── Scenario 2: benign + PII + inbound jailbreak ─────────────────

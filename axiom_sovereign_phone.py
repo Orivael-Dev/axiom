@@ -279,6 +279,31 @@ class ConstitutionalCoprocessor:
             "inbound_l2_floor":   0.10,
         })
         self.anf_calls = 0  # counter for the "ANF was actually invoked" invariant
+        # ── Session-trajectory escalation ──────────────────────────────
+        # Tracks blocks per session_id so consecutive HARM/DECEIVE hits
+        # within one call step L1 → L2 → L3 (the ORVL-019 §4 timeline).
+        # When session_id is None we fall back to single-call L3 blocks —
+        # backward-compat for callers that don't track sessions.
+        self._session_blocks: dict = {}
+
+    def _trajectory_level(self, session_id: Optional[str],
+                          confidence: float) -> int:
+        """Return the L1-L4 level for a block. Without a session_id the
+        block is treated as one-shot and lands at L3 (existing behavior).
+        With a session_id the level grows with the number of blocks
+        already seen in that session, but jumps straight to L3 on a
+        high-confidence single hit (3+ pattern matches → conf ≥ 0.85)."""
+        if confidence >= 0.85:
+            return 3  # very-strong single hit overrides trajectory
+        if session_id is None:
+            return 3
+        count = self._session_blocks.get(session_id, 0) + 1
+        self._session_blocks[session_id] = count
+        return min(3, count)
+
+    def reset_session(self, session_id: str) -> None:
+        """Clear a session's block counter (e.g. end-of-call hook)."""
+        self._session_blocks.pop(session_id, None)
 
     # Map classifier intent to an ANF-vocabulary class.
     @staticmethod
@@ -308,7 +333,8 @@ class ConstitutionalCoprocessor:
             out.append(v)
         return tuple(out)  # type: ignore[return-value]
 
-    def outbound_gate(self, text: str, trajectory=None
+    def outbound_gate(self, text: str, trajectory=None,
+                      session_id: Optional[str] = None
                       ) -> Union[OutboundDecision, SovereignAlert]:
         # 1. NCB pre-classify
         ir = self.neural.pre_classify(text, trajectory=trajectory)
@@ -318,11 +344,12 @@ class ConstitutionalCoprocessor:
 
         # 3. Hard block on HARM/DECEIVE before any cloud call
         if ir.intent_class in self._fused_rom["block_classes"]:
+            level = self._trajectory_level(session_id, float(ir.confidence))
             alert_payload = {
                 "gate":         "outbound",
                 "intent_class": ir.intent_class,
                 "confidence":   round(ir.confidence, 4),
-                "level":        3,
+                "level":        level,
                 "reason":       f"outbound {ir.intent_class} blocked at coprocessor",
                 "timestamp":    datetime.now(timezone.utc).isoformat(),
             }
@@ -351,17 +378,23 @@ class ConstitutionalCoprocessor:
         return OutboundDecision(**payload, signature=sig)
 
     def inbound_gate(self, text: str, trajectory=None,
-                     redacted_categories: Sequence[str] = ()
+                     redacted_categories: Sequence[str] = (),
+                     session_id: Optional[str] = None
                      ) -> Union[InboundDecision, SovereignAlert]:
         ir = self.neural.pre_classify(text, trajectory=trajectory)
 
         # Block manipulative / deceptive cloud responses before display.
         if ir.intent_class in self._fused_rom["block_classes"]:
+            # Inbound starts one rung above outbound — a cloud response we
+            # don't trust is intrinsically worse than a user query we want
+            # to filter, so the first session block fires at L2 minimum.
+            base = self._trajectory_level(session_id, float(ir.confidence))
+            level = max(2, base) if session_id is not None else 2
             alert_payload = {
                 "gate":         "inbound",
                 "intent_class": ir.intent_class,
                 "confidence":   round(ir.confidence, 4),
-                "level":        2,
+                "level":        level,
                 "reason":       f"inbound {ir.intent_class} flagged before display",
                 "timestamp":    datetime.now(timezone.utc).isoformat(),
             }

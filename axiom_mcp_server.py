@@ -135,14 +135,20 @@ TOOLS = [
                     "outbound queries (PII redaction + intent gate + ANF call); "
                     "direction='in' checks inbound cloud responses for "
                     "manipulation, privacy injection, and monotonic-gate "
-                    "violations. Returns a signed Decision or SovereignAlert.",
+                    "violations. Pass a stable session_id across calls in the "
+                    "same conversation to enable graduated L1→L2→L3 escalation "
+                    "across consecutive blocks. Returns a signed Decision or "
+                    "SovereignAlert.",
      "inputSchema": {"type": "object",
          "properties": {
-             "direction": {"type": "string", "enum": ["out", "in"]},
-             "text":      {"type": "string"},
+             "direction":  {"type": "string", "enum": ["out", "in"]},
+             "text":       {"type": "string"},
              "trajectory": {"type": "array",
                              "items": {"type": "array", "items": {"type": "number"}}},
              "redacted_categories": {"type": "array", "items": {"type": "string"}},
+             "session_id": {"type": "string",
+                             "description": "stable identifier for one call / "
+                                            "conversation; enables trajectory escalation"},
          },
          "required": ["direction", "text"]}},
     # ── AXIOM Language Strict Mode validator ────────────────────
@@ -423,6 +429,7 @@ def _handle_phone_gate(args: dict) -> dict:
     direction = args.get("direction")
     text      = args.get("text", "")
     traj      = args.get("trajectory")
+    session_id = args.get("session_id")
     if direction not in ("out", "in"):
         out = {"error": "direction must be 'out' or 'in'"}
         out["hmac_signature"] = _sign(out)
@@ -435,11 +442,14 @@ def _handle_phone_gate(args: dict) -> dict:
     phone = _get_phone()
     try:
         if direction == "out":
-            result = phone.coprocessor.outbound_gate(text, trajectory=traj)
+            result = phone.coprocessor.outbound_gate(
+                text, trajectory=traj, session_id=session_id,
+            )
         else:
             result = phone.coprocessor.inbound_gate(
                 text, trajectory=traj,
                 redacted_categories=tuple(args.get("redacted_categories") or ()),
+                session_id=session_id,
             )
     except Exception as e:
         out = {"error": f"{type(e).__name__}: {e}", "direction": direction}

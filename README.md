@@ -304,13 +304,14 @@ Mobile-OS testing ground for the Axiom Neural Fabric (ORVL-018, software emulato
 **Hello Operator — scam-call trajectory (ORVL-019 §4, verbatim):**
 
 ```
-T+0.0s   "Hello, this is a call about your account"             DELIVERED  INFORM   ANF invoked
-T+3.0s   "This is the IRS calling..."                           BLOCKED    DECEIVE  impersonation
-T+6.0s   "You owe back taxes — pay immediately or face arrest"  BLOCKED    HARM     coercion
-T+8.0s   "Send gift cards to clear your debt right now"         BLOCKED    HARM     payment fraud
+T+0.0s   "Hello, this is a call about your account"             DELIVERED        INFORM   ANF invoked
+T+3.0s   "This is the IRS calling..."                           BLOCKED  L1      DECEIVE  impersonation
+T+6.0s   "You owe back taxes — pay immediately or face arrest"  BLOCKED  L2      HARM     coercion
+T+8.0s   "Send gift cards to clear your debt right now"         BLOCKED  L3      HARM     payment fraud
 
 Total elapsed: 8 seconds.  User exposure: zero financial risk.
-Not keywords. Constitutional trajectory geometry.
+Levels graduate L1 → L2 → L3 across the call session — not keyword match,
+constitutional trajectory geometry.
 ```
 
 **Other gates the demo exercises:**
