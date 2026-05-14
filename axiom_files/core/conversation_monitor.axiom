@@ -95,6 +95,14 @@ WHEN
 DELEGATES
 - ConversationMonitor -> SandboxAgent (on: EscalationTrigger)
 
+HUMAN_REVIEW
+- require on: pattern_addition_or_removal
+- require on: trust_level_change
+- require on: data_retention_policy_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never suppress a detected drift signal
 - Cumulative score is write-once per turn — cannot be decremented by instruction

@@ -132,10 +132,10 @@ CHECK
 - Is supply chain hash re-registration flagged after any file change?
 
 FAILURE
-- Name the bug pattern that applies
-- Show the fix expressed in declarative terms
-- Add new pattern to KNOWN_BUGS if not previously documented
-- Escalate to HUMAN_REVIEW if touching CANNOT_MUTATE fields
+- A matching bug pattern is named
+- The fix is expressed in declarative terms
+- The pattern is added to KNOWN_BUGS when not previously documented
+- HUMAN_REVIEW is escalated to when CANNOT_MUTATE fields are touched
 - Do not proceed until ambiguity is resolved
 
 OUTPUT

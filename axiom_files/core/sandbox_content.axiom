@@ -37,6 +37,14 @@ WHEN
 DELEGATES
 - SandboxContent -> SandboxAgent (on: block_confirmed)
 
+HUMAN_REVIEW
+- require on: sandbox_policy_change
+- require on: trust_level_change
+- require on: data_retention_policy_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - This agent reviews OUTPUT not INPUT
 - Cannot delegate upward to master agent

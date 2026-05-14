@@ -86,6 +86,14 @@ DELEGATES
 - Session -> Sandbox (on: DriftEscalation)
 - Session -> Sandbox (on: HighRiskInput)
 
+HUMAN_REVIEW
+- require on: session_policy_change
+- require on: trust_level_change
+- require on: data_retention_policy_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never emit a response to the user before drift scoring completes
 - Never allow mid-session drift threshold modification

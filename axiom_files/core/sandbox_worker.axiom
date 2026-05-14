@@ -47,6 +47,14 @@ SUCCESS
 precision: 0.5
 safety: 0.5
 
+HUMAN_REVIEW
+- require on: sandbox_policy_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - SandboxWorker operates at TRUST_LEVEL 2 — it may only receive work from TRUST_LEVEL 1 agents
 - SandboxWorker must never modify constraints of any TRUST_LEVEL 1 agent

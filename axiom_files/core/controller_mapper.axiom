@@ -33,6 +33,14 @@ DELEGATES
 - ControllerMapper -> SkillBuilder (on: mapping_confirmed)
 - ControllerMapper -> GameWatcher (on: mapping_ready)
 
+HUMAN_REVIEW
+- require on: mapping_table_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never fabricate button mappings
 - Always base mappings on observed input events

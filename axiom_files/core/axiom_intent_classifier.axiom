@@ -24,6 +24,14 @@ CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BU
 CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
 CONSTRAINT HMAC verification uses constant-time comparison
 
+HUMAN_REVIEW
+- require on: pattern_addition_or_removal
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never block on a single keyword without corroborating signal
 - Never raise the ceiling above 0.95 — overclaiming is forbidden

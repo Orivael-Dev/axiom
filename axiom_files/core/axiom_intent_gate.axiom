@@ -21,6 +21,14 @@ CONSTRAINT Log writes are best-effort and never block the gate
 CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
 CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
 
+HUMAN_REVIEW
+- require on: block_class_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never forward a packet that has not been classified
 - Never raise the BLOCK_CLASSES set above its declared two members

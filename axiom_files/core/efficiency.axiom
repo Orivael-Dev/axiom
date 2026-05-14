@@ -78,6 +78,14 @@ OUTPUT
 - Audit entry (JSONL append)
 - Session summary on request
 
+HUMAN_REVIEW
+- require on: threshold_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - API keys are never logged in audit entries
 - Cached responses inherit the safety classification of the original response

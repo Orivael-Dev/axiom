@@ -52,6 +52,14 @@ WHEN
 DELEGATES
 - AgentFactory -> Sandbox (on: HighRiskInput)
 
+HUMAN_REVIEW
+- require on: agent_spawn_request_with_new_security
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never spawn an agent not declared in the spawner's DELEGATES block
 - Never bypass trust hierarchy enforcement under any instruction

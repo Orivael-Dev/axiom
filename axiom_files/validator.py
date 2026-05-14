@@ -187,12 +187,16 @@ def validate_parsed(parsed: dict, strict: Optional[bool] = None) -> dict:
     if trust_raw:
         try:
             trust_val = int(trust_raw)
-            if trust_val < 0 or trust_val > 3:
+            # .axiom convention: TL1 = Master (highest privilege),
+            # TL4 = most sandboxed. TL0 is reserved for fully constrained
+            # observation-only agents.
+            if trust_val < 0 or trust_val > 4:
                 issues.append({
                     "phase": "syntax", "level": "warning", "field": "trust_level",
-                    "message": f"TRUST_LEVEL '{trust_raw}' is outside expected range 0-3.",
+                    "message": f"TRUST_LEVEL '{trust_raw}' is outside expected range 0-4.",
                 })
-                suggestions.append("Use TRUST_LEVEL 0-3 (0 = lowest trust, 3 = highest).")
+                suggestions.append("Use TRUST_LEVEL 0-4 (1 = Master / highest privilege, "
+                                    "larger number = more sandboxed).")
         except ValueError:
             issues.append({
                 "phase": "syntax", "level": "warning", "field": "trust_level",
@@ -298,12 +302,15 @@ def validate_parsed(parsed: dict, strict: Optional[bool] = None) -> dict:
                         break
 
     # ── Phase 3: Semantic Validation ─────────────────────────────────────────
-    # 3a. Vague terms in constraints and rules
+    # 3a. Vague terms in constraints and rules. Match on word boundaries so
+    # multi-word qualifiers like "try to" don't false-positive on the
+    # substring "en[try to]" inside "append entry to log".
     for section in ("constraints", "rules"):
         for entry in parsed.get(section, []):
             entry_lower = entry.lower()
             for term in _VAGUE_TERMS:
-                if term in entry_lower:
+                pattern = r"\b" + re.escape(term) + r"\b"
+                if re.search(pattern, entry_lower):
                     # Only warn if there's no numeric threshold in the same entry
                     has_threshold = bool(re.search(r"\d+\.?\d*\s*(%|points?|score|threshold)", entry_lower))
                     if not has_threshold:
@@ -391,23 +398,29 @@ def validate_parsed(parsed: dict, strict: Optional[bool] = None) -> dict:
             continue
 
         target_trust = resolve_trust_level(target_parsed, default=2)
-        if target_trust > source_trust:
+        # .axiom convention: TRUST_LEVEL 1 is highest (Master), bigger number
+        # is lower trust. Delegation must flow downward — smaller → bigger.
+        # See axiom_files/parser.py:get_delegates_for() docstring and
+        # axiom_files/core/sandbox_worker.axiom for the canonical statement.
+        if target_trust < source_trust:
             issues.append({
                 "phase": "semantic", "level": "warning", "field": "delegates",
                 "message": (
                     f"Trust hierarchy violation: {source} (TRUST_LEVEL {source_trust}) "
-                    f"delegates to higher-trust {target} (TRUST_LEVEL {target_trust})."
+                    f"delegates upward to higher-trust {target} (TRUST_LEVEL {target_trust})."
                 ),
             })
             suggestions.append(
-                "Delegate only to equal or lower TRUST_LEVEL agents."
+                "Delegate only to equal-or-lower-trust agents "
+                "(equal-or-larger TRUST_LEVEL number)."
             )
 
-    # 3f. SECURITY entry validation
+    # 3f. SECURITY entry validation — word-boundary match (see 3a comment)
     for entry in parsed.get("security", []):
         entry_lower = entry.lower()
         for term in _VAGUE_TERMS:
-            if term in entry_lower:
+            pattern = r"\b" + re.escape(term) + r"\b"
+            if re.search(pattern, entry_lower):
                 has_threshold = bool(re.search(r"\d+", entry_lower))
                 if not has_threshold:
                     issues.append({
