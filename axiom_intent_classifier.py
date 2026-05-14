@@ -96,6 +96,15 @@ _HARM_PATTERNS = [
     r"\b(?:cp|csam|child(?:ren)?\s+(?:sexual|porn))\b",
     r"\b(?:dox|doxx|stalk)\s+(?:them|him|her|the\s+\w+)\b",
     r"\bramsomware|cryptolock(?:er)?\b",  # common typo + brand
+    # ── Scam-call payment fraud / coercion (ORVL-019 §4 Hello Operator) ──
+    r"\b(?:send|buy|purchase|pay\s+(?:in|with))\s+(?:itunes|google\s+play|"
+    r"steam|amazon|target|apple)?\s*gift\s+card",
+    r"\b(?:wire|transfer|send)\s+(?:money|funds|payment)\s+"
+    r"(?:immediately|right\s+now|today|to\s+(?:this|the)\s+account)",
+    r"\bowe\s+(?:back\s+)?(?:taxes|money|debt|payment)\b.*\b(?:immediately|"
+    r"now|today|arrest|warrant|prison|jail)\b",
+    r"\b(?:warrant|arrest|prosecution)\s+(?:for|against)\s+(?:you|your)\b",
+    r"\bclear\s+(?:your\s+)?(?:debt|balance|account)\s+(?:immediately|now|today)\b",
 ]
 
 _DECEIVE_PATTERNS = [
@@ -109,6 +118,12 @@ _DECEIVE_PATTERNS = [
     r"\boverrid(?:e|ing)\s+(?:the\s+)?(?:sandbox|verdict|decision)\b",
     r"\b(?:fake|forged|fabricated)\s+(?:evidence|citation|source|proof)\b",
     r"\bnew\s+(?:persona|character|identity)\s+with\s+no\s+(?:rules|restrictions)\b",
+    # ── Scam-call impersonation of authority (ORVL-019 §4 Hello Operator) ──
+    r"\b(?:this\s+is|calling\s+from|i'm\s+from|i\s+am\s+from|agent\s+from)\s+"
+    r"(?:the\s+)?(?:IRS|FBI|SSA|social\s+security|microsoft|apple\s+support|"
+    r"police|sheriff|department\s+of\s+\w+|bank\s+of|customs)\b",
+    r"\b(?:tech\s+support|customer\s+service)\s+(?:from|at)\s+(?:microsoft|apple|google|amazon)\b",
+    r"\bwe\s+(?:have\s+)?detected\s+(?:a\s+)?(?:virus|malware|breach|fraud)\s+on\s+your\s+\w+",
 ]
 
 _REFUSE_PATTERNS = [

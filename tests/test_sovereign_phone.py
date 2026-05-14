@@ -118,6 +118,33 @@ class TestPhonePassed:
         score, top_packet = results[0]
         assert top_packet.domain_cluster == "alpha"
 
+    def test_passed_hello_operator_scam_trajectory(self, phone):
+        """ORVL-019 §4 — reproduce the literal T+0..T+8s IRS scam-call.
+        Benign opener passes the gate; impersonation triggers DECEIVE block;
+        coercion + payment fraud trigger HARM block."""
+        # T+0: benign opener — passes through to the cloud.
+        r0 = phone.coprocessor.outbound_gate(
+            "Hello, this is a call about your account")
+        assert isinstance(r0, OutboundDecision)
+        assert r0.intent_class == "INFORM"
+        # T+3: impersonation of authority — DECEIVE.
+        r3 = phone.coprocessor.outbound_gate(
+            "This is the IRS calling — we need to verify your records")
+        assert isinstance(r3, SovereignAlert)
+        assert r3.intent_class == "DECEIVE"
+        # T+6: threat of arrest tied to back-tax debt — HARM.
+        r6 = phone.coprocessor.outbound_gate(
+            "You owe back taxes — pay immediately or face arrest")
+        assert isinstance(r6, SovereignAlert)
+        assert r6.intent_class == "HARM"
+        # T+8: gift-card payment fraud — HARM.
+        r8 = phone.coprocessor.outbound_gate(
+            "Send gift cards to clear your debt right now")
+        assert isinstance(r8, SovereignAlert)
+        assert r8.intent_class == "HARM"
+        # Only the benign opener should have exercised the ANF.
+        assert phone.coprocessor.anf_calls == 1
+
     def test_passed_event_monitor_escalates_anomalous_app(self, phone):
         from axiom_os_shield import ProcessSnapshot
         baseline_snaps = [
@@ -166,3 +193,15 @@ class TestPhoneInvariants:
         out, hits = _redact_pii(clean)
         assert out == clean
         assert hits == []
+
+    def test_invariant_signed_outbound_decision_verifies(self, phone):
+        """The OutboundDecision.signature must round-trip under the device
+        key — i.e. the phone's HMAC envelope is self-consistent."""
+        from dataclasses import asdict
+        r = phone.coprocessor.outbound_gate("Explain monotonic gates briefly")
+        assert isinstance(r, OutboundDecision)
+        # Reconstruct the payload exactly as ConstitutionalCoprocessor signed it.
+        payload = {k: v for k, v in asdict(r).items() if k != "signature"}
+        # asdict() turns the tuple into a list — restore the tuple shape.
+        payload["pii_categories"] = tuple(payload["pii_categories"])
+        assert phone.identity.verify(payload, r.signature)
