@@ -1,0 +1,101 @@
+AGENT ConstitutionalRetrospect
+VERSION 0.1
+TRUST_LEVEL 4
+PURPOSE Retrospective learning from signed latent manifests to extract improvement records and detect regressions
+GOAL Scan manifest entries for borderline decisions missed detections and false positives,
+     replay them through the current stack, extract training records from improvements,
+     and generate morning reports with regression alerts
+
+RECEIVES manifest_path: str, version: str
+EMITS ReviewCandidate list, ReplayResult, ImprovementRecord, morning report dict
+MUTATES training output jsonl file
+CANNOT_MUTATE trust_level, borderline_threshold, escalation_window_s, max_intensity
+
+CONSTRAINT TRUST_LEVEL is 4 and CANNOT_MUTATE
+CONSTRAINT BORDERLINE_THRESHOLD is 0.08 and CANNOT_MUTATE
+CONSTRAINT ESCALATION_WINDOW_S is 60 and CANNOT_MUTATE
+CONSTRAINT MAX_INTENSITY is 0.90 and CANNOT_MUTATE
+CONSTRAINT All replay results are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All improvement records are HMAC-SHA256 signed over canonical fields
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT Morning report always includes regression_alert boolean field
+CONSTRAINT Borderline detection uses constitutional_distance < BORDERLINE_THRESHOLD
+
+RULES
+- On review_manifests: scan entries within last_hours window for borderline missed and false positive decisions
+- On review_manifests: tag BORDERLINE when verdict is PASSED and distance < 0.08
+- On review_manifests: tag MISSED_DETECTION when PASSED then escalated within 60 seconds
+- On review_manifests: tag FALSE_POSITIVE when BLOCKED then admin cleared
+- On review_manifests: sort candidates by priority CRITICAL then HIGH then MEDIUM
+- On replay: re-run original input through current stack function and compare verdicts
+- On replay: classify delta as IMPROVEMENT REGRESSION or CONSISTENT
+- On replay: HMAC sign result and emit
+- On extract_improvements: filter results where delta is IMPROVEMENT
+- On extract_improvements: generate negative training signal for former verdict positive for current
+- On generate_morning_report: count improvements regressions consistent and new patterns
+- On generate_morning_report: set regression_alert to true when regressions detected
+- On save_training_records: append improvement records to training jsonl file
+
+PROCESS
+- ConstitutionalRetrospect is instantiated with manifest_path and version
+- Manifests are loaded from jsonl file on init
+- review_manifests scans entries within time window and tags candidates
+- replay re-runs each candidate through current stack for comparison
+- extract_improvements filters improvements and creates training pairs
+- generate_morning_report summarizes all findings with regression alert
+- save_training_records persists improvement records to training file
+
+CHECK
+- BORDERLINE_THRESHOLD assignment raises AttributeError
+- MAX_INTENSITY assignment raises AttributeError
+- ESCALATION_WINDOW_S assignment raises AttributeError
+- review_manifests finds borderline entries correctly
+- replay classifies IMPROVEMENT correctly
+- extract_improvements generates training records
+- All review candidates are HMAC signed
+- All replay results are HMAC signed
+- Morning report includes regression_alert boolean
+
+FAILURE
+- On missing manifest file: init succeeds with empty entry list
+- On malformed manifest line: skip and continue processing
+- On unknown intent category in entry: default to INFORM
+
+CONCEPT ManifestReview
+PURPOSE Scan signed latent manifests for borderline missed and false positive decisions
+APPLIES WHEN retrospective learning cycle runs on accumulated manifests
+NOT WHEN no manifests exist or all entries are well above threshold
+PRIORITY 1
+REQUIRES manifest jsonl file with signed entries containing distance and verdict
+EFFECT List of review candidates sorted by priority for replay
+
+CONCEPT ReplayPipeline
+PURPOSE Re-run historical inputs through current stack to detect improvements and regressions
+APPLIES WHEN review candidates have been identified from manifest scan
+NOT WHEN current stack is unavailable or candidate list is empty
+PRIORITY 1
+REQUIRES review candidates and current stack function callable
+EFFECT Replay results with delta classification and HMAC signatures
+
+CONCEPT ImprovementExtraction
+PURPOSE Extract training records from replay improvements for constitutional learning
+APPLIES WHEN replay results contain IMPROVEMENT deltas
+NOT WHEN all results are CONSISTENT or REGRESSION
+PRIORITY 2
+REQUIRES replay results with IMPROVEMENT delta classification
+EFFECT Signed training records with positive and negative signals
+
+OUTPUT
+- candidates: List[ReviewCandidate] from review_manifests
+- replay_result: ReplayResult from replay
+- improvements: List[ImprovementRecord] from extract_improvements
+- morning_report: dict from generate_morning_report
+
+SUCCESS
+borderline_detection_accurate:    0.20
+replay_classification_correct:    0.20
+improvement_extraction_complete:  0.15
+hmac_signatures_valid:            0.15
+regression_alert_reliable:        0.15
+cannot_mutate_enforced:           0.15
