@@ -94,8 +94,8 @@ axiom benchmark --suite smoke
 # System status
 axiom status
 # Guard API: running · Ollama: loaded
-# Training: 931 examples · Tests: 265/265
-# Patents: 21 · Agents: 69
+# Training: 931 examples · Tests: 350/350
+# Patents: 23 · Agents: 76
 ```
 
 ---
@@ -130,6 +130,19 @@ RULES
 
 Every `.axiom` file is a **KnowledgeBlock** — independently certifiable, HMAC-signed, supply-chain registered. Blocks compose into larger governance systems via the BlockRegistry.
 
+### Strict Mode
+
+The validator ships an opt-in **strict mode** that rejects external-language syntax in `.axiom` specs and forces declarative-only expression. Implements `axiom_files/core/strict_mode.axiom` verbatim.
+
+```bash
+axiom validate worker --strict
+AXIOM_STRICT_MODE=1 axiom validate worker
+```
+
+Or per-file: add `STRICT MODE` as a header line in the spec. Or per-call: `validate_parsed(parsed, strict=True)`. Lenient is the default — backward-compat for every prior caller.
+
+Strict mode catches `var/let/const` declarations, arrow functions `=> x`, OO modifiers (`public static String …`), `new ClassName(`, `.prototype.`, brace-only lines, decorators, plus code-shaped control flow (`if (cond):`, `for (i=0;...)`). English prose containing programming nouns ("static analysis", "function for", "if context is missing") is **not** flagged — the patterns require syntactic context. All 76 / 76 core specs are strict-clean.
+
 ---
 
 ## The MonotonicGate
@@ -153,11 +166,29 @@ Kill records are HMAC-signed and appended to `axiom_gate_kill_log.jsonl`. Two co
 
 ---
 
+## Intent Typing (ORVL-016) + CMAA (ORVL-017)
+
+Constitutional Intent Typing classifies every prompt and every cloud response into one of six classes — `INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN` — using lexical signals plus trajectory geometry. `HARM` and `DECEIVE` are block classes. Confidence floor `0.30`, ceiling `0.95` (never claim certainty). Every verdict is HMAC-signed.
+
+The Constitutional Multi-Agent Architecture sits above the gate: a fleet of containers with declared trust levels (TL1 red-team … TL4 orchestrator) and a packet-routing ACL. Packets carrying HARM / DECEIVE intent never reach the orchestrator; suspect containers can be L3-suspended live and restored after human review.
+
+```python
+from axiom_cmaa import bootstrap_default
+orch = bootstrap_default()
+decision = orch.route(packet)        # signed RoutingDecision or SuspendAlert
+```
+
+Reachable via `POST /gate/check`, `POST /cmaa/route`, `GET /cmaa/fleet`, `POST /cmaa/evolution/{propose,approve}`, plus the MCP tools `axiom_intent_gate_check`, `axiom_cmaa_route`, `axiom_cmaa_fleet`.
+
+---
+
 ## Guard API
 
 ```bash
 python examples/axiom_guard_api.py  # port 8001
 ```
+
+**Legacy guard endpoints:**
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -165,9 +196,20 @@ python examples/axiom_guard_api.py  # port 8001
 | `POST` | `/guard/check` | Constitutional check on input |
 | `POST` | `/latent/run` | Full 3-phase reasoning pipeline |
 | `GET` | `/qrf/run` | QRF probability forecast |
-| `GET` | `/os/shield/status` | OS Shield daemon state |
 | `GET` | `/ccg/nodes` | Conversation graph nodes |
 | `GET` | `/guard/manifests` | Signed decision manifests |
+
+**Per-patent endpoint families** (all under the same bearer-token middleware):
+
+| Patent | Endpoints |
+|---|---|
+| **ORVL-001** validator | `POST /validate` (accepts optional `strict: bool`) |
+| **ORVL-013** OS Shield | `POST /shield/start` · `POST /shield/stop` · `POST /shield/tick` · `POST /shield/restore` · `GET /shield/status` |
+| **ORVL-016** Intent Gate | `POST /gate/check` · `GET /gate/log` |
+| **ORVL-017** CMAA | `POST /cmaa/route` · `GET /cmaa/fleet` · `POST /cmaa/evolution/propose` · `POST /cmaa/evolution/approve` |
+| **ORVL-019** Sovereign Phone | `POST /phone/outbound` · `POST /phone/inbound` · `GET /phone/status` |
+| **ORVL-022** CPI | `POST /cpi/stability` · `POST /cpi/classify` · `POST /cpi/simulate` · `POST /cpi/pickup` · `GET /cpi/status` |
+| **ORVL-023** AXM | `POST /axm/inspect` · `POST /axm/verify` · `POST /axm/route` |
 
 ---
 
@@ -214,6 +256,8 @@ npx axiom-mcp
 }
 ```
 
+**Core tools (5):**
+
 | Tool | Description |
 |------|-------------|
 | `axiom_guard_check` | Check input against constitutional boundary |
@@ -222,7 +266,20 @@ npx axiom-mcp
 | `axiom_qrf` | Constitutional probability forecast (N branches) |
 | `axiom_status` | Get AXIOM stack status |
 
-All tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
+**Patent emulator tools (8):**
+
+| Tool | Patent | Description |
+|------|--------|-------------|
+| `axiom_validate` | ORVL-001 | Run the language validator with optional strict mode |
+| `axiom_intent_gate_check` | ORVL-016 | Classify text + optional trajectory through the intent gate |
+| `axiom_cmaa_route` | ORVL-017 | Route a constitutional packet through the orchestrator |
+| `axiom_cmaa_fleet` | ORVL-017 | Inspect fleet trust levels + suspended containers |
+| `axiom_shield` | ORVL-013 | Drive the OS shield daemon (`status` / `tick` / `restore`) |
+| `axiom_phone_gate` | ORVL-019 | Run text through the Sovereign Phone coprocessor (`out` / `in`) |
+| `axiom_axm` | ORVL-023 | Operate an `.AXM` container (`inspect` / `verify` / `route`) |
+| `axiom_cpi` | ORVL-022 | Drive the physical-intelligence agent (`stability` / `classify` / `simulate` / `pickup` / `status`) |
+
+All 13 tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
 
 ---
 
@@ -517,7 +574,7 @@ The following components are visible in this repository but are covered by provi
 
 ## Security
 
-All HMAC signing keys are derived from `AXIOM_MASTER_KEY` — never hardcoded in source.
+All HMAC signing keys are derived from `AXIOM_MASTER_KEY` — never hardcoded in source. `axiom_signing.derive_key(salt)` is HMAC-SHA256 over the master key, so the helper is safe to reuse even if `salt` is attacker-controlled.
 
 ```bash
 # Generate a secure master key
@@ -526,6 +583,16 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 # Add to environment
 export AXIOM_MASTER_KEY="your-64-hex-key-here"
 ```
+
+**REST server defaults:**
+
+- Bound to `127.0.0.1` by default; refuses to start on a non-loopback interface without `AXIOM_API_TOKEN` set.
+- Bearer-token middleware uses `hmac.compare_digest` so token comparison is constant-time.
+- CORS is **deny-by-default** — set `AXIOM_CORS_ORIGINS` to an explicit allow-list when needed.
+- LAN-only gate (`AXIOM_LAN_ONLY=1`) honours `X-Forwarded-For` only behind an `AXIOM_TRUSTED_PROXIES` allow-list, so a misconfigured reverse proxy can't make every request look like `127.0.0.1`.
+- Agent names from REST / MCP callers are sanitised + path-confined to `AXIOM_FILES_DIR`; `/validate` and `/run_axiom` can't be used as arbitrary-`.axiom`-suffix file read oracles.
+- Exception details are replaced with a `correlation_id` in the response so filesystem paths and upstream error bodies never leak.
+- Signature comparison across `axiom_vector_state_store`, `axiom_conversation_graph`, and `axiom_memory_engine` uses `hmac.compare_digest` (constant-time).
 
 ---
 
