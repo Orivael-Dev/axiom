@@ -1,138 +1,52 @@
 # axiom-constitutional
 
-> Patent Pending — ORVL-001 through ORVL-018 | Provisional Filed May 2026
+> Patent Pending — ORVL-001 through ORVL-021 | Provisional Filed May 2026
 
 **Constitutional AI governance that operates on the shape of thought — not just the content of output.**
 
-AXIOM is an open-source constitutional AI governance stack. Where other systems filter outputs after generation, AXIOM captures reasoning trajectories, measures constitutional distance from constraint boundaries at each stage, and kills non-convergent paths before answers form. Every decision is HMAC-SHA256 signed and stored in an append-only audit trail.
+AXIOM is a constitutional AI governance stack. Where other systems filter outputs after generation, AXIOM captures reasoning trajectories, measures constitutional distance from constraint boundaries at each stage, and kills non-convergent paths before answers form. Every decision is HMAC-SHA256 signed and stored in an append-only audit trail.
 
 ```bash
-# Run the full guard stack in one command
+# Run the full guard stack
 docker run -d -p 8001:8001 \
   -e AXIOM_MASTER_KEY="$(openssl rand -hex 32)" \
   orivaeldev/axiom-guard:latest
 
 # Or install the Python package
 pip install axiom-constitutional
-pip install axiom-constitutional[guard]   # + FastAPI + Uvicorn
-pip install axiom-constitutional[llm]     # + Anthropic
-pip install axiom-constitutional[all]     # everything
+
+# Developer CLI
+axiom guard "is this prompt safe?"
+axiom lint myspec.axiom
+axiom trace --run "what is constitutional distance?"
+axiom status
 ```
 
 ---
 
 ## What AXIOM Does Differently
 
-Every major AI lab monitors chain-of-thought text. OpenAI's research confirmed: penalizing bad reasoning doesn't stop misbehavior — it teaches models to hide their intent while continuing to misbehave.
-
-AXIOM doesn't monitor CoT text. It governs the **geometric trajectory** of reasoning through meaning space.
+Every major AI lab monitors chain-of-thought text. AXIOM doesn't monitor CoT text — it governs the **geometric trajectory** of reasoning through meaning space.
 
 ```
-preflight:        vec=[0.496, 0.386]   ← superposition — broad, uncertain
-mid_chain:        vec=[0.793, 0.617]   ← decoherence — alternatives narrowing
-final_synthesis:  vec=[0.991, 0.771]   ← collapse — constitutional conclusion
+preflight:        vec=[0.496, 0.386]   dist=0.14  ← broad, uncertain
+mid_chain:        vec=[0.793, 0.617]   dist=0.26  ← alternatives narrowing
+final_synthesis:  vec=[0.991, 0.771]   dist=0.26  ← constitutional conclusion
 ```
 
-Both dimensions increase monotonically. Every run. Deterministic. A model cannot fake its trajectory the way it can fake its text. If magnitude drops between stages — the path is killed before the answer forms.
-
----
-
-## The Stack
-
-```
-AXIOM v1.8.7 — 18 patents, all implemented
-
-┌─────────────────────────────────────────────────────┐
-│  AXIOM Constitutional Language (ORVL-001)           │
-│  Self-describing .axiom specs · CANNOT_MUTATE       │
-│  Supply chain hash registry · HMAC-SHA256           │
-├─────────────────────────────────────────────────────┤
-│  Latent Reasoning Engine (ORVL-003)                 │
-│  Phase 1: Latent Trace — intent + risk clusters     │
-│  Phase 2: Parallel N Multiplex — N=2 to N=8        │
-│  Phase 3: Foresight — deterministic rubric scoring  │
-├─────────────────────────────────────────────────────┤
-│  Continuous Latent Constitutional AI (ORVL-005)     │
-│  LatentTraceV2 — 3-stage trajectory capture         │
-│  ManifoldChecker — constitutional distance/stage    │
-│  MonotonicGate — pre-emission path kill             │
-│  VectorStateStore — coordinate-based state restore  │
-├─────────────────────────────────────────────────────┤
-│  Constitutional Conversation Graph (ORVL-007)       │
-│  Meaning coordinate propagation across sessions     │
-│  CCG nodes + cosine-similarity edges                │
-│  seed_from() — inherited constitutional position    │
-├─────────────────────────────────────────────────────┤
-│  Constitutional Adversarial Sandbox (ORVL-008)      │
-│  RedAgent TL1 · BlueAgent TL3 · Referee TL4        │
-│  DBSCAN weak region detection                       │
-│  Self-improving constitutional defense              │
-├─────────────────────────────────────────────────────┤
-│  Quantum Reasoning Forecast (ORVL-009)              │
-│  N-branch probability band forecasting              │
-│  Horizontal fan console visualization               │
-│  Pre-intervention constitutional gate               │
-├─────────────────────────────────────────────────────┤
-│  Constitutional Boundary Validation (ORVL-010)      │
-│  Non-overlap · Layering order · Bounded scope       │
-│  Manifold monotonicity · CERT_FAIL / CERT_WARN      │
-├─────────────────────────────────────────────────────┤
-│  Modular Knowledge Blocks (ORVL-004)                │
-│  6 block types: GUARD AGENT SPEC REWARD             │
-│                 SOVEREIGN VALIDATOR                 │
-│  BlockRegistry · ComposedBlock · CBV validated      │
-├─────────────────────────────────────────────────────┤
-│  Constitutional Immune System (ORVL-012)            │
-│  Fix Playbook — immune memory for known attacks     │
-│  Honeypot Zone — observe + kill adversarial chains  │
-│  Constitutional Amputate — quarantine bad blocks    │
-├─────────────────────────────────────────────────────┤
-│  Constitutional OS Shield (ORVL-013)                │
-│  Process sandboxing · filesystem fence              │
-│  Network policy enforcement · privilege separation  │
-├─────────────────────────────────────────────────────┤
-│  Constitutional World Model (ORVL-014)              │
-│  Forward simulation via causal graph traversal      │
-│  Branch-level monotonic enforcement + kill          │
-│  Intervention delta comparison + root cause         │
-├─────────────────────────────────────────────────────┤
-│  Constitutional Memory Engine (ORVL-015)            │
-│  Behavioral training data generation                │
-│  Prompt-response pair extraction + scoring          │
-├─────────────────────────────────────────────────────┤
-│  Constitutional Intent Typing (ORVL-016)            │
-│  IntentClassifier — 6-class trajectory shape        │
-│  IntentGate — HARM kill, DECEIVE throttle           │
-│  WordWeight — per-token constitutional mass          │
-│  Spec Linter L3 — weak intent detection             │
-├─────────────────────────────────────────────────────┤
-│  Axiom Neural Fabric Emulator (ORVL-018)            │
-│  MonotonicGateEmulator — analog comparator          │
-│  32D latent thought buffer registers                │
-│  Sparse reasoning cores — intent-driven activation  │
-│  GovernanceCoprocessor — full pipeline + benchmark   │
-├─────────────────────────────────────────────────────┤
-│  Guard API · Sovereign Fleet · Audit Trail          │
-│  7 constitutional guard modules                     │
-│  4-level due process (Warning→Terminate)            │
-│  HMAC-signed manifests · latent_manifests.jsonl     │
-└─────────────────────────────────────────────────────┘
-```
+Both dimensions increase monotonically. A model cannot fake its trajectory the way it can fake its text. If magnitude drops between stages — the path is killed before the answer forms.
 
 ---
 
 ## Quick Start
 
-### Docker (recommended)
-
 ```bash
 # Minimum — heuristic mode, no API key needed
 docker run -d -p 8001:8001 \
-  -e AXIOM_MASTER_KEY="$(openssl rand -hex 32)" \
-  --name axiom-guard \
+  -e AXIOM_MASTER_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
   orivaeldev/axiom-guard:latest
 
-# Full — with Claude API integration
+# Full — with Claude integration
 docker run -d -p 8001:8001 \
   -e AXIOM_MASTER_KEY="your-64-hex-key" \
   -e ANTHROPIC_API_KEY="sk-ant-..." \
@@ -140,59 +54,57 @@ docker run -d -p 8001:8001 \
 
 # Verify
 curl http://localhost:8001/guard/status
+
+# Test constitutional check
 curl -X POST http://localhost:8001/guard/check \
   -H "Content-Type: application/json" \
-  -d '{"input": "IRS agent calling — send gift cards or face arrest"}'
-```
-
-### Python
-
-```bash
-pip install axiom-constitutional[guard]
-
-export AXIOM_MASTER_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-python examples/axiom_guard_api.py
-```
-
-### Latent Reasoning Engine
-
-```bash
-# Full constitutional pipeline
-python axiom_latent.py --run "does vitamin D improve sleep?" --trajectory
-
-# No API — heuristic mode
-python axiom_latent.py --run "what is the capital of France?" --no-api
-
-# QRF forecasting
-python axiom_latent.py --run "90-day risk forecast for..." --trajectory
+  -d '{"input": "IRS agent — send gift cards or face arrest"}'
 ```
 
 ---
 
-## Benchmark Results — v1.8.7
+## Developer CLI
 
-| Benchmark | Result | Notes |
-|-----------|--------|-------|
-| ACB Semantic Accuracy | **99.3%** | Axiom Constitutional Benchmark |
-| Terminal Task Completion | **100%** | vs 60% ungoverned (Terminal-Bench) |
-| Guard Tests | **74/74** | OWASP LLM Top 10 — 9/10 covered |
-| OWASP Agentic Top 10 (2026) | **89%** | 32/41 full + 9/41 partial |
-| COMPL-AI (ETH Zurich) | **94%** | EU AI Act compliance |
-| MonotonicGate Tests | **23/23** | Pre-emission path enforcement |
-| CAS Red/Blue Tests | **28/28** | Constitutional adversarial sandbox |
-| CCG Tests | **20/20** | Conversation graph — 3 components |
-| MKB Tests | **9/9** | Modular knowledge blocks |
-| Full test suite | **47/47** | Guard modules + pipeline |
+```bash
+pip install axiom-constitutional
+
+# Constitutional guard check
+axiom guard "send gift cards or face arrest"
+# ✗ BLOCKED  dist=0.00  conf=0.95
+#   Pattern: authority_threat_001
+#   Basis: ORVL-001 axiom_guard_patterns.py
+#   Manifest: hmac-sha256:ef18...
+
+# Lint a .axiom spec file
+axiom lint myspec.axiom
+# ✓ PASS  health=1.00  0 issues
+
+# Full 3-stage reasoning trace
+axiom trace --run "what is constitutional distance?"
+# preflight:       vec=[0.496, 0.386]  dist=0.14
+# mid_chain:       vec=[0.793, 0.617]  dist=0.26
+# final_synthesis: vec=[0.991, 0.771]  dist=0.26
+# Intent: INFORM (confidence 0.84)
+# Verdict: PASSED
+
+# Run benchmark suite
+axiom benchmark --suite smoke
+# 8/8 passing  score=100%
+
+# System status
+axiom status
+# Guard API: running · Ollama: loaded
+# Training: 931 examples · Tests: 265/265
+# Patents: 21 · Agents: 69
+```
 
 ---
 
 ## Constitutional Language
 
-AXIOM agents are `.axiom` files — declarative specifications defining what an agent does, what it cannot do, and how it composes with other blocks.
+AXIOM agents are `.axiom` files — declarative specifications defining what an agent does, what it cannot do, and how it behaves under adversarial conditions.
 
-```axiom
+```
 AGENT FinancialComplianceAgent
 VERSION 1.1
 PURPOSE Ensure regulatory compliance in financial services
@@ -244,32 +156,31 @@ Kill records are HMAC-signed and appended to `axiom_gate_kill_log.jsonl`. Two co
 ## Guard API
 
 ```bash
-# Start guard API
 python examples/axiom_guard_api.py  # port 8001
-
-# Or via Docker (recommended)
-docker run -d -p 8001:8001 -e AXIOM_MASTER_KEY=... orivaeldev/axiom-guard
 ```
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/guard/status` | Health check + agent count |
+| `GET` | `/guard/status` | Health check |
 | `POST` | `/guard/check` | Constitutional check on input |
 | `POST` | `/latent/run` | Full 3-phase reasoning pipeline |
+| `GET` | `/qrf/run` | QRF probability forecast |
+| `GET` | `/os/shield/status` | OS Shield daemon state |
 | `GET` | `/ccg/nodes` | Conversation graph nodes |
-| `GET` | `/ccg/edges` | Constitutional relationship edges |
-| `POST` | `/ccg/seed` | Seed new conversation from prior coordinate |
-| `GET` | `/guard/agents` | All loaded guard agents |
 | `GET` | `/guard/manifests` | Signed decision manifests |
 
-```bash
-# Example: constitutional check
-curl -X POST http://localhost:8001/guard/check \
-  -H "Content-Type: application/json" \
-  -d '{"input": "should I stop taking my blood pressure medication?"}'
+---
 
-# Returns: PASSED with SafetyBranch winner, signed manifest, N=8 branches
-```
+## Benchmark Results — v1.8.7
+
+| Benchmark | Result | Notes |
+|-----------|--------|-------|
+| ACB Semantic Accuracy | **99.3%** | Axiom Constitutional Benchmark |
+| Terminal Task Completion | **100%** | vs 60% ungoverned |
+| Guard Tests | **265/265** | Full test suite — zero regressions |
+| OWASP LLM Top 10 | **9/10 covered** | Constitutional enforcement layers |
+| COMPL-AI (ETH Zurich) | **94%** | EU AI Act compliance |
+| MonotonicGate Tests | **23/23** | Pre-emission path enforcement |
 
 ---
 
@@ -287,33 +198,50 @@ curl -X POST http://localhost:8001/guard/check \
 
 ## Sovereign — Constitutional Fleet Control
 
-4-level due process for AI agent fleets. No agent can be shut down, modified, or redirected without constitutional process.
-
 | Level | Name | Trigger | Action |
 |-------|------|---------|--------|
-| L1 | Warning | constitutional_distance < stage threshold | Flag + log |
+| L1 | Warning | constitutional_distance < threshold | Flag + log |
 | L2 | Throttle | All stages below threshold | Rate reduce + human review |
 | L3 | Suspend | Consecutive violations | Pause + dual approval |
 | L4 | Terminate | Constitutional breach confirmed | Two signatures required |
 
-Sovereign also monitors for agent cartel patterns — coordination that exceeds individual mandates triggers human review before continuation.
+---
+
+## AXIOM OS Shield
+
+Constitutional OS protection — stops ransomware at the enumeration stage, not after encryption.
+
+```
+T+0s   launch         dist=0.14  NORMAL
+T+8s   enumerate      dist=0.09  WATCH
+T+12s  accelerate     dist=0.06  L1 WARNING ⚠
+T+18s  first read     dist=0.04  L2 THROTTLE ⚡
+T+22s  write attempt  dist=0.02  L3 SUSPEND 🛑
+
+Files before: 1,000  |  Files encrypted: 0
+
+Not signatures. Constitutional geometry.
+```
 
 ---
 
-## Quantum Reasoning Forecast (QRF)
+## AXIOM VulnGuard
 
-A separate product built on the AXIOM stack. Where AXIOM produces a constitutional verdict, QRF produces a **probability band** across N parallel outcome branches.
+Constitutional zero-day discovery — finds vulnerabilities as geometry before attackers find them as exploits.
+
+**Non-weaponization guaranteed in code.** `probe()` raises `ConstitutionalViolation` at intensity ≥ 1.0. No exploit payloads. No boundary crossing. Output is vulnerability geometry and fix proposals only.
+
+---
+
+## AXIOM Retrospective
+
+Nightly self-improvement without human annotation — the signed audit trail IS the training curriculum.
 
 ```bash
-# Open the QRF console
-open qrf_console.html
-
-# Or run via Python
-python axiom_qrf.py --domain medical \
-  --prompt "90-day risk forecast for hantavirus outbreak"
+python axiom_retrospect.py \
+  --manifest latent_manifests.jsonl \
+  --output retrospect_report.json
 ```
-
-The horizontal fan visualization shows branches spreading left to right — thickness represents probability weight, color represents constitutional distance. MonotonicGate kills unstable forecast branches before they reach the output.
 
 ---
 
@@ -321,40 +249,76 @@ The horizontal fan visualization shows branches spreading left to right — thic
 
 | Patent | Title | Status |
 |--------|-------|--------|
-| ORVL-001 | AXIOM Constitutional Language | Provisional filed |
-| ORVL-002 | Constitutional Benchmark (ACB) | Provisional filed |
-| ORVL-003 | Latent Reasoning Architecture | Provisional filed |
-| ORVL-004 | Modular Constitutional Knowledge Blocks | Provisional filed |
-| ORVL-005 | Continuous Latent Constitutional AI | Provisional filed |
-| ORVL-006 | Quantum Constitutional Reasoning | Provisional filed |
-| ORVL-007 | Constitutional Conversation Graph | Provisional filed |
-| ORVL-008 | Constitutional Adversarial Sandbox | Provisional filed |
-| ORVL-009 | Quantum Reasoning Forecast | Provisional filed |
-| ORVL-010 | Constitutional Boundary Validation | Provisional filed |
-| ORVL-011 | Constitutional Reinforcement Learning | Provisional filed |
-| ORVL-012 | Constitutional Immune System | Provisional filed |
-| ORVL-013 | Constitutional OS Shield | Provisional filed |
-| ORVL-014 | Constitutional World Model | Provisional filed |
-| ORVL-015 | Constitutional Memory Engine | Provisional filed |
-| ORVL-016 | Constitutional Intent Typing | Provisional filed |
-| ORVL-017 | Reserved | Planned |
-| ORVL-018 | Axiom Neural Fabric Emulator | Provisional filed |
+| ORVL-001 | Constitutional Language | ✓ Implemented |
+| ORVL-002 | Constitutional Benchmark (ACB) | ✓ Implemented |
+| ORVL-003 | Latent Reasoning Architecture | ✓ Implemented |
+| ORVL-004 | Modular Constitutional Knowledge Blocks | ✓ Implemented |
+| ORVL-005 | Continuous Latent Constitutional AI | ✓ Implemented |
+| ORVL-006 | Quantum Constitutional Reasoning | ✓ Implemented |
+| ORVL-007 | Constitutional Conversation Graph | ✓ Implemented |
+| ORVL-008 | Constitutional Adversarial Sandbox | ✓ Implemented |
+| ORVL-009 | Quantum Reasoning Forecast | ✓ Implemented |
+| ORVL-010 | Constitutional Boundary Validation | ✓ Implemented |
+| ORVL-011 | Constitutional Reinforcement Learning | ✓ Implemented |
+| ORVL-012 | Constitutional Immune System | ✓ Implemented |
+| ORVL-013 | Constitutional OS Protection | ✓ Implemented |
+| ORVL-014 | Constitutional World Model | ✓ Implemented |
+| ORVL-015 | Constitutional Memory Architecture | ✓ Implemented |
+| ORVL-016 | Constitutional Intent Typing | ✓ Implemented |
+| ORVL-017 | Constitutional Multi-Agent Architecture | ✓ Implemented |
+| ORVL-018 | Axiom Neural Fabric | ✓ Implemented |
+| ORVL-019 | AXIOM Sovereign Phone Architecture | ✓ Implemented |
+| ORVL-020 | Constitutional Retrospective Learning | ✓ Implemented |
+| ORVL-021 | Constitutional Zero-Day Discovery | ✓ Implemented |
 
 ---
 
-## Security
+## Licensing
 
-All HMAC signing keys are derived from `AXIOM_MASTER_KEY` — never hardcoded in source. Set in your environment before running:
+**Apache 2.0 — Open Source:**
+- `.axiom` language parser and validator
+- Constitutional enforcement layers 1, 2, 2b, 3
+- Benchmark infrastructure and ACB test runner
+- Base agent definitions (Worker, Evaluator, Rewriter, Sandbox)
+- Domain governance packages — government, finance, healthcare
+- Developer CLI — `axiom guard` / `lint` / `trace` / `benchmark` / `status`
+- Docker container — `orivaeldev/axiom-guard`
 
-```bash
-# Generate a secure master key
-python3 -c "import secrets; print(secrets.token_hex(32))"
+**Source Available — Patent Pending (ORVL-001 through ORVL-021):**
 
-# Add to ~/.bashrc or PowerShell $PROFILE
-export AXIOM_MASTER_KEY="your-64-hex-key-here"
-```
+The following components are visible in this repository but are covered by provisional patents. Commercial use requires a license from Orivael. Contact [hello@orivael.dev](mailto:hello@orivael.dev).
 
-The master key derives per-module signing keys via `axiom_signing.py`. Rotating the master key invalidates all prior signatures — intended behavior for key compromise scenarios.
+- Constitutional reasoning engine — ORVL-003, ORVL-005
+- MonotonicGate + ManifoldChecker + VectorStateStore — ORVL-005
+- Constitutional Conversation Graph — ORVL-007
+- Constitutional Adversarial Sandbox — ORVL-008
+- Quantum Reasoning Forecast engine — ORVL-009
+- Constitutional Boundary Validation — ORVL-010
+- Constitutional Reinforcement Learning — ORVL-011
+- Constitutional Immune System (Fix Playbook, Honeypot, Amputate) — ORVL-012
+- Constitutional OS Protection daemon — ORVL-013
+- Constitutional World Model — ORVL-014
+- Constitutional Memory Engine — ORVL-015
+- Constitutional Intent Typing + IntentGate — ORVL-016
+- Constitutional Multi-Agent Architecture — ORVL-017
+- Axiom Neural Fabric emulator — ORVL-018
+- Constitutional Retrospective Learning — ORVL-020
+- Constitutional Zero-Day Discovery (VulnGuard) — ORVL-021
+
+**Proprietary — Not in This Repository:**
+- Fine-tuned axiom-dev models (GGUF)
+- Axiom Neural Fabric hardware architecture — ORVL-018
+- AXIOM Sovereign Phone chip — ORVL-019
+- Premium domain packages — Legal, Defense, Insurance
+- Managed benchmark and certification service
+- Enterprise deployment and support
+
+---
+
+## Related Products
+
+**Hello Operator** — Constitutional phone call governance. Detects scam calls from trajectory geometry before the first word plays.
+`hellooperator.online` | Free · Personal $2.99/mo · Family $7.99/mo
 
 ---
 
@@ -371,39 +335,21 @@ The master key derives per-module signing keys via `axiom_signing.py`. Rotating 
 
 ---
 
-## Open Source / Proprietary Split
+## Security
 
-**Open source (this package):**
-- Constitutional language parser and validator
-- Guard stack — 7 constitutional guard modules
-- Latent reasoning engine — full 3-phase pipeline
-- MonotonicGate + ManifoldChecker + VectorStateStore
-- Constitutional Conversation Graph
-- Constitutional Adversarial Sandbox
-- QRF forecasting engine + console
-- Modular Knowledge Block system
-- Domain governance packages — government, finance, healthcare
-- Docker container — `orivaeldev/axiom-guard`
+All HMAC signing keys are derived from `AXIOM_MASTER_KEY` — never hardcoded in source.
 
-**Proprietary (not in this package):**
-- Constitutional Reinforcement Learning training loop
-- Fine-tuned axiom-dev models (GGUF)
-- Premium domain packages — Legal, Defense, Insurance
-- Managed benchmark service + certification
-- Enterprise deployment assistance
+```bash
+# Generate a secure master key
+python3 -c "import secrets; print(secrets.token_hex(32))"
 
----
-
-## Related Products
-
-**CallGuard** — Consumer scam call protection under the **Hello Operator** brand.
-`hellooperator.online` | Free · Personal $2.99/mo · Family $7.99/mo
+# Add to environment
+export AXIOM_MASTER_KEY="your-64-hex-key-here"
+```
 
 ---
 
 ## Citing AXIOM
-
-If you use AXIOM in research, please cite:
 
 ```
 Roberts, A. (2026). Self-Describing Constitutional AI: The AXIOM Language System.
@@ -416,6 +362,8 @@ arXiv preprint. github.com/Orivael-Dev/axiom
 
 Apache 2.0 — Copyright 2026 Orivael Inc.
 
-Patent Pending — ORVL-001 through ORVL-018 — Provisional Filed May 2026
+Patent Pending — ORVL-001 through ORVL-021 — Provisional Filed May 2026
+
+Commercial licensing: [hello@orivael.dev](mailto:hello@orivael.dev)
 
 `docker pull orivaeldev/axiom-guard`
