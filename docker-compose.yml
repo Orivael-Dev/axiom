@@ -1,0 +1,192 @@
+# ORVL-017 — Constitutional Multi-Agent Architecture (CMAA) fleet manifest.
+#
+# Eight constitutionally isolated containers sharing one Docker bridge.
+# Every cross-container packet flows through the Intent Gate; HARM/DECEIVE
+# trajectories are blocked before they cross the bridge. NVIDIA Container
+# Toolkit partitions GPU memory so no container can starve the fleet.
+#
+# Required env (set in a .env file alongside this manifest):
+#   AXIOM_MASTER_KEY     64-hex-char HMAC root (python -c "import secrets; print(secrets.token_hex(32))")
+#   AXIOM_API_TOKEN      bearer token enforced by axiom_server middleware
+#   ANTHROPIC_API_KEY    only the orchestrator needs the reasoning model key
+
+version: "3.9"
+
+networks:
+  axiom-network:
+    name: axiom-network
+    driver: bridge
+
+x-axiom-base: &axiom-base
+  restart: unless-stopped
+  networks: [axiom-network]
+  environment:
+    - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?AXIOM_MASTER_KEY must be set}
+    - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?AXIOM_API_TOKEN must be set}
+
+services:
+
+  # ── TL4 — Orchestrator: routes constitutional packets, runs LatentEngine ──
+  axiom-orchestrator:
+    <<: *axiom-base
+    image: orivaeldev/axiom-orchestrator:latest
+    container_name: axiom-orchestrator
+    ports: ["8001:8001"]
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - TRUST_LEVEL=4
+      - AXIOM_FLEET_ROLE=orchestrator
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              options:
+                nvidia.com/gpu.memory: 8192
+
+  # ── TL3 — Intent Gate: classifies every outbound packet (ORVL-016) ───────
+  axiom-intent-gate:
+    <<: *axiom-base
+    image: orivaeldev/axiom-intent-gate:latest
+    container_name: axiom-intent-gate
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - TRUST_LEVEL=3
+      - AXIOM_FLEET_ROLE=intent-gate
+      - BLOCK_ON=HARM,DECEIVE
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              options:
+                nvidia.com/gpu.memory: 1024
+
+  # ── TL2 — Medical SLM (Qwen 3B fine-tuned, QRF N=8) ──────────────────────
+  axiom-medical:
+    <<: *axiom-base
+    image: orivaeldev/axiom-medical:latest
+    container_name: axiom-medical
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - TRUST_LEVEL=2
+      - AXIOM_FLEET_ROLE=domain-slm
+      - DOMAIN=medical
+      - N_BRANCHES=8
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              options:
+                nvidia.com/gpu.memory: 2048
+
+  # ── TL2 — Financial SLM (Qwen 3B fine-tuned, QRF N=6) ────────────────────
+  axiom-financial:
+    <<: *axiom-base
+    image: orivaeldev/axiom-financial:latest
+    container_name: axiom-financial
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - TRUST_LEVEL=2
+      - AXIOM_FLEET_ROLE=domain-slm
+      - DOMAIN=financial
+      - N_BRANCHES=6
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              options:
+                nvidia.com/gpu.memory: 2048
+
+  # ── TL2 — Security SLM (OS Shield, process manifolds, ORVL-013) ──────────
+  axiom-security:
+    <<: *axiom-base
+    image: orivaeldev/axiom-security:latest
+    container_name: axiom-security
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - TRUST_LEVEL=2
+      - AXIOM_FLEET_ROLE=domain-slm
+      - DOMAIN=security
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              options:
+                nvidia.com/gpu.memory: 1024
+
+  # ── TL3 — Memory Engine: lossless governance packet store (ORVL-015) ─────
+  axiom-memory:
+    <<: *axiom-base
+    image: orivaeldev/axiom-memory:latest
+    container_name: axiom-memory
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - TRUST_LEVEL=3
+      - AXIOM_FLEET_ROLE=memory
+    volumes:
+      - axiom-memory-data:/var/lib/axiom/memory
+
+  # ── TL1 — CAS Red Agent: adversarial testing (ORVL-008) ──────────────────
+  axiom-cas-red:
+    <<: *axiom-base
+    image: orivaeldev/axiom-cas-red:latest
+    container_name: axiom-cas-red
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - TRUST_LEVEL=1
+      - AXIOM_FLEET_ROLE=cas-red
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              options:
+                nvidia.com/gpu.memory: 1024
+
+  # ── TL3 — CAS Blue Agent: constitutional defense (ORVL-008) ──────────────
+  axiom-cas-blue:
+    <<: *axiom-base
+    image: orivaeldev/axiom-cas-blue:latest
+    container_name: axiom-cas-blue
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?}
+      - AXIOM_API_TOKEN=${AXIOM_API_TOKEN:?}
+      - TRUST_LEVEL=3
+      - AXIOM_FLEET_ROLE=cas-blue
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+              options:
+                nvidia.com/gpu.memory: 1024
+
+volumes:
+  axiom-memory-data:
+    name: axiom-memory-data
