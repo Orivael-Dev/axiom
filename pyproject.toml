@@ -37,6 +37,12 @@ llm = [
     "anthropic>=1.0.0",
 ]
 
+# OS Shield daemon (ORVL-013) — needs psutil for real process actions.
+# The daemon imports psutil lazily and degrades to a no-op when missing.
+shield = [
+    "psutil>=5.9.0",
+]
+
 guard = [
     "anthropic>=1.0.0",
     "fastapi>=0.100.0",

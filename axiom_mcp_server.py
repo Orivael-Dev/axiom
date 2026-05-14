@@ -108,6 +108,26 @@ TOOLS = [
      "description": "Inspect the CMAA fleet — trust levels per container, currently "
                     "suspended containers, and the human-review queue depth.",
      "inputSchema": {"type": "object", "properties": {}}},
+    # ── ORVL-013 — Constitutional OS Shield ──────────────────────
+    {"name": "axiom_shield",
+     "description": "Operate the AXIOM OS Shield daemon (ORVL-013). action='tick' "
+                    "runs one synchronous polling pass; action='status' returns the "
+                    "current daemon state (ticks, escalations, suspended PIDs, "
+                    "dry_run flag); action='restore' un-suspends a previously "
+                    "suspended PID. dry_run defaults to True — real syscalls are "
+                    "opt-in.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":           {"type": "string",
+                                  "enum": ["status", "tick", "restore"]},
+             "pid":              {"type": "integer",
+                                  "description": "required when action='restore'"},
+             "dry_run":          {"type": "boolean",
+                                  "description": "only honoured on first call"},
+             "poll_ms":          {"type": "integer"},
+             "learning_seconds": {"type": "integer"},
+         },
+         "required": ["action"]}},
     # ── ORVL-019 — AXIOM Sovereign Phone gatekeeper ─────────────
     {"name": "axiom_phone_gate",
      "description": "Run text through the AXIOM Sovereign Phone coprocessor "
@@ -331,6 +351,60 @@ def _handle_cmaa_fleet(_args: dict) -> dict:
     return out
 
 
+_shield_singleton = None
+_shield_daemon_mcp = None
+
+
+def _get_shield_daemon(dry_run: bool = True, poll_ms: int = 500,
+                       learning_seconds: int = 60):
+    global _shield_singleton, _shield_daemon_mcp
+    if _shield_daemon_mcp is not None:
+        return _shield_daemon_mcp
+    from axiom_signing import derive_key
+    from axiom_os_shield import ConstitutionalOSShield
+    from axiom_os_shield_daemon import MonitorDaemon
+    if _shield_singleton is None:
+        _shield_singleton = ConstitutionalOSShield(
+            hmac_key=derive_key(b"axiom-os-shield-daemon-mcp-v1"),
+            dry_run=dry_run,
+        )
+    _shield_daemon_mcp = MonitorDaemon(
+        shield=_shield_singleton,
+        poll_interval_ms=poll_ms,
+        learning_seconds=learning_seconds,
+    )
+    return _shield_daemon_mcp
+
+
+def _handle_shield(args: dict) -> dict:
+    """ORVL-013 — operate the OS shield daemon."""
+    action = args.get("action")
+    if action not in ("status", "tick", "restore"):
+        out = {"error": "action must be one of: status, tick, restore"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    daemon = _get_shield_daemon(
+        dry_run=bool(args.get("dry_run", True)),
+        poll_ms=int(args.get("poll_ms", 500)),
+        learning_seconds=int(args.get("learning_seconds", 60)),
+    )
+    if action == "status":
+        out = {"action": "status", **daemon.status()}
+    elif action == "tick":
+        events = daemon.tick()
+        out = {"action": "tick", "events": events, "count": len(events),
+                "status": daemon.status()}
+    else:  # restore
+        pid = args.get("pid")
+        if not isinstance(pid, int):
+            out = {"error": "pid (int) required for action=restore"}
+        else:
+            out = {"action": "restore", **_shield_singleton.restore(pid)}
+    out["hmac_signature"] = _sign({"action": action,
+                                    "ticks": daemon.status().get("ticks", 0)})
+    return out
+
+
 _phone_singleton = None
 
 
@@ -437,7 +511,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_cmaa_route": _handle_cmaa_route,
              "axiom_cmaa_fleet": _handle_cmaa_fleet,
              "axiom_validate": _handle_validate,
-             "axiom_phone_gate": _handle_phone_gate}
+             "axiom_phone_gate": _handle_phone_gate,
+             "axiom_shield": _handle_shield}
 
 
 class AxiomMCPServer:

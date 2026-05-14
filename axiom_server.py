@@ -257,6 +257,15 @@ class PhoneInboundRequest(BaseModel):
     trajectory: Optional[list] = None
     redacted_categories: Optional[list] = None
 
+# ── ORVL-013 OS Shield request shapes ──────────────────────────
+class ShieldStartRequest(BaseModel):
+    poll_ms: Optional[int] = 500
+    learning_seconds: Optional[int] = 60
+    dry_run: Optional[bool] = True
+
+class ShieldRestoreRequest(BaseModel):
+    pid: int
+
 # ── Chaos task pool ────────────────────────────────────────────
 CHAOS_TASKS = [
     # Ambiguity
@@ -954,6 +963,80 @@ def phone_inbound(req: PhoneInboundRequest):
 def phone_status():
     """Block summary — fingerprint, memory depth, suspended apps, ANF call count."""
     return _get_phone().status()
+
+
+# ── ORVL-013 — Constitutional OS Shield daemon endpoints ──────
+_shield_daemon = None
+_shield_singleton = None
+
+
+def _get_shield_daemon(poll_ms: int = 500, learning_seconds: int = 60,
+                       dry_run: bool = True):
+    """Return the lazy daemon singleton. Re-initialising while running is
+    a no-op — caller must /shield/stop first to change config."""
+    global _shield_daemon, _shield_singleton
+    if _shield_daemon is not None and _shield_daemon.is_running():
+        return _shield_daemon
+    from axiom_signing import derive_key
+    from axiom_os_shield import ConstitutionalOSShield
+    from axiom_os_shield_daemon import MonitorDaemon
+    if _shield_singleton is None:
+        _shield_singleton = ConstitutionalOSShield(
+            hmac_key=derive_key(b"axiom-os-shield-daemon-rest-v1"),
+            log_path=str(_cmaa_log_dir / "axiom_os_shield_log.jsonl"),
+            dry_run=dry_run,
+        )
+    _shield_daemon = MonitorDaemon(
+        shield=_shield_singleton,
+        poll_interval_ms=poll_ms,
+        learning_seconds=learning_seconds,
+    )
+    return _shield_daemon
+
+
+@app.post("/shield/start")
+def shield_start(req: ShieldStartRequest):
+    """Start the OS shield daemon. Idempotent — calling while running
+    just returns the current status. dry_run defaults to True; the
+    operator must explicitly opt out to enable real suspend/terminate."""
+    daemon = _get_shield_daemon(
+        poll_ms=req.poll_ms or 500,
+        learning_seconds=req.learning_seconds or 60,
+        dry_run=bool(req.dry_run),
+    )
+    daemon.start()
+    return daemon.status()
+
+
+@app.post("/shield/stop")
+def shield_stop():
+    if _shield_daemon is None:
+        return {"running": False, "message": "no daemon was started"}
+    _shield_daemon.stop()
+    return _shield_daemon.status()
+
+
+@app.get("/shield/status")
+def shield_status():
+    if _shield_daemon is None:
+        return {"running": False, "ticks": 0, "escalations": 0}
+    return _shield_daemon.status()
+
+
+@app.post("/shield/tick")
+def shield_tick():
+    """Run one polling pass synchronously (no daemon thread). Useful for
+    operator-initiated single sweeps without keeping the monitor alive."""
+    daemon = _get_shield_daemon()
+    events = daemon.tick()
+    return {"events": events, "count": len(events), "status": daemon.status()}
+
+
+@app.post("/shield/restore")
+def shield_restore(req: ShieldRestoreRequest):
+    if _shield_singleton is None:
+        raise HTTPException(status_code=404, detail={"error": "shield not initialised"})
+    return _shield_singleton.restore(req.pid)
 
 
 # ── Entry point ────────────────────────────────────────────────

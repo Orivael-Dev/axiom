@@ -278,6 +278,23 @@ Files before: 1,000  |  Files encrypted: 0
 Not signatures. Constitutional geometry.
 ```
 
+Run the daemon:
+
+```bash
+# Single sweep (handy for smoke tests) — never modifies anything.
+python -m axiom_os_shield_daemon --once
+
+# Background monitor in dry-run mode (default). Logs intended actions
+# without actually suspending or terminating processes.
+python -m axiom_os_shield_daemon --poll-ms 500 --learning-seconds 60
+
+# REAL syscalls — opt-in. Suspends at L3, terminates at L4. Always skips
+# PID 0, PID 1, the daemon's own PID, and its parent.
+python -m axiom_os_shield_daemon --no-dry-run --poll-ms 500
+```
+
+Or drive it through the REST API (`POST /shield/start`, `/shield/tick`, `/shield/stop`, `/shield/restore`, `GET /shield/status`) or the MCP tool `axiom_shield`.
+
 ---
 
 ## AXIOM Sovereign Phone
@@ -351,7 +368,7 @@ python axiom_retrospect.py \
 | ORVL-010 | Constitutional Boundary Validation | ✓ Implemented |
 | ORVL-011 | Constitutional Reinforcement Learning | ✓ Implemented |
 | ORVL-012 | Constitutional Immune System | ✓ Implemented |
-| ORVL-013 | Constitutional OS Protection | ◐ Partial (decision engine + tests; daemon loop and L2/L3/L4 actions are stubs) |
+| ORVL-013 | Constitutional OS Protection | ✓ Implemented (`axiom_os_shield_daemon.py` — polling monitor + real L2/L3/L4 psutil actions, dry-run default) |
 | ORVL-014 | Constitutional World Model | ✓ Implemented |
 | ORVL-015 | Constitutional Memory Architecture | ✓ Implemented |
 | ORVL-016 | Constitutional Intent Typing | ✓ Implemented |
