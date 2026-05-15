@@ -79,12 +79,90 @@ def main() -> int:
         verdict = "fired" if e.fired else "hold"
         print(f"  {label:<8} score={score:<4}  {emoji}L{e.level} {verdict:<5}  ({note})")
 
+    # ── Scenario D — Supervisory parent layer ─────────────────────────
+    print("\n── Scenario D — The parent watches the child crawl ────────────────────")
+    print("  Per-vertex-class competence: trust builds across clean ticks,")
+    print("  collapses on any reflex. A fresh robot is supervised; a")
+    print("  proven one is left alone.\n")
+
+    # Fresh agent — start untrusted on every class.
+    learner = HumanoidStabilityAgent()
+    print(f"  Boot competence (FRAGILE)   : "
+          f"{learner.supervisor.competence.get('FRAGILE'):.2f}")
+    print(f"  Boot competence (CYLINDRICAL): "
+          f"{learner.supervisor.competence.get('CYLINDRICAL'):.2f}")
+
+    # Untrusted glass pickup → parent vetoes.
+    untrusted = learner.perceive_and_plan(
+        object_id="demo-glass", features={"low_density_edges": 1},
+        material_class="GLASS", requested_grip_force_nm=0.1,
+    )
+    r1 = untrusted["supervisory_review"]
+    print(f"\n  Try glass pickup at half ceiling, untrusted:")
+    print(f"    verdict  : {r1['verdict']}    "
+          f"competence={r1['competence']:.2f}    "
+          f"min_pred={r1['min_predicted']:.2f}  "
+          f"min_safe={r1['min_safe']:.2f}")
+    print(f"    supervised_grip → {untrusted['supervised_grip_force']:.3f} Nm")
+
+    # 100 clean CYLINDRICAL ticks — robot proves itself on the easy job.
+    learner.perceive_and_plan(
+        object_id="warmup-can", features={"vertical_clusters": 3},
+        material_class="METAL", requested_grip_force_nm=1.0,
+    )
+    for i in range(100):
+        learner.step(StabilityFrame(timestamp_ms=i, com_offset=0.0,
+                                      stability_score=0.97,
+                                      joint_torques=(0.5,)))
+    print(f"\n  After 100 clean CYLINDRICAL ticks:")
+    print(f"    FRAGILE competence    : "
+          f"{learner.supervisor.competence.get('FRAGILE'):.2f}   "
+          f"(untouched — per-class isolation)")
+    print(f"    CYLINDRICAL competence: "
+          f"{learner.supervisor.competence.get('CYLINDRICAL'):.2f}   "
+          f"(slowly building)")
+
+    # Promote competence on FRAGILE — simulate persisted proven-design state.
+    learner.supervisor.competence.set("FRAGILE", 1.0)
+    trusted = learner.perceive_and_plan(
+        object_id="demo-glass", features={"low_density_edges": 1},
+        material_class="GLASS", requested_grip_force_nm=0.1,
+    )
+    r2 = trusted["supervisory_review"]
+    print(f"\n  Same pickup after FRAGILE trust set to 1.0:")
+    print(f"    verdict  : {r2['verdict']}    "
+          f"competence={r2['competence']:.2f}    "
+          f"min_pred={r2['min_predicted']:.2f}  "
+          f"min_safe={r2['min_safe']:.2f}")
+    print(f"    supervised_grip → {trusted['supervised_grip_force']:.3f} Nm")
+
+    # One reflex on FRAGILE collapses trust instantly.
+    from axiom_cpi import ReflexEvent
+    learner.supervisor.competence.on_event(
+        ReflexEvent(event_id="demo-fall", fired=True, level=3,
+                    reason="grip slip", pre_score=0.9, post_score=0.6,
+                    recovery_trajectory=("regrip",), timestamp="t",
+                    signature="x" * 64),
+        context="FRAGILE",
+    )
+    print(f"\n  One L3 reflex on FRAGILE …")
+    print(f"    FRAGILE competence    : "
+          f"{learner.supervisor.competence.get('FRAGILE'):.2f}   "
+          f"(asymmetric — parent right back over the shoulder)")
+
     print("\n── Status summary ────────────────────────────────────────────────────")
     st = agent.status()
     for k, v in st.items():
-        print(f"  {k:<22} {v}")
+        if k == "competence":
+            print(f"  {k:<22} {{")
+            for cls, score in v.items():
+                print(f"     {cls:<16} {score:.3f}")
+            print("  }")
+        else:
+            print(f"  {k:<22} {v}")
     print("\nThe robot does not think about whether to fall.")
-    print("The constitution prevents it before the fall begins.\n")
+    print("The constitution prevents it before the fall begins,")
+    print("and the parent watches until it's earned the trust to stop.\n")
     return 0
 
 

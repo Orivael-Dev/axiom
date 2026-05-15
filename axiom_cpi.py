@@ -83,6 +83,38 @@ _FROZEN = frozenset({
     "TORQUE_LIMIT_PLANAR", "VERTEX_CLASSES",
 })
 
+# ── Supervisory layer constants (tunable policy, NOT CANNOT_MUTATE) ──────
+#
+# The parent watches the child crawl. As the child proves stable across
+# successful ticks the parent backs off; one fall and the parent is
+# right back over the shoulder. Asymmetric by design — build trust
+# slowly, lose it instantly. Per-vertex-class so a robot can be trusted
+# with metal cylinders while still being supervised on glass.
+COMPETENCE_BUILD_PER_TICK: float = 0.01    # ~100 clean ticks to mature
+COMPETENCE_DROP_ON_L1:     float = 0.05    # one mild reflex
+COMPETENCE_DROP_ON_L2:     float = 0.20    # moderate reflex
+COMPETENCE_DROP_ON_L3:     float = 0.40    # severe reflex
+# L4 (floor breach) zeros competence on that class — full attention back.
+
+# Forecast threshold scales linearly with competence:
+#   min_safe = STABILITY_FLOOR
+#            + (SUPERVISOR_HIGH_THRESHOLD - STABILITY_FLOOR) * (1 - competence)
+# competence=0 → very strict (forecast must stay above 0.80)
+# competence=1 → only the absolute floor (0.20) matters
+SUPERVISOR_HIGH_THRESHOLD: float = 0.80
+
+# Per-vertex-class fragility — how much a fraction of the torque ceiling
+# is predicted to dip stability. FRAGILE has a high factor because
+# even mid-range forces on glass are risky; PLANAR has a low factor
+# because the surface is forgiving. Used by StabilityPredictor.forecast.
+FRAGILITY_FACTOR: Mapping[str, float] = {
+    "FRAGILE":     0.80,
+    "DEFORMABLE":  0.40,
+    "CYLINDRICAL": 0.20,
+    "PROTRUSION":  0.20,
+    "PLANAR":      0.10,
+}
+
 
 def _module_setattr(self: Any, name: str, value: Any) -> None:
     if name in _FROZEN:
@@ -180,6 +212,44 @@ class PlaybookEntry:
     success:               bool
     promoted:              bool
     signature:             str = ""
+
+
+# ── Supervisory layer dataclasses ──────────────────────────────────────
+@dataclass(frozen=True)
+class StabilityForecast:
+    """One forecast over the planned action. min_predicted_stability is
+    the lowest score the predictor expects to see during the upcoming
+    `horizon_ms` window if the planned force is applied."""
+    vertex_class:            str
+    applied_force_nm:        float
+    torque_ceiling_nm:       float
+    fracture_probability:    float
+    min_predicted_stability: float
+    horizon_ms:              int
+
+
+@dataclass(frozen=True)
+class CompetenceFrame:
+    """Snapshot of the per-vertex-class competence scores plus
+    aggregate counters. Returned by HumanoidStabilityAgent.status()."""
+    scores:           Mapping[str, float]
+    total_ticks:      int
+    total_demotions:  int
+
+
+@dataclass(frozen=True)
+class SupervisoryDecision:
+    """The parent's verdict. PASS = action goes through unchanged.
+    SOFTEN = action's force is scaled by softening_factor (∈ (0, 1)).
+    VETO = action refused; softening_factor is 0.0 by definition."""
+    verdict:           str   # "PASS" | "SOFTEN" | "VETO"
+    vertex_class:      str
+    competence:        float
+    min_predicted:     float
+    min_safe:          float
+    softening_factor:  float
+    reason:            str
+    signature:         str = ""
 
 
 # ── Physical MonotonicGate — the stability reflex ───────────────────────
@@ -433,6 +503,181 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (ma * mb)
 
 
+# ── Stability Predictor — the parent's "look ahead" eye ─────────────────
+class StabilityPredictor:
+    """Cheap, model-based forecast of min stability over the planned
+    action. Uses the fragility-factor model:
+
+        min_predicted = 1 - (applied/ceiling) × fragility(class)
+                          - fracture_probability × 0.3
+
+    No physics sim; pure arithmetic so it's safe to call every plan.
+    A real deployment would replace this with N-step rollout of the
+    actual world model — the supervisor would consume the same
+    StabilityForecast shape, just with a richer source."""
+
+    def forecast(self, vertex_class: str, applied_force_nm: float,
+                 torque_ceiling_nm: float, fracture_probability: float,
+                 *, horizon_ms: int = 200) -> StabilityForecast:
+        fragility = FRAGILITY_FACTOR.get(vertex_class, 0.5)
+        force_frac = (applied_force_nm / torque_ceiling_nm
+                       if torque_ceiling_nm > 0 else 0.0)
+        force_frac = max(0.0, min(1.0, force_frac))
+        dip = force_frac * fragility + fracture_probability * 0.3
+        min_pred = max(0.0, min(1.0, 1.0 - dip))
+        return StabilityForecast(
+            vertex_class=vertex_class,
+            applied_force_nm=applied_force_nm,
+            torque_ceiling_nm=torque_ceiling_nm,
+            fracture_probability=fracture_probability,
+            min_predicted_stability=min_pred,
+            horizon_ms=horizon_ms,
+        )
+
+
+# ── Competence Tracker — per-vertex-class trust with asymmetric updates ─
+class CompetenceTracker:
+    """Per-vertex-class competence score in [0, 1]. Boots untrusted
+    (0.0 everywhere); each clean tick adds COMPETENCE_BUILD_PER_TICK;
+    each reflex fire subtracts a class-specific drop. Level 4 (floor
+    breach) zeros the class — full attention back, instantly. The
+    asymmetry is the parenting insight: trust builds slowly, collapses
+    instantly. Per-vertex-class isolation means a robot trusted with
+    metal cylinders is still supervised on glass."""
+
+    def __init__(self):
+        self._scores: dict[str, float] = {v: 0.0 for v in VERTEX_CLASSES}
+        # GENERAL bucket for ticks that don't have an associated context
+        # (e.g. standing-stability monitoring with no active task).
+        self._scores["GENERAL"] = 0.0
+        self._total_ticks: int = 0
+        self._total_demotions: int = 0
+
+    def get(self, vertex_class: str) -> float:
+        return self._scores.get(vertex_class, 0.0)
+
+    def set(self, vertex_class: str, value: float) -> None:
+        """Override competence — for testing, calibration, or persisted
+        deployment state ('this robot model has 100h proven track record
+        on CYLINDRICAL')."""
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("competence must be in [0, 1]")
+        self._scores[vertex_class] = float(value)
+
+    def set_all(self, value: float) -> None:
+        """Bulk override every class — useful for fixtures that want a
+        'mature' agent."""
+        for k in list(self._scores.keys()):
+            self.set(k, value)
+
+    def on_event(self, event: ReflexEvent, context: Optional[str]) -> None:
+        ctx = context or "GENERAL"
+        if ctx not in self._scores:
+            self._scores[ctx] = 0.0
+        if not event.fired or event.level == 0:
+            self._scores[ctx] = min(
+                1.0, self._scores[ctx] + COMPETENCE_BUILD_PER_TICK)
+            self._total_ticks += 1
+            return
+        self._total_demotions += 1
+        if event.level == 4:
+            self._scores[ctx] = 0.0
+            return
+        drop = {
+            1: COMPETENCE_DROP_ON_L1,
+            2: COMPETENCE_DROP_ON_L2,
+            3: COMPETENCE_DROP_ON_L3,
+        }.get(event.level, 0.0)
+        self._scores[ctx] = max(0.0, self._scores[ctx] - drop)
+
+    def snapshot(self) -> CompetenceFrame:
+        return CompetenceFrame(
+            scores=dict(self._scores),
+            total_ticks=self._total_ticks,
+            total_demotions=self._total_demotions,
+        )
+
+
+# ── Supervisory Guard — the parent's decision layer ─────────────────────
+class SupervisoryGuard:
+    """The parent. Combines a `StabilityForecast` with a `CompetenceTracker`
+    score into a `SupervisoryDecision`. The threshold a forecast must
+    clear scales linearly with competence — at competence=0 the parent
+    is strict (forecast must stay above SUPERVISOR_HIGH_THRESHOLD); at
+    competence=1 only the absolute STABILITY_FLOOR matters. Every
+    decision is HMAC-signed so the audit trail is complete."""
+
+    def __init__(self):
+        self.predictor = StabilityPredictor()
+        self.competence = CompetenceTracker()
+
+    def review(self, vertex_class: str, applied_force_nm: float,
+               torque_ceiling_nm: float, fracture_probability: float
+               ) -> SupervisoryDecision:
+        forecast = self.predictor.forecast(
+            vertex_class, applied_force_nm, torque_ceiling_nm,
+            fracture_probability,
+        )
+        c = self.competence.get(vertex_class)
+        min_safe = (
+            STABILITY_FLOOR
+            + (SUPERVISOR_HIGH_THRESHOLD - STABILITY_FLOOR) * (1.0 - c)
+        )
+        min_pred = forecast.min_predicted_stability
+
+        if min_pred >= min_safe:
+            verdict = "PASS"
+            softening_factor = 1.0
+            reason = (f"forecast {min_pred:.2f} ≥ min_safe {min_safe:.2f} "
+                      f"(competence {c:.2f})")
+        elif min_pred >= STABILITY_FLOOR:
+            verdict = "SOFTEN"
+            # Solve for the force fraction that brings the forecast to
+            # min_safe:  1 - frac*fragility - fracture_p*0.3 = min_safe
+            fragility = FRAGILITY_FACTOR.get(vertex_class, 0.5)
+            if fragility > 0:
+                safe_frac = max(
+                    0.0,
+                    (1.0 - min_safe - fracture_probability * 0.3) / fragility,
+                )
+                # As a fraction of the original applied force:
+                current_frac = (applied_force_nm / torque_ceiling_nm
+                                if torque_ceiling_nm > 0 else 0.0)
+                if current_frac > 0:
+                    softening_factor = max(0.0, min(1.0,
+                                                     safe_frac / current_frac))
+                else:
+                    softening_factor = 1.0
+            else:
+                softening_factor = 1.0
+            reason = (f"forecast {min_pred:.2f} < min_safe {min_safe:.2f}; "
+                      f"soften ×{softening_factor:.2f}")
+        else:
+            verdict = "VETO"
+            softening_factor = 0.0
+            reason = (f"forecast {min_pred:.2f} would breach floor "
+                      f"{STABILITY_FLOOR:.2f}")
+
+        payload = {
+            "verdict":          verdict,
+            "vertex_class":     vertex_class,
+            "competence":       round(c, 4),
+            "min_predicted":    round(min_pred, 4),
+            "min_safe":         round(min_safe, 4),
+            "softening_factor": round(softening_factor, 4),
+            "reason":           reason,
+        }
+        sig = _sign(_cpi_key(), payload)
+        return SupervisoryDecision(
+            verdict=verdict, vertex_class=vertex_class,
+            competence=round(c, 4),
+            min_predicted=round(min_pred, 4),
+            min_safe=round(min_safe, 4),
+            softening_factor=round(softening_factor, 4),
+            reason=reason, signature=sig,
+        )
+
+
 # ── Humanoid Stability Agent — the facade ───────────────────────────────
 class HumanoidStabilityAgent:
     """Top-level facade. One construction wires the four blocks together
@@ -444,6 +689,13 @@ class HumanoidStabilityAgent:
         self.classifier = VertexClassifier()
         self.material   = MaterialSimulator()
         self.playbook   = PhysicalFixPlaybook()
+        # Layer-1 supervisor — the parent. Boots untrusted (competence
+        # 0 for every vertex class); each clean tick during motion
+        # adds slow trust, each reflex erodes it.
+        self.supervisor = SupervisoryGuard()
+        # Context of the most recent perceive_and_plan call — drives
+        # which vertex-class competence is updated by subsequent ticks.
+        self._current_context: Optional[str] = None
 
     def perceive_and_plan(self, object_id: str,
                           features: Mapping[str, Any],
@@ -464,6 +716,25 @@ class HumanoidStabilityAgent:
         # CANNOT_EXCEED contract from the §3 spec.
         ceiling = VertexClassifier._TORQUE_CEILING.get(vertex.vertex_class, 1.0)
         applied = min(requested_grip_force_nm, ceiling)
+
+        # Layer-1 supervisor review — advisory. The parent inspects the
+        # planned action against per-vertex-class competence and a
+        # forecast; emits PASS / SOFTEN / VETO. `applied_grip_force`
+        # stays as the layer-0 (torque ceiling) value so existing
+        # consumers see the same number; the parent-aware value is
+        # exposed separately as `supervised_grip_force`. Callers choose
+        # whether to honor the verdict.
+        decision = self.supervisor.review(
+            vertex_class=vertex.vertex_class,
+            applied_force_nm=applied,
+            torque_ceiling_nm=ceiling,
+            fracture_probability=sim.fracture_probability,
+        )
+        supervised = applied * decision.softening_factor
+
+        # Remember which class context subsequent ticks belong to.
+        self._current_context = vertex.vertex_class
+
         return {
             "object_id":            object_id,
             "material":             asdict(sim),
@@ -472,16 +743,22 @@ class HumanoidStabilityAgent:
             "applied_grip_force":   applied,
             "torque_clamped":       applied < requested_grip_force_nm,
             "cautious_approach":    sim.cautious_approach,
+            "supervised_grip_force": supervised,
+            "supervisory_review":    asdict(decision),
             "timestamp":            datetime.now(timezone.utc).isoformat(),
         }
 
     def step(self, frame: StabilityFrame) -> ReflexEvent:
         """One physics tick. The gate decides if a reflex fires; if it
-        did, the playbook is consulted for a recovery."""
+        did, the playbook is consulted for a recovery. The Layer-1
+        competence tracker is updated based on the outcome so the
+        parent's trust adapts over time."""
         event = self.gate.record(frame)
+        self.supervisor.competence.on_event(event, self._current_context)
         return event
 
     def status(self) -> dict:
+        snap = self.supervisor.competence.snapshot()
         return {
             "trust_level":      TRUST_LEVEL,
             "com_safe_radius":  COM_SAFE_RADIUS,
@@ -491,6 +768,10 @@ class HumanoidStabilityAgent:
             "emergency_count":  self.gate.emergency_count,
             "history_depth":    len(self.gate.history()),
             "playbook_size":    len(self.playbook),
+            "competence":       snap.scores,
+            "competence_ticks": snap.total_ticks,
+            "competence_demotions": snap.total_demotions,
+            "current_context":  self._current_context,
         }
 
 
