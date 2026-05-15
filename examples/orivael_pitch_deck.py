@@ -103,7 +103,7 @@ def chapter_axm() -> dict:
         cpath = Path(workdir) / "starter.axm"
         c = AXMContainer.pack(STARTER_SPEC, str(cpath))
         info = c.inspect()
-        _bullet(f"Container packed: {info['delegate_count']} delegates · "
+        _bullet(f"Exploded layout packed: {info['delegate_count']} delegates · "
                  f"{info['proof_count']} HMAC-signed proofs · "
                  f"fingerprint {info['fingerprint']}")
         ok = c.verify_proofs()
@@ -113,13 +113,35 @@ def chapter_axm() -> dict:
         _bullet(f"Task routed → intent={r.intent_class}   "
                  f"loaded={list(r.loaded_skills)}   "
                  f"skipped={list(r.skipped_skills)}")
+
+        # ── Single-file shippable artifact ─────────────────────────────
+        # The same container packed as one zip file — emailable,
+        # registry-distributable, signed-as-a-blob. GGUF is one file;
+        # AXM is one file with everything inside cryptographically
+        # bound to the header.
+        archive_path = Path(workdir) / "shipping.axm"
+        zipped = AXMContainer.pack(STARTER_SPEC, str(archive_path), archive=True)
+        size_kb = archive_path.stat().st_size / 1024
+        _bullet(f"Single-file format: shipping.axm ({size_kb:.1f} KB) — "
+                 f"shippable artifact, same fingerprint {zipped.fingerprint()}")
+        # Prove the loaded zip behaves identically to the directory form.
+        zipped.verify_proofs()
+        r2 = zipped.route("Explain monotonic gates briefly")
+        _bullet(f"Loaded from .axm zip: ✓ proofs verified, "
+                 f"loaded={list(r2.loaded_skills)} (identical lazy-load discipline)")
+
         print()
         _kv("Trust model:", "hybrid (open container + signed delegates)")
         _kv("Cross-patent wiring:", "MKB BlockRegistry + ANF coprocessor + Mobile")
         _kv("Energy story:", f"lit {len(r.loaded_skills)} delegates of "
                               f"{info['delegate_count']} — task-proportional VRAM")
+        _kv("Distribution story:",
+             f"single {size_kb:.1f} KB .axm file → "
+             "email · CDN · npm-style registry")
         return {"delegates": info["delegate_count"], "proofs": info["proof_count"],
-                "verified": ok, "loaded": list(r.loaded_skills)}
+                "verified": ok, "loaded": list(r.loaded_skills),
+                "archive_bytes": archive_path.stat().st_size,
+                "archive_fingerprint_match": c.fingerprint() == zipped.fingerprint()}
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

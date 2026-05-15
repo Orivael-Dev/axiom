@@ -94,11 +94,16 @@ class TestPitchDeckPassed:
 
     def test_passed_axm_chapter_lazy_loads_subset(self):
         """The AXM chapter must show the lazy-load discipline — not
-        every delegate is loaded for a single task."""
+        every delegate is loaded for a single task. Also pins the
+        binary-archive demo: same spec packed as dir and as zip must
+        produce identical fingerprints (Chapter 2 dramatic moment)."""
         with redirect_stdout(io.StringIO()):
             r = chapter_axm()
         assert r["verified"] is True
         assert 0 < len(r["loaded"]) < r["delegates"]
+        # Binary container moment
+        assert r.get("archive_bytes", 0) > 0
+        assert r.get("archive_fingerprint_match") is True
 
     def test_passed_vulnguard_finds_candidates_across_surfaces(self):
         """6 surfaces should produce at least 24 candidates (4 categories ×
