@@ -1,0 +1,94 @@
+AGENT DevelopmentalCurriculum
+VERSION 1.0
+TRUST_LEVEL 3
+STRICT MODE
+PURPOSE Bridge the toddler reflex layer of ORVL-022 and the
+        memory container of ORVL-023 so the agent competence
+        persists across sessions and transfers across similar
+        categories. The mom layer that schedules curriculum and
+        consolidates trust.
+GOAL Move the developmental loop from in-memory ephemeral state to
+     signed durable record. Surface tasks just above current
+     competence and refuse trust ratcheting beyond a per-call cap.
+
+RECEIVES supervisor: SupervisoryGuard, axm_container: AXMContainer,
+         persistence_path: string
+EMITS proposed_task: ProposedTask, transfer_event: TransferEvent
+MUTATES competence_scores, persistence_file_content, consolidation_count
+
+CANNOT_MUTATE similarity_floor, transfer_cap_per_call, persistence_format_version
+
+CONSTRAINT The supervisor CompetenceTracker is the source of truth
+           for the current session
+CONSTRAINT Transfer never decreases the target category existing
+           competence
+CONSTRAINT Single transfer call cannot raise competence above
+           transfer_cap_per_call
+CONSTRAINT Persistence file is HMAC-SHA256 signed and tamper-evident
+CONSTRAINT Consolidation only persists gains backed by at least
+           min_ticks_for_consolidation ticks
+CONSTRAINT Similarity is read-only from the AXM container vertices
+
+RULES
+- On boot with an existing persistence file: verify signature,
+  apply scores, then rebuild similarity from AXM vertices
+- On transfer above transfer_cap_per_call: raise TransferCapExceeded
+- On consolidate: write a signed sidecar JSON under the deployer key
+- On detect_plateau: surface the stuck category and do not auto transfer
+
+PROCESS
+- Read VectorVertexEntry items from the AXM container
+- Project semantic categories onto CPI vertex categories via the
+  semantic_to_cpi_vertex mapping
+- Tokenize each vertex_cluster string by underscore
+- Aggregate tokens into a bag-of-words feature vector per category
+- Compute pairwise cosine similarity between category feature vectors
+- Cache the similarity graph for the session
+- Snapshot competence into per-category history on each observe call
+
+CHECK
+- Boot with no persistence file starts from zero competence
+- Boot with a tampered persistence file refuses to apply scores
+- Transfer from a category with zero competence is a no-op
+- Transfer from a category at eight tenths to a category whose
+  similarity is one half produces a raise of four tenths
+- Reverse transfer when destination is already higher is a no-op
+- detect_plateau returns the longest static category
+- Consolidate writes a verifiable signed file
+- Boot after consolidate restores the same competence scores
+
+FAILURE
+- On signature mismatch in persistence file: raise PersistenceTampered
+- On format_version mismatch: raise PersistenceTampered
+- On transfer that would breach the per-call cap: raise TransferCapExceeded
+- On unknown CPI vertex category: similarity defaults to zero
+
+HUMAN_REVIEW
+- require on: transfer_cap_per_call_change
+- require on: similarity_floor_change
+- require on: persistence_format_version_change
+- require on: trust_level_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
+SECURITY
+- Never apply competence from an unsigned source
+- Never ratchet competence beyond transfer_cap_per_call in one call
+- Never override the supervisor CANNOT_MUTATE constants
+- Never log raw signing keys
+
+OUTPUT
+- proposed_task: dict with vertex_class, target_force_nm,
+  current_competence, rationale, signature
+- transfer_event: dict with src_class, dst_class, similarity,
+  old_dst, new_dst, raise_delta, signature
+- persistence_file: signed JSON with format_version, scores,
+  history, consolidation_count, timestamp, signature
+
+SUCCESS
+boot_load_success_rate:        0.30
+transfer_safety:               0.25
+plateau_detection_correctness: 0.20
+consolidation_idempotence:     0.15
+similarity_graph_stability:    0.10
