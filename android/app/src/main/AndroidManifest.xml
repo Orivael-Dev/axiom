@@ -16,6 +16,23 @@
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
 
     <!--
+        Live call transcription (Hello Operator). RECORD_AUDIO is a
+        runtime permission — the app prompts on first start of the
+        Live Call Mode toggle in the Hello Op tab. POST_NOTIFICATIONS
+        (API 33+) is needed for the ongoing foreground-service
+        notification.
+
+        FOREGROUND_SERVICE was free pre-API-28; API 28+ requires it,
+        and API 34+ also requires the type-specific permission
+        FOREGROUND_SERVICE_MICROPHONE.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
         Cleartext to 10.0.2.2 (emulator → host loopback) is allowed via the
         network_security_config below. Production / device builds should
         only talk to HTTPS endpoints — the config is per-domain so 10.0.2.2
@@ -56,6 +73,16 @@
                 <action android:name="android.telecom.CallScreeningService" />
             </intent-filter>
         </service>
+
+        <!--
+            Live call transcription. Foreground service with microphone
+            type — API 34+ requires the type declaration plus the
+            matching FOREGROUND_SERVICE_MICROPHONE permission.
+        -->
+        <service
+            android:name=".incall.InCallTranscriptionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 </manifest>
 

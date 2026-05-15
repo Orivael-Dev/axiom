@@ -126,6 +126,48 @@ class TestAndroidPassed:
             assert f"fun {method}" in client_src or \
                     f"suspend fun {method}" in client_src, f"missing {method}"
 
+    def test_passed_in_call_module_present(self):
+        """Live Call Mode — InCallTranscriptionService runs as a
+        foreground service with microphone type, captures mic audio,
+        routes each transcribed utterance through /phone/inbound, and
+        appends to TranscriptionStore for the Hello Op UI feed.
+
+        Catches drift on three places that have to stay aligned for
+        the slice to work end-to-end on a device:
+          - manifest permissions (RECORD_AUDIO + the FOREGROUND_SERVICE
+            type-specific permission)
+          - manifest service declaration with the microphone type
+          - the Kotlin files themselves (service + store)
+        """
+        manifest = (ANDROID / "app" / "src" / "main"
+                     / "AndroidManifest.xml").read_text(encoding="utf-8")
+        for perm in (
+            "android.permission.RECORD_AUDIO",
+            "android.permission.FOREGROUND_SERVICE",
+            "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+            "android.permission.POST_NOTIFICATIONS",
+        ):
+            assert perm in manifest, f"manifest missing {perm}"
+        assert '.incall.InCallTranscriptionService' in manifest
+        assert 'android:foregroundServiceType="microphone"' in manifest
+
+        # Kotlin sources
+        incall = PKG_ROOT / "incall"
+        service = (incall / "InCallTranscriptionService.kt")
+        store   = (incall / "TranscriptionStore.kt")
+        assert service.exists()
+        assert store.exists()
+
+        svc_src = service.read_text(encoding="utf-8")
+        # ASR fallback path — must check availability before allocating
+        # the recognizer, and gracefully degrade when absent.
+        assert "SpeechRecognizer.isRecognitionAvailable" in svc_src
+        # Sessions persisted across utterances so L1->L2->L3 graduation
+        # works across the call.
+        assert 'sessionId = "incall-' in svc_src
+        # Each utterance must flow through the /phone/inbound gate.
+        assert "client.phoneInbound" in svc_src
+
     def test_passed_security_module_present(self):
         """HMAC client-side verification: KeystoreManager wraps the master
         key under an Android Keystore AES-GCM key; SignatureVerifier

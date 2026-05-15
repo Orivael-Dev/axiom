@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -36,11 +38,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.Switch
+import androidx.core.content.ContextCompat
 import dev.orivael.axiom.data.SettingsStore
+import dev.orivael.axiom.incall.InCallTranscriptionService
+import dev.orivael.axiom.incall.TranscriptionStore
 import dev.orivael.axiom.network.AxiomClient
 import dev.orivael.axiom.security.SignatureVerifier
 import dev.orivael.axiom.security.VerificationBadge
 import dev.orivael.axiom.security.rememberSignatureVerifier
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -102,7 +115,9 @@ fun HelloOperatorScreen() {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+    Column(modifier = Modifier.fillMaxSize()
+        .padding(12.dp)
+        .verticalScroll(rememberScrollState())) {
         // Header
         Text(
             "Hello Operator",
@@ -114,6 +129,10 @@ fun HelloOperatorScreen() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        Spacer(Modifier.height(12.dp))
+
+        LiveCallModeCard()
 
         Spacer(Modifier.height(12.dp))
 
@@ -343,6 +362,153 @@ private fun CallStepCard(step: CallStep) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Live Call Mode card — toggles the [InCallTranscriptionService] and
+ * renders the streaming transcript feed.
+ *
+ * Flow on first activation:
+ *   1. User flips the switch ON.
+ *   2. We check RECORD_AUDIO. If not granted, launch the runtime
+ *      permission prompt; only start the service if granted.
+ *   3. On grant, `InCallTranscriptionService.start(context)` kicks the
+ *      foreground service; the notification appears, mic capture
+ *      begins, and the persistent banner here flips to "● Listening".
+ *   4. As each utterance is transcribed and gated, a row appears at
+ *      the top of the transcript feed — verdict colour matches the
+ *      ORVL-019 §4 escalation (green INFORM, amber L1, orange L2,
+ *      red L3) and the HMAC verification badge runs per utterance.
+ *
+ * Honesty note shown to the user: the OS does not give a non-system
+ * app the call audio stream directly, so the mic captures both sides
+ * only when the call is on speakerphone. This is the standard Hello-
+ * Operator-style consumer-app constraint.
+ */
+@Composable
+private fun LiveCallModeCard() {
+    val context = LocalContext.current
+    val isActive    by TranscriptionStore.isActive.collectAsState()
+    val transcript  by TranscriptionStore.events.collectAsState()
+
+    var hasMicPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasMicPermission = granted
+        if (granted) InCallTranscriptionService.start(context)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Live Call Mode",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        if (isActive) "● Listening — mic → /phone/inbound"
+                        else "○ Idle — toggle to begin transcribing the active call",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+                Switch(
+                    checked = isActive,
+                    onCheckedChange = { wantOn ->
+                        if (wantOn) {
+                            if (hasMicPermission)
+                                InCallTranscriptionService.start(context)
+                            else
+                                permLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            InCallTranscriptionService.stop(context)
+                        }
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Put the call on speakerphone so the mic picks up both sides — " +
+                "non-system apps don't get the call audio stream directly.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+
+            if (transcript.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Transcript (${transcript.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = { TranscriptionStore.clear() },
+                        colors = ButtonDefaults.outlinedButtonColors(),
+                    ) { Text("Clear") }
+                }
+                Spacer(Modifier.height(4.dp))
+                val fmt = remember { SimpleDateFormat("HH:mm:ss", Locale.US) }
+                transcript.take(8).forEach { e ->
+                    TranscriptRow(fmt.format(Date(e.timestampMs)), e)
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranscriptRow(timestamp: String, e: TranscriptionStore.Event) {
+    val scheme = MaterialTheme.colorScheme
+    val accent = when (e.level) {
+        0 -> if (e.intentClass == "INFORM") scheme.tertiary else scheme.onSurfaceVariant
+        1 -> Color(0xFFD89000)
+        2 -> Color(0xFFE07628)
+        3 -> scheme.error
+        else -> scheme.outline
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent),
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "$timestamp · ${e.verdict}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+                VerificationBadge(e.verification)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "\"${e.utterance}\"",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+            )
         }
     }
 }
