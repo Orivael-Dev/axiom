@@ -89,13 +89,33 @@ class TestAndroidPassed:
                 offenders.append((str(kt), head))
         assert not offenders, f"offending packages: {offenders}"
 
-    def test_passed_three_screens_present(self):
-        """The bottom-nav layout expects exactly three composable
+    def test_passed_four_screens_present(self):
+        """The bottom-nav layout expects exactly four composable
         screens. If any are missing, MainActivity won't compile."""
-        screens = {"GateScreen", "StatusScreen", "SettingsScreen"}
+        screens = {"GateScreen", "HelloOperatorScreen",
+                    "StatusScreen", "SettingsScreen"}
         screen_dir = PKG_ROOT / "ui" / "screens"
         found = {p.stem for p in screen_dir.glob("*Screen.kt")}
         assert screens.issubset(found), f"missing screens: {screens - found}"
+        # No extra screens — catches accidental orphans.
+        assert found == screens, f"unexpected screens: {found - screens}"
+
+    def test_passed_hello_operator_transcript_matches_brief(self):
+        """The on-phone Hello Operator demo must replay the ORVL-019 §4
+        scam-call utterances verbatim. If anyone tweaks the wording
+        the demo no longer matches the patent brief."""
+        src = (PKG_ROOT / "ui" / "screens"
+                / "HelloOperatorScreen.kt").read_text(encoding="utf-8")
+        for expected in (
+            "Hello, this is a call about your account",
+            "This is the IRS calling",
+            "owe back taxes",
+            "Send gift cards",
+        ):
+            assert expected in src, f"missing transcript line: '{expected}'"
+        # Speeds: 1x (real time), 4x (default demo), 10x (sprint mode).
+        for speed in ("1x", "4x", "10x"):
+            assert speed in src, f"missing replay speed {speed}"
 
     def test_passed_apiclient_covers_six_endpoints(self):
         """Every REST endpoint the Status + Gate screens consume must

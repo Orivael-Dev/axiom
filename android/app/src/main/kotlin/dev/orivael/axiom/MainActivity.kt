@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
@@ -26,6 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import dev.orivael.axiom.ui.screens.GateScreen
+import dev.orivael.axiom.ui.screens.HelloOperatorScreen
 import dev.orivael.axiom.ui.screens.SettingsScreen
 import dev.orivael.axiom.ui.screens.StatusScreen
 import dev.orivael.axiom.ui.theme.AxiomTheme
@@ -47,12 +49,13 @@ class MainActivity : ComponentActivity() {
 }
 
 private sealed class Tab(val route: String, val labelRes: Int, val icon: @Composable () -> Unit) {
-    object Gate     : Tab("gate",     R.string.tab_gate,     { Icon(Icons.Outlined.Shield,   null) })
-    object Status   : Tab("status",   R.string.tab_status,   { Icon(Icons.Outlined.Insights, null) })
-    object Settings : Tab("settings", R.string.tab_settings, { Icon(Icons.Outlined.Settings, null) })
+    object Gate          : Tab("gate",          R.string.tab_gate,           { Icon(Icons.Outlined.Shield,   null) })
+    object HelloOperator : Tab("hello_operator", R.string.tab_hello_operator, { Icon(Icons.Outlined.Call,     null) })
+    object Status        : Tab("status",         R.string.tab_status,         { Icon(Icons.Outlined.Insights, null) })
+    object Settings      : Tab("settings",       R.string.tab_settings,       { Icon(Icons.Outlined.Settings, null) })
 }
 
-private val TABS = listOf(Tab.Gate, Tab.Status, Tab.Settings)
+private val TABS = listOf(Tab.Gate, Tab.HelloOperator, Tab.Status, Tab.Settings)
 
 @Composable
 private fun SovereignPhoneApp() {
@@ -90,9 +93,10 @@ private fun SovereignPhoneApp() {
             startDestination = Tab.Gate.route,
             modifier = Modifier.padding(padding),
         ) {
-            composable(Tab.Gate.route)     { GateScreen() }
-            composable(Tab.Status.route)   { StatusScreen() }
-            composable(Tab.Settings.route) { SettingsScreen() }
+            composable(Tab.Gate.route)          { GateScreen() }
+            composable(Tab.HelloOperator.route) { HelloOperatorScreen() }
+            composable(Tab.Status.route)        { StatusScreen() }
+            composable(Tab.Settings.route)      { SettingsScreen() }
         }
     }
 }

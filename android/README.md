@@ -4,17 +4,33 @@ Native Kotlin + Jetpack Compose app that wires the AXIOM REST server (`axiom_ser
 
 ## What it does
 
-Three tabs in the bottom navigation:
+Four tabs in the bottom navigation:
 
 | Tab | What it calls | Why |
 |---|---|---|
 | **Gate** | `POST /phone/outbound` · `POST /phone/inbound` | The outbound + inbound classifier surfaces. Type a message, watch the signed `OutboundDecision` or `SovereignAlert` come back. Session-scoped so the L1→L2→L3 escalation works across consecutive blocks. |
+| **Hello Op** | `POST /phone/outbound` ×4 (same `session_id`) | The ORVL-019 §4 scam-call demo, replayed live on the phone. Tap **Run demo call** → four cards animate in showing T+0 INFORM → T+3 L1 DECEIVE → T+6 L2 HARM → T+8 L3 HARM, with the accent color escalating green → amber → orange → red. Speed selector: 1x (real-time, 8 s) · 4x (default) · 10x (sprint). |
 | **Status** | `GET /phone/status` · `GET /cmaa/fleet` · `GET /shield/status` | Live dashboard — device fingerprint, ANF call count, fleet trust levels, OS-shield daemon state. |
 | **Settings** | `POST /phone/outbound` (health check) | Server URL · optional bearer token · connectivity probe. Persisted via DataStore. |
 
-## What you need to build it
+## Package as a single zip for Android Studio
 
-The app source ships in this repo; the build does not. To produce an APK:
+The easiest path to a real APK is to import this directory into Android Studio. To hand the project to a colleague — or to your own desktop with Android Studio installed — zip the `android/` directory once and import the zip:
+
+```bash
+# From the repo root
+zip -r axiom-sovereign-phone.zip android/ \
+    -x 'android/build/*' 'android/app/build/*' 'android/.gradle/*' \
+       'android/local.properties' 'android/gradle/wrapper/gradle-wrapper.jar'
+
+# → axiom-sovereign-phone.zip (about 30 KB of source, no binaries)
+```
+
+In Android Studio: **File → New → Import Project** → pick the unzipped directory. Android Studio bootstraps the Gradle wrapper jar, downloads dependencies, and the project is ready to build → Run.
+
+## What you need to build it from the command line
+
+The app source ships in this repo; the build does not. To produce an APK directly:
 
 ```bash
 # 1. Install JDK 17 and Android Studio (or just the Android command-line tools + SDK)

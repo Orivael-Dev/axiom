@@ -2,6 +2,7 @@
     <string name="app_name">AXIOM Sovereign Phone</string>
 
     <string name="tab_gate">Gate</string>
+    <string name="tab_hello_operator">Hello Op</string>
     <string name="tab_status">Status</string>
     <string name="tab_settings">Settings</string>
 
