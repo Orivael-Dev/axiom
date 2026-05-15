@@ -20,8 +20,9 @@ BUG-013: hardcoded_signing_keys — this module is the fix.
 github.com/Orivael-Dev/axiom
 """
 
-import os
 import hashlib
+import hmac
+import os
 
 _MASTER_RAW = os.environ.get("AXIOM_MASTER_KEY", "")
 
@@ -41,5 +42,12 @@ def derive_key(salt: bytes) -> bytes:
     Each module passes its own salt (e.g. b"axiom-agent-v1") so keys
     are cryptographically independent — compromising one derived key
     does not reveal the master or any other module's key.
+
+    Construction: HMAC-SHA256(salt, master).  HMAC is the standard
+    PRF-based KDF primitive — unlike a raw ``SHA256(master || salt)``
+    construction it is not vulnerable to length-extension if anyone
+    later reuses the helper as a MAC over attacker-controlled input.
     """
-    return hashlib.sha256(_MASTER + b":" + salt).digest()
+    if not isinstance(salt, (bytes, bytearray)):
+        raise TypeError("salt must be bytes")
+    return hmac.new(salt, _MASTER, hashlib.sha256).digest()

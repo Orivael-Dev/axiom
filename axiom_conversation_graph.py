@@ -254,10 +254,17 @@ class ConversationGraph:
     # ── Seed operations (Component 2 — coordinate propagation) ──────────
 
     def _verify_node_signature(self, node: dict) -> bool:
-        """Verify HMAC-SHA256 signature on a stored node entry."""
+        """Verify HMAC-SHA256 signature on a stored node entry.
+
+        Uses ``hmac.compare_digest`` to avoid early-exit timing leaks that
+        plain ``==`` exposes when comparing per-byte hex strings against
+        a secret-derived signature.
+        """
         stored_sig = node.get("signature", "")
         expected = _sign_entry(node)
-        return stored_sig == expected
+        if not isinstance(stored_sig, str) or len(stored_sig) != len(expected):
+            return False
+        return hmac.compare_digest(stored_sig, expected)
 
     def seed_from(self, conversation_id: str) -> dict:
         """Retrieve a verified node for use as a preflight seed.

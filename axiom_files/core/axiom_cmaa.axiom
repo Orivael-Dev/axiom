@@ -1,0 +1,134 @@
+AGENT ConstitutionalMultiAgentArchitecture
+VERSION 0.1.0
+TRUST_LEVEL 4
+PURPOSE Assemble the prior 16 ORVL patents into one self-governing fleet of constitutionally isolated SLM containers coordinated by a constitutional orchestrator
+GOAL Partition intelligence across specialized SLM containers, route all
+     cross-container traffic through an intent gate, suspend containers
+     whose trajectory deviates toward harmful intent classes, and govern
+     self-evolution so new capabilities never weaken the constitution
+
+RECEIVES hmac_key: bytes, fleet_manifest: dict, packet: ConstitutionalPacket
+EMITS routing_decision: RoutingDecision, suspend_alert: SuspendAlert, fleet_report: FleetReport, evolution_proposal: EvolutionProposal
+MUTATES axiom_cmaa_log.jsonl — append-only fleet routing records
+CANNOT_MUTATE trust_level, intent_gate_required, human_review_gate, reward_function_locked, cross_container_isolation
+
+CONSTRAINT TRUST_LEVEL is 4 and CANNOT_MUTATE
+CONSTRAINT INTENT_GATE_REQUIRED is True and CANNOT_MUTATE
+CONSTRAINT HUMAN_REVIEW_GATE is True and CANNOT_MUTATE
+CONSTRAINT REWARD_FUNCTION_LOCKED is True and CANNOT_MUTATE
+CONSTRAINT CROSS_CONTAINER_ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT All cross-container packets pass through the intent gate before delivery
+CONSTRAINT Packets classified as HARM or DECEIVE trigger L3_SUSPEND on the source container
+CONSTRAINT Every routing decision is HMAC-SHA256 signed before logging
+CONSTRAINT TL1 containers cannot reach TL4 orchestrator directly
+CONSTRAINT New SLM containers require HUMAN_REVIEW approval before fleet entry
+CONSTRAINT All payloads are UTF-8 encoded before HMAC signing per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT HMAC verification uses constant-time comparison
+
+HUMAN_REVIEW
+- require on: fleet_manifest_change
+- require on: trust_level_change
+- require on: evolution_proposal_approval
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
+SECURITY
+- Never route a packet that has not been intent-classified
+- Never bypass HUMAN_REVIEW for a newly trained container
+- Never permit a container to modify the constitutional reward function
+- Never delete fleet audit log entries
+
+RULES
+- On packet emitted by an SLM container: forward to IntentGate before delivery
+- On intent category HARM or DECEIVE: emit SuspendAlert at L3 against the source
+- On L3_SUSPEND: instruct fleet manager to pause source container and route fallback
+- On capability gap detected by world model: emit EvolutionProposal with confidence
+- On EvolutionProposal accepted: CRL trains a candidate SLM, CBV validates, CAS adversarially tests
+- On candidate clearing CBV and CAS: surface to HUMAN_REVIEW queue
+- On HUMAN_REVIEW approval: register supply chain hash, deploy container, wire intent gate
+- On every routing decision: sign RoutingDecision with HMAC-SHA256, append to axiom_cmaa_log.jsonl
+- On every CAS weekly round: verify each container's manifold still holds
+
+PROCESS
+- ConstitutionalMultiAgentArchitecture is instantiated with hmac_key and fleet_manifest
+- Caller invokes route(packet) to forward a cross-container packet
+- route delegates to IntentGate.classify(packet) before delivery
+- HARM or DECEIVE classifications raise IntentViolation and emit SuspendAlert
+- Cleared packets are delivered to the named destination container
+- Caller invokes propose_evolution(gap) to nominate a new SLM container
+- propose_evolution coordinates CRL training, CBV validation, CAS testing
+- Final candidate is queued for HUMAN_REVIEW before any fleet mutation
+- All routing decisions and proposals are signed and appended to the log
+
+CHECK
+- route on a benign packet returns delivered status with signature
+- route on a HARM packet raises IntentViolation and emits SuspendAlert
+- route on a DECEIVE packet raises IntentViolation and emits SuspendAlert
+- propose_evolution without HUMAN_REVIEW approval refuses to deploy
+- RoutingDecision HMAC signature verifies against independently computed digest
+- TRUST_LEVEL assignment raises AttributeError
+- INTENT_GATE_REQUIRED assignment raises AttributeError
+- HUMAN_REVIEW_GATE assignment raises AttributeError
+- REWARD_FUNCTION_LOCKED assignment raises AttributeError
+- A TL1 container cannot deliver a packet to the TL4 orchestrator
+
+WHEN
+- packet_emitted:        activate IntentGateClassification
+- harm_or_deceive:       activate ContainerQuarantine
+- capability_gap:        activate ConstitutionalSelfEvolution
+- evolution_candidate:   activate HumanReviewGate
+
+FAILURE
+- On IntentGate connection error: refuse to deliver and emit SuspendAlert with reason gate_unreachable
+- On CBV CERT_FAIL: refuse to deploy and route candidate back to CRL for retraining
+- On consecutive_red_wins reaching 2 during CAS: refuse to deploy, retain candidate for review
+- On log file write error: propagate to caller and refuse routing
+
+CONCEPT IntentGateClassification
+PURPOSE Classify the trajectory shape of every cross-container packet
+APPLIES WHEN any container emits a packet destined for another container
+NOT WHEN packet is internal to a single container
+PRIORITY 1
+REQUIRES axiom_intent_classifier ORVL-016, HMAC-signed packet
+EFFECT HARM and DECEIVE packets are rejected before crossing the bridge
+
+CONCEPT ContainerQuarantine
+PURPOSE Suspend and rebuild a container without affecting the rest of the fleet
+APPLIES WHEN intent gate flags a container or CAS detects a persistent weak region
+NOT WHEN the offending packet originated from a sanctioned adversarial round
+PRIORITY 1
+REQUIRES axiom_cas_orchestrator ORVL-008, ConstitutionalAmputate ORVL-012
+EFFECT axiom-medical or other targeted container is paused, traffic falls back, CRL retrains
+
+CONCEPT ConstitutionalSelfEvolution
+PURPOSE Detect capability gaps and train new SLMs without weakening the constitution
+APPLIES WHEN world model reports a capability gap above probability 0.80
+NOT WHEN the proposed gap targets the constitutional reward function itself
+PRIORITY 2
+REQUIRES axiom_world_model ORVL-014, CRL reward function ORVL-011, CBV ORVL-010, CAS ORVL-008
+EFFECT A new container candidate is produced and surfaced to HUMAN_REVIEW
+
+CONCEPT HumanReviewGate
+PURPOSE Ensure no new container enters production without explicit human approval
+APPLIES WHEN an evolution candidate clears CBV and CAS
+NOT WHEN a container is being suspended rather than deployed
+PRIORITY 1
+REQUIRES axiom_review.py approval workflow
+EFFECT Supply chain hash registered and container wired into fleet only after approval
+
+OUTPUT
+- routing_decision: RoutingDecision with packet_id, source, destination, intent_class, delivered, signature
+- suspend_alert: SuspendAlert with container, intent_class, confidence, level
+- fleet_report: FleetReport with containers, packets_routed, packets_blocked, weak_regions, evolution_proposals, signature
+- evolution_proposal: EvolutionProposal with gap, candidate_image, cbv_status, cas_status, human_review_status
+
+SUCCESS
+all_packets_intent_classified:   0.20
+harm_deceive_packets_blocked:    0.20
+cannot_mutate_enforced:          0.15
+human_review_gate_enforced:      0.15
+hmac_signatures_valid:           0.10
+log_file_consistent:             0.10
+trust_hierarchy_respected:       0.10

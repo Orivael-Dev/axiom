@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "axiom": {
+      "command": "python",
+      "args": ["axiom_mcp_server.py"],
+      "env": {
+        "AXIOM_MASTER_KEY": "${AXIOM_MASTER_KEY}"
+      }
+    }
+  }
+}

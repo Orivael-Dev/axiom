@@ -1,0 +1,194 @@
+"""
+AXIOM Intent Gate — ORVL-016 cross-container guard
+====================================================
+Thin wrapper around :class:`axiom_intent_classifier.IntentClassifier` that
+turns a packet into a routing verdict and writes a tamper-evident log
+entry for every check.
+
+The gate is the only path that ``axiom_cmaa.ConstitutionalMultiAgentArchitecture``
+consults before forwarding a packet between containers (see the
+``IntentGateClassification`` concept in
+``axiom_files/core/axiom_cmaa.axiom``).
+
+Public API:
+
+    gate = IntentGate(classifier, log_path="axiom_intent_gate_log.jsonl")
+
+    # Direct use:
+    result = gate.check(packet)
+    if result.intent_class in BLOCK_CLASSES:
+        # CMAA already raises IntentViolation — this is just a peek.
+        ...
+
+    # As a callable for CMAA's dependency injection:
+    orch = ConstitutionalMultiAgentArchitecture(
+        hmac_key=key,
+        intent_classifier=gate.as_callable(),
+    )
+
+Manifest  : axiom-intent-gate-v1
+Trust     : TRUST_LEVEL = 3   CANNOT_MUTATE
+Isolation : ISOLATION = True  CANNOT_MUTATE
+Encoding  : UTF-8             BUG-003 compliant
+
+BUG-003 : sys.stdout reconfigured to utf-8
+BUG-007 : HMAC always finalised with .hexdigest()
+BUG-008 : payload strings encoded via .encode("utf-8") before HMAC
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import sys
+import types as _types
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Mapping, Optional, Sequence
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
+from axiom_intent_classifier import (
+    BLOCK_CLASSES,
+    INTENT_CLASSES,
+    CONFIDENCE_FLOOR,
+    IntentClassifier,
+    IntentTypingResult,
+)
+
+
+# ── CANNOT_MUTATE constants ────────────────────────────────────────────────
+TRUST_LEVEL: int = 3
+ISOLATION: bool = True
+DEFAULT_LOG_PATH: str = "axiom_intent_gate_log.jsonl"
+MANIFEST_ID: str = "axiom-intent-gate-v1"
+
+_FROZEN: frozenset = frozenset({
+    "TRUST_LEVEL", "ISOLATION", "DEFAULT_LOG_PATH", "MANIFEST_ID",
+})
+
+
+def _module_setattr(self: Any, name: str, value: Any) -> None:
+    if name in _FROZEN:
+        raise AttributeError(f"{name} is CANNOT_MUTATE and may not be reassigned.")
+    object.__setattr__(self, name, value)
+
+
+_mod = sys.modules[__name__]
+_mod.__class__ = type(
+    "_FrozenModule", (_types.ModuleType,), {"__setattr__": _module_setattr},
+)
+
+
+def _packet_text(packet: Any) -> str:
+    """Pull a flat string out of a ConstitutionalPacket or dict-like payload."""
+    payload = getattr(packet, "payload", None)
+    if payload is None and isinstance(packet, Mapping):
+        payload = packet.get("payload") or packet
+    if payload is None:
+        return ""
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, Mapping):
+        # Concatenate any string-valued leaves for the lexical pass.
+        parts: list[str] = []
+        for v in payload.values():
+            if isinstance(v, str):
+                parts.append(v)
+            elif isinstance(v, (list, tuple)) and v and isinstance(v[0], str):
+                parts.extend(s for s in v if isinstance(s, str))
+        return " ".join(parts)
+    return ""
+
+
+def _packet_trajectory(packet: Any) -> Optional[Sequence[Sequence[float]]]:
+    """Extract the (preflight, mid_chain, final_synthesis) magnitude trace."""
+    traj = getattr(packet, "trajectory", None)
+    if traj is None and isinstance(packet, Mapping):
+        traj = packet.get("trajectory")
+    if not traj:
+        return None
+    # Accept either a list of vectors or a single vector — normalise to list.
+    if traj and isinstance(traj[0], (int, float)):
+        return [traj]
+    return list(traj)
+
+
+class IntentGate:
+    """Cross-container gate that classifies every packet and appends a
+    signed log entry. Returns the underlying ``IntentTypingResult`` so the
+    CMAA orchestrator can raise its own ``IntentViolation`` while keeping
+    sole authority over fleet-level effects (suspension, fallback routing).
+    """
+
+    def __init__(
+        self,
+        classifier: IntentClassifier,
+        *,
+        log_path: Optional[str] = None,
+    ) -> None:
+        if not isinstance(classifier, IntentClassifier):
+            raise TypeError("classifier must be an IntentClassifier")
+        self._classifier = classifier
+        self._log_path = Path(log_path or DEFAULT_LOG_PATH)
+
+    # ── Public API ────────────────────────────────────────────────────────
+    def check(self, packet: Any) -> IntentTypingResult:
+        text = _packet_text(packet)
+        traj = _packet_trajectory(packet)
+        result = self._classifier.classify(text, trajectory=traj)
+        self._append_log(packet, result)
+        return result
+
+    def as_callable(self) -> Callable[[Any], tuple]:
+        """Return a function CMAA can plug in as ``intent_classifier=...``.
+
+        CMAA expects ``(intent_class: str, confidence: float)``.
+        """
+        def _classify(packet: Any) -> tuple:
+            r = self.check(packet)
+            return (r.intent_class, float(r.confidence))
+        return _classify
+
+    # ── Internals ─────────────────────────────────────────────────────────
+    def _append_log(self, packet: Any, result: IntentTypingResult) -> None:
+        entry = {
+            "manifest_id":   MANIFEST_ID,
+            "packet_id":     getattr(packet, "packet_id", None) or (
+                packet.get("packet_id") if isinstance(packet, Mapping) else None
+            ),
+            "source":        getattr(packet, "source", None) or (
+                packet.get("source") if isinstance(packet, Mapping) else None
+            ),
+            "destination":   getattr(packet, "destination", None) or (
+                packet.get("destination") if isinstance(packet, Mapping) else None
+            ),
+            "intent_class":  result.intent_class,
+            "confidence":    result.confidence,
+            "signals":       list(result.signals),
+            "blocked":       result.intent_class in BLOCK_CLASSES,
+            "timestamp":     result.timestamp,
+            "signature":     result.signature,
+        }
+        # BUG-003: explicit utf-8
+        try:
+            with open(self._log_path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=True, sort_keys=True) + "\n")
+        except OSError:
+            # Logging is best-effort — never block the gate on a disk error.
+            pass
+
+
+# ── Production default ────────────────────────────────────────────────────
+def default_intent_classifier(hmac_key: bytes, *, log_path: Optional[str] = None):
+    """Convenience constructor for production callers (e.g. CMAA defaults).
+
+    Returns a callable suitable for ``intent_classifier=...``.
+    """
+    classifier = IntentClassifier(hmac_key)
+    gate = IntentGate(classifier, log_path=log_path)
+    return gate.as_callable()

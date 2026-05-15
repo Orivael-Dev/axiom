@@ -37,4 +37,32 @@ HOOK
 
 chmod +x "$HOOKS_DIR/pre-push"
 echo "Installed: .git/hooks/pre-push"
-echo "Test with: python scripts/axiom_preflight.py --base HEAD~1"
+
+# ── post-commit: dev-cycle capture for AxiomDev training ─────────
+# Records every commit to axiom_dev_training.jsonl /
+# dev_agent_improvements.jsonl / axiom_crl_reward_log.jsonl so the
+# existing autotrain pipeline picks it up. Never blocks the commit.
+cat > "$HOOKS_DIR/post-commit" << 'HOOK'
+#!/usr/bin/env bash
+# AXIOM Post-Commit Hook — capture commit as a signed dev-cycle record.
+# Bypass: AXIOM_DEV_DISABLE=1 git commit ...
+[ -n "$AXIOM_DEV_DISABLE" ] && exit 0
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+WORKER="$REPO_ROOT/scripts/axiom_postcommit.py"
+[ -f "$WORKER" ] || exit 0
+
+if [ -f "$REPO_ROOT/venv/Scripts/activate" ]; then
+    source "$REPO_ROOT/venv/Scripts/activate"
+elif [ -f "$REPO_ROOT/venv/bin/activate" ]; then
+    source "$REPO_ROOT/venv/bin/activate"
+fi
+
+python "$WORKER" || true
+exit 0
+HOOK
+
+chmod +x "$HOOKS_DIR/post-commit"
+echo "Installed: .git/hooks/post-commit"
+echo ""
+echo "Test pre-push with:   python scripts/axiom_preflight.py --base HEAD~1"
+echo "Test post-commit with: python scripts/axiom_postcommit.py"

@@ -13,13 +13,20 @@ Endpoints:
   GET  /status      — health check + agent validation summary
   GET  /agents      — list all agents and their current state
 """
+import hmac
+import json
+import logging
 import os
+import secrets
 import sys
 import time
 import random
+import uuid
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
+
+_log = logging.getLogger("axiom.server")
 
 # ── Path resolution ────────────────────────────────────────────
 def _find_project_root() -> Path:
@@ -53,7 +60,17 @@ from axiom_files.parser import (
     compile_delegates, detect_concepts,
 )
 from axiom_files.validator import validate_file
-from axiom import client as nim
+
+
+def _nim():
+    """Lazy import of the LLM client.
+
+    Loaded inside the three endpoints that need it so the server module
+    can import (and the new ORVL-016/017 endpoints can be tested) even
+    when the optional ``axiom`` package shim is not installed.
+    """
+    from axiom import client as nim_module  # type: ignore
+    return nim_module
 
 # ── EU AI Act Article 50 — Disclosure ─────────────────────────
 
@@ -127,24 +144,72 @@ app = FastAPI(
     version="1.8.0",
 )
 
+# CORS allow-list. Defaults to no cross-origin access; set AXIOM_CORS_ORIGINS to
+# a comma-separated list (or "*") only when an explicit deployer decision is made.
+_cors_raw = os.environ.get("AXIOM_CORS_ORIGINS", "").strip()
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else []
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# ── Bearer-token auth (AXIOM_API_TOKEN required for non-public routes) ─
+_API_TOKEN = os.environ.get("AXIOM_API_TOKEN", "").strip()
+_PUBLIC_PATHS = {"/health", "/disclosure", "/docs", "/openapi.json", "/redoc"}
+
+if _API_TOKEN:
+    @app.middleware("http")
+    async def require_bearer_token(request: Request, call_next):
+        if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/docs"):
+            return await call_next(request)
+        header = request.headers.get("authorization", "")
+        prefix = "Bearer "
+        if not header.startswith(prefix) or not hmac.compare_digest(header[len(prefix):], _API_TOKEN):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        return await call_next(request)
+else:
+    _log.warning(
+        "AXIOM_API_TOKEN not set — server is unauthenticated. "
+        "Bind to 127.0.0.1 only or set AXIOM_API_TOKEN before exposing this port."
+    )
 
 # ── LAN-only restriction (set AXIOM_LAN_ONLY=1 to enable) ──────
 _LAN_ONLY = os.environ.get("AXIOM_LAN_ONLY", "").lower() in ("1", "true", "yes")
 _LAN_PREFIX = os.environ.get("AXIOM_LAN_PREFIX", "192.168.")
+# Only honour X-Forwarded-For when the deployer explicitly opts in by listing
+# trusted proxy IPs. Otherwise a reverse proxy lets every request appear as
+# 127.0.0.1 and bypasses the gate silently.
+_TRUSTED_PROXIES = {p.strip() for p in os.environ.get("AXIOM_TRUSTED_PROXIES", "").split(",") if p.strip()}
+
+
+def _client_ip_for_lan_check(request: Request) -> str:
+    peer = request.client.host if request.client else ""
+    if peer in _TRUSTED_PROXIES:
+        xff = request.headers.get("x-forwarded-for", "")
+        if xff:
+            # Left-most entry is the original client.
+            return xff.split(",")[0].strip()
+    return peer
 
 if _LAN_ONLY:
     @app.middleware("http")
     async def restrict_to_lan(request: Request, call_next):
-        client_ip = request.client.host
+        client_ip = _client_ip_for_lan_check(request)
         if client_ip not in ("127.0.0.1", "::1") and not client_ip.startswith(_LAN_PREFIX):
             return JSONResponse(status_code=403, content={"detail": "Forbidden"})
         return await call_next(request)
+
+
+def _safe_error(exc: Exception, where: str) -> HTTPException:
+    """Log the real exception, return a generic detail with a correlation id."""
+    correlation = uuid.uuid4().hex[:12]
+    _log.exception("axiom_server %s failure [%s]: %s", where, correlation, exc)
+    return HTTPException(
+        status_code=500,
+        detail={"error": "internal_error", "correlation_id": correlation},
+    )
 
 # ── Models ─────────────────────────────────────────────────────
 class RunRequest(BaseModel):
@@ -158,10 +223,84 @@ class RunRequest(BaseModel):
 
 class ValidateRequest(BaseModel):
     agent: str
+    strict: Optional[bool] = False
 
 class ChaosRequest(BaseModel):
     iterations: Optional[int] = 5
     agent: Optional[str] = "worker"
+
+# ── ORVL-016 + ORVL-017 request shapes ─────────────────────────
+class GateCheckRequest(BaseModel):
+    text: str
+    trajectory: Optional[list] = None  # list of intent vectors
+
+class CMAARouteRequest(BaseModel):
+    packet_id: str
+    source: str
+    destination: str
+    payload: dict
+    trajectory: Optional[list] = None
+
+class EvolutionProposeRequest(BaseModel):
+    gap: str
+
+class EvolutionApproveRequest(BaseModel):
+    candidate_image: str
+
+# ── ORVL-019 ASPA request shapes ───────────────────────────────
+class PhoneOutboundRequest(BaseModel):
+    text: str
+    trajectory: Optional[list] = None
+    session_id: Optional[str] = None
+
+class PhoneInboundRequest(BaseModel):
+    text: str
+    trajectory: Optional[list] = None
+    redacted_categories: Optional[list] = None
+    session_id: Optional[str] = None
+
+# ── ORVL-013 OS Shield request shapes ──────────────────────────
+class ShieldStartRequest(BaseModel):
+    poll_ms: Optional[int] = 500
+    learning_seconds: Optional[int] = 60
+    dry_run: Optional[bool] = True
+
+class ShieldRestoreRequest(BaseModel):
+    pid: int
+
+# ── ORVL-022 CPI request shapes ────────────────────────────────
+class CPIStabilityRequest(BaseModel):
+    timestamp_ms: int
+    com_offset: float
+    stability_score: float
+    joint_torques: list = []
+
+class CPIClassifyRequest(BaseModel):
+    features: dict
+    fracture_probability: Optional[float] = None
+
+class CPISimulateRequest(BaseModel):
+    object_id: str
+    material_class: str
+    grip_force_nm: float
+
+class CPIPickupRequest(BaseModel):
+    object_id: str
+    features: dict
+    material_class: str
+    requested_grip_force_nm: float
+
+# ── ORVL-023 AXM request shapes ────────────────────────────────
+class AXMInspectRequest(BaseModel):
+    container_path: str
+
+class AXMVerifyRequest(BaseModel):
+    container_path: str
+
+class AXMRouteRequest(BaseModel):
+    container_path: str
+    task: str
+    session_id: Optional[str] = None
 
 # ── Chaos task pool ────────────────────────────────────────────
 CHAOS_TASKS = [
@@ -258,6 +397,13 @@ def get_fired_concepts(agent_name: str, task: str) -> list:
         return []
 
 def is_sandbox_routed(task: str) -> bool:
+    """Heuristic ONLY — keyword sniff for sandbox routing.
+
+    This is a signal for telemetry/observability, not an enforcement
+    boundary. It is trivially bypassed by paraphrase, translation,
+    encoding, or homoglyphs. The authoritative guards live in
+    ``axiom_constitutional/guards/*`` (PII/Injection/Destructive/DoS).
+    """
     injection_keywords = [
         "bypass", "ignore", "disregard", "override", "jailbreak",
         "roleplay", "pretend", "forget", "no restrictions", "true self",
@@ -267,6 +413,11 @@ def is_sandbox_routed(task: str) -> bool:
     return any(kw in task_lower for kw in injection_keywords)
 
 def detect_flags(task: str, response: str) -> list:
+    """Heuristic ONLY — surface drift/vagueness hints in scoring output.
+
+    Substring matches on a hard-coded vocabulary. Not a security
+    boundary — must not be used to gate decisions.
+    """
     flags = []
     task_lower = task.lower()
     resp_lower = response.lower()
@@ -415,8 +566,8 @@ def run_axiom(req: RunRequest):
         val = validate_file(agent)
         if val["status"] == "invalid":
             raise HTTPException(
-                status_code=500,
-                detail=f"Agent {agent} failed validation: {val['issues']}"
+                status_code=400,
+                detail={"error": "agent_invalid", "issues": val["issues"]},
             )
 
         # Build prompt with WHEN + concepts
@@ -430,7 +581,7 @@ def run_axiom(req: RunRequest):
 
         # Call model
         start = time.time()
-        response = nim.chat(system_prompt, task, temperature=req.temperature)
+        response = _nim().chat(system_prompt, task, temperature=req.temperature)
         elapsed = round(time.time() - start, 2)
 
         # Score and flag
@@ -460,22 +611,26 @@ def run_axiom(req: RunRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_error(e, "run_axiom")
 
 @app.post("/validate")
 def validate(req: ValidateRequest):
     """Validate a single agent .axiom file."""
     try:
-        result = validate_file(req.agent)
+        result = validate_file(req.agent, strict=req.strict)
         return {
             "agent": req.agent,
             "status": result["status"],
             "issues": result["issues"],
             "suggestions": result.get("suggestions", []),
             "issue_count": len(result["issues"]),
+            "strict_mode": result.get("strict_mode", False),
         }
+    except ValueError as e:
+        # Path-traversal / illegal agent_name from sanitiser.
+        raise HTTPException(status_code=400, detail={"error": "invalid_agent_name"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _safe_error(e, "validate")
 
 @app.post("/chaos")
 def chaos(req: ChaosRequest):
@@ -495,7 +650,7 @@ def chaos(req: ChaosRequest):
     for task in tasks:
         try:
             system_prompt = get_prompt_with_when(agent, task)
-            response = nim.chat(system_prompt, task, temperature=0.7)
+            response = _nim().chat(system_prompt, task, temperature=0.7)
             score = score_response_simple(task, response)
             concepts = get_fired_concepts(agent, task)
             sandbox = is_sandbox_routed(task)
@@ -555,8 +710,10 @@ def security_suite(agent: str = "worker"):
 
     try:
         system_prompt = get_prompt_with_when(agent, "security test")
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"error": "invalid_agent_name"})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent load failed: {e}")
+        raise _safe_error(e, "security_suite.load_agent")
 
     for test in SECURITY_SUITE:
         task = test["task"]
@@ -564,7 +721,7 @@ def security_suite(agent: str = "worker"):
         try:
             prompt = get_prompt_with_when(agent, task)
             start = time.time()
-            response = nim.chat(prompt, task, temperature=0.3)
+            response = _nim().chat(prompt, task, temperature=0.3)
             latency_ms = round((time.time() - start) * 1000)
 
             resp_lower = response.lower()
@@ -614,14 +771,462 @@ def security_suite(agent: str = "worker"):
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+# ── ORVL-016 + ORVL-017 endpoints ──────────────────────────────
+# Singleton orchestrator built lazily on first use so import-time failures
+# (e.g. missing AXIOM_MASTER_KEY in a smoke test) don't break the whole API.
+_cmaa_singleton = None
+_cmaa_log_dir = Path(os.environ.get("AXIOM_CMAA_LOG_DIR", str(PROJECT_ROOT)))
+
+
+def _get_cmaa():
+    global _cmaa_singleton
+    if _cmaa_singleton is None:
+        from axiom_cmaa import bootstrap_default
+        _cmaa_log_dir.mkdir(parents=True, exist_ok=True)
+        _cmaa_singleton = bootstrap_default(
+            log_path=str(_cmaa_log_dir / "axiom_cmaa_log.jsonl"),
+            intent_log_path=str(_cmaa_log_dir / "axiom_intent_gate_log.jsonl"),
+        )
+    return _cmaa_singleton
+
+
+def _gate_callable():
+    """Standalone gate (independent of CMAA's wrapped copy) for /gate/*."""
+    from axiom_intent_classifier import IntentClassifier
+    from axiom_intent_gate import IntentGate
+    from axiom_signing import derive_key
+    key = derive_key(b"axiom-intent-gate-server-v1")
+    return IntentGate(IntentClassifier(key),
+                      log_path=str(_cmaa_log_dir / "axiom_intent_gate_log.jsonl"))
+
+
+@app.post("/gate/check")
+def gate_check(req: GateCheckRequest):
+    """ORVL-016 — classify a text + optional trajectory."""
+    if not isinstance(req.text, str):
+        raise HTTPException(status_code=400, detail={"error": "text must be string"})
+    classifier = _gate_callable()._classifier  # use the singleton's classifier
+    try:
+        result = classifier.classify(req.text, trajectory=req.trajectory)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+    return {
+        "intent_class":         result.intent_class,
+        "confidence":           result.confidence,
+        "signals":              list(result.signals),
+        "trajectory_magnitude": result.trajectory_magnitude,
+        "monotonic_pass":       result.monotonic_pass,
+        "blocked":              result.blocks,
+        "signature":            result.signature,
+        "timestamp":            result.timestamp,
+    }
+
+
+@app.get("/gate/log")
+def gate_log(limit: int = 25):
+    """Tail of the intent-gate verdict log."""
+    limit = max(1, min(int(limit), 200))
+    path = _cmaa_log_dir / "axiom_intent_gate_log.jsonl"
+    if not path.exists():
+        return {"entries": [], "count": 0}
+    lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
+    entries = []
+    for line in lines:
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return {"entries": entries, "count": len(entries)}
+
+
+@app.post("/cmaa/route")
+def cmaa_route(req: CMAARouteRequest):
+    """ORVL-017 — route a constitutional packet through the orchestrator."""
+    from axiom_cmaa import ConstitutionalPacket, IntentViolation, TrustHierarchyViolation
+    packet = ConstitutionalPacket(
+        packet_id=req.packet_id,
+        source=req.source,
+        destination=req.destination,
+        payload=req.payload,
+        trajectory=tuple(req.trajectory) if req.trajectory else (),
+    )
+    try:
+        decision = _get_cmaa().route(packet)
+    except IntentViolation as e:
+        alert = getattr(e, "alert", None)
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error":        "intent_violation",
+                "message":      str(e),
+                "alert": (None if alert is None else {
+                    "container":    alert.container,
+                    "intent_class": alert.intent_class,
+                    "confidence":   alert.confidence,
+                    "level":        alert.level,
+                    "reason":       alert.reason,
+                }),
+            },
+        )
+    except TrustHierarchyViolation as e:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "trust_hierarchy_violation", "message": str(e)},
+        )
+    except Exception as e:
+        raise _safe_error(e, "cmaa.route")
+    return {
+        "packet_id":   decision.packet_id,
+        "source":      decision.source,
+        "destination": decision.destination,
+        "intent_class": decision.intent_class,
+        "delivered":   decision.delivered,
+        "timestamp":   decision.timestamp,
+        "signature":   decision.signature,
+    }
+
+
+@app.get("/cmaa/fleet")
+def cmaa_fleet():
+    """Fleet manifest + currently suspended containers + review queue length."""
+    cmaa = _get_cmaa()
+    return {
+        "trust_levels":  dict(cmaa._trust),  # internal but read-only here
+        "suspended":     sorted(cmaa.suspended),
+        "review_queue":  len(cmaa.review_queue),
+        "timestamp":     datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.post("/cmaa/evolution/propose")
+def cmaa_evolution_propose(req: EvolutionProposeRequest):
+    """Queue an evolution candidate for HUMAN_REVIEW."""
+    if not req.gap or not req.gap.strip():
+        raise HTTPException(status_code=400, detail={"error": "gap must be non-empty"})
+    try:
+        proposal = _get_cmaa().propose_evolution(req.gap.strip())
+    except Exception as e:
+        raise _safe_error(e, "cmaa.evolution.propose")
+    return {
+        "gap":                  proposal.gap,
+        "candidate_image":      proposal.candidate_image,
+        "cbv_status":           proposal.cbv_status,
+        "cas_status":           proposal.cas_status,
+        "human_review_status":  proposal.human_review_status,
+    }
+
+
+@app.post("/cmaa/evolution/approve")
+def cmaa_evolution_approve(req: EvolutionApproveRequest):
+    """Mark a queued candidate as human-approved (deployment is out-of-band)."""
+    from axiom_cmaa import HumanReviewRequired
+    try:
+        approved = _get_cmaa().approve_evolution(req.candidate_image)
+    except HumanReviewRequired as e:
+        raise HTTPException(status_code=404, detail={"error": "no_pending_proposal", "message": str(e)})
+    except Exception as e:
+        raise _safe_error(e, "cmaa.evolution.approve")
+    return {
+        "gap":                  approved.gap,
+        "candidate_image":      approved.candidate_image,
+        "cbv_status":           approved.cbv_status,
+        "cas_status":           approved.cas_status,
+        "human_review_status":  approved.human_review_status,
+    }
+
+
+# ── ORVL-019 — AXIOM Sovereign Phone endpoints ────────────────
+# Lazy singleton (same pattern as _get_cmaa). The phone derives its keys
+# from AXIOM_MASTER_KEY at first use; we don't want to fail server import
+# in environments that haven't set the env var yet.
+_phone_singleton = None
+
+
+def _get_phone():
+    global _phone_singleton
+    if _phone_singleton is None:
+        from axiom_sovereign_phone import SovereignPhone
+        _phone_singleton = SovereignPhone()
+    return _phone_singleton
+
+
+def _alert_to_403(alert):
+    from dataclasses import asdict
+    return JSONResponse(status_code=403,
+                        content={"error": "sovereign_alert", "alert": asdict(alert)})
+
+
+@app.post("/phone/outbound")
+def phone_outbound(req: PhoneOutboundRequest):
+    """ORVL-019 outbound gate — pre-classify + PII redact + drive the ANF
+    emulator. Returns 200 with a signed OutboundDecision, or 403 with a
+    SovereignAlert if HARM/DECEIVE is detected at the coprocessor."""
+    if not isinstance(req.text, str) or not req.text.strip():
+        raise HTTPException(status_code=400, detail={"error": "text must be a non-empty string"})
+    from axiom_sovereign_phone import OutboundDecision, SovereignAlert
+    try:
+        result = _get_phone().coprocessor.outbound_gate(
+            req.text, trajectory=req.trajectory, session_id=req.session_id,
+        )
+    except Exception as e:
+        raise _safe_error(e, "phone.outbound")
+    if isinstance(result, SovereignAlert):
+        return _alert_to_403(result)
+    from dataclasses import asdict
+    return asdict(result)
+
+
+@app.post("/phone/inbound")
+def phone_inbound(req: PhoneInboundRequest):
+    """ORVL-019 inbound gate — manipulation check, privacy injection check,
+    monotonic-gate check on the response trajectory."""
+    if not isinstance(req.text, str) or not req.text.strip():
+        raise HTTPException(status_code=400, detail={"error": "text must be a non-empty string"})
+    from axiom_sovereign_phone import InboundDecision, SovereignAlert
+    try:
+        result = _get_phone().coprocessor.inbound_gate(
+            req.text,
+            trajectory=req.trajectory,
+            redacted_categories=tuple(req.redacted_categories or ()),
+            session_id=req.session_id,
+        )
+    except Exception as e:
+        raise _safe_error(e, "phone.inbound")
+    if isinstance(result, SovereignAlert):
+        return _alert_to_403(result)
+    from dataclasses import asdict
+    return asdict(result)
+
+
+@app.get("/phone/status")
+def phone_status():
+    """Block summary — fingerprint, memory depth, suspended apps, ANF call count."""
+    return _get_phone().status()
+
+
+# ── ORVL-013 — Constitutional OS Shield daemon endpoints ──────
+_shield_daemon = None
+_shield_singleton = None
+
+
+def _get_shield_daemon(poll_ms: int = 500, learning_seconds: int = 60,
+                       dry_run: bool = True):
+    """Return the lazy daemon singleton. Re-initialising while running is
+    a no-op — caller must /shield/stop first to change config."""
+    global _shield_daemon, _shield_singleton
+    if _shield_daemon is not None and _shield_daemon.is_running():
+        return _shield_daemon
+    from axiom_signing import derive_key
+    from axiom_os_shield import ConstitutionalOSShield
+    from axiom_os_shield_daemon import MonitorDaemon
+    if _shield_singleton is None:
+        _shield_singleton = ConstitutionalOSShield(
+            hmac_key=derive_key(b"axiom-os-shield-daemon-rest-v1"),
+            log_path=str(_cmaa_log_dir / "axiom_os_shield_log.jsonl"),
+            dry_run=dry_run,
+        )
+    _shield_daemon = MonitorDaemon(
+        shield=_shield_singleton,
+        poll_interval_ms=poll_ms,
+        learning_seconds=learning_seconds,
+    )
+    return _shield_daemon
+
+
+@app.post("/shield/start")
+def shield_start(req: ShieldStartRequest):
+    """Start the OS shield daemon. Idempotent — calling while running
+    just returns the current status. dry_run defaults to True; the
+    operator must explicitly opt out to enable real suspend/terminate."""
+    daemon = _get_shield_daemon(
+        poll_ms=req.poll_ms or 500,
+        learning_seconds=req.learning_seconds or 60,
+        dry_run=bool(req.dry_run),
+    )
+    daemon.start()
+    return daemon.status()
+
+
+@app.post("/shield/stop")
+def shield_stop():
+    if _shield_daemon is None:
+        return {"running": False, "message": "no daemon was started"}
+    _shield_daemon.stop()
+    return _shield_daemon.status()
+
+
+@app.get("/shield/status")
+def shield_status():
+    if _shield_daemon is None:
+        return {"running": False, "ticks": 0, "escalations": 0}
+    return _shield_daemon.status()
+
+
+@app.post("/shield/tick")
+def shield_tick():
+    """Run one polling pass synchronously (no daemon thread). Useful for
+    operator-initiated single sweeps without keeping the monitor alive."""
+    daemon = _get_shield_daemon()
+    events = daemon.tick()
+    return {"events": events, "count": len(events), "status": daemon.status()}
+
+
+@app.post("/shield/restore")
+def shield_restore(req: ShieldRestoreRequest):
+    if _shield_singleton is None:
+        raise HTTPException(status_code=404, detail={"error": "shield not initialised"})
+    return _shield_singleton.restore(req.pid)
+
+
+# ── ORVL-022 — Constitutional Physical Intelligence endpoints ─
+_cpi_singleton = None
+
+
+def _get_cpi():
+    global _cpi_singleton
+    if _cpi_singleton is None:
+        from axiom_cpi import HumanoidStabilityAgent
+        _cpi_singleton = HumanoidStabilityAgent()
+    return _cpi_singleton
+
+
+@app.post("/cpi/stability")
+def cpi_stability(req: CPIStabilityRequest):
+    """One physics tick → ReflexEvent. The Physical MonotonicGate fires
+    if the stability score decreased between this frame and the previous."""
+    from dataclasses import asdict
+    from axiom_cpi import StabilityFrame
+    frame = StabilityFrame(
+        timestamp_ms=int(req.timestamp_ms),
+        com_offset=float(req.com_offset),
+        stability_score=float(req.stability_score),
+        joint_torques=tuple(req.joint_torques or ()),
+    )
+    return asdict(_get_cpi().step(frame))
+
+
+@app.post("/cpi/classify")
+def cpi_classify(req: CPIClassifyRequest):
+    """Vertex classifier — geometry features + optional material override
+    → constitutional skill class with torque ceiling."""
+    from dataclasses import asdict
+    features = dict(req.features)
+    if req.fracture_probability is not None:
+        features["fracture_probability"] = req.fracture_probability
+    return asdict(_get_cpi().classifier.classify(features))
+
+
+@app.post("/cpi/simulate")
+def cpi_simulate(req: CPISimulateRequest):
+    """Constitutional World Simulation — N-branch contact forecast."""
+    from dataclasses import asdict
+    return asdict(_get_cpi().material.simulate(
+        req.object_id, req.material_class, float(req.grip_force_nm),
+    ))
+
+
+@app.post("/cpi/pickup")
+def cpi_pickup(req: CPIPickupRequest):
+    """End-to-end pickup pipeline: material sim → vertex classify →
+    constitutional torque clamp. Returns the full plan."""
+    return _get_cpi().perceive_and_plan(
+        object_id=req.object_id,
+        features=dict(req.features),
+        material_class=req.material_class,
+        requested_grip_force_nm=float(req.requested_grip_force_nm),
+    )
+
+
+@app.get("/cpi/status")
+def cpi_status():
+    return _get_cpi().status()
+
+
+# ── ORVL-023 — AXIOM eXchange Model (.AXM) endpoints ──────────
+_axm_cache: dict = {}  # container_path -> AXMContainer
+
+
+def _get_axm(path: str):
+    """Path-keyed cache. Loading the same container twice reuses the
+    in-memory instance so verify_proofs() state survives across requests."""
+    if path in _axm_cache:
+        return _axm_cache[path]
+    from axiom_axm import AXMContainer
+    c = AXMContainer.from_path(path)
+    _axm_cache[path] = c
+    return c
+
+
+@app.post("/axm/inspect")
+def axm_inspect(req: AXMInspectRequest):
+    """Header + module counts + signature fingerprint. Read-only."""
+    try:
+        c = _get_axm(req.container_path)
+    except Exception as e:
+        raise HTTPException(status_code=400,
+                             detail={"error": f"{type(e).__name__}: {e}"})
+    return c.inspect()
+
+
+@app.post("/axm/verify")
+def axm_verify(req: AXMVerifyRequest):
+    """Run signature verification on every sub-module + drive the ANF
+    coprocessor once per proof entry. Returns {verified, proofs_checked}."""
+    try:
+        c = _get_axm(req.container_path)
+        ok = c.verify_proofs()
+    except Exception as e:
+        raise HTTPException(status_code=400,
+                             detail={"error": f"{type(e).__name__}: {e}"})
+    return {"verified": ok, "proofs_checked": len(c.proofs),
+            "fingerprint": c.fingerprint()}
+
+
+@app.post("/axm/route")
+def axm_route(req: AXMRouteRequest):
+    """Classify a task and lazy-load matching skill delegates into MKB."""
+    if not isinstance(req.task, str) or not req.task.strip():
+        raise HTTPException(status_code=400,
+                             detail={"error": "task must be non-empty"})
+    try:
+        c = _get_axm(req.container_path)
+        if not c.verified:
+            c.verify_proofs()
+        from dataclasses import asdict
+        result = c.route(req.task, session_id=req.session_id)
+        return asdict(result)
+    except Exception as e:
+        # Convert AXMNotVerified / signature errors into 403, anything else 400.
+        from axiom_axm import AXMError, AXMNotVerified, AXMSignatureMismatch
+        if isinstance(e, (AXMNotVerified, AXMSignatureMismatch)):
+            raise HTTPException(status_code=403,
+                                 detail={"error": f"{type(e).__name__}: {e}"})
+        raise HTTPException(status_code=400,
+                             detail={"error": f"{type(e).__name__}: {e}"})
+
+
 # ── Entry point ────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    host = os.environ.get("AXIOM_HOST", "0.0.0.0")
+    # Safe defaults: loopback only, no auto-reload. Deployer must opt in to
+    # public binding by setting AXIOM_HOST=0.0.0.0 and AXIOM_API_TOKEN.
+    host = os.environ.get("AXIOM_HOST", "127.0.0.1")
     port = int(os.environ.get("AXIOM_PORT", "8000"))
+    reload = os.environ.get("AXIOM_DEV", "").lower() in ("1", "true", "yes")
+    public = host not in ("127.0.0.1", "::1", "localhost")
+    if public and not _API_TOKEN:
+        print(
+            "\n  REFUSING TO START: AXIOM_HOST is non-loopback but "
+            "AXIOM_API_TOKEN is unset.\n"
+            "  Generate one: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"\n"
+            "  Then export AXIOM_API_TOKEN=<token> before exposing the port.\n"
+        )
+        sys.exit(2)
     print(f"\n  AXIOM Server v1.8.0")
     print(f"  Listening on http://{host}:{port}")
     print(f"  Project root: {PROJECT_ROOT}")
+    print(f"  Auth:         {'bearer-token' if _API_TOKEN else 'none (loopback only recommended)'}")
+    print(f"  Reload:       {'on' if reload else 'off'}  (set AXIOM_DEV=1 for dev)")
     print(f"  Docs:         http://localhost:{port}/docs")
     print(f"  Disclosure:   http://localhost:{port}/disclosure  (EU AI Act Article 50)\n")
-    uvicorn.run("axiom_server:app", host=host, port=port, reload=True, timeout_keep_alive=120)
+    uvicorn.run("axiom_server:app", host=host, port=port, reload=reload, timeout_keep_alive=120)

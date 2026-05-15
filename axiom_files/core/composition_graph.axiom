@@ -63,6 +63,14 @@ WHEN
 DELEGATES
 - CompositionGraph -> CompositionGraph (on: rebuild)
 
+HUMAN_REVIEW
+- require on: block_registry_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never execute agent code during graph construction — read .axiom files only
 - Graph output is read-only — cannot be used to modify agent DELEGATES blocks

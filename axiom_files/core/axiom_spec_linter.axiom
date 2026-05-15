@@ -20,6 +20,14 @@ CONSTRAINT
 - CERT_WARN deducts 0.05 from health score
 - Reports must be HMAC-SHA256 signed before emission
 
+HUMAN_REVIEW
+- require on: rule_set_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never skip a check to improve health score
 - Never fabricate passing results

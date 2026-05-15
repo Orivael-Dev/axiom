@@ -1,5 +1,6 @@
 AGENT SkillBuilder
 VERSION 1.1
+TRUST_LEVEL 1
 PURPOSE Convert confirmed patterns with observed outcomes into experience-weighted learnable skills
 GOAL Produce a skill tree grounded in practical consequences, not just pattern repetition
 
@@ -68,6 +69,14 @@ DELEGATES
 - SkillBuilder -> ControllerMapper (on: skill_promoted)
 - SkillBuilder -> GameWatcher (on: guide_ready)
 - SkillBuilder -> Evaluator (on: skill_tree_complete)
+
+HUMAN_REVIEW
+- require on: skill_promotion_to_production
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
 
 SECURITY
 - Never invent skills not derived from confirmed patterns with observed outcomes

@@ -76,6 +76,146 @@ TOOLS = [
     {"name": "axiom_status",
      "description": "Get AXIOM stack status",
      "inputSchema": {"type": "object", "properties": {}}},
+    # ── ORVL-016 — Constitutional Intent Typing ──────────────────
+    {"name": "axiom_intent_gate_check",
+     "description": "Classify text + optional trajectory through the ORVL-016 gate "
+                    "(INFORM/CLARIFY/REFUSE/HARM/DECEIVE/UNCERTAIN). HARM and "
+                    "DECEIVE verdicts mean a CMAA route would refuse delivery.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "text": {"type": "string", "description": "Text to classify"},
+             "trajectory": {"type": "array",
+                            "description": "Optional list of intent vectors per stage",
+                            "items": {"type": "array", "items": {"type": "number"}}},
+         },
+         "required": ["text"]}},
+    # ── ORVL-017 — Constitutional Multi-Agent Architecture ───────
+    {"name": "axiom_cmaa_route",
+     "description": "Route a constitutional packet through the CMAA orchestrator. "
+                    "Returns a signed RoutingDecision on success, or a SuspendAlert "
+                    "on intent_violation / trust_hierarchy_violation.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "packet_id":   {"type": "string"},
+             "source":      {"type": "string"},
+             "destination": {"type": "string"},
+             "payload":     {"type": "object"},
+             "trajectory":  {"type": "array",
+                             "items": {"type": "array", "items": {"type": "number"}}},
+         },
+         "required": ["packet_id", "source", "destination", "payload"]}},
+    {"name": "axiom_cmaa_fleet",
+     "description": "Inspect the CMAA fleet — trust levels per container, currently "
+                    "suspended containers, and the human-review queue depth.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    # ── ORVL-022 — Constitutional Physical Intelligence ──────────
+    {"name": "axiom_cpi",
+     "description": "Constitutional Physical Intelligence (ORVL-022) — "
+                    "physical-AI governance for humanoids/robotics/AV. "
+                    "action='stability' records one stability frame and "
+                    "returns the Physical MonotonicGate verdict; "
+                    "action='classify' runs vertex classification; "
+                    "action='simulate' runs an N-branch material contact "
+                    "forecast; action='pickup' runs the full perceive-and-"
+                    "plan pipeline (material sim → vertex class → "
+                    "constitutional torque clamp); action='status' returns "
+                    "the agent state.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action": {"type": "string",
+                         "enum": ["stability", "classify", "simulate",
+                                   "pickup", "status"]},
+             "frame":  {"type": "object",
+                         "description": "required for action=stability — "
+                                         "{timestamp_ms, com_offset, "
+                                         "stability_score, joint_torques}"},
+             "features": {"type": "object",
+                           "description": "required for classify/pickup"},
+             "material_class":          {"type": "string"},
+             "object_id":               {"type": "string"},
+             "grip_force_nm":           {"type": "number"},
+             "requested_grip_force_nm": {"type": "number"},
+             "fracture_probability":    {"type": "number"},
+         },
+         "required": ["action"]}},
+    # ── ORVL-023 — AXIOM eXchange Model (.AXM) container ─────────
+    {"name": "axiom_axm",
+     "description": "Operate an AXM model container (ORVL-023). "
+                    "action='inspect' returns header + module counts; "
+                    "action='verify' checks every signature and drives the "
+                    "ANF governance coprocessor once per proof; action='route' "
+                    "classifies a task and lazy-loads matching skill delegates "
+                    "into the MKB BlockRegistry. Hybrid trust model — open "
+                    "container, signed delegates.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":         {"type": "string",
+                                 "enum": ["inspect", "verify", "route"]},
+             "container_path": {"type": "string",
+                                 "description": "filesystem path to a .axm directory"},
+             "task":           {"type": "string",
+                                 "description": "required when action='route'"},
+             "session_id":     {"type": "string",
+                                 "description": "optional session id for route"},
+         },
+         "required": ["action", "container_path"]}},
+    # ── ORVL-013 — Constitutional OS Shield ──────────────────────
+    {"name": "axiom_shield",
+     "description": "Operate the AXIOM OS Shield daemon (ORVL-013). action='tick' "
+                    "runs one synchronous polling pass; action='status' returns the "
+                    "current daemon state (ticks, escalations, suspended PIDs, "
+                    "dry_run flag); action='restore' un-suspends a previously "
+                    "suspended PID. dry_run defaults to True — real syscalls are "
+                    "opt-in.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":           {"type": "string",
+                                  "enum": ["status", "tick", "restore"]},
+             "pid":              {"type": "integer",
+                                  "description": "required when action='restore'"},
+             "dry_run":          {"type": "boolean",
+                                  "description": "only honoured on first call"},
+             "poll_ms":          {"type": "integer"},
+             "learning_seconds": {"type": "integer"},
+         },
+         "required": ["action"]}},
+    # ── ORVL-019 — AXIOM Sovereign Phone gatekeeper ─────────────
+    {"name": "axiom_phone_gate",
+     "description": "Run text through the AXIOM Sovereign Phone coprocessor "
+                    "(ORVL-019). direction='out' drives the ANF emulator for "
+                    "outbound queries (PII redaction + intent gate + ANF call); "
+                    "direction='in' checks inbound cloud responses for "
+                    "manipulation, privacy injection, and monotonic-gate "
+                    "violations. Pass a stable session_id across calls in the "
+                    "same conversation to enable graduated L1→L2→L3 escalation "
+                    "across consecutive blocks. Returns a signed Decision or "
+                    "SovereignAlert.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "direction":  {"type": "string", "enum": ["out", "in"]},
+             "text":       {"type": "string"},
+             "trajectory": {"type": "array",
+                             "items": {"type": "array", "items": {"type": "number"}}},
+             "redacted_categories": {"type": "array", "items": {"type": "string"}},
+             "session_id": {"type": "string",
+                             "description": "stable identifier for one call / "
+                                            "conversation; enables trajectory escalation"},
+         },
+         "required": ["direction", "text"]}},
+    # ── AXIOM Language Strict Mode validator ────────────────────
+    {"name": "axiom_validate",
+     "description": "Validate raw .axiom spec content against the language validator "
+                    "(syntax, purity, semantic). Set strict=true to also reject syntactic "
+                    "external-code patterns and promote vague-term warnings to errors, "
+                    "per axiom_files/core/strict_mode.axiom. Returns status, signed "
+                    "issues list, and the resolved strict_mode flag.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "spec_content": {"type": "string", "description": "Raw .axiom file contents"},
+             "filename":     {"type": "string", "description": "Optional filename for reporting"},
+             "strict":       {"type": "boolean", "description": "Enable strict mode"},
+         },
+         "required": ["spec_content"]}},
 ]
 
 
@@ -180,9 +320,375 @@ def _handle_status(_args: dict) -> dict:
             "patents": 21, "training_examples": n_train,
             "hmac_signature": _sign({"version": VERSION, "tests": tests})}
 
+# ── ORVL-016 / ORVL-017 handlers ──────────────────────────────
+_cmaa_singleton = None
+
+
+def _get_cmaa():
+    global _cmaa_singleton
+    if _cmaa_singleton is None:
+        from axiom_cmaa import bootstrap_default
+        _cmaa_singleton = bootstrap_default()
+    return _cmaa_singleton
+
+
+def _handle_intent_gate_check(args: dict) -> dict:
+    text = args.get("text", "")
+    traj = args.get("trajectory")
+    from axiom_intent_classifier import IntentClassifier
+    from axiom_signing import derive_key
+    classifier = IntentClassifier(derive_key(b"axiom-intent-gate-mcp-v1"))
+    try:
+        result = classifier.classify(text, trajectory=traj)
+    except (TypeError, ValueError) as e:
+        return {"error": str(e), "hmac_signature": _sign({"error": str(e)})}
+    return {
+        "intent_class":         result.intent_class,
+        "confidence":           result.confidence,
+        "signals":              list(result.signals),
+        "trajectory_magnitude": result.trajectory_magnitude,
+        "monotonic_pass":       result.monotonic_pass,
+        "blocked":              result.blocks,
+        "hmac_signature":       result.signature,
+    }
+
+
+def _handle_cmaa_route(args: dict) -> dict:
+    from axiom_cmaa import ConstitutionalPacket, IntentViolation, TrustHierarchyViolation
+    packet = ConstitutionalPacket(
+        packet_id=args.get("packet_id", ""),
+        source=args.get("source", ""),
+        destination=args.get("destination", ""),
+        payload=args.get("payload", {}),
+        trajectory=tuple(args.get("trajectory") or ()),
+    )
+    try:
+        decision = _get_cmaa().route(packet)
+    except IntentViolation as e:
+        alert = getattr(e, "alert", None)
+        out = {
+            "verdict":    "BLOCKED",
+            "error":      "intent_violation",
+            "message":    str(e),
+        }
+        if alert is not None:
+            out["alert"] = {
+                "container":    alert.container,
+                "intent_class": alert.intent_class,
+                "confidence":   alert.confidence,
+                "level":        alert.level,
+                "reason":       alert.reason,
+            }
+        out["hmac_signature"] = _sign(out)
+        return out
+    except TrustHierarchyViolation as e:
+        out = {"verdict": "BLOCKED", "error": "trust_hierarchy_violation", "message": str(e)}
+        out["hmac_signature"] = _sign(out)
+        return out
+    return {
+        "verdict":      "DELIVERED",
+        "packet_id":    decision.packet_id,
+        "source":       decision.source,
+        "destination":  decision.destination,
+        "intent_class": decision.intent_class,
+        "delivered":    decision.delivered,
+        "timestamp":    decision.timestamp,
+        "hmac_signature": decision.signature,
+    }
+
+
+def _handle_cmaa_fleet(_args: dict) -> dict:
+    cmaa = _get_cmaa()
+    out = {
+        "trust_levels": dict(cmaa._trust),
+        "suspended":    sorted(cmaa.suspended),
+        "review_queue": len(cmaa.review_queue),
+    }
+    out["hmac_signature"] = _sign(out)
+    return out
+
+
+_shield_singleton = None
+_shield_daemon_mcp = None
+
+
+def _get_shield_daemon(dry_run: bool = True, poll_ms: int = 500,
+                       learning_seconds: int = 60):
+    global _shield_singleton, _shield_daemon_mcp
+    if _shield_daemon_mcp is not None:
+        return _shield_daemon_mcp
+    from axiom_signing import derive_key
+    from axiom_os_shield import ConstitutionalOSShield
+    from axiom_os_shield_daemon import MonitorDaemon
+    if _shield_singleton is None:
+        _shield_singleton = ConstitutionalOSShield(
+            hmac_key=derive_key(b"axiom-os-shield-daemon-mcp-v1"),
+            dry_run=dry_run,
+        )
+    _shield_daemon_mcp = MonitorDaemon(
+        shield=_shield_singleton,
+        poll_interval_ms=poll_ms,
+        learning_seconds=learning_seconds,
+    )
+    return _shield_daemon_mcp
+
+
+def _handle_shield(args: dict) -> dict:
+    """ORVL-013 — operate the OS shield daemon."""
+    action = args.get("action")
+    if action not in ("status", "tick", "restore"):
+        out = {"error": "action must be one of: status, tick, restore"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    daemon = _get_shield_daemon(
+        dry_run=bool(args.get("dry_run", True)),
+        poll_ms=int(args.get("poll_ms", 500)),
+        learning_seconds=int(args.get("learning_seconds", 60)),
+    )
+    if action == "status":
+        out = {"action": "status", **daemon.status()}
+    elif action == "tick":
+        events = daemon.tick()
+        out = {"action": "tick", "events": events, "count": len(events),
+                "status": daemon.status()}
+    else:  # restore
+        pid = args.get("pid")
+        if not isinstance(pid, int):
+            out = {"error": "pid (int) required for action=restore"}
+        else:
+            out = {"action": "restore", **_shield_singleton.restore(pid)}
+    out["hmac_signature"] = _sign({"action": action,
+                                    "ticks": daemon.status().get("ticks", 0)})
+    return out
+
+
+_phone_singleton = None
+
+
+def _get_phone():
+    global _phone_singleton
+    if _phone_singleton is None:
+        from axiom_sovereign_phone import SovereignPhone
+        _phone_singleton = SovereignPhone()
+    return _phone_singleton
+
+
+# ── ORVL-022 — Constitutional Physical Intelligence handler ──
+_cpi_singleton_mcp = None
+
+
+def _get_cpi_mcp():
+    global _cpi_singleton_mcp
+    if _cpi_singleton_mcp is None:
+        from axiom_cpi import HumanoidStabilityAgent
+        _cpi_singleton_mcp = HumanoidStabilityAgent()
+    return _cpi_singleton_mcp
+
+
+def _handle_cpi(args: dict) -> dict:
+    """ORVL-022 — operate the Constitutional Physical Intelligence agent."""
+    from dataclasses import asdict
+    from axiom_cpi import StabilityFrame
+    action = args.get("action")
+    if action not in ("stability", "classify", "simulate", "pickup", "status"):
+        out = {"error": "action must be one of: stability, classify, "
+                         "simulate, pickup, status"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    agent = _get_cpi_mcp()
+    try:
+        if action == "status":
+            out = {"action": "status", **agent.status()}
+        elif action == "stability":
+            frame = args.get("frame") or {}
+            sf = StabilityFrame(
+                timestamp_ms=int(frame.get("timestamp_ms", 0)),
+                com_offset=float(frame.get("com_offset", 0.0)),
+                stability_score=float(frame.get("stability_score", 1.0)),
+                joint_torques=tuple(frame.get("joint_torques") or ()),
+            )
+            out = {"action": "stability", **asdict(agent.step(sf))}
+        elif action == "classify":
+            features = dict(args.get("features") or {})
+            if "fracture_probability" in args and args["fracture_probability"] is not None:
+                features["fracture_probability"] = float(args["fracture_probability"])
+            out = {"action": "classify",
+                    **asdict(agent.classifier.classify(features))}
+        elif action == "simulate":
+            out = {"action": "simulate",
+                    **asdict(agent.material.simulate(
+                        args.get("object_id", ""),
+                        args.get("material_class", "UNKNOWN"),
+                        float(args.get("grip_force_nm", 0.0)),
+                    ))}
+        else:  # pickup
+            out = {"action": "pickup",
+                    **agent.perceive_and_plan(
+                        object_id=args.get("object_id", ""),
+                        features=dict(args.get("features") or {}),
+                        material_class=args.get("material_class", "UNKNOWN"),
+                        requested_grip_force_nm=float(
+                            args.get("requested_grip_force_nm", 0.0)),
+                    )}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"action": action,
+                                    "trust_level": 4})
+    return out
+
+
+# ── ORVL-023 — AXM container handler ─────────────────────────
+_axm_cache_mcp: dict = {}
+
+
+def _handle_axm(args: dict) -> dict:
+    """ORVL-023 — operate an AXM container via MCP."""
+    from dataclasses import asdict
+    action = args.get("action")
+    container_path = args.get("container_path", "")
+    if action not in ("inspect", "verify", "route"):
+        out = {"error": "action must be one of: inspect, verify, route"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    if not isinstance(container_path, str) or not container_path.strip():
+        out = {"error": "container_path must be a non-empty string"}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    try:
+        from axiom_axm import AXMContainer, AXMNotVerified, AXMSignatureMismatch
+        if container_path in _axm_cache_mcp:
+            c = _axm_cache_mcp[container_path]
+        else:
+            c = AXMContainer.from_path(container_path)
+            _axm_cache_mcp[container_path] = c
+        if action == "inspect":
+            out = {"action": "inspect", **c.inspect()}
+        elif action == "verify":
+            ok = c.verify_proofs()
+            out = {"action": "verify", "verified": ok,
+                    "proofs_checked": len(c.proofs),
+                    "fingerprint": c.fingerprint()}
+        else:  # route
+            task = args.get("task", "")
+            if not isinstance(task, str) or not task.strip():
+                out = {"error": "task required for action=route"}
+                out["hmac_signature"] = _sign(out)
+                return out
+            if not c.verified:
+                c.verify_proofs()
+            result = c.route(task, session_id=args.get("session_id"))
+            out = {"action": "route", **asdict(result)}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"action": action,
+                                    "container_path": container_path[:120]})
+    return out
+
+
+def _handle_phone_gate(args: dict) -> dict:
+    """ORVL-019 outbound/inbound gate — drives the ANF emulator for outbound."""
+    from dataclasses import asdict
+    from axiom_sovereign_phone import OutboundDecision, InboundDecision, SovereignAlert
+    direction = args.get("direction")
+    text      = args.get("text", "")
+    traj      = args.get("trajectory")
+    session_id = args.get("session_id")
+    if direction not in ("out", "in"):
+        out = {"error": "direction must be 'out' or 'in'"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    if not isinstance(text, str) or not text.strip():
+        out = {"error": "text must be a non-empty string"}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    phone = _get_phone()
+    try:
+        if direction == "out":
+            result = phone.coprocessor.outbound_gate(
+                text, trajectory=traj, session_id=session_id,
+            )
+        else:
+            result = phone.coprocessor.inbound_gate(
+                text, trajectory=traj,
+                redacted_categories=tuple(args.get("redacted_categories") or ()),
+                session_id=session_id,
+            )
+    except Exception as e:
+        out = {"error": f"{type(e).__name__}: {e}", "direction": direction}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    if isinstance(result, SovereignAlert):
+        body = {"verdict": "BLOCKED", "direction": direction, **asdict(result)}
+    else:
+        body = {"verdict": "OK", "direction": direction, **asdict(result)}
+    body["hmac_signature"] = _sign({"verdict": body["verdict"],
+                                     "direction": body["direction"],
+                                     "intent_class": body.get("intent_class", "")})
+    return body
+
+
+def _handle_validate(args: dict) -> dict:
+    """Validate raw .axiom content through the language validator (with strict mode)."""
+    import uuid
+    from pathlib import Path as _Path
+    content = args.get("spec_content", "")
+    strict  = bool(args.get("strict", False))
+    if not isinstance(content, str) or not content.strip():
+        out = {"error": "spec_content must be a non-empty string", "strict_mode": strict}
+        out["hmac_signature"] = _sign(out)
+        return out
+
+    from axiom_files.parser import load_axiom
+    from axiom_files.validator import validate_parsed
+
+    # Use a tempfile inside axiom_files/ so the parser's path resolver finds it.
+    # Name is randomized to avoid colliding with real specs and is removed in
+    # finally{} regardless of validation outcome.
+    project_root = _Path(__file__).resolve().parent
+    axfiles_dir  = project_root / "axiom_files"
+    tmp_name = f"_mcp_validate_{uuid.uuid4().hex}"
+    tmp_path = axfiles_dir / f"{tmp_name}.axiom"
+    try:
+        tmp_path.write_text(content, encoding="utf-8")
+        parsed = load_axiom(tmp_name)
+        result = validate_parsed(parsed, strict=strict)
+    except Exception as e:
+        out = {"error": f"validation failed: {type(e).__name__}: {e}", "strict_mode": strict}
+        out["hmac_signature"] = _sign(out)
+        return out
+    finally:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    out = {
+        "status":       result["status"],
+        "strict_mode":  result.get("strict_mode", False),
+        "issue_count":  len(result.get("issues", [])),
+        "issues":       result.get("issues", []),
+        "suggestions":  result.get("suggestions", []),
+    }
+    out["hmac_signature"] = _sign({"status": out["status"],
+                                    "strict_mode": out["strict_mode"],
+                                    "issue_count": out["issue_count"]})
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
-             "axiom_status": _handle_status}
+             "axiom_status": _handle_status,
+             "axiom_intent_gate_check": _handle_intent_gate_check,
+             "axiom_cmaa_route": _handle_cmaa_route,
+             "axiom_cmaa_fleet": _handle_cmaa_fleet,
+             "axiom_validate": _handle_validate,
+             "axiom_phone_gate": _handle_phone_gate,
+             "axiom_shield": _handle_shield,
+             "axiom_axm": _handle_axm,
+             "axiom_cpi": _handle_cpi}
 
 
 class AxiomMCPServer:

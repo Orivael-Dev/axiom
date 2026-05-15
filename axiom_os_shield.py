@@ -186,12 +186,26 @@ class ConstitutionalOSShield:
 
     def __init__(self, hmac_key: bytes,
                  log_path: str = "axiom_os_shield_log.jsonl",
-                 learning_mode: bool = True):
+                 learning_mode: bool = True,
+                 dry_run: bool = True,
+                 safe_pids: Optional[frozenset] = None):
         self._hmac_key = hmac_key
         self._log_path = log_path
         self._learning_mode = learning_mode
         self._manifolds: Dict[str, ProcessManifold] = {}
         self._fp_history: Dict[str, list] = {}  # process -> list of L1 timestamps
+        # ── Real-action surface (ORVL-013) ─────────────────────────────────
+        # Default dry_run=True so importing/instantiating the shield in tests
+        # or notebooks never accidentally suspends/kills a real process. A
+        # caller must explicitly pass dry_run=False to enable real syscalls.
+        self._dry_run = bool(dry_run)
+        # Safety net: even when not in dry_run, never act on these PIDs.
+        # kernel (0), init (1), the shield's own process, and its parent are
+        # always off-limits — suspending any of them would lock the host.
+        default_safe = {0, 1, os.getpid(), os.getppid()}
+        extra_safe = frozenset(safe_pids) if safe_pids else frozenset()
+        self._safe_pids = extra_safe | frozenset(default_safe)
+        self._suspended_pids: set = set()
 
     def determine_level(self, distance: float) -> int:
         """Determine escalation level from constitutional distance."""
@@ -251,9 +265,57 @@ class ConstitutionalOSShield:
 
         return min(score, 1.0)
 
+    # ── Real psutil actions ──────────────────────────────────────────────
+    def _apply_action(self, level: int, snap: ProcessSnapshot) -> dict:
+        """Apply the L1-L4 action for a snapshot.
+
+        Returns a small status dict describing what was done. In dry-run
+        mode (default) this never touches the OS — it just logs the
+        intended action. Out of dry-run, L2 deprioritizes (nice +19),
+        L3 suspends, L4 terminates. PIDs in ``_safe_pids`` are always
+        skipped so the shield can't suspend itself or init.
+        """
+        intent = {1: "log_and_flag", 2: "throttle_nice19",
+                  3: "suspend_process", 4: "terminate_process"}
+        action_name = intent.get(level, "noop")
+        if level == 1:
+            return {"applied": True, "action": action_name, "mode": "log_only"}
+        if self._dry_run:
+            return {"applied": False, "action": action_name,
+                    "mode": "dry_run", "pid": snap.pid}
+        if snap.pid in self._safe_pids:
+            return {"applied": False, "action": action_name,
+                    "mode": "safe_pid_skipped", "pid": snap.pid}
+        try:
+            import psutil  # local import — psutil is optional at runtime
+        except ImportError:
+            return {"applied": False, "action": action_name,
+                    "mode": "psutil_unavailable"}
+        try:
+            proc = psutil.Process(snap.pid)
+        except psutil.NoSuchProcess:
+            return {"applied": False, "action": action_name,
+                    "mode": "process_gone", "pid": snap.pid}
+        try:
+            if level == 2:
+                proc.nice(19)  # POSIX deprioritize; Windows: BELOW_NORMAL
+            elif level == 3:
+                proc.suspend()
+                self._suspended_pids.add(snap.pid)
+            elif level == 4:
+                proc.terminate()  # SIGTERM first — gentler than kill
+        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError) as exc:
+            return {"applied": False, "action": action_name,
+                    "mode": "error", "pid": snap.pid, "error": str(exc)}
+        return {"applied": True, "action": action_name,
+                "mode": "real", "pid": snap.pid}
+
     def escalate(self, level: int, snap: ProcessSnapshot,
                  distance: float, fp_conf: float) -> dict:
-        """Execute escalation at given level. Returns event dict."""
+        """Execute escalation at given level. Returns event dict (with
+        ``action_status`` reporting whether the L2-L4 syscall was actually
+        applied or skipped for safety)."""
+        action_status = self._apply_action(level, snap)
         actions = {
             1: "log_and_flag",
             2: "throttle_and_notify",
@@ -264,6 +326,7 @@ class ConstitutionalOSShield:
             "event_type": "escalation",
             "level": level,
             "action": actions.get(level, "unknown"),
+            "action_status": action_status,
             "process_name": snap.name,
             "pid": snap.pid,
             "distance": round(distance, 6),
@@ -272,6 +335,39 @@ class ConstitutionalOSShield:
         }
         self.log_event(event)
         return event
+
+    def restore(self, pid: int) -> dict:
+        """Resume a process the shield previously suspended at L3. Returns
+        a status dict; raises nothing — failure is reported in the dict."""
+        if pid not in self._suspended_pids:
+            return {"restored": False, "reason": "not_in_suspended_set", "pid": pid}
+        if self._dry_run:
+            self._suspended_pids.discard(pid)
+            return {"restored": True, "reason": "dry_run_cleared", "pid": pid}
+        try:
+            import psutil
+            psutil.Process(pid).resume()
+        except ImportError:
+            return {"restored": False, "reason": "psutil_unavailable", "pid": pid}
+        except psutil.NoSuchProcess:
+            self._suspended_pids.discard(pid)
+            return {"restored": False, "reason": "process_gone", "pid": pid}
+        except (psutil.AccessDenied, OSError) as exc:
+            return {"restored": False, "reason": "error", "pid": pid, "error": str(exc)}
+        self._suspended_pids.discard(pid)
+        return {"restored": True, "reason": "resumed", "pid": pid}
+
+    @property
+    def suspended(self) -> frozenset:
+        return frozenset(self._suspended_pids)
+
+    @property
+    def dry_run(self) -> bool:
+        return self._dry_run
+
+    @property
+    def safe_pids(self) -> frozenset:
+        return self._safe_pids
 
     def log_event(self, event: dict) -> None:
         """Append HMAC-signed event to log file."""

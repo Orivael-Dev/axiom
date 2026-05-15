@@ -24,6 +24,14 @@ CONSTRAINT
 - Retrieval must be O(log n) — only nearby buckets searched
 - Signing key derived from AXIOM_MASTER_KEY — no hardcoded secrets
 
+HUMAN_REVIEW
+- require on: data_retention_policy_change
+- require on: training_prohibition_change
+- require on: decay_rate_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never store uncompressed conversation text
 - Never emit packets with invalid HMAC

@@ -138,6 +138,33 @@ def test_rules_block_prescriptive_is_fine():
     print("PASS: Prescriptive RULES entries produce no FAILURE field warnings")
 
 
+def test_regression_existing_specs_pass_strict_mode():
+    """REGRESSION: every real .axiom file under axiom_files/core/ must
+    validate cleanly under strict mode — no errors at all, in any phase.
+
+    Before this lockdown the check only gated on phase=='strict' errors and
+    let 24 specs slip through with semantic-phase warnings (vague terms,
+    missing HUMAN_REVIEW, trust-hierarchy quirks). That was a hole; this
+    assertion closes it. A regression in any phase fails the test."""
+    import pathlib
+    from axiom_files.validator import validate_file
+    core = pathlib.Path(__file__).resolve().parents[1] / "axiom_files" / "core"
+    failures = []
+    for p in sorted(core.glob("*.axiom")):
+        result = validate_file(p.stem, strict=True)
+        if result["status"] == "invalid":
+            errs = [
+                (i["phase"], i["message"][:120])
+                for i in result["issues"] if i["level"] == "error"
+            ]
+            failures.append((p.name, errs[:3]))
+    assert not failures, (
+        "Strict mode regressed on real specs:\n"
+        + "\n".join(f"  {n}: {e}" for n, e in failures)
+    )
+    print(f"PASS: {len(list(core.glob('*.axiom')))} core specs pass strict mode")
+
+
 if __name__ == "__main__":
     tests = [
         test_failure_block_prescriptive_detection,
@@ -145,6 +172,7 @@ if __name__ == "__main__":
         test_failure_block_blocked_template_warns,
         test_failure_block_one_warning_per_entry,
         test_rules_block_prescriptive_is_fine,
+        test_regression_existing_specs_pass_strict_mode,
     ]
     passed = 0
     for t in tests:

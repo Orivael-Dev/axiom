@@ -51,6 +51,14 @@ WHEN
 DELEGATES
 - SharedMemory -> SharedMemory (on: explicit_purge)
 
+HUMAN_REVIEW
+- require on: data_retention_policy_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
 SECURITY
 - Never demote a global best — scores only move upward
 - Promotion history is immutable — no entry may be overwritten or deleted

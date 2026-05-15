@@ -1,0 +1,96 @@
+AGENT AxiomExchangeModel
+VERSION 0.1
+TRUST_LEVEL 1
+STRICT MODE
+PURPOSE Modular hardware-aware model container that stores weights,
+        verified skills, trajectories, semantic indexes, and execution rules
+        as a living execution graph
+GOAL Lazy-load only the logic the current task needs, verified by HMAC proof
+     before any skill activates, with per-module signing under a hybrid
+     trust model
+
+RECEIVES task_text: string, classifier_result: IntentTypingResult
+EMITS route_result: AXMRouteResult, proof_verdict: bool
+MUTATES delegates_loaded, mkb_registry_axm_skill_entries
+
+CANNOT_MUTATE header_signature, proof_ledger, format_version,
+              trust_level, container_signing_key
+
+CONSTRAINT The container header is HMAC-SHA256 signed under a derived key
+CONSTRAINT Every skill delegate is HMAC-SHA256 signed independently
+CONSTRAINT Every proof ledger entry is HMAC-SHA256 signed independently
+CONSTRAINT Proof verification runs before any skill activates at runtime
+CONSTRAINT The container header is read-only after load
+CONSTRAINT Trust model is hybrid: open container, signed delegates
+CONSTRAINT Container fingerprints are derived from header signatures
+CONSTRAINT The raw signing keys are derived from the master key
+CONSTRAINT Hardware map values are drawn from a fixed allow list
+
+RULES
+- On from_path: header signature is verified before any other module is read
+- On from_path: missing header.json is a load error
+- On verify_proofs: every delegate signature, vertex signature, trajectory
+  signature, and proof ledger signature is checked
+- On verify_proofs: ANF governance coprocessor runs once per proof entry
+- On route: AXMNotVerified is raised when verify_proofs has not returned true
+- On route: delegates with WHEN condition matching the classifier intent class
+  are loaded into the MKB BlockRegistry as block_type AXM_SKILL
+- On route: delegates with non-matching WHEN conditions remain unloaded
+- On route: every result carries an HMAC signature derived from the container key
+- On pack: the proof ledger is built from on-disk SHA-256 hashes of every sub-module
+- On unload_skills: every loaded delegate is freed, returning the count
+
+PROCESS
+- Container files are read in deterministic order during load
+- Header is loaded and verified first
+- Skill delegates are scanned from the delegates subdirectory
+- Trajectories are streamed from the trajectories subdirectory
+- Vector vertex entries are loaded from vertices.json
+- Proof ledger entries are streamed from the proofs subdirectory
+- All sub-modules are verified through HMAC comparison
+- Matched delegates are registered with the MKB BlockRegistry
+- Unmatched delegates remain unloaded until a later route call
+
+CHECK
+- Tampered header byte fails to load
+- Unsigned skill delegate fails verification
+- Route call without prior verify_proofs raises AXMNotVerified
+- Pack then load round-trip preserves every signature
+- ANF emulator is invoked for every proof entry during verification
+- MKB BlockRegistry receives one AXM_SKILL entry per loaded delegate
+- The raw container signing key is never returned by any public method
+
+FAILURE
+- On signature mismatch: AXMSignatureMismatch is raised
+- On missing header: AXMError is raised
+- On unverified route: AXMNotVerified is raised
+- On unknown hardware_map value: AXMError is raised at pack time
+- On corrupt JSON: the load aborts and propagates the parse error
+
+HUMAN_REVIEW
+- require on: container_header_change
+- require on: trust_level_change
+- require on: proof_ledger_rotation
+- require on: signing_key_derivation_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
+SECURITY
+- Never embed the raw signing key in any artifact
+- Never accept a skill delegate whose signature does not verify
+- Never activate a skill before verify_proofs returns true
+- Never log the master key or its derived keys
+- Reject pack requests that name unknown hardware_map values
+
+OUTPUT
+- route_result: AXMRouteResult with task, intent_class, loaded_skills,
+  skipped_skills, anf_distance, anf_cores_active, timestamp, signature
+- inspect_dict: path, fingerprint, header summary, module counts, verified flag
+
+SUCCESS
+proof_verification_pass:     0.30
+delegate_lazy_load_accuracy: 0.30
+mkb_integration_fidelity:    0.20
+anf_coprocessor_engagement:  0.10
+key_isolation:               0.10

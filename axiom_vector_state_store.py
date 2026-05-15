@@ -100,11 +100,17 @@ class VectorStateStore:
         return sig
 
     def _verify(self, entry: dict) -> bool:
-        """Verify HMAC signature on a stored entry. Returns True if valid."""
+        """Verify HMAC signature on a stored entry. Returns True if valid.
+
+        Uses ``hmac.compare_digest`` to avoid early-exit timing leaks that
+        ``==`` exposes when comparing per-byte hex strings against a secret.
+        """
         stored_sig = entry.get("signature", "")
         payload    = {k: v for k, v in entry.items() if k != "signature"}
         expected   = self._sign(payload)
-        return stored_sig == expected
+        if not isinstance(stored_sig, str) or len(stored_sig) != len(expected):
+            return False
+        return hmac.compare_digest(stored_sig, expected)
 
     # ── Index ─────────────────────────────────────────────────────────────────
 

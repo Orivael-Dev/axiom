@@ -1,0 +1,100 @@
+AGENT HumanoidStabilityAgent
+VERSION 1.0
+TRUST_LEVEL 4
+STRICT MODE
+PURPOSE Maintain physical constitutional integrity during all motion
+        and physical interaction with the world
+GOAL Prevent falls and unsafe object interactions before they begin
+     by treating motion trajectories as constitutional reasoning paths
+     and material properties as constitutional constraints
+
+RECEIVES stability_frame: StabilityFrame, vertex_features: dict,
+         material_class: string, requested_grip_force_nm: float
+EMITS reflex_event: ReflexEvent, vertex_result: VertexResult,
+      material_sim: MaterialSimResult
+MUTATES instability_history, fix_playbook_entries
+
+CANNOT_MUTATE com_safe_radius, reflex_latency_ms, stability_floor,
+              torque_limit_fragile, torque_limit_deformable,
+              torque_limit_cylindrical, torque_limit_protrusion,
+              torque_limit_planar, vertex_classes
+
+CONSTRAINT The center of mass must remain within com_safe_radius of the
+           support polygon at all times
+CONSTRAINT Reflex trajectory overwrites all task trajectories without exception
+CONSTRAINT Reflex fires before the planning layer is consulted
+CONSTRAINT FRAGILE torque limits are CANNOT_EXCEED
+CONSTRAINT Stability score below stability_floor triggers emergency stop
+CONSTRAINT All motion decisions are HMAC-SHA256 signed
+CONSTRAINT Material simulation runs before contact attempt
+CONSTRAINT Fracture branch probability is the constitutional distance in material space
+CONSTRAINT Vertex classification is the gating step before grip skill selection
+
+RULES
+- On stability decrease between pipeline stages: PhysicalMonotonicGate fires immediately
+- On stability below floor: emergency stop is invoked across all joints
+- On FRAGILE vertex assignment: torque ceiling is the absolute boundary
+- On material fracture probability above 0.30: the FRAGILE vertex assignment is forced
+- On winner branch probability below 0.60: cautious approach is activated
+- On instability signature match in playbook above 0.80 cosine: recovery trajectory is executed
+- On instability without playbook match: shadow simulation searches for a new recovery
+- On any reflex fire: an HMAC-signed event is appended to the audit trail
+
+PROCESS
+- Vision captures point cloud of object
+- Vertex classification clusters geometry into one of CYLINDRICAL, PLANAR,
+  PROTRUSION, FRAGILE, or DEFORMABLE
+- Material simulation runs an N-branch forecast of the contact attempt
+- Fracture probability above the threshold overrides geometric classification
+  with FRAGILE
+- Constitutional torque ceiling is applied based on the resulting vertex class
+- Hand alignment matches finger vertices to object vertices
+- On contact: the GripStability concept activates
+- Physical MonotonicGate runs continuously across motion pipeline stages
+- Stability decrease triggers a reflex that bypasses the planning layer
+- Failed trajectories are added as candidate entries to the Fix Playbook
+
+CHECK
+- Glass pickup with high requested torque produces an applied torque at the FRAGILE ceiling
+- Metal cylinder pickup with the same requested torque is unclamped within the CYLINDRICAL ceiling
+- Direct planning-layer torque request above the FRAGILE ceiling raises TorqueExceeded
+- Stability decrease across two consecutive frames fires a reflex event
+- Stability frame below the floor fires a level four emergency event
+- Material simulation returns four branches summing to one
+- Fix Playbook returns a recovery trajectory when cosine similarity is above the threshold
+
+FAILURE
+- On torque exceed for the FRAGILE class: TorqueExceeded is raised
+- On unknown material class: the simulator falls back to the UNKNOWN profile
+- On empty playbook: shadow simulation is invoked to find a new recovery
+- On stability decrease: the reflex event records the pre and post scores
+
+HUMAN_REVIEW
+- require on: torque_ceiling_change
+- require on: trust_level_change
+- require on: cannot_mutate_expansion
+- require on: stability_floor_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
+SECURITY
+- Never accept a torque request above the FRAGILE ceiling for that class
+- Never bypass the Physical MonotonicGate from the planning layer
+- Never log raw signing keys
+- Never activate a grip skill before the material simulation completes
+
+OUTPUT
+- reflex_event: dict with event_id, fired, level, reason, pre_score,
+  post_score, recovery_trajectory, timestamp, signature
+- vertex_result: dict with vertex_class, confidence, torque_ceiling,
+  grip_skill, signature
+- material_sim: dict with object_id, material_class, branches,
+  fracture_probability, constitutional_distance, cautious_approach, signature
+
+SUCCESS
+fall_prevention_rate:           0.30
+fragile_object_intactness:      0.25
+reflex_latency_ms_under_one:    0.20
+playbook_recovery_match_rate:   0.15
+material_sim_constitutional_alignment: 0.10

@@ -379,14 +379,7 @@ def validate_cmd():
     _setup_paths()
     from axiom_files.validator import validate_file
 
-    result = validate_file(agent_name)
-
-    if args.strict:
-        for issue in result.get("issues", []):
-            if issue.get("level") == "warning":
-                issue["level"] = "error"
-        if any(i["level"] == "error" for i in result.get("issues", [])):
-            result["status"] = "invalid"
+    result = validate_file(agent_name, strict=args.strict)
 
     if args.json:
         print(json.dumps(result, indent=2))
