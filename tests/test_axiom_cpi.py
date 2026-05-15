@@ -2,11 +2,12 @@
 """
 Constitutional Physical Intelligence (ORVL-022) — unit tests
 =============================================================
-3 BLOCKED + 4 PASSED + 2 INVARIANTS
+3 BLOCKED + 4 PASSED + 2 INVARIANTS  +  1+2+1 recovery-loop
 
 Exercises the four CPI subsystems (Physical MonotonicGate, Vertex
 Classifier, Material Simulator, Fix Playbook) plus the
-HumanoidStabilityAgent facade.
+HumanoidStabilityAgent facade — and the StabilityLerp + recovery-window
+policy that breaks the symptom-of-the-cure feedback loop.
 
 BUG-003: UTF-8 output encoding
 """
@@ -28,7 +29,9 @@ if not os.environ.get("AXIOM_MASTER_KEY"):
 from axiom_cpi import (
     HumanoidStabilityAgent, StabilityFrame, VertexClassifier,
     MaterialSimulator, PhysicalFixPlaybook, PlaybookEntry,
+    PhysicalMonotonicGate, StabilityLerp,
     TorqueExceeded, TORQUE_LIMIT_FRAGILE,
+    MAX_DCMD_PER_TICK, RECOVERY_LOCKOUT_FRACTION,
 )
 
 
@@ -168,3 +171,119 @@ class TestCPIInvariants:
         assert len(v.signature) == 64
         m = agent.material.simulate("o", "GLASS", 1.0)
         assert len(m.signature) == 64
+
+
+# ===========================================================================
+# SECTION 4 — Recovery loop suppression (StabilityLerp + recovery window)
+# ===========================================================================
+#
+# Without these two knobs, a single instability event can spiral into a
+# recalibration loop: the gate fires, a corrective command snaps to a
+# fresh target, the snap itself dips stability on the next tick, the
+# gate fires again, …  Pinning the failure mode + the fix as tests
+# keeps a refactor from quietly undoing either side.
+
+class TestCPIRecoveryLoop:
+
+    # A pattern that mimics post-reflex recovery dynamics: stability
+    # falls (drop ≥ 0.10 → level 2 reflex), then dips a little more on
+    # the next two ticks as the corrective command is applied, before
+    # climbing back. Every score stays above STABILITY_FLOOR (0.20) so
+    # the only thing distinguishing real-disturbance ticks from recovery
+    # ticks is the policy layer.
+    RECOVERY_PATTERN = [
+        (0,   1.00),   # baseline — no fire
+        (10,  0.85),   # drop 0.15 → fires L2, ARMS recovery window
+        (20,  0.83),   # follow-on dip — would re-fire without policy
+        (30,  0.81),   # …and again
+        (40,  0.84),   # recovery climb starts
+    ]
+
+    def test_blocked_recalibration_loop_when_gate_used_raw(self):
+        """The DETECTOR layer (`PhysicalMonotonicGate.record()`) has no
+        recovery awareness — that's by design. Feeding the recovery
+        pattern straight into it must fire on every monotonic decrease,
+        proving the bug exists without the agent's policy on top.
+        Documents WHY the policy lives on the agent."""
+        gate = PhysicalMonotonicGate()
+        fired = []
+        for ts, score in self.RECOVERY_PATTERN:
+            ev = gate.record(StabilityFrame(timestamp_ms=ts, com_offset=0.0,
+                                              stability_score=score,
+                                              joint_torques=(0.5,)))
+            if ev.fired:
+                fired.append(ev.level)
+        # Drops at ticks 1 (0.15 → L2), 2 (0.02 → L1), 3 (0.02 → L1).
+        # Three back-to-back fires from a single underlying event = loop.
+        assert len(fired) == 3, f"expected raw gate to spiral, got {fired}"
+
+    def test_passed_recovery_lockout_breaks_the_loop(self, agent):
+        """Same pattern through the AGENT must fire exactly ONCE.
+        Every follow-on level 1-3 event within the recovery window
+        becomes a 'suppressed' non-firing event."""
+        fired = []
+        suppressed_before = agent.status()["suppressed_count"]
+        for ts, score in self.RECOVERY_PATTERN:
+            ev = agent.step(StabilityFrame(timestamp_ms=ts, com_offset=0.0,
+                                            stability_score=score,
+                                            joint_torques=(0.5,)))
+            if ev.fired:
+                fired.append(ev.level)
+        assert fired == [2], (
+            f"agent should fire exactly once; got {fired}"
+        )
+        # At least the two follow-on dips at ts=20 and ts=30 must have
+        # been actively suppressed (not just held).
+        suppressed_after = agent.status()["suppressed_count"]
+        assert suppressed_after - suppressed_before >= 2, (
+            f"expected ≥2 suppressions, got "
+            f"{suppressed_after - suppressed_before}"
+        )
+
+    def test_passed_lerp_caps_step_at_max_dcmd(self, agent):
+        """A large step-change input must produce a bounded step
+        output. With current=0.0, target=1.0 and a generous time
+        budget, the lerp must still cap delta at MAX_DCMD_PER_TICK
+        (0.05). Otherwise the snap that causes the loop is still there
+        and the recovery lockout would just be hiding it."""
+        # Aggressive request — short tick on a long horizon would only
+        # advance ~0.005, but the cap is what we're testing here.
+        # Drive with dt_ms >> recovery_time_ms so the per-tick advance
+        # WANTS to be large.
+        out = agent.correct(current=0.0, target=1.0, dt_ms=10_000,
+                            recovery_time_ms=500)
+        assert abs(out - 0.0) <= MAX_DCMD_PER_TICK + 1e-9
+
+        # Symmetric — should clamp on the negative side too.
+        out_neg = agent.correct(current=0.5, target=-0.5, dt_ms=10_000,
+                                 recovery_time_ms=500)
+        assert abs(out_neg - 0.5) <= MAX_DCMD_PER_TICK + 1e-9
+
+        # Pure StabilityLerp is constructable too — same contract.
+        lerp = StabilityLerp(max_dcmd_per_tick=0.01)
+        assert abs(lerp.step(0.0, 1.0, 10_000, 500) - 0.0) <= 0.01 + 1e-9
+
+    def test_invariant_floor_breach_always_fires_during_recovery(self, agent):
+        """The level-4 emergency stop on STABILITY_FLOOR breach must
+        bypass the recovery lockout. Anything else and a robot in the
+        middle of a 'recovering' state could miss a true catastrophic
+        fall. The CANNOT_MUTATE floor contract is absolute."""
+        # First, arm a recovery window with a normal level-2 reflex.
+        agent.step(StabilityFrame(timestamp_ms=0,  com_offset=0.0,
+                                   stability_score=1.00,
+                                   joint_torques=(0.5,)))
+        first = agent.step(StabilityFrame(timestamp_ms=10, com_offset=0.0,
+                                            stability_score=0.85,
+                                            joint_torques=(0.5,)))
+        assert first.fired and first.level == 2
+        assert agent.status()["in_recovery_window"] is True
+
+        # Now, mid-window, drop below the floor (0.20).
+        breach = agent.step(StabilityFrame(timestamp_ms=20, com_offset=0.0,
+                                             stability_score=0.10,
+                                             joint_torques=(0.5,)))
+        assert breach.fired is True
+        assert breach.level == 4
+        # The floor breach must disarm the recovery window so the next
+        # tick re-evaluates from scratch (full sensitivity restored).
+        assert agent.status()["in_recovery_window"] is False

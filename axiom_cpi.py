@@ -49,7 +49,7 @@ import time
 import types as _types
 import uuid
 from collections import deque
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime, timezone
 from typing import Any, Deque, List, Mapping, Optional, Sequence, Tuple
 
@@ -82,6 +82,29 @@ _FROZEN = frozenset({
     "TORQUE_LIMIT_CYLINDRICAL", "TORQUE_LIMIT_PROTRUSION",
     "TORQUE_LIMIT_PLANAR", "VERTEX_CLASSES",
 })
+
+# ── Recovery-loop suppression (tunable policy, NOT CANNOT_MUTATE) ─────────
+#
+# When a level≥2 reflex fires, the agent is committed to a recovery
+# trajectory whose duration is `PlaybookEntry.recovery_time_ms`. During
+# that window every tick will look slightly worse than the previous —
+# that's normal recovery dynamics, not a fresh disturbance. Without
+# suppression, every dipped tick re-fires the reflex → the corrective
+# command snaps to a fresh target → the snap itself looks like new
+# instability → loop. This is the classic "symptom-of-the-cure" failure
+# mode in any feedback controller.
+#
+# Two knobs break the loop:
+#
+#   MAX_DCMD_PER_TICK         — slew-rate cap on corrective commands.
+#                               The lerp can never advance more than this
+#                               per physics tick, eliminating the snap.
+#   RECOVERY_LOCKOUT_FRACTION — fraction of recovery_time_ms during which
+#                               follow-on level 1-3 reflexes are suppressed.
+#                               The level-4 emergency floor still always
+#                               fires — see HumanoidStabilityAgent.step().
+MAX_DCMD_PER_TICK:         float = 0.05    # bounded change per tick
+RECOVERY_LOCKOUT_FRACTION: float = 0.80    # 80% of recovery_time_ms
 
 
 def _module_setattr(self: Any, name: str, value: Any) -> None:
@@ -433,6 +456,46 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (ma * mb)
 
 
+# ── Stability Lerp — slew-rate-limited corrective output ────────────────
+class StabilityLerp:
+    """Linearly interpolates a corrective command toward its target,
+    capped at [MAX_DCMD_PER_TICK] per tick.
+
+    The Fix Playbook hands the agent a recovery trajectory plus a
+    `recovery_time_ms` budget. Without smoothing, applying that
+    trajectory as a step change is precisely the snap that retriggers
+    the monotonic gate on the next tick. The lerp turns that step into
+    a paced ramp: per-tick advance = (target − current) × (dt / recovery_time_ms),
+    further capped so even a "fast" pace can never breach
+    MAX_DCMD_PER_TICK.
+
+    Scalar API by design — most demos drive one DOF. Vector smoothing
+    (per-joint torques) composes by mapping `step` over the tuple; not
+    bundled here to keep the emulator pure-Python and inspectable.
+    """
+
+    def __init__(self, *, max_dcmd_per_tick: float = MAX_DCMD_PER_TICK):
+        if max_dcmd_per_tick <= 0:
+            raise ValueError("max_dcmd_per_tick must be positive")
+        self._cap = float(max_dcmd_per_tick)
+
+    @property
+    def cap(self) -> float:
+        return self._cap
+
+    def step(self, current: float, target: float,
+             dt_ms: int, recovery_time_ms: int) -> float:
+        """One tick. Returns the next command, slew-limited."""
+        if recovery_time_ms <= 0:
+            # Degenerate request — apply the cap directly toward target.
+            delta = target - current
+        else:
+            delta = (target - current) * (max(0, dt_ms) / float(recovery_time_ms))
+        if abs(delta) > self._cap:
+            delta = self._cap if delta > 0 else -self._cap
+        return current + delta
+
+
 # ── Humanoid Stability Agent — the facade ───────────────────────────────
 class HumanoidStabilityAgent:
     """Top-level facade. One construction wires the four blocks together
@@ -444,6 +507,14 @@ class HumanoidStabilityAgent:
         self.classifier = VertexClassifier()
         self.material   = MaterialSimulator()
         self.playbook   = PhysicalFixPlaybook()
+        # Slew-limited corrective output — exposed via correct().
+        self.lerp       = StabilityLerp()
+        # Recovery-window state. Set when a level≥2 reflex fires;
+        # consulted by step() to suppress follow-on level 1-3 reflexes
+        # that are just normal recovery dynamics. Floor breach (level 4)
+        # always passes through regardless.
+        self._recovery_until_ms: Optional[int] = None
+        self._suppressed_count = 0
 
     def perceive_and_plan(self, object_id: str,
                           features: Mapping[str, Any],
@@ -476,21 +547,88 @@ class HumanoidStabilityAgent:
         }
 
     def step(self, frame: StabilityFrame) -> ReflexEvent:
-        """One physics tick. The gate decides if a reflex fires; if it
-        did, the playbook is consulted for a recovery."""
+        """One physics tick. The gate detects; the agent applies the
+        recovery-window policy on top.
+
+        The gate itself stays a pure detector (matches the .axiom RULE
+        "PhysicalMonotonicGate fires immediately on stability decrease")
+        — every event is still recorded in the audit trail. The agent
+        layer decides whether to *act* on that event:
+
+          - level 4 (floor breach) always passes through. The
+            CANNOT_MUTATE STABILITY_FLOOR contract is absolute, and a
+            real fresh disturbance during recovery will either trip the
+            floor here OR surface after the window expires.
+          - During a recovery window, level 1-3 events are converted
+            into non-firing "suppressed" events. That's the symptom-of-
+            the-cure breaker: a follow-on dip caused by the corrective
+            command itself doesn't re-trigger correction.
+          - On a fresh fire of level ≥ 2, arm a new recovery window of
+            RECOVERY_LOCKOUT_FRACTION × playbook.recovery_time_ms, with
+            500ms as a fallback when the playbook has no match.
+        """
         event = self.gate.record(frame)
+
+        # Floor emergency — sacred path. Cancel any active recovery
+        # window so the next tick re-evaluates from scratch.
+        if event.level == 4:
+            self._recovery_until_ms = None
+            return event
+
+        # Inside an active recovery window? Suppress level 1-3 fires.
+        if self._recovery_until_ms is not None:
+            if frame.timestamp_ms < self._recovery_until_ms:
+                if event.fired and event.level < 4:
+                    self._suppressed_count += 1
+                    return replace(
+                        event,
+                        fired=False, level=0,
+                        reason="recovery_in_progress · suppressed",
+                    )
+            else:
+                # Window expired — disarm.
+                self._recovery_until_ms = None
+
+        # Fresh level ≥ 2 firing — arm a new recovery window.
+        if event.fired and event.level >= 2:
+            recovery_ms = 500   # fallback when no playbook match
+            history = self.gate.history()
+            if history:
+                sig = tuple(f.stability_score for f in history)
+                match = self.playbook.find_similar(sig)
+                if match is not None:
+                    recovery_ms = match.recovery_time_ms
+            self._recovery_until_ms = (
+                frame.timestamp_ms +
+                int(recovery_ms * RECOVERY_LOCKOUT_FRACTION)
+            )
+
         return event
+
+    def correct(self, current: float, target: float,
+                dt_ms: int = 10, recovery_time_ms: int = 500) -> float:
+        """Smooth a corrective command via the slew-limited lerp.
+
+        Callers maintain their own `current` state across ticks (the
+        agent does not — different DOFs each have their own current
+        command). This method is just the bounded next-step function.
+        """
+        return self.lerp.step(current, target, dt_ms, recovery_time_ms)
 
     def status(self) -> dict:
         return {
-            "trust_level":      TRUST_LEVEL,
-            "com_safe_radius":  COM_SAFE_RADIUS,
-            "reflex_latency_ms": REFLEX_LATENCY_MS,
-            "stability_floor":  STABILITY_FLOOR,
-            "reflex_count":     self.gate.reflex_count,
-            "emergency_count":  self.gate.emergency_count,
-            "history_depth":    len(self.gate.history()),
-            "playbook_size":    len(self.playbook),
+            "trust_level":           TRUST_LEVEL,
+            "com_safe_radius":       COM_SAFE_RADIUS,
+            "reflex_latency_ms":     REFLEX_LATENCY_MS,
+            "stability_floor":       STABILITY_FLOOR,
+            "max_dcmd_per_tick":     MAX_DCMD_PER_TICK,
+            "recovery_lockout_pct":  RECOVERY_LOCKOUT_FRACTION,
+            "reflex_count":          self.gate.reflex_count,
+            "emergency_count":       self.gate.emergency_count,
+            "suppressed_count":      self._suppressed_count,
+            "in_recovery_window":    self._recovery_until_ms is not None,
+            "history_depth":         len(self.gate.history()),
+            "playbook_size":         len(self.playbook),
         }
 
 
