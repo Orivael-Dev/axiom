@@ -126,6 +126,34 @@ class TestAndroidPassed:
             assert f"fun {method}" in client_src or \
                     f"suspend fun {method}" in client_src, f"missing {method}"
 
+    def test_passed_call_screening_service_wired(self):
+        """The Hello Operator product needs a CallScreeningService that:
+          - is registered in the manifest under BIND_SCREENING_SERVICE
+          - declares the android.telecom.CallScreeningService intent filter
+          - is exported (the OS binds to it)
+          - has a corresponding Kotlin source file under telephony/
+        Any of these missing → calls won't be intercepted at runtime."""
+        manifest = (ANDROID / "app" / "src" / "main"
+                     / "AndroidManifest.xml").read_text(encoding="utf-8")
+        assert 'android.permission.BIND_SCREENING_SERVICE' in manifest
+        assert 'android.telecom.CallScreeningService' in manifest
+        assert '.telephony.AxiomCallScreeningService' in manifest
+
+        # Required permissions for caller-ID + call-log annotation
+        assert 'android.permission.READ_PHONE_STATE' in manifest
+        assert 'android.permission.READ_CALL_LOG' in manifest
+
+        # Kotlin source for the service
+        svc = (PKG_ROOT / "telephony" / "AxiomCallScreeningService.kt")
+        assert svc.exists(), "AxiomCallScreeningService.kt missing"
+        body = svc.read_text(encoding="utf-8")
+        assert "class AxiomCallScreeningService : CallScreeningService" in body
+        assert "respondToCall" in body, "service must respond to the OS"
+
+        # Companion store for the in-app log
+        store = (PKG_ROOT / "telephony" / "CallScreeningStore.kt")
+        assert store.exists(), "CallScreeningStore.kt missing"
+
     def test_passed_emulator_loopback_is_default(self):
         """The README promises 10.0.2.2:8000 as the default server URL.
         Make sure both the SettingsStore default and the manifest's

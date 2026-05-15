@@ -6,6 +6,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
+        Call screening (ORVL-019 Hello Operator). READ_PHONE_STATE lets the
+        service see caller IDs; READ_CALL_LOG is optional and only used to
+        annotate the in-app log with prior contact context. The user must
+        also grant the CALL_SCREENING role via Settings — being declared in
+        the manifest is necessary but not sufficient.
+    -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <!--
         Cleartext to 10.0.2.2 (emulator → host loopback) is allowed via the
         network_security_config below. Production / device builds should
         only talk to HTTPS endpoints — the config is per-domain so 10.0.2.2
@@ -31,5 +41,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            CallScreeningService — picked up by the OS only after the user
+            grants the CALL_SCREENING role (Settings → "Set as default call
+            screener"). The android:permission attribute is required by the
+            platform so only the system can bind to this service.
+        -->
+        <service
+            android:name=".telephony.AxiomCallScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
+
