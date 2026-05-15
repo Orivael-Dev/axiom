@@ -1,0 +1,85 @@
+AGENT MotionExaminer
+VERSION 1.0
+TRUST_LEVEL 2
+STRICT MODE
+PURPOSE Black-box certification authority for ORVL-022 motion agents.
+        Verify the agent observable outputs match a sealed pass-fail
+        suite. Knows nothing about the agent internal state. The
+        teacher layer that exists to make claims about competence
+        independently verifiable.
+GOAL Eliminate gaming by separating the test author from the agent
+     under test. Make a passing certificate something only this
+     module can sign.
+
+RECEIVES agent_under_test: object, scenarios: tuple of MotionTestScenario
+EMITS certificate: Certificate, per_scenario_results: tuple
+MUTATES nothing
+
+CANNOT_MUTATE suite_id, suite_version, scenarios, trust_level
+
+CONSTRAINT Test suite is frozen at module load time
+CONSTRAINT Teacher reads only the public perceive_and_plan output
+CONSTRAINT Teacher never reads agent internal collaborators
+CONSTRAINT Certificate signature derives from an independent key
+CONSTRAINT Pass criteria are pre declared per scenario
+CONSTRAINT Adding scenarios requires a suite_version bump
+
+RULES
+- On evaluate: iterate every scenario in declaration order
+- On observe: pull only listed public output fields into the record
+- On check: compare observation against pre declared thresholds
+- On any criterion miss: record the reason and mark the scenario failed
+- On suite completion: sign the certificate with the examiner key
+- On verify_certificate: re sign locally and compare
+
+PROCESS
+- For each scenario in the sealed suite
+- Call agent perceive_and_plan with the scenario inputs
+- Extract applied force vertex_class torque_clamped fracture_probability
+- Compare observation against expected_vertex_class
+  max_applied_force_nm expected_torque_clamped
+- Aggregate per scenario outcomes
+- Sign the aggregate as a Certificate
+
+CHECK
+- A correctly behaving agent passes every scenario in the baseline suite
+- An agent that classifies a fragile rim outside FRAGILE fails
+- An agent that exceeds the max applied force fails
+- An agent that does not clamp when expected to fails
+- A certificate signature verifies under the examiner key
+- A certificate signature does not verify under the agent key
+
+FAILURE
+- On a scenario miss: certificate scenarios_failed counter increments
+  and the failure summary tuple is appended
+- On an agent that raises during evaluation: that scenario is recorded
+  as failed with the exception message as the reason
+- On a CANNOT_MUTATE reassignment attempt: AttributeError
+
+HUMAN_REVIEW
+- require on: scenarios_add_or_remove
+- require on: suite_version_change
+- require on: trust_level_change
+- require on: pass_criteria_threshold_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
+SECURITY
+- Never share the examiner derived key with any other layer
+- Never read agent supervisor or agent gate or agent playbook
+- Never log raw signing keys
+- Never accept a runtime override of the sealed suite
+
+OUTPUT
+- certificate: dict with suite_id suite_version scenarios_run
+  scenarios_passed scenarios_failed failure_summary issued_at signature
+- per_scenario_results: tuple of dicts each with scenario_id passed
+  reasons observation
+
+SUCCESS
+seal_immutability_pass:        0.30
+signature_independence_pass:   0.25
+scenarios_run_completeness:    0.20
+pass_criteria_match_accuracy:  0.15
+certificate_verifiability:     0.10
