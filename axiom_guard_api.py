@@ -71,8 +71,6 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 # ── Latent reasoning engine ────────────────────────────────────
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 try:
     from axiom_latent import LatentTrace, MultiplexRunner, Foresight, LatentEngine as AxiomLatentPipeline
     LATENT_AVAILABLE = True
@@ -130,7 +128,6 @@ except ImportError:
     OS_SHIELD_AVAILABLE = False
 
 # ── Constants ─────────────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from axiom_signing import derive_key
 SIGNING_KEY      = derive_key(b"axiom-guard-api-v1")
 MANIFEST_STORE   = {}  # In memory — swap for Redis/DB in production
