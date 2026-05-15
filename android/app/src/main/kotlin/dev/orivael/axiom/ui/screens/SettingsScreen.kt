@@ -40,7 +40,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import dev.orivael.axiom.data.SettingsStore
 import dev.orivael.axiom.network.AxiomClient
+import dev.orivael.axiom.security.KeystoreManager
 import dev.orivael.axiom.telephony.CallScreeningStore
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -157,7 +159,115 @@ fun SettingsScreen() {
         }
 
         Spacer(Modifier.height(12.dp))
+        MasterKeySection()
+
+        Spacer(Modifier.height(12.dp))
         CallScreeningSection()
+    }
+}
+
+/**
+ * Master-key entry + Keystore-wrapped storage.
+ *
+ * The user pastes the same 64-hex `AXIOM_MASTER_KEY` the server uses.
+ * The app encrypts it under a non-exportable Android Keystore AES-GCM
+ * key (see [KeystoreManager]) and stores only the ciphertext+IV in
+ * DataStore. From that point on, every Gate / Hello Op card shows a
+ * "✓ HMAC verified" badge if the server signature checks out.
+ */
+@Composable
+private fun MasterKeySection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val store = remember { SettingsStore(context) }
+    val km    = remember { KeystoreManager() }
+    val blob by store.masterKeyBlob.collectAsState(initial = KeystoreManager.Blob.EMPTY)
+    val configured = !blob.isEmpty()
+
+    var input by remember { mutableStateOf("") }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    val isHex = input.matches(Regex("^[0-9a-fA-F]{64}$"))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "AXIOM_MASTER_KEY",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (configured)
+                    "✓ Configured — every server response will be HMAC-verified locally"
+                else
+                    "○ Not configured — server responses show '○ Unverified' badge",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (configured)
+                    MaterialTheme.colorScheme.tertiary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it.trim() },
+                label = { Text("64-char hex (paste from server env)") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = {
+                    val msg = when {
+                        input.isBlank()       -> "Plaintext never leaves this device."
+                        isHex                  -> "Looks valid."
+                        else                    -> "Must be exactly 64 hex characters."
+                    }
+                    Text(msg, style = MaterialTheme.typography.labelSmall)
+                },
+                isError = input.isNotBlank() && !isHex,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val encrypted = km.encrypt(input.lowercase())
+                            store.setMasterKeyBlob(encrypted)
+                            input = ""
+                            feedback = "✓ Master key wrapped + stored"
+                        }
+                    },
+                    enabled = isHex,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Wrap + save") }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            store.clearMasterKey()
+                            feedback = "○ Master key cleared"
+                        }
+                    },
+                    enabled = configured,
+                    colors = ButtonDefaults.outlinedButtonColors(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Clear") }
+            }
+            if (feedback != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    feedback!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (feedback!!.startsWith("✓"))
+                        MaterialTheme.colorScheme.tertiary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

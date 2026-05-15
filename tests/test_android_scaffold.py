@@ -126,6 +126,31 @@ class TestAndroidPassed:
             assert f"fun {method}" in client_src or \
                     f"suspend fun {method}" in client_src, f"missing {method}"
 
+    def test_passed_security_module_present(self):
+        """HMAC client-side verification: KeystoreManager wraps the master
+        key under an Android Keystore AES-GCM key; SignatureVerifier
+        recomputes signatures by canonicalising the response JSON the
+        same way Python's json.dumps(sort_keys=True, ensure_ascii=True,
+        separators=(',', ':')) does. All three files must exist."""
+        sec_dir = PKG_ROOT / "security"
+        for name in ("KeystoreManager", "CanonicalJson", "SignatureVerifier"):
+            f = sec_dir / f"{name}.kt"
+            assert f.exists(), f"security/{name}.kt missing"
+
+        keystore = (sec_dir / "KeystoreManager.kt").read_text(encoding="utf-8")
+        # AES-256-GCM only — anything else fails to wrap reliably across OEMs.
+        assert "AES/GCM/NoPadding" in keystore
+        assert "AndroidKeyStore" in keystore
+        # Refuses to store anything if the cipher init fails (no plaintext fallback).
+        assert "KeyProperties.PURPOSE_ENCRYPT" in keystore
+        assert "KeyProperties.PURPOSE_DECRYPT" in keystore
+
+        verifier = (sec_dir / "SignatureVerifier.kt").read_text(encoding="utf-8")
+        # Derived-key salt must match axiom_signing.derive_key(b"axiom-aspa-device-v1")
+        assert 'axiom-aspa-device-v1' in verifier
+        # Strip 'signature' before canonicalising — matches the server.
+        assert 'filterKeys { it != "signature" }' in verifier
+
     def test_passed_call_screening_service_wired(self):
         """The Hello Operator product needs a CallScreeningService that:
           - is registered in the manifest under BIND_SCREENING_SERVICE

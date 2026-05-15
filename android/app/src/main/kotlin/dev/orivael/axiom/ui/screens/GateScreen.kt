@@ -36,6 +36,9 @@ import dev.orivael.axiom.network.AxiomClient
 import dev.orivael.axiom.network.InboundDecision
 import dev.orivael.axiom.network.OutboundDecision
 import dev.orivael.axiom.network.SovereignAlert
+import dev.orivael.axiom.security.SignatureVerifier
+import dev.orivael.axiom.security.VerificationBadge
+import dev.orivael.axiom.security.rememberSignatureVerifier
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -56,6 +59,7 @@ fun GateScreen() {
 
     val serverUrl   by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_SERVER_URL)
     val bearerToken by store.bearerToken.collectAsState(initial = "")
+    val verifier    = rememberSignatureVerifier()
 
     var input by remember { mutableStateOf("") }
     var sessionId by remember { mutableStateOf(UUID.randomUUID().toString()) }
@@ -64,13 +68,17 @@ fun GateScreen() {
 
     fun client() = AxiomClient(baseUrl = serverUrl, bearerToken = bearerToken)
 
+    fun verify(rawJson: String): SignatureVerifier.VerificationResult =
+        verifier?.verify(rawJson)
+            ?: SignatureVerifier.VerificationResult.Unconfigured
+
     fun submitOutbound() {
         if (input.isBlank() || busy) return
         val text = input
         scope.launch {
             busy = true
             val r = client().phoneOutbound(text, sessionId = sessionId)
-            history = listOf(GateEntry.fromOutbound(text, r)) + history
+            history = listOf(GateEntry.fromOutbound(text, r, ::verify)) + history
             input = ""
             busy = false
         }
@@ -82,7 +90,7 @@ fun GateScreen() {
         scope.launch {
             busy = true
             val r = client().phoneInbound(text, sessionId = sessionId)
-            history = listOf(GateEntry.fromInbound(text, r)) + history
+            history = listOf(GateEntry.fromInbound(text, r, ::verify)) + history
             input = ""
             busy = false
         }
@@ -150,10 +158,12 @@ fun GateScreen() {
 private sealed interface GateEntry {
     val source: String       // "out" or "in"
     val text: String
+    val verification: SignatureVerifier.VerificationResult
 
     data class Ok(
         override val source: String,
         override val text: String,
+        override val verification: SignatureVerifier.VerificationResult,
         val intentClass: String,
         val confidence: Double,
         val signature: String,
@@ -163,6 +173,7 @@ private sealed interface GateEntry {
     data class Blocked(
         override val source: String,
         override val text: String,
+        override val verification: SignatureVerifier.VerificationResult,
         val alert: SovereignAlert,
     ) : GateEntry
 
@@ -170,36 +181,55 @@ private sealed interface GateEntry {
         override val source: String,
         override val text: String,
         val message: String,
-    ) : GateEntry
+    ) : GateEntry {
+        override val verification: SignatureVerifier.VerificationResult =
+            SignatureVerifier.VerificationResult.Unconfigured
+    }
 
     companion object {
-        fun fromOutbound(text: String, r: AxiomClient.OutboundResult): GateEntry =
-            when (r) {
-                is AxiomClient.OutboundResult.Ok -> Ok(
-                    source = "out", text = text,
-                    intentClass = r.decision.intentClass,
-                    confidence = r.decision.confidence,
-                    signature = r.decision.signature,
-                    annotation = if (r.decision.piiCategories.isNotEmpty())
-                        "PII redacted: ${r.decision.piiCategories.joinToString()}"
-                    else "ANF cores=${r.decision.anfCoresActive}",
-                )
-                is AxiomClient.OutboundResult.Blocked -> Blocked("out", text, r.alert)
-                is AxiomClient.OutboundResult.Failed  -> Failed("out", text, r.message)
-            }
+        fun fromOutbound(
+            text: String,
+            r: AxiomClient.OutboundResult,
+            verify: (String) -> SignatureVerifier.VerificationResult,
+        ): GateEntry = when (r) {
+            is AxiomClient.OutboundResult.Ok -> Ok(
+                source = "out", text = text,
+                verification = verify(r.rawJson),
+                intentClass = r.decision.intentClass,
+                confidence = r.decision.confidence,
+                signature = r.decision.signature,
+                annotation = if (r.decision.piiCategories.isNotEmpty())
+                    "PII redacted: ${r.decision.piiCategories.joinToString()}"
+                else "ANF cores=${r.decision.anfCoresActive}",
+            )
+            is AxiomClient.OutboundResult.Blocked -> Blocked(
+                source = "out", text = text,
+                verification = verify(r.rawJson),
+                alert = r.alert,
+            )
+            is AxiomClient.OutboundResult.Failed -> Failed("out", text, r.message)
+        }
 
-        fun fromInbound(text: String, r: AxiomClient.InboundResult): GateEntry =
-            when (r) {
-                is AxiomClient.InboundResult.Ok -> Ok(
-                    source = "in", text = text,
-                    intentClass = r.decision.intentClass,
-                    confidence = r.decision.confidence,
-                    signature = r.decision.signature,
-                    annotation = "monotonic=${r.decision.monotonicPass}",
-                )
-                is AxiomClient.InboundResult.Blocked -> Blocked("in", text, r.alert)
-                is AxiomClient.InboundResult.Failed  -> Failed("in", text, r.message)
-            }
+        fun fromInbound(
+            text: String,
+            r: AxiomClient.InboundResult,
+            verify: (String) -> SignatureVerifier.VerificationResult,
+        ): GateEntry = when (r) {
+            is AxiomClient.InboundResult.Ok -> Ok(
+                source = "in", text = text,
+                verification = verify(r.rawJson),
+                intentClass = r.decision.intentClass,
+                confidence = r.decision.confidence,
+                signature = r.decision.signature,
+                annotation = "monotonic=${r.decision.monotonicPass}",
+            )
+            is AxiomClient.InboundResult.Blocked -> Blocked(
+                source = "in", text = text,
+                verification = verify(r.rawJson),
+                alert = r.alert,
+            )
+            is AxiomClient.InboundResult.Failed -> Failed("in", text, r.message)
+        }
     }
 }
 
@@ -225,11 +255,17 @@ private fun GateEntryCard(entry: GateEntry) {
                 is GateEntry.Ok      -> "${if (entry.source == "out") "DELIVERED" else "DISPLAYED"} " +
                                           entry.intentClass
             }
-            Text(
-                "${entry.source.uppercase()}  ·  $tag",
-                style = MaterialTheme.typography.labelLarge,
-                color = border,
-            )
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${entry.source.uppercase()}  ·  $tag",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = border,
+                    modifier = Modifier.weight(1f),
+                )
+                if (entry !is GateEntry.Failed) VerificationBadge(entry.verification)
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 entry.text,

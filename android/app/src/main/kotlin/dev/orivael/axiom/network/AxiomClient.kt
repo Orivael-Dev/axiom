@@ -39,15 +39,34 @@ class AxiomClient(
         explicitNulls = false
     }
 
+    /**
+     * Every Ok / Blocked variant carries [rawJson] so callers can run
+     * the canonical HMAC verifier client-side ([dev.orivael.axiom
+     * .security.SignatureVerifier]) without re-serialising the parsed
+     * decision (which would lose float-precision parity with the
+     * Python side).
+     */
     sealed interface OutboundResult {
-        data class Ok(val decision: OutboundDecision) : OutboundResult
-        data class Blocked(val alert: SovereignAlert) : OutboundResult
+        data class Ok(
+            val decision: OutboundDecision,
+            val rawJson:  String,
+        ) : OutboundResult
+        data class Blocked(
+            val alert:    SovereignAlert,
+            val rawJson:  String,
+        ) : OutboundResult
         data class Failed(val message: String) : OutboundResult
     }
 
     sealed interface InboundResult {
-        data class Ok(val decision: InboundDecision) : InboundResult
-        data class Blocked(val alert: SovereignAlert) : InboundResult
+        data class Ok(
+            val decision: InboundDecision,
+            val rawJson:  String,
+        ) : InboundResult
+        data class Blocked(
+            val alert:    SovereignAlert,
+            val rawJson:  String,
+        ) : InboundResult
         data class Failed(val message: String) : InboundResult
     }
 
@@ -62,10 +81,13 @@ class AxiomClient(
             http.newCall(post("/phone/outbound", body)).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 when (resp.code) {
-                    200 -> OutboundResult.Ok(json.decodeFromString(raw))
-                    403 -> OutboundResult.Blocked(
-                        json.decodeFromString<SovereignAlertEnvelope>(raw).alert
-                    )
+                    200 -> OutboundResult.Ok(json.decodeFromString(raw), raw)
+                    403 -> {
+                        val envelope = json.decodeFromString<SovereignAlertEnvelope>(raw)
+                        // The verifier wants the alert JSON, not the wrapping envelope.
+                        val alertJson = extractAlertJson(raw)
+                        OutboundResult.Blocked(envelope.alert, alertJson)
+                    }
                     else -> OutboundResult.Failed("HTTP ${resp.code} — $raw")
                 }
             }
@@ -83,15 +105,24 @@ class AxiomClient(
             http.newCall(post("/phone/inbound", body)).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 when (resp.code) {
-                    200 -> InboundResult.Ok(json.decodeFromString(raw))
-                    403 -> InboundResult.Blocked(
-                        json.decodeFromString<SovereignAlertEnvelope>(raw).alert
-                    )
+                    200 -> InboundResult.Ok(json.decodeFromString(raw), raw)
+                    403 -> {
+                        val envelope = json.decodeFromString<SovereignAlertEnvelope>(raw)
+                        val alertJson = extractAlertJson(raw)
+                        InboundResult.Blocked(envelope.alert, alertJson)
+                    }
                     else -> InboundResult.Failed("HTTP ${resp.code} — $raw")
                 }
             }
         }.getOrElse { InboundResult.Failed("${it::class.simpleName}: ${it.message}") }
     }
+
+    /** Pull the inner alert JSON out of `{"error":"…","alert":{…}}`. */
+    private fun extractAlertJson(raw: String): String = runCatching {
+        val element = kotlinx.serialization.json.Json.parseToJsonElement(raw)
+        val alert = (element as kotlinx.serialization.json.JsonObject)["alert"]
+        alert?.toString() ?: raw
+    }.getOrElse { raw }
 
     suspend fun phoneStatus(): Result<PhoneStatus> = simpleGet("/phone/status")
     suspend fun cmaaFleet():   Result<CmaaFleet>   = simpleGet("/cmaa/fleet")

@@ -38,6 +38,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.orivael.axiom.data.SettingsStore
 import dev.orivael.axiom.network.AxiomClient
+import dev.orivael.axiom.security.SignatureVerifier
+import dev.orivael.axiom.security.VerificationBadge
+import dev.orivael.axiom.security.rememberSignatureVerifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -67,12 +70,16 @@ fun HelloOperatorScreen() {
 
     val serverUrl   by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_SERVER_URL)
     val bearerToken by store.bearerToken.collectAsState(initial = "")
+    val verifier    = rememberSignatureVerifier()
 
     var speedX by remember { mutableStateOf(4) }   // 1, 4, or 10
     var running by remember { mutableStateOf(false) }
     val timeline = remember { mutableStateListOf<CallStep>() }
 
     fun client() = AxiomClient(baseUrl = serverUrl, bearerToken = bearerToken)
+
+    fun verify(raw: String): SignatureVerifier.VerificationResult =
+        verifier?.verify(raw) ?: SignatureVerifier.VerificationResult.Unconfigured
 
     fun reset() {
         timeline.clear()
@@ -88,7 +95,7 @@ fun HelloOperatorScreen() {
             val stepMs = 2000L / speedX
             for ((index, line) in CALL_TRANSCRIPT.withIndex()) {
                 val r = client().phoneOutbound(line.utterance, sessionId = sessionId)
-                timeline.add(CallStep.fromResult(line, r))
+                timeline.add(CallStep.fromResult(line, r, ::verify))
                 if (index < CALL_TRANSCRIPT.lastIndex) delay(stepMs)
             }
             running = false
@@ -213,9 +220,11 @@ private val CALL_TRANSCRIPT = listOf(
 // ── Step result — what one card displays ───────────────────────────────
 private sealed interface CallStep {
     val line: CallLine
+    val verification: SignatureVerifier.VerificationResult
 
     data class Ok(
         override val line: CallLine,
+        override val verification: SignatureVerifier.VerificationResult,
         val intentClass: String,
         val confidence: Double,
         val anfCores: Int,
@@ -224,6 +233,7 @@ private sealed interface CallStep {
 
     data class Blocked(
         override val line: CallLine,
+        override val verification: SignatureVerifier.VerificationResult,
         val intentClass: String,
         val confidence: Double,
         val level: Int,
@@ -233,27 +243,35 @@ private sealed interface CallStep {
     data class Failed(
         override val line: CallLine,
         val message: String,
-    ) : CallStep
+    ) : CallStep {
+        override val verification: SignatureVerifier.VerificationResult =
+            SignatureVerifier.VerificationResult.Unconfigured
+    }
 
     companion object {
-        fun fromResult(line: CallLine, r: AxiomClient.OutboundResult): CallStep =
-            when (r) {
-                is AxiomClient.OutboundResult.Ok -> Ok(
-                    line = line,
-                    intentClass = r.decision.intentClass,
-                    confidence = r.decision.confidence,
-                    anfCores = r.decision.anfCoresActive,
-                    signature = r.decision.signature,
-                )
-                is AxiomClient.OutboundResult.Blocked -> Blocked(
-                    line = line,
-                    intentClass = r.alert.intentClass,
-                    confidence = r.alert.confidence,
-                    level = r.alert.level,
-                    signature = r.alert.signature,
-                )
-                is AxiomClient.OutboundResult.Failed -> Failed(line, r.message)
-            }
+        fun fromResult(
+            line: CallLine,
+            r: AxiomClient.OutboundResult,
+            verify: (String) -> SignatureVerifier.VerificationResult,
+        ): CallStep = when (r) {
+            is AxiomClient.OutboundResult.Ok -> Ok(
+                line = line,
+                verification = verify(r.rawJson),
+                intentClass = r.decision.intentClass,
+                confidence = r.decision.confidence,
+                anfCores = r.decision.anfCoresActive,
+                signature = r.decision.signature,
+            )
+            is AxiomClient.OutboundResult.Blocked -> Blocked(
+                line = line,
+                verification = verify(r.rawJson),
+                intentClass = r.alert.intentClass,
+                confidence = r.alert.confidence,
+                level = r.alert.level,
+                signature = r.alert.signature,
+            )
+            is AxiomClient.OutboundResult.Failed -> Failed(line, r.message)
+        }
     }
 }
 
@@ -304,11 +322,15 @@ private fun CallStepCard(step: CallStep) {
             )
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    tag,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = accent,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        tag,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = accent,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (step !is CallStep.Failed) VerificationBadge(step.verification)
+                }
                 Spacer(Modifier.height(2.dp))
                 Text(
                     "\"${step.line.utterance}\"",

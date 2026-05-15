@@ -28,6 +28,8 @@ class SettingsStore(private val context: Context) {
     private object Keys {
         val SERVER_URL   = stringPreferencesKey("server_url")
         val BEARER_TOKEN = stringPreferencesKey("bearer_token")
+        val MASTER_KEY_CT = stringPreferencesKey("master_key_ct")
+        val MASTER_KEY_IV = stringPreferencesKey("master_key_iv")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data
@@ -36,12 +38,39 @@ class SettingsStore(private val context: Context) {
     val bearerToken: Flow<String> = context.dataStore.data
         .map { it[Keys.BEARER_TOKEN] ?: "" }
 
+    /**
+     * The AXIOM_MASTER_KEY stored as a Keystore-wrapped AES-GCM blob.
+     * Plaintext never lives in DataStore — see
+     * [dev.orivael.axiom.security.KeystoreManager] for the wrap/unwrap.
+     */
+    val masterKeyBlob: Flow<dev.orivael.axiom.security.KeystoreManager.Blob> =
+        context.dataStore.data.map { prefs ->
+            dev.orivael.axiom.security.KeystoreManager.Blob(
+                ciphertextB64 = prefs[Keys.MASTER_KEY_CT] ?: "",
+                ivB64         = prefs[Keys.MASTER_KEY_IV] ?: "",
+            )
+        }
+
     suspend fun setServerUrl(value: String) {
         context.dataStore.edit { it[Keys.SERVER_URL] = value }
     }
 
     suspend fun setBearerToken(value: String) {
         context.dataStore.edit { it[Keys.BEARER_TOKEN] = value }
+    }
+
+    suspend fun setMasterKeyBlob(blob: dev.orivael.axiom.security.KeystoreManager.Blob) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MASTER_KEY_CT] = blob.ciphertextB64
+            prefs[Keys.MASTER_KEY_IV] = blob.ivB64
+        }
+    }
+
+    suspend fun clearMasterKey() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.MASTER_KEY_CT)
+            prefs.remove(Keys.MASTER_KEY_IV)
+        }
     }
 
     companion object {
