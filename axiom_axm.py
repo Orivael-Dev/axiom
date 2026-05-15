@@ -37,9 +37,12 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import time
 import types as _types
 import uuid
+import weakref
+import zipfile
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
@@ -227,6 +230,7 @@ class AXMContainer:
         self._verified    = False
         self._loaded:     dict = {}      # name -> SkillDelegate
         self._mkb_registry = None        # built lazily on first route()
+        self._archive_origin: Optional[Path] = None  # set when loaded from zip
 
     # ── public read-only properties ───────────────────────────────────
     @property
@@ -268,15 +272,54 @@ class AXMContainer:
     # ── factory: load from disk ───────────────────────────────────────
     @classmethod
     def from_path(cls, path: str) -> "AXMContainer":
-        root = Path(path)
-        if not root.is_dir():
-            raise AXMError(f"not a directory: {path}")
-        header = cls._load_header(root)
-        delegates    = cls._load_delegates(root)
-        trajectories = cls._load_trajectories(root)
-        vertices     = cls._load_vertices(root)
-        proofs       = cls._load_proofs(root)
-        return cls(root, header, delegates, trajectories, vertices, proofs)
+        """Load an AXM container from disk.
+
+        Accepts either an exploded directory layout (legacy, since the
+        first AXM commit) OR a single-file zip archive ending in
+        ``.axm``. When given a zip, the archive is extracted to a
+        tempdir and a weakref finaliser cleans it up when the
+        container goes out of scope — no explicit close() required.
+        """
+        p = Path(path)
+        if not p.exists():
+            raise AXMError(f"path not found: {path}")
+
+        cleanup_dir: Optional[Path] = None
+        archive_origin: Optional[Path] = None
+
+        if p.is_file():
+            if not zipfile.is_zipfile(p):
+                raise AXMError(f"not a directory or .axm archive: {path}")
+            archive_origin = p
+            cleanup_dir = Path(tempfile.mkdtemp(prefix="axm_unpack_"))
+            with zipfile.ZipFile(p, "r") as zf:
+                # Refuse path-traversal entries inside the zip — every
+                # member must resolve under cleanup_dir.
+                for member in zf.namelist():
+                    dest = (cleanup_dir / member).resolve()
+                    if cleanup_dir.resolve() not in dest.parents and \
+                       dest != cleanup_dir.resolve():
+                        shutil.rmtree(cleanup_dir, ignore_errors=True)
+                        raise AXMError(f"zip member escapes container root: {member}")
+                zf.extractall(cleanup_dir)
+            load_root = cleanup_dir
+        elif p.is_dir():
+            load_root = p
+        else:
+            raise AXMError(f"not a directory or .axm archive: {path}")
+
+        header = cls._load_header(load_root)
+        delegates    = cls._load_delegates(load_root)
+        trajectories = cls._load_trajectories(load_root)
+        vertices     = cls._load_vertices(load_root)
+        proofs       = cls._load_proofs(load_root)
+
+        instance = cls(load_root, header, delegates, trajectories, vertices, proofs)
+        if cleanup_dir is not None:
+            instance._archive_origin = archive_origin
+            # Auto-cleanup the extracted tempdir when the instance is GCd.
+            weakref.finalize(instance, shutil.rmtree, str(cleanup_dir), True)
+        return instance
 
     @staticmethod
     def _load_header(root: Path) -> AXMHeader:
@@ -373,8 +416,15 @@ class AXMContainer:
 
     # ── factory: pack from a Python spec ──────────────────────────────
     @classmethod
-    def pack(cls, spec: Mapping[str, Any], output_path: str) -> "AXMContainer":
+    def pack(cls, spec: Mapping[str, Any], output_path: str,
+             *, archive: bool = False) -> "AXMContainer":
         """Build a fresh container under `output_path` from a dict spec.
+
+        ``archive=False`` (default, backward-compatible) writes the
+        exploded directory layout. ``archive=True`` builds to a
+        tempdir, zips it to ``output_path``, then loads the resulting
+        archive — yielding a single-file shippable artifact instead of
+        a directory tree.
 
         Spec shape (all keys optional except `core_logic`):
             {
@@ -397,6 +447,29 @@ class AXMContainer:
                 ],
             }
         """
+        if archive:
+            # Build to a tempdir, then zip the result into output_path.
+            # Reload via from_path() so the returned container knows its
+            # archive origin and registers the weakref-based cleanup.
+            work = Path(tempfile.mkdtemp(prefix="axm_pack_archive_"))
+            try:
+                cls.pack(spec, str(work / "exploded.axm"), archive=False)
+                # Zip the exploded layout into the requested output path.
+                out_file = Path(output_path)
+                if out_file.exists() and out_file.is_dir():
+                    raise AXMError(
+                        f"archive output_path is a directory: {output_path}")
+                out_file.parent.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(out_file, "w",
+                                       zipfile.ZIP_DEFLATED) as zf:
+                    src = work / "exploded.axm"
+                    for f in src.rglob("*"):
+                        if f.is_file():
+                            zf.write(f, f.relative_to(src))
+                return cls.from_path(str(out_file))
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+
         root = Path(output_path)
         if root.exists():
             shutil.rmtree(root)
@@ -713,6 +786,25 @@ class AXMContainer:
         self._loaded.clear()
         return n
 
+    # ── Archive helpers ───────────────────────────────────────────────
+    @property
+    def is_archive(self) -> bool:
+        """True iff this container was loaded from a single-file zip."""
+        return self._archive_origin is not None
+
+    def to_archive(self, output_path: str) -> Path:
+        """Write the currently-loaded layout to a single-file ``.axm``
+        zip archive. Idempotent — does not modify the live container."""
+        out = Path(output_path)
+        if out.exists() and out.is_dir():
+            raise AXMError(f"to_archive output_path is a directory: {output_path}")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in self._path.rglob("*"):
+                if f.is_file():
+                    zf.write(f, f.relative_to(self._path))
+        return out
+
 
 # ── CLI entry-point ───────────────────────────────────────────────────────
 def _main(argv=None) -> int:
@@ -731,6 +823,9 @@ def _main(argv=None) -> int:
     p_route.add_argument("task")
     p_pack = sub.add_parser("pack", help="write the starter container")
     p_pack.add_argument("output")
+    p_pack.add_argument("--archive", action="store_true",
+                         help="write a single-file .axm zip archive "
+                              "instead of an exploded directory tree")
     args = parser.parse_args(argv)
 
     if args.action == "inspect":
@@ -760,7 +855,7 @@ def _main(argv=None) -> int:
         return 0
     if args.action == "pack":
         from examples.axm_pack_starter import STARTER_SPEC  # type: ignore
-        c = AXMContainer.pack(STARTER_SPEC, args.output)
+        c = AXMContainer.pack(STARTER_SPEC, args.output, archive=args.archive)
         print(f"packed {args.output} — {len(c.delegates)} delegates, "
                 f"{len(c.proofs)} proofs, fingerprint {c.fingerprint()}")
         return 0
