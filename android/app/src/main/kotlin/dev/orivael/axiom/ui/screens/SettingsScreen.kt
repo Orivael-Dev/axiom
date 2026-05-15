@@ -1,0 +1,526 @@
+package dev.orivael.axiom.ui.screens
+
+import android.app.role.RoleManager
+import android.content.Context
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import dev.orivael.axiom.data.SettingsStore
+import dev.orivael.axiom.incall.VoskModelManager
+import dev.orivael.axiom.network.AxiomClient
+import dev.orivael.axiom.security.KeystoreManager
+import dev.orivael.axiom.telephony.CallScreeningStore
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun SettingsScreen() {
+    val context = LocalContext.current
+    val store   = remember { SettingsStore(context) }
+    val scope   = rememberCoroutineScope()
+
+    val persistedUrl   by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_SERVER_URL)
+    val persistedToken by store.bearerToken.collectAsState(initial = "")
+
+    // Local edit buffers so the user can type freely without spamming DataStore.
+    var url   by remember { mutableStateOf("") }
+    var token by remember { mutableStateOf("") }
+    LaunchedEffect(persistedUrl)   { url   = persistedUrl }
+    LaunchedEffect(persistedToken) { token = persistedToken }
+
+    var probe by remember { mutableStateOf<String?>(null) }
+    var busy  by remember { mutableStateOf(false) }
+
+    fun save() {
+        scope.launch {
+            store.setServerUrl(url.trim().ifBlank { SettingsStore.DEFAULT_SERVER_URL })
+            store.setBearerToken(token.trim())
+        }
+    }
+
+    fun test() {
+        if (busy) return
+        scope.launch {
+            busy = true
+            probe = null
+            val client = AxiomClient(
+                baseUrl = url.trim().ifBlank { SettingsStore.DEFAULT_SERVER_URL },
+                bearerToken = token.trim(),
+            )
+            probe = client.phoneStatus().fold(
+                onSuccess = { s -> "✓ reachable — fingerprint ${s.deviceFingerprint}, " +
+                                    "anf_calls=${s.anfCalls}" },
+                onFailure = { e -> "✗ ${e::class.simpleName}: ${e.message}" },
+            )
+            busy = false
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState()),
+    ) {
+        OutlinedTextField(
+            value = url,
+            onValueChange = { url = it },
+            label = { Text("Server URL") },
+            placeholder = { Text("http://10.0.2.2:8000") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = token,
+            onValueChange = { token = it },
+            label = { Text("Bearer token (optional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+
+        Button(
+            onClick = ::save,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Save") }
+
+        Spacer(Modifier.height(8.dp))
+
+        Button(
+            onClick = ::test,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (busy) "Probing…" else "Test connection") }
+
+        Spacer(Modifier.height(12.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            ),
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("Notes", style = MaterialTheme.typography.titleMedium,
+                      color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Emulator → host loopback resolves at 10.0.2.2.\n" +
+                    "For a physical device on the same LAN, replace with your " +
+                    "host's LAN IP and start axiom_server.py with " +
+                    "AXIOM_API_TOKEN set + bound to the right interface.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (probe != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        probe!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (probe!!.startsWith("✓"))
+                            MaterialTheme.colorScheme.tertiary
+                        else
+                            MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        MasterKeySection()
+
+        Spacer(Modifier.height(12.dp))
+        CallScreeningSection()
+
+        Spacer(Modifier.height(12.dp))
+        VoskModelSection()
+    }
+}
+
+/**
+ * Vosk on-device model card.
+ *
+ * Lets the user download / remove the ~50MB English small-model that
+ * powers [VoskBackend]. When installed, [TranscriptionBackendFactory]
+ * auto-prefers Vosk so call audio never leaves the device — the
+ * privacy promise from ORVL-019 made real.
+ */
+@Composable
+private fun VoskModelSection() {
+    val context = LocalContext.current
+    val scope   = rememberCoroutineScope()
+    val state by VoskModelManager.progress.collectAsState()
+    var installed by remember { mutableStateOf(VoskModelManager.isInstalled(context)) }
+    var sizeBytes by remember { mutableStateOf(VoskModelManager.sizeOnDisk(context)) }
+
+    // Re-poll install state on every progress emission so the UI reflects
+    // freshly-completed downloads and clears after [remove].
+    LaunchedEffect(state) {
+        installed = VoskModelManager.isInstalled(context)
+        sizeBytes = VoskModelManager.sizeOnDisk(context)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "Vosk on-device model",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (installed)
+                    "✓ Installed — Live Call Mode runs entirely offline, " +
+                    "audio never leaves the device"
+                else
+                    "○ Not installed — Live Call Mode will fall back to the system " +
+                    "SpeechRecognizer (may upload audio to Google STT)",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (installed)
+                    MaterialTheme.colorScheme.tertiary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            val statusLine = when (val s = state) {
+                VoskModelManager.DownloadState.Idle      ->
+                    if (installed) "Footprint on disk: ${formatBytes(sizeBytes)}"
+                    else "Tap below to fetch the small English model (~40 MB compressed)."
+                is VoskModelManager.DownloadState.Downloading -> {
+                    val pct = if (s.totalBytes > 0)
+                        " (${(s.bytesSoFar * 100 / s.totalBytes)}%)"
+                    else ""
+                    "Downloading: ${formatBytes(s.bytesSoFar)}$pct"
+                }
+                VoskModelManager.DownloadState.Extracting     ->
+                    "Extracting archive…"
+                VoskModelManager.DownloadState.Installed      ->
+                    "✓ Installed (${formatBytes(sizeBytes)})"
+                is VoskModelManager.DownloadState.Failed      ->
+                    "✗ ${s.message}"
+            }
+            Text(
+                statusLine,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            val busy = state is VoskModelManager.DownloadState.Downloading ||
+                       state is VoskModelManager.DownloadState.Extracting
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { scope.launch { VoskModelManager.download(context) } },
+                    enabled = !installed && !busy,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (installed) "Installed" else if (busy) "Working…" else "Download") }
+                Button(
+                    onClick = {
+                        VoskModelManager.remove(context)
+                        installed = false
+                        sizeBytes = 0L
+                    },
+                    enabled = installed && !busy,
+                    colors = ButtonDefaults.outlinedButtonColors(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Remove") }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Source: alphacephei.com/vosk/models — the URL is pinned to " +
+                "a specific release in code so a remote bump can't silently " +
+                "alter the model behind your back.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun formatBytes(b: Long): String = when {
+    b <= 0L          -> "0 B"
+    b < 1_024L       -> "$b B"
+    b < 1_048_576L   -> "${b / 1_024L} KB"
+    b < 1_073_741_824L -> "${b / 1_048_576L} MB"
+    else             -> "${b / 1_073_741_824L} GB"
+}
+
+/**
+ * Master-key entry + Keystore-wrapped storage.
+ *
+ * The user pastes the same 64-hex `AXIOM_MASTER_KEY` the server uses.
+ * The app encrypts it under a non-exportable Android Keystore AES-GCM
+ * key (see [KeystoreManager]) and stores only the ciphertext+IV in
+ * DataStore. From that point on, every Gate / Hello Op card shows a
+ * "✓ HMAC verified" badge if the server signature checks out.
+ */
+@Composable
+private fun MasterKeySection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val store = remember { SettingsStore(context) }
+    val km    = remember { KeystoreManager() }
+    val blob by store.masterKeyBlob.collectAsState(initial = KeystoreManager.Blob.EMPTY)
+    val configured = !blob.isEmpty()
+
+    var input by remember { mutableStateOf("") }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    val isHex = input.matches(Regex("^[0-9a-fA-F]{64}$"))
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "AXIOM_MASTER_KEY",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (configured)
+                    "✓ Configured — every server response will be HMAC-verified locally"
+                else
+                    "○ Not configured — server responses show '○ Unverified' badge",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (configured)
+                    MaterialTheme.colorScheme.tertiary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it.trim() },
+                label = { Text("64-char hex (paste from server env)") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = {
+                    val msg = when {
+                        input.isBlank()       -> "Plaintext never leaves this device."
+                        isHex                  -> "Looks valid."
+                        else                    -> "Must be exactly 64 hex characters."
+                    }
+                    Text(msg, style = MaterialTheme.typography.labelSmall)
+                },
+                isError = input.isNotBlank() && !isHex,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val encrypted = km.encrypt(input.lowercase())
+                            store.setMasterKeyBlob(encrypted)
+                            input = ""
+                            feedback = "✓ Master key wrapped + stored"
+                        }
+                    },
+                    enabled = isHex,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Wrap + save") }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            store.clearMasterKey()
+                            feedback = "○ Master key cleared"
+                        }
+                    },
+                    enabled = configured,
+                    colors = ButtonDefaults.outlinedButtonColors(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Clear") }
+            }
+            if (feedback != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    feedback!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (feedback!!.startsWith("✓"))
+                        MaterialTheme.colorScheme.tertiary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Call-screening role + log surface.
+ *
+ * Shows whether AXIOM is currently the system's default call screener,
+ * exposes a one-tap launcher for the OS role-request flow, and renders
+ * the in-memory [CallScreeningStore] so the user can see what the
+ * service has observed since launch.
+ */
+@Composable
+private fun CallScreeningSection() {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val entries by CallScreeningStore.entries.collectAsState()
+
+    var isHolder by remember { mutableStateOf(currentlyHoldsCallScreeningRole(context)) }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // Role grant may have flipped — re-check.
+        isHolder = currentlyHoldsCallScreeningRole(context)
+    }
+
+    // Re-check when the user comes back from the role-grant Activity.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isHolder = currentlyHoldsCallScreeningRole(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "Call screening (ORVL-019 Hello Operator)",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(4.dp))
+            val statusColor =
+                if (isHolder) MaterialTheme.colorScheme.tertiary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            val statusText =
+                if (isHolder) "✓ Active — AXIOM is the default call screener"
+                else "○ Not active — calls are not being screened by AXIOM"
+            Text(
+                statusText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = statusColor,
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        val intent = createCallScreeningRequestIntent(context)
+                        if (intent != null) launcher.launch(intent)
+                    },
+                    enabled = !isHolder && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
+                            "Needs Android 10+"
+                        else if (isHolder) "Already active"
+                        else "Set as default call screener"
+                    )
+                }
+                Button(
+                    onClick = { CallScreeningStore.clear() },
+                    enabled = entries.isNotEmpty(),
+                    colors = ButtonDefaults.outlinedButtonColors(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Clear log") }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "Recent screening events (${entries.size}):",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (entries.isEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "(none yet — make a test call after granting the role)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                val fmt = remember { SimpleDateFormat("HH:mm:ss", Locale.US) }
+                entries.take(8).forEach { e ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${fmt.format(Date(e.timestampMs))}  ${e.direction}  " +
+                            "${e.number}  →  ${e.verdict}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "This slice records calls but does not block or silence them. " +
+                "The next slice adds audio capture + on-device transcription " +
+                "so the gate sees the call content, not just the number.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun currentlyHoldsCallScreeningRole(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+    val rm = context.getSystemService(RoleManager::class.java) ?: return false
+    return rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)
+}
+
+private fun createCallScreeningRequestIntent(context: Context): android.content.Intent? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+    val rm = context.getSystemService(RoleManager::class.java) ?: return null
+    return rm.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
+}

@@ -128,6 +128,87 @@ class TestAXMPassed:
 # SECTION 3 — INVARIANTS
 # ===========================================================================
 
+class TestAXMArchive:
+    """Binary `.axm` zip-container round-trip + tamper detection."""
+
+    def test_passed_pack_archive_creates_zip(self, tmp_path):
+        import zipfile
+        out = tmp_path / "shipping.axm"
+        c = AXMContainer.pack(STARTER_SPEC, str(out), archive=True)
+        assert out.is_file()
+        assert zipfile.is_zipfile(out)
+        assert c.is_archive is True
+        # Every sub-module of the directory layout must appear in the zip.
+        with zipfile.ZipFile(out) as zf:
+            names = set(zf.namelist())
+        assert "header.json" in names
+        assert any(n.startswith("delegates/") and n.endswith("skill.json")
+                    for n in names)
+        assert "proofs/ledger.jsonl" in names
+
+    def test_passed_from_path_auto_detects_zip(self, tmp_path):
+        out = tmp_path / "shipping.axm"
+        AXMContainer.pack(STARTER_SPEC, str(out), archive=True)
+        reloaded = AXMContainer.from_path(str(out))
+        assert reloaded.is_archive is True
+        assert len(reloaded.delegates) == 3
+        assert reloaded.verify_proofs() is True
+
+    def test_passed_dir_vs_archive_same_fingerprint(self, tmp_path):
+        """Packing the same spec as dir vs archive must produce
+        identical header signatures (the fingerprint is HMAC-derived
+        from the header signature only)."""
+        c_dir = AXMContainer.pack(STARTER_SPEC, str(tmp_path / "dir.axm"))
+        c_zip = AXMContainer.pack(STARTER_SPEC, str(tmp_path / "shipping.axm"),
+                                    archive=True)
+        assert c_dir.fingerprint() == c_zip.fingerprint()
+
+    def test_blocked_tampered_zip_header_fails_load(self, tmp_path):
+        """Mutating header.json inside the zip must raise
+        AXMSignatureMismatch on load — same contract as the dir form."""
+        import json
+        import zipfile
+        out = tmp_path / "shipping.axm"
+        AXMContainer.pack(STARTER_SPEC, str(out), archive=True)
+        # Rebuild the zip with a mangled header.
+        tampered = tmp_path / "tampered.axm"
+        with zipfile.ZipFile(out, "r") as src, \
+             zipfile.ZipFile(tampered, "w", zipfile.ZIP_DEFLATED) as dst:
+            for n in src.namelist():
+                if n == "header.json":
+                    hdr = json.loads(src.read(n).decode("utf-8"))
+                    hdr["core_logic"] = "tampered"
+                    dst.writestr(n, json.dumps(hdr))
+                else:
+                    dst.writestr(n, src.read(n))
+        with pytest.raises(AXMSignatureMismatch):
+            AXMContainer.from_path(str(tampered))
+
+    def test_blocked_zip_path_traversal_rejected(self, tmp_path):
+        """A zip member with a `../` traversal path must be refused —
+        otherwise an attacker could plant files outside the extract
+        tempdir."""
+        import zipfile
+        from axiom_axm import AXMError
+        evil = tmp_path / "evil.axm"
+        with zipfile.ZipFile(evil, "w") as zf:
+            zf.writestr("header.json", "{}")            # need at least one valid entry
+            zf.writestr("../escape.txt", "owned")        # path-traversal probe
+        with pytest.raises(AXMError):
+            AXMContainer.from_path(str(evil))
+
+    def test_passed_to_archive_from_directory_container(self, tmp_path):
+        """A container loaded from an exploded directory can be
+        re-packaged into a zip via to_archive() — same fingerprint."""
+        c = AXMContainer.pack(STARTER_SPEC, str(tmp_path / "dir.axm"))
+        out = tmp_path / "shipped.axm"
+        result = c.to_archive(str(out))
+        assert result == out
+        assert out.is_file()
+        re = AXMContainer.from_path(str(out))
+        assert re.fingerprint() == c.fingerprint()
+
+
 class TestAXMInvariants:
 
     def test_invariant_container_header_is_frozen(self, container):

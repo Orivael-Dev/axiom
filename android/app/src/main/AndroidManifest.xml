@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Talks to the AXIOM REST server. INTERNET is the only sensitive permission
+         today. CallScreeningService comes in a future slice (Hello Operator). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        Call screening (ORVL-019 Hello Operator). READ_PHONE_STATE lets the
+        service see caller IDs; READ_CALL_LOG is optional and only used to
+        annotate the in-app log with prior contact context. The user must
+        also grant the CALL_SCREENING role via Settings — being declared in
+        the manifest is necessary but not sufficient.
+    -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <!--
+        Live call transcription (Hello Operator). RECORD_AUDIO is a
+        runtime permission — the app prompts on first start of the
+        Live Call Mode toggle in the Hello Op tab. POST_NOTIFICATIONS
+        (API 33+) is needed for the ongoing foreground-service
+        notification.
+
+        FOREGROUND_SERVICE was free pre-API-28; API 28+ requires it,
+        and API 34+ also requires the type-specific permission
+        FOREGROUND_SERVICE_MICROPHONE.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+        Cleartext to 10.0.2.2 (emulator → host loopback) is allowed via the
+        network_security_config below. Production / device builds should
+        only talk to HTTPS endpoints — the config is per-domain so 10.0.2.2
+        being http does not weaken any TLS-required destination.
+    -->
+
+    <application
+        android:name=".AxiomApp"
+        android:label="@string/app_name"
+        android:icon="@android:drawable/ic_dialog_info"
+        android:roundIcon="@android:drawable/ic_dialog_info"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AxiomSovereignPhone"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.AxiomSovereignPhone">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            CallScreeningService — picked up by the OS only after the user
+            grants the CALL_SCREENING role (Settings → "Set as default call
+            screener"). The android:permission attribute is required by the
+            platform so only the system can bind to this service.
+        -->
+        <service
+            android:name=".telephony.AxiomCallScreeningService"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+        <!--
+            Live call transcription. Foreground service with microphone
+            type — API 34+ requires the type declaration plus the
+            matching FOREGROUND_SERVICE_MICROPHONE permission.
+        -->
+        <service
+            android:name=".incall.InCallTranscriptionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+    </application>
+</manifest>
+
