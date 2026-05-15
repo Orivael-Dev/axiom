@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">AXIOM Sovereign Phone</string>
+
+    <string name="tab_gate">Gate</string>
+    <string name="tab_status">Status</string>
+    <string name="tab_settings">Settings</string>
+
+    <string name="gate_input_hint">Type a message to classify…</string>
+    <string name="gate_send_outbound">Outbound</string>
+    <string name="gate_send_inbound">Inbound</string>
+    <string name="gate_session_label">Session</string>
+    <string name="gate_reset_session">Reset session</string>
+
+    <string name="settings_server_url">Server URL</string>
+    <string name="settings_server_url_hint">http://10.0.2.2:8000</string>
+    <string name="settings_bearer_token">Bearer token (optional)</string>
+    <string name="settings_test">Test connection</string>
+    <string name="settings_save">Save</string>
+
+    <string name="status_phone">Phone</string>
+    <string name="status_fleet">CMAA fleet</string>
+    <string name="status_shield">OS Shield daemon</string>
+    <string name="status_refresh">Refresh</string>
+</resources>
