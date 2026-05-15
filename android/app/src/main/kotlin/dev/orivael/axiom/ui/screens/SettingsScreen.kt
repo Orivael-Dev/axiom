@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import dev.orivael.axiom.data.SettingsStore
+import dev.orivael.axiom.incall.VoskModelManager
 import dev.orivael.axiom.network.AxiomClient
 import dev.orivael.axiom.security.KeystoreManager
 import dev.orivael.axiom.telephony.CallScreeningStore
@@ -163,7 +164,125 @@ fun SettingsScreen() {
 
         Spacer(Modifier.height(12.dp))
         CallScreeningSection()
+
+        Spacer(Modifier.height(12.dp))
+        VoskModelSection()
     }
+}
+
+/**
+ * Vosk on-device model card.
+ *
+ * Lets the user download / remove the ~50MB English small-model that
+ * powers [VoskBackend]. When installed, [TranscriptionBackendFactory]
+ * auto-prefers Vosk so call audio never leaves the device — the
+ * privacy promise from ORVL-019 made real.
+ */
+@Composable
+private fun VoskModelSection() {
+    val context = LocalContext.current
+    val scope   = rememberCoroutineScope()
+    val state by VoskModelManager.progress.collectAsState()
+    var installed by remember { mutableStateOf(VoskModelManager.isInstalled(context)) }
+    var sizeBytes by remember { mutableStateOf(VoskModelManager.sizeOnDisk(context)) }
+
+    // Re-poll install state on every progress emission so the UI reflects
+    // freshly-completed downloads and clears after [remove].
+    LaunchedEffect(state) {
+        installed = VoskModelManager.isInstalled(context)
+        sizeBytes = VoskModelManager.sizeOnDisk(context)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                "Vosk on-device model",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (installed)
+                    "✓ Installed — Live Call Mode runs entirely offline, " +
+                    "audio never leaves the device"
+                else
+                    "○ Not installed — Live Call Mode will fall back to the system " +
+                    "SpeechRecognizer (may upload audio to Google STT)",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (installed)
+                    MaterialTheme.colorScheme.tertiary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            val statusLine = when (val s = state) {
+                VoskModelManager.DownloadState.Idle      ->
+                    if (installed) "Footprint on disk: ${formatBytes(sizeBytes)}"
+                    else "Tap below to fetch the small English model (~40 MB compressed)."
+                is VoskModelManager.DownloadState.Downloading -> {
+                    val pct = if (s.totalBytes > 0)
+                        " (${(s.bytesSoFar * 100 / s.totalBytes)}%)"
+                    else ""
+                    "Downloading: ${formatBytes(s.bytesSoFar)}$pct"
+                }
+                VoskModelManager.DownloadState.Extracting     ->
+                    "Extracting archive…"
+                VoskModelManager.DownloadState.Installed      ->
+                    "✓ Installed (${formatBytes(sizeBytes)})"
+                is VoskModelManager.DownloadState.Failed      ->
+                    "✗ ${s.message}"
+            }
+            Text(
+                statusLine,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            val busy = state is VoskModelManager.DownloadState.Downloading ||
+                       state is VoskModelManager.DownloadState.Extracting
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { scope.launch { VoskModelManager.download(context) } },
+                    enabled = !installed && !busy,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (installed) "Installed" else if (busy) "Working…" else "Download") }
+                Button(
+                    onClick = {
+                        VoskModelManager.remove(context)
+                        installed = false
+                        sizeBytes = 0L
+                    },
+                    enabled = installed && !busy,
+                    colors = ButtonDefaults.outlinedButtonColors(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Remove") }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Source: alphacephei.com/vosk/models — the URL is pinned to " +
+                "a specific release in code so a remote bump can't silently " +
+                "alter the model behind your back.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun formatBytes(b: Long): String = when {
+    b <= 0L          -> "0 B"
+    b < 1_024L       -> "$b B"
+    b < 1_048_576L   -> "${b / 1_024L} KB"
+    b < 1_073_741_824L -> "${b / 1_048_576L} MB"
+    else             -> "${b / 1_073_741_824L} GB"
 }
 
 /**

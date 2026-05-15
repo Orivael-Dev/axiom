@@ -40,7 +40,12 @@ object TranscriptionStore {
     private val _events = MutableStateFlow<List<Event>>(emptyList())
     val events: StateFlow<List<Event>> = _events.asStateFlow()
 
+    private val _backendLabel = MutableStateFlow("")
+    val backendLabel: StateFlow<String> = _backendLabel.asStateFlow()
+
     fun setActive(active: Boolean) { _isActive.value = active }
+
+    fun setBackendLabel(label: String) { _backendLabel.value = label }
 
     fun append(event: Event) {
         _events.update { prev -> (listOf(event) + prev).take(MAX_EVENTS) }

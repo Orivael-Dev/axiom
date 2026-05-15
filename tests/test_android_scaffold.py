@@ -159,14 +159,56 @@ class TestAndroidPassed:
         assert store.exists()
 
         svc_src = service.read_text(encoding="utf-8")
-        # ASR fallback path — must check availability before allocating
-        # the recognizer, and gracefully degrade when absent.
-        assert "SpeechRecognizer.isRecognitionAvailable" in svc_src
+        # ASR backend is selected by the factory, not hardcoded — the
+        # service should be backend-agnostic so Vosk can take over when
+        # the on-device model is installed.
+        assert "TranscriptionBackendFactory.create" in svc_src
         # Sessions persisted across utterances so L1->L2->L3 graduation
         # works across the call.
         assert 'sessionId = "incall-' in svc_src
         # Each utterance must flow through the /phone/inbound gate.
         assert "client.phoneInbound" in svc_src
+
+        # System SpeechRecognizer fallback backend still guards
+        # availability before allocating the recognizer.
+        sr_backend = (incall / "SpeechRecognizerBackend.kt").read_text(encoding="utf-8")
+        assert "SpeechRecognizer.isRecognitionAvailable" in sr_backend
+
+    def test_passed_vosk_offline_backend_present(self):
+        """On-device Vosk ASR — keeps audio off the network when the
+        user opts in via Settings.
+
+        Lint the four files plus the Gradle dependency line. The
+        download URL must be pinned to a specific release so a remote
+        bump can't silently alter behaviour."""
+        incall = PKG_ROOT / "incall"
+        for name in ("TranscriptionBackend", "VoskBackend",
+                     "VoskModelManager", "SpeechRecognizerBackend"):
+            f = incall / f"{name}.kt"
+            assert f.exists(), f"incall/{name}.kt missing"
+
+        # Factory must prefer Vosk when the model is installed.
+        iface = (incall / "TranscriptionBackend.kt").read_text(encoding="utf-8")
+        assert "VoskModelManager.isInstalled" in iface
+        assert "VoskBackend(context)" in iface
+        assert "SpeechRecognizerBackend(context)" in iface
+
+        # Vosk URL pinned, marker file checked.
+        mgr = (incall / "VoskModelManager.kt").read_text(encoding="utf-8")
+        assert "alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip" in mgr
+        assert "am/final.mdl" in mgr
+        # Zip-slip guard is non-negotiable — extraction touches user data dir.
+        assert "zip slip" in mgr.lower()
+
+        # Vosk Android dependency declared in app/build.gradle.kts.
+        app_build = (ANDROID / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+        assert "com.alphacephei:vosk-android" in app_build
+
+        # TranscriptionStore exposes the backend label so the banner can
+        # tell the operator which engine is running.
+        store = (incall / "TranscriptionStore.kt").read_text(encoding="utf-8")
+        assert "setBackendLabel" in store
+        assert "backendLabel" in store
 
     def test_passed_security_module_present(self):
         """HMAC client-side verification: KeystoreManager wraps the master

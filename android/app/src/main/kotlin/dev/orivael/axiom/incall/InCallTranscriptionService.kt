@@ -8,12 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -32,59 +26,29 @@ import java.util.UUID
 
 /**
  * Foreground service that captures microphone audio during an active
- * call, transcribes it via the system [SpeechRecognizer], and routes
- * every utterance through the AXIOM `/phone/inbound` gate so the
- * Hello Operator product can act on the call content in real time.
+ * call, transcribes it, and routes every utterance through the AXIOM
+ * `/phone/inbound` gate in real time.
  *
- * ## Android constraints we live with
+ * The transcription engine is selected at service start by
+ * [TranscriptionBackendFactory]:
  *
- * On non-system apps, the OS does **not** allow direct access to the
- * call's audio stream (the [AudioSource.VOICE_CALL] source requires
- * the platform-signed `CAPTURE_AUDIO_OUTPUT` permission). The
- * practical workaround used by every consumer Hello-Operator-style
- * app on the Play Store: the user puts the call on speakerphone, and
- * the device microphone picks up both sides through the air.
+ *   - [VoskBackend] when the user has downloaded the on-device Vosk
+ *     model (Settings → "Vosk on-device model" card). Audio never
+ *     leaves the device — the privacy promise from ORVL-019 made real.
+ *   - [SpeechRecognizerBackend] otherwise. The OS decides whether to
+ *     run offline or upload audio to Google's STT servers.
  *
- * The Settings screen surfaces this requirement; we don't try to
- * force speakerphone on programatically.
+ * The backend's label is included in the active-banner the UI shows so
+ * the operator can see which engine is running.
  *
- * ## What the service does, step by step
- *
- *   1. On [onStartCommand] it posts the persistent foreground
- *      notification and asks for `FOREGROUND_SERVICE_MICROPHONE` —
- *      required on API 34+. The notification deep-links back to the
- *      Hello Op screen.
- *   2. It generates a fresh `session_id` and pushes "active=true"
- *      into [TranscriptionStore] so the UI lights up.
- *   3. SpeechRecognizer is created on the main looper, configured
- *      with `EXTRA_PREFER_OFFLINE=true`, and asked for partial
- *      results. The service restarts recognition after every
- *      end-of-speech so the stream is effectively continuous.
- *   4. Each final result becomes one utterance. The service builds an
- *      [AxiomClient] from the persisted settings, posts the utterance
- *      to `/phone/inbound` under the call's `session_id`, runs the
- *      response through [SignatureVerifier] if the master key is set,
- *      and appends a [TranscriptionStore.Event].
- *   5. On stop / process death, the foreground notification is
- *      removed and `active=false` propagates to the UI.
- *
- * ## Failure modes handled gracefully
- *
- *   - [SpeechRecognizer.isRecognitionAvailable] is false on roughly
- *     a quarter of Android devices (especially AOSP / no-GMS builds).
- *     Service detects this on start, posts a one-shot
- *     "asr_unavailable" event, and stops itself. The UI shows a
- *     compact "ASR unavailable on this device" notice.
- *   - REST failures don't kill the service — the event is logged with
- *     the failure message and the next utterance is processed
- *     normally.
+ * Android won't expose call audio to non-system apps. The mic captures
+ * both sides only when the user puts the call on speakerphone — the UI
+ * makes this explicit.
  */
 class InCallTranscriptionService : LifecycleService() {
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var recognizer: SpeechRecognizer? = null
+    private var backend: TranscriptionBackend? = null
     private var sessionId: String = ""
-    @Volatile private var stopping = false
 
     override fun onCreate() {
         super.onCreate()
@@ -99,80 +63,43 @@ class InCallTranscriptionService : LifecycleService() {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             else 0,
         )
-        TranscriptionStore.setActive(true)
+
         sessionId = "incall-${UUID.randomUUID()}"
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Log.w(TAG, "SpeechRecognizer unavailable on this device")
-            TranscriptionStore.append(TranscriptionStore.Event(
-                timestampMs = System.currentTimeMillis(),
-                utterance   = "(speech recognition unavailable)",
-                verdict     = "ASR_UNAVAILABLE",
-                intentClass = "UNCERTAIN",
-                level       = 0,
-                verification = SignatureVerifier.VerificationResult.Unconfigured,
-            ))
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        mainHandler.post { startRecognizer() }
+        val chosen = TranscriptionBackendFactory.create(this)
+        backend = chosen
+        TranscriptionStore.setBackendLabel(chosen.label)
+        TranscriptionStore.setActive(true)
+
+        chosen.start(
+            onUtterance = ::handleUtterance,
+            onError = { msg ->
+                Log.w(TAG, "backend error: $msg")
+                TranscriptionStore.append(TranscriptionStore.Event(
+                    timestampMs = System.currentTimeMillis(),
+                    utterance = "(backend error)",
+                    verdict = "ERROR · $msg",
+                    intentClass = "UNCERTAIN",
+                    level = 0,
+                    verification = SignatureVerifier.VerificationResult.Unconfigured,
+                ))
+                stopSelf()
+            },
+        )
         return START_STICKY
     }
 
     override fun onDestroy() {
-        stopping = true
-        mainHandler.post {
-            recognizer?.destroy()
-            recognizer = null
-        }
+        backend?.stop()
+        backend = null
         TranscriptionStore.setActive(false)
         super.onDestroy()
     }
 
-    // ── Recognizer lifecycle ──────────────────────────────────────────
-    private fun startRecognizer() {
-        if (stopping) return
-        recognizer?.destroy()
-        val r = SpeechRecognizer.createSpeechRecognizer(this)
-        recognizer = r
-        r.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-
-            override fun onResults(results: Bundle?) {
-                val texts = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                texts?.firstOrNull { it.isNotBlank() }?.let { handleUtterance(it.trim()) }
-                if (!stopping) mainHandler.postDelayed({ startRecognizer() }, RESTART_DELAY_MS)
-            }
-
-            override fun onError(error: Int) {
-                Log.w(TAG, "SpeechRecognizer error=$error")
-                // Common errors (timeout, no-match) are expected during pauses;
-                // restart cleanly so the stream is effectively continuous.
-                if (!stopping) mainHandler.postDelayed({ startRecognizer() }, RESTART_DELAY_MS)
-            }
-        })
-        r.startListening(buildRecognizerIntent())
-    }
-
-    private fun buildRecognizerIntent(): Intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-        // Prefer offline so the call audio doesn't leak to Google's servers.
-        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-    }
-
-    // ── Utterance handling ────────────────────────────────────────────
+    // ── Utterance handling — single shared path for both backends ─────
     private fun handleUtterance(text: String) {
-        Log.i(TAG, "utterance: ${text.take(60)}")
+        Log.i(TAG, "utterance (${backend?.label}): ${text.take(60)}")
         lifecycleScope.launch {
-            val store = SettingsStore(this@InCallTranscriptionService)
+            val store   = SettingsStore(this@InCallTranscriptionService)
             val baseUrl = store.serverUrl.first()
             val token   = store.bearerToken.first()
             val client = AxiomClient(baseUrl, token)
@@ -241,7 +168,7 @@ class InCallTranscriptionService : LifecycleService() {
             .build()
     }
 
-    // 4-tuple alias since Kotlin only ships Pair / Triple.
+    // Kotlin only ships Pair / Triple.
     private data class Quadruple<A, B, C, D>(
         val a: A, val b: B, val c: C, val d: D,
     )
@@ -254,9 +181,7 @@ class InCallTranscriptionService : LifecycleService() {
         private const val TAG          = "InCallTranscription"
         private const val CHANNEL_ID   = "axiom_incall"
         private const val NOTIF_ID     = 4711
-        private const val RESTART_DELAY_MS = 150L
 
-        /** Start the service (caller is responsible for RECORD_AUDIO permission). */
         fun start(context: Context) {
             val intent = Intent(context, InCallTranscriptionService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

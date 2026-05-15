@@ -390,8 +390,9 @@ private fun CallStepCard(step: CallStep) {
 @Composable
 private fun LiveCallModeCard() {
     val context = LocalContext.current
-    val isActive    by TranscriptionStore.isActive.collectAsState()
-    val transcript  by TranscriptionStore.events.collectAsState()
+    val isActive     by TranscriptionStore.isActive.collectAsState()
+    val transcript   by TranscriptionStore.events.collectAsState()
+    val backendLabel by TranscriptionStore.backendLabel.collectAsState()
 
     var hasMicPermission by remember {
         mutableStateOf(
@@ -423,8 +424,10 @@ private fun LiveCallModeCard() {
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     Text(
-                        if (isActive) "● Listening — mic → /phone/inbound"
-                        else "○ Idle — toggle to begin transcribing the active call",
+                        if (isActive) {
+                            val tag = if (backendLabel.isNotBlank()) " · $backendLabel" else ""
+                            "● Listening — mic → /phone/inbound$tag"
+                        } else "○ Idle — toggle to begin transcribing the active call",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )

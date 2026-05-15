@@ -76,6 +76,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-service:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // On-device speech recognition — Vosk (Kaldi-based). Native libs ship
+    // in the AAR for arm64-v8a, armeabi-v7a, x86, x86_64. ~50MB English
+    // model is downloaded at runtime via VoskModelManager.
+    implementation("com.alphacephei:vosk-android:0.3.47")
+
     // Test
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
