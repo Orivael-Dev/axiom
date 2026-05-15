@@ -731,6 +731,55 @@ class AxiomDevAgentV2:
             "suite_version":       SUITE_VERSION,
         }
 
+    # ── LLM-backed proposal loop ─────────────────────────────────────
+    def propose(self, *,
+                description: str,
+                task_class: str,
+                artifact_path: str = "unknown",
+                context: str = "",
+                backend: Any = None,
+                max_retries: int = 2,
+                task_id: Optional[str] = None
+                ) -> "DevHandleOutcome":
+        """Generate a diff via the LLM backend, build a DevTask, run
+        it through the four-layer pipeline. On REFLEX_REFUSED, retry
+        up to `max_retries` with the refusal reason fed back to the
+        backend as a hint. Never silently accepts a refused diff —
+        if all retries refuse, returns the last REFLEX_REFUSED
+        outcome so the caller sees what went wrong.
+
+        The LLM is just another diff source: the same four gates
+        apply. Generating a diff is NOT the same as merging it."""
+        if backend is None:
+            from axiom_dev_agent_v2_backends import select_backend
+            backend = select_backend(prefer="auto")
+
+        task_id = task_id or f"propose-{int(datetime.now(timezone.utc).timestamp())}"
+        retry_hint: Optional[str] = None
+        last_outcome: Optional["DevHandleOutcome"] = None
+
+        for attempt in range(max_retries + 1):
+            resp = backend.generate_diff(
+                description=description, task_class=task_class,
+                context=context, retry_hint=retry_hint,
+            )
+            task = DevTask(
+                id=f"{task_id}-attempt{attempt}",
+                description=description,
+                task_class=task_class,
+                artifact_path=artifact_path,
+                proposed_diff=resp.diff,
+                cited_patterns=tuple(resp.cited_patterns),
+            )
+            outcome = self.handle_task(task)
+            last_outcome = outcome
+            if outcome.final_verdict != "REFLEX_REFUSED":
+                return outcome
+            # Reflex refusal — feed the reason back to the LLM.
+            retry_hint = "; ".join(outcome.reflex.reasons) or "unspecified"
+
+        return last_outcome  # type: ignore[return-value]
+
 
 # ── CLI ──────────────────────────────────────────────────────────────────
 def _main(argv: Optional[List[str]] = None) -> int:
@@ -747,6 +796,21 @@ def _main(argv: Optional[List[str]] = None) -> int:
                              "JSON (default: ./axiom_dev_agent_v2.json)")
     parser.add_argument("--status", action="store_true",
                         help="Print the agent status and exit.")
+    # `propose` subcommand — generate a diff via the LLM backend and
+    # run it through the four-layer pipeline.
+    parser.add_argument("--propose", action="store_true",
+                        help="Generate a diff via the LLM backend for "
+                             "--description / --task-class, then run it "
+                             "through the four-layer pipeline.")
+    parser.add_argument("--description",
+                        help="Task description (used with --propose).")
+    parser.add_argument("--task-class",
+                        choices=list(TASK_CLASSES),
+                        help="Task class (used with --propose).")
+    parser.add_argument("--prefer-backend",
+                        choices=("auto", "anthropic", "openai", "simulator"),
+                        default="auto",
+                        help="LLM backend preference (default: auto).")
     args = parser.parse_args(argv)
 
     if not os.environ.get("AXIOM_MASTER_KEY"):
@@ -766,6 +830,30 @@ def _main(argv: Optional[List[str]] = None) -> int:
         print(json.dumps(agent.status(), indent=2, ensure_ascii=True,
                           sort_keys=True))
         return 0
+
+    if args.propose:
+        if not args.description or not args.task_class:
+            print("--propose requires --description and --task-class",
+                  file=sys.stderr)
+            return 2
+        from axiom_dev_agent_v2_backends import select_backend
+        backend = select_backend(prefer=args.prefer_backend)
+        outcome = agent.propose(description=args.description,
+                                  task_class=args.task_class,
+                                  backend=backend)
+        print(f"backend       : {backend.name}")
+        print(f"final_verdict : {outcome.final_verdict}")
+        if outcome.reflex.reasons:
+            print(f"reflex reasons: {'; '.join(outcome.reflex.reasons)}")
+        if outcome.review:
+            print(f"review        : {outcome.review.verdict}  "
+                  f"forecast={outcome.review.forecast_passing}  "
+                  f"competence={outcome.review.competence}")
+        if outcome.ci:
+            print(f"ci            : passed={outcome.ci.checks_passed}/"
+                  f"{outcome.ci.checks_run}  "
+                  f"sig={outcome.ci.signature[:16]}…")
+        return 0 if outcome.final_verdict in ("MERGED", "SOFTEN_REQUESTED") else 1
 
     # Demo: run three representative tasks through the pipeline.
     demos = [
