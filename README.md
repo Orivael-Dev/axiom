@@ -1,6 +1,6 @@
 # axiom-constitutional
 
-> Patent Pending — ORVL-001 through ORVL-021 | Provisional Filed May 2026
+> Patent Pending — ORVL-001 through ORVL-023 | Provisional Filed May 2026
 
 **Constitutional AI governance that operates on the shape of thought — not just the content of output.**
 
@@ -94,8 +94,8 @@ axiom benchmark --suite smoke
 # System status
 axiom status
 # Guard API: running · Ollama: loaded
-# Training: 931 examples · Tests: 350/350
-# Patents: 23 · Agents: 76
+# Training: 931 examples · Tests: 436/436
+# Patents: 23 · Agents: 79
 ```
 
 ---
@@ -421,9 +421,11 @@ Also available via `POST /axm/{inspect,verify,route}` and the MCP tool `axiom_ax
 
 ---
 
-## Constitutional Physical Intelligence (CPI)
+## Constitutional Physical Intelligence (CPI v2.0)
 
 Constitutional governance applied to physical AI — humanoid robotics, prosthetics, autonomous vehicles, game-AI characters. The same trajectory geometry that detects manipulation in language detects instability in motion. ORVL-022.
+
+**v2.0 lifts CPI from a single-reflex emulator into a four-layer developmental architecture** — toddler reflex / supervisor (dad) / curriculum (mom) / examiner (teacher), each signed under an independent derived key.
 
 ```
 Glass pickup (planner asks 1.5 Nm):
@@ -431,32 +433,90 @@ Glass pickup (planner asks 1.5 Nm):
   grip_skill        : Pinch-Pressure
   fracture_p        : 0.058     ← from N-branch material simulation
   applied_grip      : 0.20 Nm   ← clamped to FRAGILE ceiling (CANNOT_EXCEED)
+  supervised_grip   : 0.00 Nm   ← v2 supervisor VETOes untrusted FRAGILE
+  competence        : 0.00      ← parent is watching (fresh agent)
 
 Stability trajectory (Physical MonotonicGate):
   T+0ms    score=1.00     L0  hold     stable stance
   T+200ms  score=0.95   ⚠ L1  fired    weight shift right
   T+400ms  score=0.70   🛑 L3  fired    trip on edge — drop=0.25
   T+600ms  score=0.15   🔥 L4  fired    below floor — emergency stop
+
+Recalibration-loop suppression (v2 Layer 0):
+  raw-gate fires    : 3   (one true event, 2 symptom-of-the-cure)
+  agent  fires      : 1   (recovery window suppressed 2 follow-on ticks)
+  StabilityLerp cap : Δ ≤ 0.050 per tick   ← no snap that retriggers the gate
 ```
 
-Five subsystems compose the existing AXIOM stack:
-
+**Layer 0 — Toddler reflex (`axiom_cpi.py`):**
 - **PhysicalMonotonicGate** — sub-1ms reflex; fires when stability decreases between frames (matches the language-side MonotonicGate from ORVL-005).
 - **VertexClassifier** — geometry → constitutional skill class (CYLINDRICAL / PLANAR / PROTRUSION / FRAGILE / DEFORMABLE), each with `CANNOT_MUTATE` torque ceilings.
 - **MaterialSimulator** — N-branch forward simulation of contact (ORVL-014 World Model extended to physical domain). Fracture-branch probability becomes the constitutional distance.
 - **PhysicalFixPlaybook** — instability signature → recovery trajectory, indexed by cosine similarity (ORVL-012 pattern in physical space).
-- **HumanoidStabilityAgent** — TRUST_LEVEL 4 facade tying the four blocks together.
+- **StabilityLerp + recovery-window lockout (v2)** — slew-rate-limited corrective output + suppression of follow-on level 1-3 reflexes during recovery. Breaks the symptom-of-the-cure loop where a corrective snap retriggers the gate.
+
+**Layer 1 — Supervisor / "dad" (v2):**
+- **StabilityPredictor** — model-based forecast of min stability over the planned action via per-vertex-class `FRAGILITY_FACTOR`. No physics sim required.
+- **CompetenceTracker** — per-vertex-class score in [0, 1] with **asymmetric updates**: +0.01 per clean tick, −0.40 on level-3 reflex. Trust builds slowly, collapses instantly.
+- **SupervisoryGuard** — combines forecast + competence into `PASS` / `SOFTEN` / `VETO`. Threshold scales linearly with competence; at competence=0 the parent is strict, at competence=1 only the absolute floor matters.
+
+**Layer 2 — Curriculum / "mom" (`axiom_developmental_curriculum.py`, v2):**
+- **DevelopmentalCurriculum** — bridges CPI ↔ AXM. Reads competence from an HMAC-signed sidecar JSON at boot; transfers competence between similar vertex classes via cosine over `VectorVertexEntry` bag-of-words from the AXM container; suggests next task in the zone of proximal development.
+- **Transfer cap** at 0.40 per call so no single curriculum step erases multiple reflexes' worth of demotion.
+
+**Layer 3 — Examiner / "teacher" (`axiom_motion_examiner.py`):**
+- **MotionExaminer** — black-box certification. Sees only the agent's public `perceive_and_plan()` output; never reads `supervisor.competence` or any internal state. Sealed 6-scenario test suite covering every vertex category. Signs certificates under `derive_key(b"axiom-examiner-v1")` — an independent key the agent under test cannot forge.
 
 ```bash
-python examples/cpi_demo.py
+python examples/cpi_demo.py                        # all 5 scenarios (A–E)
 python -m axiom_cpi pickup --material GLASS --force 1.5
-python -m axiom_cpi status
+python -m axiom_motion_examiner                    # run the sealed certification suite
+python -m axiom_motion_examiner --json             # certificate as JSON
 ```
 
 Also reachable via `POST /cpi/{stability,classify,simulate,pickup}` + `GET /cpi/status`, and the MCP tool `axiom_cpi` with `action: stability|classify|simulate|pickup|status`.
 
 > *"The robot does not think about whether to fall.*
-> *The constitution prevents it before the fall begins."*
+> *The constitution prevents it before the fall begins —*
+> *the recovery doesn't trigger the next fall, and*
+> *the parent watches until the kid has earned the trust to stop."*
+
+---
+
+## AXIOM Dev Agent v2 — the four layers, applied to code
+
+The CPI v2 pattern lifts directly into software engineering. v1 (`axiom_dev_agent.py`) is a single-loop LLM caller; **v2 (`axiom_dev_agent_v2.py`) wraps the same work in four independent layers**, each signed under its own derived key so no layer can forge another's output.
+
+| Layer | CPI equivalent | What it does on code |
+|---|---|---|
+| **0 — Reflex** | PhysicalMonotonicGate | AST + forbidden-pattern checks on the proposed diff: refuses `eval()`, `exec()`, `os.system()`, `subprocess(shell=True)`, `assert False`, and 64-hex credential-shaped strings. Sub-millisecond, no LLM call. |
+| **1 — Reviewer** | SupervisoryGuard | Per-task-class competence (FEATURE / BUG_FIX / EFFICIENCY / SPEC_WRITING / DOCUMENTATION). Forecasts PR survival; emits PASS / SOFTEN / VETO with concrete `softening_advice`. |
+| **2 — Curriculum** | DevelopmentalCurriculum | AXM-backed memory. When supplied an `AXMContainer`, builds similarity from cosine over `TrajectoryBlock.task_pattern` bag-of-words per task class. Persists to a signed sidecar JSON. |
+| **3 — Examiner** | MotionExaminer | Sealed CI suite (5 hardcoded checks). Signs under `derive_key(b"axiom-dev-examiner-v1")`. Black-box: never reads reviewer / curriculum state. |
+
+**LLM backends:** Anthropic Claude (`ANTHROPIC_API_KEY`), OpenAI (`OPENAI_API_KEY`), or a deterministic Simulator (no network — default when no keys present). The agent treats the LLM as just another diff source — same four gates apply regardless of who wrote the diff. If the LLM emits `eval()`, the reflex layer refuses and the proposal loop retries with the refusal reason fed back as a hint.
+
+```bash
+# Generate + vet a diff
+python -m axiom_dev_agent_v2 --propose \
+    --description "fix BUG-001 regex" \
+    --task-class BUG_FIX \
+    --prefer-backend simulator
+
+# Inspect available backends
+python -m axiom_dev_agent_v2_backends
+# → {"selected": "simulator", "anthropic_available": false, ...}
+
+# Inspect agent status (competence per task class)
+python -m axiom_dev_agent_v2 --status
+```
+
+The corpus → AXM compiler (`axiom_training_to_axm.py`) reads `axiom_training_data.jsonl` + `axiom_behavioral_training.jsonl`, groups records by `type`, and packs 25 signed `TrajectoryBlock`s + 5 `SkillDelegate`s into a `axiom_agent.axm` container — the curriculum's memory source.
+
+```bash
+python axiom_training_to_axm.py                    # → ./axiom_agent.axm/
+python -m axiom_dev_agent_v2 --axm ./axiom_agent.axm --status
+```
 
 ---
 
@@ -505,8 +565,8 @@ python axiom_retrospect.py \
 | ORVL-019 | AXIOM Sovereign Phone Architecture | ◐ Emulated (`axiom_sovereign_phone.py` — software emulator; chip is hardware) |
 | ORVL-020 | Constitutional Retrospective Learning | ✓ Implemented |
 | ORVL-021 | Constitutional Zero-Day Discovery | ✓ Implemented |
-| ORVL-022 | Constitutional Physical Intelligence | ◐ Emulated (`axiom_cpi.py` — Physical MonotonicGate + vertex-to-skill + material sim + fix playbook) |
-| ORVL-023 | Axiom eXchange Model (.AXM) | ◐ Emulated (`axiom_axm.py` — modular execution-graph container, hybrid trust model) |
+| ORVL-022 | Constitutional Physical Intelligence | ◐ Emulated v2.0 (`axiom_cpi.py` + `axiom_developmental_curriculum.py` + `axiom_motion_examiner.py` — four-layer developmental: toddler reflex / dad supervisor / mom curriculum / teacher examiner) |
+| ORVL-023 | Axiom eXchange Model (.AXM) | ◐ Emulated (`axiom_axm.py` + `axiom_training_to_axm.py` — modular execution-graph container, hybrid trust model, signed corpus compiler) |
 
 ---
 
