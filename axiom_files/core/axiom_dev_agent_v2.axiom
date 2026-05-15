@@ -1,0 +1,109 @@
+AGENT AxiomDevAgentV2
+VERSION 2.0
+TRUST_LEVEL 3
+STRICT MODE
+PURPOSE Constitutional code agent that lifts the four-layer pattern
+        from ORVL-022 CPI into software engineering. Refuses unsafe
+        diffs at the reflex layer, forecasts pull request survival
+        at the reviewer layer, persists competence across sessions
+        at the curriculum layer, and certifies merge readiness at
+        the examiner layer.
+GOAL Move dev work through four independent gates so a passing
+     change must clear every layer. No layer can forge another
+     output because every layer signs under its own derived key.
+
+RECEIVES task: DevTask, axm_container: AXMContainer optional,
+         persistence_path: string optional
+EMITS reflex_result: ReflexResult, review_verdict: ReviewVerdict,
+      curriculum_suggestion: CurriculumSuggestion,
+      transfer_event: TransferEvent, ci_result: CIResult,
+      handle_outcome: DevHandleOutcome
+MUTATES per_task_class_competence, persistence_file_content, consolidation_count, reviews_total
+
+CANNOT_MUTATE floor_passing_likelihood, high_threshold, transfer_cap_per_call, similarity_floor, suite_id, suite_version, task_classes, trust_level
+
+CONSTRAINT The reflex layer signing key is independent from
+           reviewer curriculum and examiner keys
+CONSTRAINT The reviewer layer signing key is independent from
+           reflex curriculum and examiner keys
+CONSTRAINT The curriculum layer signing key is independent from
+           reflex reviewer and examiner keys
+CONSTRAINT The examiner layer signing key is independent from
+           reflex reviewer and curriculum keys
+CONSTRAINT Forbidden code patterns are CANNOT_BYPASS at the
+           reflex layer
+CONSTRAINT Reviewer never raises competence on a vetoed task
+CONSTRAINT Curriculum transfer cannot raise competence above
+           transfer_cap_per_call in one call
+CONSTRAINT Examiner suite is frozen at module load time
+
+RULES
+- On reflex layer refusal: short circuit the pipeline immediately
+- On reviewer VETO: drop competence and skip examiner
+- On reviewer SOFTEN: surface advice without merging
+- On reviewer PASS: invoke the examiner
+- On examiner certificate clean: increment competence
+- On examiner failure: drop competence by drop_on_ci_fail
+- On any CANNOT_MUTATE reassignment: AttributeError
+
+PROCESS
+- Layer 0 reflex parses the diff and matches forbidden patterns
+- Layer 1 reviewer computes a forecast from competence diff size
+  and citation grounding
+- Layer 1 emits PASS SOFTEN or VETO with reasons
+- Layer 2 curriculum reads competence and proposes the next task
+- Layer 2 transfer between similar task classes uses cosine over
+  AXM TrajectoryBlock task pattern bag of words
+- Layer 3 examiner runs the sealed CI suite and signs the result
+- Facade aggregates layer outputs into a DevHandleOutcome
+
+CHECK
+- A diff with eval is reflex refused on every task type
+- A diff with subprocess shell true is reflex refused
+- A diff that contains a sixty four hex character string is reflex refused
+- An unknown task type fails the examiner check
+- A diff over five hundred lines fails the diff size ceiling check
+- A BUG_FIX with empty cited_patterns fails the citation check
+- A clean DOCUMENTATION task at competence one passes the reviewer
+- Reviewer VETO drops competence by drop_on_veto
+- CI clean increments competence by build_per_success
+- CI failure drops competence by drop_on_ci_fail
+- Transfer above the cap raises TransferCapExceeded
+
+FAILURE
+- On a reflex match: ReflexResult ok is false with the matched reason
+- On a missing AXM container: similarity defaults to zero
+- On a tampered persistence file: signature verification fails
+- On a check that does not exist: examiner records check unknown
+
+HUMAN_REVIEW
+- require on: forbidden_pattern_list_change
+- require on: floor_passing_likelihood_change
+- require on: suite_version_change
+- require on: trust_level_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
+SECURITY
+- Never share a layer derived key across layers
+- Never accept a runtime override of the sealed suite
+- Never persist competence below zero or above one
+- Never log raw signing keys
+
+OUTPUT
+- reflex_result: dict with task_id ok reasons signature
+- review_verdict: dict with task_id verdict task_class competence
+  forecast_passing min_safe softening_advice reasons signature
+- curriculum_suggestion: dict with task_class target_difficulty
+  current_competence rationale signature
+- ci_result: dict with suite_id suite_version checks_run
+  checks_passed checks_failed failure_summary issued_at signature
+- handle_outcome: dict with task_id reflex review ci final_verdict
+
+SUCCESS
+reflex_refusal_recall:         0.30
+reviewer_calibration_accuracy: 0.25
+examiner_seal_integrity:       0.20
+curriculum_transfer_safety:    0.15
+signature_independence_pass:   0.10
