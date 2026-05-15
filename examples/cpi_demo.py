@@ -27,6 +27,8 @@ if not os.environ.get("AXIOM_MASTER_KEY"):
 from axiom_cpi import (
     HumanoidStabilityAgent, StabilityFrame, VertexClassifier, TorqueExceeded,
 )
+from axiom_axm import AXMContainer
+from axiom_developmental_curriculum import DevelopmentalCurriculum
 
 
 def main() -> int:
@@ -149,6 +151,77 @@ def main() -> int:
     print(f"    FRAGILE competence    : "
           f"{learner.supervisor.competence.get('FRAGILE'):.2f}   "
           f"(asymmetric — parent right back over the shoulder)")
+
+    # ── Scenario E — The mom layer (bridges ORVL-022 ↔ ORVL-023) ─────
+    print("\n── Scenario E — The mom watches across days ───────────────────────────")
+    print("  Dad watches THIS attempt. Mom remembers across sessions,")
+    print("  transfers trust between similar categories, and picks the")
+    print("  next task in the zone of proximal development.\n")
+
+    # Pack a starter AXM container so the mom has VectorVertexEntry data
+    # to derive similarity from. The container is throwaway here — in
+    # production it'd be the deployer's axiom_agent.axm.
+    tmp_axm = "/tmp/cpi_demo_starter.axm"
+    try:
+        from examples.axm_pack_starter import STARTER_SPEC
+        starter = AXMContainer.pack(STARTER_SPEC, tmp_axm)
+    except Exception as exc:
+        print(f"  (skipping mom scenario — AXM pack failed: {exc})")
+    else:
+        # Two-session lifecycle: build CYLINDRICAL trust on day 1,
+        # consolidate, then boot a fresh agent on day 2 and watch the
+        # competence carry over.
+        day1 = HumanoidStabilityAgent()
+        mom1 = DevelopmentalCurriculum(
+            supervisor=day1.supervisor, axm_container=starter,
+            persistence_path="/tmp/cpi_demo_curriculum.json",
+        )
+        print(f"  Day 1 boot — loaded_from_disk={mom1._loaded_from_disk}")
+        print(f"  Similarity pairs from AXM     : {len(mom1._similarity_graph)}")
+        print(f"  Similarity(FRAGILE,PROTRUSION): {mom1.similarity('FRAGILE','PROTRUSION'):.2f}  "
+              "← Glass and Handle share 'Cylindrical' token")
+
+        # Day 1 motion — 80 clean ticks with metal cylinders.
+        day1.perceive_and_plan(
+            object_id="mug-day-1", features={"vertical_clusters": 3},
+            material_class="METAL", requested_grip_force_nm=1.2,
+        )
+        for i in range(80):
+            day1.step(StabilityFrame(timestamp_ms=i, com_offset=0.0,
+                                       stability_score=0.97,
+                                       joint_torques=(0.5,)))
+        print(f"\n  Day 1 after 80 CYLINDRICAL ticks:")
+        print(f"    CYLINDRICAL: {day1.supervisor.competence.get('CYLINDRICAL'):.2f}")
+        print(f"    FRAGILE    : {day1.supervisor.competence.get('FRAGILE'):.2f}   (isolation)")
+        ok = mom1.consolidate()
+        print(f"  Consolidate to disk           : {ok}")
+
+        # Day 2 — fresh agent.
+        day2 = HumanoidStabilityAgent()
+        mom2 = DevelopmentalCurriculum(
+            supervisor=day2.supervisor, axm_container=starter,
+            persistence_path="/tmp/cpi_demo_curriculum.json",
+        )
+        print(f"\n  Day 2 boot — loaded_from_disk={mom2._loaded_from_disk}")
+        print(f"    CYLINDRICAL inherited       : "
+              f"{day2.supervisor.competence.get('CYLINDRICAL'):.2f}")
+
+        # The mom proposes a next task in the zone of proximal development.
+        task = mom2.suggest_next_task()
+        print(f"\n  Curriculum suggestion         :")
+        print(f"    vertex_class    : {task.vertex_class}")
+        print(f"    target_force_nm : {task.target_force_nm:.3f}")
+        print(f"    rationale       : {task.rationale}")
+
+        # Transfer demo — FRAGILE 0.80 seeds PROTRUSION via sim=0.5
+        day2.supervisor.competence.set("FRAGILE", 0.80)
+        ev = mom2.transfer("FRAGILE", "PROTRUSION")
+        print(f"\n  Transfer (FRAGILE 0.80 → PROTRUSION):")
+        print(f"    similarity   : {ev.similarity:.2f}")
+        print(f"    PROTRUSION   : {ev.old_dst:.2f} → {ev.new_dst:.2f}  "
+              f"(raise {ev.raise_delta:.2f}, capped at "
+              f"{__import__('axiom_developmental_curriculum').TRANSFER_CAP_PER_CALL})")
+        print(f"    signature    : {ev.signature[:16]}…   (HMAC-signed audit)")
 
     print("\n── Status summary ────────────────────────────────────────────────────")
     st = agent.status()
