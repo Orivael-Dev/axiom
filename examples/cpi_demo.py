@@ -26,6 +26,7 @@ if not os.environ.get("AXIOM_MASTER_KEY"):
 
 from axiom_cpi import (
     HumanoidStabilityAgent, StabilityFrame, VertexClassifier, TorqueExceeded,
+    PhysicalMonotonicGate, MAX_DCMD_PER_TICK,
 )
 
 
@@ -79,12 +80,53 @@ def main() -> int:
         verdict = "fired" if e.fired else "hold"
         print(f"  {label:<8} score={score:<4}  {emoji}L{e.level} {verdict:<5}  ({note})")
 
+    # ── Scenario C — Recalibration loop (StabilityLerp + recovery window) ──
+    print("\n── Scenario C — Recalibration-loop suppression ────────────────────────")
+    print("  A single instability event normally spirals: gate fires → corrective")
+    print("  snap → snap dips stability → gate fires again → loop. With raw gate")
+    print("  access you see the spiral; the agent breaks it via recovery lockout.")
+
+    # Same pattern fed two ways: directly into the gate (no policy),
+    # then through a fresh agent.step() (with policy).
+    pattern = [(0, 1.00), (10, 0.85), (20, 0.83), (30, 0.81), (40, 0.84)]
+
+    raw_gate = PhysicalMonotonicGate()
+    raw_fires = 0
+    for ts, sc in pattern:
+        if raw_gate.record(StabilityFrame(timestamp_ms=ts, com_offset=0.0,
+                                            stability_score=sc,
+                                            joint_torques=(0.5,))).fired:
+            raw_fires += 1
+
+    smart_agent = HumanoidStabilityAgent()
+    smart_fires = 0
+    for ts, sc in pattern:
+        if smart_agent.step(StabilityFrame(timestamp_ms=ts, com_offset=0.0,
+                                             stability_score=sc,
+                                             joint_torques=(0.5,))).fired:
+            smart_fires += 1
+    print(f"  raw-gate fires    : {raw_fires}   (one true event, {raw_fires - 1} symptom-of-the-cure)")
+    print(f"  agent  fires      : {smart_fires}   (recovery window suppressed "
+          f"{smart_agent.status()['suppressed_count']} follow-on ticks)")
+
+    # Show the slew cap in action — a snap from 0.0 → 1.0 in one tick is
+    # exactly the kind of step change that triggers the loop without
+    # smoothing. The lerp turns it into a paced ramp.
+    print(f"\n  StabilityLerp cap : Δ ≤ {MAX_DCMD_PER_TICK:.3f} per tick")
+    cur = 0.0
+    for tick in range(1, 6):
+        cur = smart_agent.correct(current=cur, target=1.0,
+                                   dt_ms=10_000, recovery_time_ms=500)
+        print(f"    tick {tick}: current → {cur:.3f}")
+    print("  …no snap; the command climbs at the bounded rate.")
+
     print("\n── Status summary ────────────────────────────────────────────────────")
     st = agent.status()
     for k, v in st.items():
         print(f"  {k:<22} {v}")
     print("\nThe robot does not think about whether to fall.")
-    print("The constitution prevents it before the fall begins.\n")
+    print("The constitution prevents it before the fall begins —")
+    print("and the recovery doesn't trigger the next fall.\n")
     return 0
 
 
