@@ -1,0 +1,59 @@
+{
+  "format_version": "1.0",
+  "name": "fdcpa",
+  "title": "FDCPA — Fair Debt Collection Practices Act",
+  "description": "Block US-FDCPA-prohibited debt-collection patterns: threats of arrest or imprisonment, false claims of legal authority, deceptive seizure threats, and time-of-day-violation hints. Required if your collections AI talks to consumers in the United States.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/fdcpa",
+  "tags": [
+    "compliance",
+    "finance",
+    "us-federal",
+    "collections"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "warrant\\s+(?:for|out)\\s+(?:your|the\\s+debtor'?s)\\s+arrest"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:will|going\\s+to|may)\\s+(?:have\\s+you\\s+)?(?:arrested|imprisoned|jailed)\\s+(?:if|unless|for)"
+      },
+      {
+        "class": "HARM",
+        "regex": "wage\\s+garnishment\\s+(?:starts|begins|will\\s+begin)\\s+(?:tomorrow|tonight|today|immediately|in\\s+\\d+\\s+(?:hour|day)s?)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:i\\s+am|this\\s+is)\\s+(?:an\\s+)?(?:officer|attorney|sheriff|federal\\s+agent|irs\\s+agent)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:seize|repossess|take)\\s+(?:your|the)\\s+(?:home|car|property|bank\\s+account)\\s+(?:today|tonight|tomorrow|immediately)"
+      },
+      {
+        "class": "HARM",
+        "regex": "your\\s+(?:social\\s+security|ssn|tax\\s+refund)\\s+(?:will\\s+be|is\\s+being)\\s+(?:suspended|withheld|frozen)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:call|reach)(?:ing)?\\s+(?:you|the\\s+debtor)\\s+(?:before\\s+8\\s*(?:am|a\\.m\\.)|after\\s+9\\s*(?:pm|p\\.m\\.))"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:i'?m|this\\s+is)\\s+(?:from\\s+)?(?:the\\s+)?(?:irs|fbi|us\\s+treasury|department\\s+of\\s+justice|federal\\s+court)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "808f53b24ac8acdf513148a95a019a10578803dcb8f057d6be7a155ec0ef17dc"
+}

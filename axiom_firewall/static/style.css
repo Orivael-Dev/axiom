@@ -308,6 +308,42 @@ table.keys th { color: var(--muted); font-weight: normal; font-size: 0.9rem; }
 .policy-help li { padding: 0.3rem 0; }
 .policy-help code { color: var(--accent); }
 
+.pack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.pack-card {
+  background: var(--card);
+  padding: 1.2rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pack-card h3 { color: var(--accent); font-size: 1rem; }
+.pack-meta { color: var(--muted); font-size: 0.85rem; }
+.pack-meta code { color: var(--fg); background: var(--bg); padding: 0.1rem 0.3rem; border-radius: 3px; }
+.pack-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+.pack-tag {
+  font-size: 0.75rem;
+  background: var(--bg);
+  color: var(--muted);
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+}
+.pack-docs {
+  font-size: 0.85rem;
+  margin-top: 0.3rem;
+  color: var(--muted);
+}
+.pack-card button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 footer {
   display: flex;
   justify-content: space-between;

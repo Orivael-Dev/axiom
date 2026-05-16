@@ -1,0 +1,55 @@
+{
+  "format_version": "1.0",
+  "name": "hipaa-intake",
+  "title": "HIPAA — Patient intake",
+  "description": "Block PHI-leakage patterns common in patient-intake chatbots: cross-patient inquiries, treatment-record dumps, and identity-bypass attempts that try to retrieve data without authentication.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/hipaa-intake",
+  "tags": [
+    "compliance",
+    "healthcare",
+    "hipaa",
+    "us-federal"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:share|send|email|fax|text)\\s+(?:my|the)\\s+(?:medical\\s+record|chart|treatment\\s+history|test\\s+results)\\s+to\\s+(?:my\\s+(?:friend|partner|family)|another\\s+(?:doctor|provider))"
+      },
+      {
+        "class": "HARM",
+        "regex": "what\\s+(?:medications?|prescriptions?|treatments?|diagnos[ie]s)\\s+(?:does|is)\\s+(?:patient|mr\\.?|mrs\\.?|ms\\.?)\\s+\\w+\\s+(?:have|on|taking)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:look\\s+up|search\\s+for|find)\\s+(?:the\\s+)?(?:phone\\s+number|address|email|dob|ssn)\\s+(?:of|for)\\s+(?:patient|mr\\.?|mrs\\.?|ms\\.?)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:i'?m|this\\s+is)\\s+(?:dr\\.?\\s+\\w+|the\\s+attending|the\\s+nurse)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:skip|bypass|don'?t\\s+ask\\s+for)\\s+(?:the\\s+)?(?:date\\s+of\\s+birth|patient\\s+(?:id|identifier)|consent\\s+form|hipaa\\s+release)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "you\\s+have\\s+my\\s+(?:verbal|implicit|prior)\\s+consent\\s+(?:to|for)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:list|show|tell\\s+me)\\s+(?:all\\s+)?(?:hiv|cancer|psychiatric|substance\\s+abuse|abortion)\\s+(?:patients|cases)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "d02ff6f7b56f6db6701464ca50b30836ea6665b93fb277045eb9a368a9025ebd"
+}

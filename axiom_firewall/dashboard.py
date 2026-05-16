@@ -35,7 +35,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from axiom_intent_classifier import IntentClassifier
 from axiom_signing import derive_key
 
-from . import billing, policy as policy_mod
+from . import billing, policy as policy_mod, skill_pack
 from .auth import (
     TIER_PRICE_USD, TIER_RATE_LIMITS,
     authenticate, check_password, hash_password, record_call,
@@ -366,6 +366,98 @@ def policy_delete(request: Request):
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
     policy_mod.delete_policy(t.tenant_id)
     return RedirectResponse("/dashboard/policy", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# ─── Skill Pack browser + installer ─────────────────────────────────────
+
+
+# Path to the first-party packs directory inside the repo. In a
+# production deploy these are baked into the Docker image; the registry
+# server (Phase 2 week 6) serves them over HTTP. For now the dashboard
+# reads them directly from the filesystem so the install flow can be
+# tested locally without the registry running.
+PACKS_DIR = Path(os.environ.get(
+    "AXIOM_FIREWALL_PACKS_DIR",
+    str(BASE_DIR.parent / "packs"),
+))
+
+
+def _list_local_packs() -> list[skill_pack.SkillPackManifest]:
+    """Discover packs in PACKS_DIR. Each pack lives at packs/<name>/pack.json."""
+    if not PACKS_DIR.exists():
+        return []
+    packs = []
+    for entry in sorted(PACKS_DIR.iterdir()):
+        manifest_path = entry / "pack.json"
+        if manifest_path.is_file():
+            try:
+                packs.append(
+                    skill_pack.SkillPackManifest.parse(
+                        manifest_path.read_text(encoding="utf-8")
+                    )
+                )
+            except (ValueError, OSError) as e:
+                log.warning("skipping pack at %s: %s", manifest_path, e)
+    return packs
+
+
+def _load_local_pack(name: str) -> skill_pack.SkillPackManifest | None:
+    if not name or "/" in name or ".." in name:
+        return None
+    manifest_path = PACKS_DIR / name / "pack.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        return skill_pack.SkillPackManifest.parse(
+            manifest_path.read_text(encoding="utf-8")
+        )
+    except (ValueError, OSError):
+        return None
+
+
+@app.get("/dashboard/packs", response_class=HTMLResponse)
+def packs_index(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request, "packs.html",
+        _ctx(
+            request, tenant=t,
+            packs=_list_local_packs(),
+            installed=skill_pack.get_installed_pack(t.tenant_id),
+        ),
+    )
+
+
+@app.post("/dashboard/packs/install")
+def packs_install(request: Request, name: str = Form(...)):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    manifest = _load_local_pack(name)
+    if manifest is None:
+        raise HTTPException(404, f"Pack {name!r} not found in local packs directory")
+    # First-party packs MUST have a valid signature before install. Third-party
+    # packs (Phase 2 week 6) will use publisher-specific keys.
+    if not skill_pack.verify_first_party(manifest):
+        raise HTTPException(
+            400,
+            f"Pack {name!r} has an invalid or missing signature — refusing install. "
+            "Re-sign with `python scripts/sign_packs.py` after editing.",
+        )
+    skill_pack.install_pack(t.tenant_id, manifest)
+    return RedirectResponse("/dashboard/packs", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/dashboard/packs/uninstall")
+def packs_uninstall(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    skill_pack.uninstall_pack(t.tenant_id)
+    policy_mod.delete_policy(t.tenant_id)
+    return RedirectResponse("/dashboard/packs", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # ─── Authenticated API ───────────────────────────────────────────────────
