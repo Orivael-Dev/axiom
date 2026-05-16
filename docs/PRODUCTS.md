@@ -24,6 +24,9 @@ product is its own SKU.
 - **Axiom Intent Firewall** — developer-facing API that blocks/flags
   prompt injection, harmful instructions, PII leakage, and deceptive
   outputs in-flight on any LLM call
+- **Axiom MCP** — local MCP server giving AI coding tools (Claude
+  Desktop, Claude Code, Cursor, Codex) a governance copilot that
+  checks plans, actions, and code diffs before execution
 
 What unifies them: every product uses the same AXIOM backend
 (constitutional engine, HMAC-signed manifests, latent reasoning,
@@ -44,7 +47,8 @@ positioning differs:
 |---|---|---|---|
 | [Axiom Certify · Agent Audit](#axiom-certify--agent-audit) | Certify | partial-implementation | 1-2 weeks of build |
 | [Axiom Flight Recorder](#axiom-flight-recorder) | standalone | partial-implementation | 2-3 weeks of build |
-| [Axiom Intent Firewall](#axiom-intent-firewall) | standalone | near-shippable | 1 week of build *(smallest gap of all three)* |
+| [Axiom Intent Firewall](#axiom-intent-firewall) | standalone | near-shippable | 1 week of build *(smallest gap of the SaaS three)* |
+| [Axiom MCP](#axiom-mcp) | standalone | near-shippable | 1-2 weeks of build *(13 MCP tools shipped; code-pattern refusal needs build)* |
 
 Update this table whenever status changes.
 
@@ -389,10 +393,10 @@ no upfront artifact submission. Two main shapes:
 Per-call response:
 
 - **Verdict** — one of `allow`, `block`, `flag` (with severity)
-- **Intent class** — one of the nine Constitutional Intent Typing
-  classes (INFORM / CLARIFY / REQUEST / EXPLORE / REFUSE /
-  UNCERTAIN / MANIPULATE / DECEIVE / HARM) — HARM and DECEIVE are
-  hard-blocks
+- **Intent class** — one of the six Constitutional Intent Typing
+  classes (INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN
+  per `axiom_intent_classifier.py:58`) — HARM and DECEIVE are
+  hard-blocks (`BLOCK_CLASSES` at line 60)
 - **Reason codes** — machine-readable enum of what triggered the
   verdict (e.g. `pii_email`, `prompt_injection_template`,
   `policy_bypass_jailbreak`, `pii_ssn`, `harm_self`,
@@ -427,7 +431,7 @@ What the customer's product receives (developer dashboard):
 | Combined check | `POST /guard/check` | shipped |
 | Full LLM proxy | `POST /guard/proxy` | shipped |
 | OpenAI-compatible drop-in | `POST /v1/chat/completions` | shipped |
-| Intent classification | `axiom_intent_classifier.py` (9-class typing: INFORM/CLARIFY/REQUEST/EXPLORE/REFUSE/UNCERTAIN/MANIPULATE/DECEIVE/HARM) | shipped |
+| Intent classification | `axiom_intent_classifier.py` (6-class typing: INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN) | shipped |
 | PII redaction | `POST /guard/redact`, `GET /guard/redact/patterns`, `axiom_redact.py` | shipped |
 | Signed verdicts | `axiom_signing.derive_key` + HMAC-SHA256 on every response | shipped |
 | Manifest store + retrieval | `GET /guard/manifest/{id}`, `GET /guard/manifests` | shipped |
@@ -490,7 +494,7 @@ soft-launch items.
   - **Pangea AI Guard** — similar pricing band, broader feature set
   - **Rebuff** — open-source + commercial, less-developed pricing
   - The differentiator here is constitutional intent typing
-    (9-class taxonomy vs. simple "is this a prompt injection?"),
+    (6-class taxonomy vs. simple "is this a prompt injection?"),
     HMAC-signed verdicts (others don't sign), and pairing with
     Axiom Certify / Flight Recorder for full-stack adoption
 
@@ -538,6 +542,219 @@ soft-launch items.
   different. A compliance officer doesn't write code; a developer
   doesn't run audits. Both can sell into the same enterprise
   through different doors.
+
+---
+
+## Axiom MCP
+
+**Tagline:** Safety rails for AI coding agents. A local MCP server
+that gives Claude / Cursor / Codex a governance copilot — checks
+plans, actions, and code diffs before execution.
+
+**Status:** near-shippable
+(MCP server + 13 tools already ship; code-pattern refusal layer and
+distribution polish are the gaps)
+
+**Last updated:** 2026-05-16
+
+### What the customer submits
+
+Nothing to submit — they install the MCP server locally and point
+their AI coding tool at it. Three install paths:
+
+- **Claude Desktop** — add an entry to `claude_desktop_config.json`
+  pointing at the Axiom MCP binary or `npx` runner
+- **Claude Code** — `claude mcp add axiom <command>` from the CLI
+- **Cursor** — add to the Cursor MCP config (same shape as Claude
+  Desktop)
+- **Codex / other MCP-aware agents** — standard MCP server protocol
+  over stdio
+
+The customer's coding agent then has access to 13 tools that check
+its proposed plans, actions, and code diffs against the AXIOM
+constitutional framework.
+
+### What the customer receives
+
+A locally-running MCP server that exposes the following 13 tools
+(all already wired in `axiom_mcp_server.py`):
+
+| Tool | What it does |
+|---|---|
+| `axiom_guard_check` | Run a prompt or plan through the constitutional guard; returns verdict + reasons |
+| `axiom_lint` | Validate an `.axiom` spec for strict-mode compliance |
+| `axiom_trace` | Run latent reasoning trace on a question (intent + confidence + risk clusters) |
+| `axiom_qrf` | Quantum Reasoning Forecast — domain-specific weighted branch analysis |
+| `axiom_status` | System health + loaded agents + manifest count |
+| `axiom_intent_gate_check` | Classify intent (INFORM/CLARIFY/REFUSE/HARM/DECEIVE/UNCERTAIN); HARM and DECEIVE auto-refuse |
+| `axiom_validate` | Validate a full `.axiom` spec against the validator |
+| `axiom_cmaa_route` | Route a task to the right agent via CMAA orchestrator |
+| `axiom_cmaa_fleet` | View the live agent fleet state |
+| `axiom_cpi` | Constitutional Physical Intelligence — humanoid stability check |
+| `axiom_axm` | AXM container operations (inspect / verify / route) |
+| `axiom_shield` | OS Shield daemon status (process ancestry + level) |
+| `axiom_phone_gate` | Voice-call gate (Hello Operator scam-call detection) |
+
+Plus, as part of the productized layer:
+
+- **Local dashboard** — `http://localhost:8002/mcp` showing the most
+  recent 100 tool calls, verdict distribution, and a "ban list" of
+  blocked patterns the customer's agent has tried
+- **Configuration UI** — edit the local `.axiom` policy without
+  hand-writing the spec (toggle which tools are active, set
+  blocking thresholds)
+- **Telemetry opt-in** — anonymous usage data to upgrade tier pricing
+  decisions; PII-stripped before sending
+
+### Backend modules used
+
+| Deliverable | Module / endpoint | Status |
+|---|---|---|
+| MCP server core | `axiom_mcp_server.py` | shipped (`tools/list`, `tools/call`, 13 tools) |
+| MCP tool: guard_check | `_handle_guard_check` (`axiom_mcp_server.py:222`) | shipped |
+| MCP tool: lint | `_handle_lint` (`axiom_mcp_server.py:242`) | shipped |
+| MCP tool: trace | `_handle_trace` (`axiom_mcp_server.py:260`) | shipped |
+| MCP tool: qrf | `_handle_qrf` (`axiom_mcp_server.py:283`) | shipped |
+| MCP tool: status | `_handle_status` (`axiom_mcp_server.py:301`) | shipped |
+| MCP tools: intent_gate, cmaa, axm, shield, phone_gate, validate, cpi | declared in `_TOOL_SCHEMAS` (`axiom_mcp_server.py:53-219`) | shipped |
+| Code intent classification (HARM/DECEIVE refusal on plans) | `axiom_intent_classifier.py` natural-language patterns (`_HARM_PATTERNS`, `_DECEIVE_PATTERNS`) | shipped — but **does not currently include code-specific patterns** (see Gaps §2) |
+| Constitutional dev review | `axiom_dev_agent.py` (v1; reviews files for AXIOM bug patterns BUG-001..BUG-008) | shipped |
+| Dev capture-and-train loop | `axiom_dev_loop.py` | shipped (training-data side, not enforcement) |
+
+### Gaps to ship
+
+This product is **near-shippable** — the MCP server + 13 tools work
+today — but four pieces are missing for the customer-facing product:
+
+1. **Distribution polish** — today the MCP server runs via
+   `python -m axiom_mcp_server`. Needs a polished install path:
+   - PyPI: `pip install axiom-mcp` or `pipx install axiom-mcp`
+   - npm: `npx @axiom/mcp` for the Claude Desktop config snippet
+   - Homebrew tap: `brew install axiom-mcp`
+   - Docker image for enterprise self-host
+2. **Code-pattern refusal layer** (new tool: `axiom_diff_check`) —
+   the README claims Dev Agent v2 refuses `eval()`, `exec()`,
+   `os.system()`, shell subprocess, and credential-shaped strings.
+   The current `axiom_intent_classifier.py` patterns target
+   natural-language attacks (weapons synthesis, jailbreaks, scam
+   calls, authority impersonation) — **not** code patterns. The
+   code-pattern refusal needs to be built. Suggested approach: a
+   new `axiom_diff_check` MCP tool that scans a unified diff for
+   the explicit code-pattern blocklist and returns ALLOW/BLOCK with
+   line-level reasons.
+3. **Plan-check tool** (new: `axiom_plan_check`) — review a plan
+   *before* the agent executes any of it. Different from
+   `axiom_guard_check`, which checks a single prompt; this checks
+   a multi-step plan (e.g. Claude Code's plan-mode output) for
+   HARM/DECEIVE intent across steps, side-effect surface analysis
+   (file writes, network calls, secret access), and the
+   cumulative constitutional distance trajectory.
+4. **Local dashboard + config UI** — today there's no
+   `localhost:8002/mcp` dashboard; this is a small Vue/React app
+   that calls the MCP server's `tools/list` and shows recent
+   calls. ~2-3 days of UI work.
+
+Estimated effort: **1-2 weeks of focused build.** Item 2 (code-pattern
+refusal) is the largest single piece; the others are smaller.
+
+### Target customer + pricing
+
+- **Who buys this:**
+  - Solo developers using Claude Code or Cursor on production
+    codebases who want safety rails
+  - AI engineering teams at startups whose agents touch production
+    systems (CI, deploy, prod database)
+  - Enterprise dev teams nervous about agentic coding tools making
+    unsafe changes (the cited "Devin / Cursor / Claude Code touched
+    production" anxiety)
+- **What pain it solves:** Agentic coding tools can take destructive
+  actions (`rm -rf`, push to main, leak credentials, run unsafe
+  shell commands). Today most companies have no governance layer.
+  Axiom MCP sits between the agent and its tools, refusing
+  constitutional violations with a signed manifest of the refusal.
+- **Pricing model** (developer-tool shape, different from hosted
+  API):
+  - **Free (local install)** — single dev, default policy, no team
+    features. Drives adoption. No telemetry by default.
+  - **Pro $19/mo per dev** — custom local policy, history sync
+    across the dev's machines, priority issue support
+  - **Team $99/mo per team** — centralized policy, fleet view of
+    all team devs' refusals, Slack/PagerDuty integration on
+    blocked actions
+  - **Enterprise — custom** — on-prem deployment, custom `.axiom`
+    specs, SSO, audit log integration with the customer's SIEM,
+    optional cross-sell into Flight Recorder for centralized
+    decision logging
+- **Ballpark comparables:**
+  - **Composio** — MCP toolkit aggregator (different product —
+    they expand tool access, we constrain it)
+  - **Smithery.ai** — MCP server marketplace (distribution channel,
+    not a competitor — we should publish there)
+  - **Snyk Code** — code security ($25-79/dev/mo) — closer
+    analog but not AI-aware
+  - **GitHub Copilot Enterprise** ($39/user/mo) — has some safety
+    features built in but customer can't customize
+
+### Cross-references
+
+- **Pairs cleanly with Flight Recorder:** Pro+ tier could ship
+  refusal events upstream to a hosted Flight Recorder tenant for
+  centralized compliance logging — natural Team→Enterprise upgrade
+  path
+- **Pairs cleanly with Intent Firewall:** same constitutional
+  engine, different distribution. MCP = embedded in your IDE;
+  Firewall = embedded in your production app. A customer might use
+  both: Firewall for their shipping product, MCP for their dev
+  workflow
+- **Pairs cleanly with Certify:** Certify says "your shipped agent
+  passed our audit"; MCP says "your dev agents can't ship unsafe
+  code in the first place"
+- Related modules: `axiom_mcp_server.py`, `axiom_intent_classifier.py`,
+  `axiom_dev_agent.py`, `axiom_dev_loop.py`, `axiom_signing.py`,
+  every `axiom_files/core/*.axiom` spec (those become the per-tenant
+  policies)
+- Related .axiom specs: `axiom_files/core/axiom_dev.axiom`,
+  `axiom_files/core/axiom_intent_classifier.axiom`,
+  `axiom_files/core/axiom_vulnguard.axiom`,
+  `axiom_files/core/axiom_qrf_reverse.axiom`
+- ORVL alignment: ORVL-001 (Dev Agent) is the spine of the
+  code-review deliverable; ORVL-002 (Intent Classifier) provides the
+  HARM/DECEIVE refusal substrate
+
+### Notes / open questions
+
+- **Honesty about Dev Agent v2 claims:** the README mentions Dev
+  Agent v2 refusing `eval()` / `exec()` / `os.system()` / shell /
+  credentials, but the current `axiom_intent_classifier.py` only
+  has natural-language attack patterns, NOT code-specific
+  patterns. Before shipping the marketing, either build the
+  code-pattern blocklist (Gap §2) or adjust the marketing to
+  describe what's actually shipped. Don't sell what doesn't run.
+- **Open question — taxonomy inconsistency:** there are TWO
+  6-class intent taxonomies in the repo. `axiom_intent_classifier`
+  uses (INFORM, CLARIFY, REFUSE, HARM, DECEIVE, UNCERTAIN);
+  `axiom_anf_emulator.CORE_ACTIVATION` uses (INFORM, REQUEST,
+  EXPLORE, MANIPULATE, DECEIVE, HARM). Both are 6 classes, but
+  different sets. Pick one canonical taxonomy and reconcile the
+  other module before any product ships, or both products will
+  reference different "intent class" meanings.
+- **MCP marketplace strategy:** Smithery.ai is the de-facto MCP
+  registry. Free tier should auto-publish there with a "verified"
+  badge from us. Drives discoverability without paid acquisition.
+- **Open question — telemetry default:** anonymous usage telemetry
+  in free tier is a contentious default. Better: ship telemetry
+  OFF by default with a clear opt-in dialog the first time the
+  customer's agent runs an axiom_* tool. Costs us data; protects
+  the trust narrative.
+- **Open question — VS Code / JetBrains support:** MCP is currently
+  Claude/Cursor/Codex-flavored. VS Code's AI features and
+  JetBrains AI Assistant don't natively speak MCP yet but
+  probably will within 12 months. Plan for the second-wave editor
+  integrations rather than ignoring them.
+- **No cannibalization with Intent Firewall:** same engine,
+  different distribution. Selling both to the same enterprise is
+  natural (Firewall for prod, MCP for dev). Marketing should
+  treat them as a bundle for enterprise pricing.
 
 ---
 
