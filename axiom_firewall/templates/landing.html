@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Block harm and deception in your LLM calls — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Block harm, deception, and PII leakage in your LLM calls.</h1>
+  <p class="lede">
+    A single API in front of any LLM. Returns
+    <code>allow</code> or <code>block</code> in under 50&nbsp;ms.
+    Every verdict is HMAC-signed for audit.
+  </p>
+  <p class="actions">
+    <a href="/signup" class="cta-button">Start free</a>
+    <a href="https://{{ docs_host }}/firewall/quickstart" class="link">Quickstart →</a>
+  </p>
+</section>
+
+<section class="example">
+  <h2>One call. Two lines.</h2>
+  <pre><code>curl -X POST https://{{ dashboard_host }}/v1/guard/check \
+  -H "Authorization: Bearer $AXIOM_KEY" \
+  -d '{"text": "What is the weather today?"}'
+
+# {"verdict": "allow", "intent": {"class": "INFORM", ...}}</code></pre>
+</section>
+
+<section class="tiers">
+  <h2>Pricing</h2>
+  <div class="tier-grid">
+    <div class="tier">
+      <h3>Free</h3>
+      <p class="price">$0</p>
+      <ul>
+        <li>{{ "{:,}".format(tier_limits.free) }} calls / month</li>
+        <li>Default policy</li>
+        <li>Community support</li>
+      </ul>
+    </div>
+    <div class="tier featured">
+      <h3>Indie</h3>
+      <p class="price">${{ tier_prices.indie }}<span>/mo</span></p>
+      <ul>
+        <li>{{ "{:,}".format(tier_limits.indie) }} calls / month</li>
+        <li>Custom policies</li>
+        <li>Email support</li>
+      </ul>
+    </div>
+    <div class="tier">
+      <h3>Team</h3>
+      <p class="price">${{ tier_prices.team }}<span>/mo</span></p>
+      <ul>
+        <li>{{ "{:,}".format(tier_limits.team) }} calls / month</li>
+        <li>Multi-tenant policies</li>
+        <li>Dashboard analytics</li>
+      </ul>
+    </div>
+    <div class="tier">
+      <h3>Enterprise</h3>
+      <p class="price">Custom</p>
+      <ul>
+        <li>SOC&nbsp;2, DPA, BAA</li>
+        <li>Dedicated tenant</li>
+        <li>SLA + support</li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+  <h1>{{ tenant.email }}</h1>
+  <p class="tier-badge">
+    {{ tenant.tier|capitalize }} tier · {{ "{:,}".format(tier_limit) }} calls / month
+  </p>
+
+  <div class="metrics">
+    <div class="metric">
+      <span class="value">{{ "{:,}".format(usage.total_calls) }}</span>
+      <span class="label">total calls</span>
+    </div>
+    <div class="metric">
+      <span class="value">{{ "{:,}".format(usage.blocked) }}</span>
+      <span class="label">blocked</span>
+    </div>
+    <div class="metric">
+      <span class="value">{{ usage.avg_latency_ms }}</span>
+      <span class="label">ms avg latency</span>
+    </div>
+  </div>
+
+  {% if request.session.get('new_secret') %}
+    <div class="alert success">
+      <strong>New API key created.</strong>
+      Copy it now — it won't be shown again:
+      <pre><code>{{ request.session.pop('new_secret') }}</code></pre>
+    </div>
+  {% endif %}
+
+  <h2>API keys</h2>
+  <form method="post" action="/dashboard/keys" class="inline-form">
+    <input type="text" name="name" placeholder="Key name (e.g. production)" required>
+    <button type="submit">Create key</button>
+  </form>
+
+  {% if keys %}
+    <table class="keys">
+      <thead><tr><th>Name</th><th>Key ID</th><th>Created</th></tr></thead>
+      <tbody>
+        {% for k in keys %}
+          <tr>
+            <td>{{ k.name }}</td>
+            <td><code>{{ k.key_id[:8] }}…</code></td>
+            <td>{{ k.created_at.strftime('%Y-%m-%d') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No keys yet — create one above to start calling the API.</p>
+  {% endif %}
+
+  <h2>Quickstart</h2>
+  <pre><code>curl -X POST https://{{ dashboard_host }}/v1/guard/check \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -d '{"text": "What is the weather today?"}'</code></pre>
+
+  <p>Full docs: <a href="https://{{ docs_host }}/firewall/quickstart">{{ docs_host }}/firewall/quickstart</a></p>
+</section>
+{% endblock %}
