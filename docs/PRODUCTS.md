@@ -33,6 +33,11 @@ product is its own SKU.
 - **Axiom Data Gate** — permissions layer for AI memory: classify,
   redact, and gate every piece of data before an AI agent reads,
   remembers, or exports it
+- **Axiom Skill Pack Builder** — Docker containers for AI behavior:
+  package agent instructions, allowed/forbidden actions, domain rules,
+  safety tests, and signed metadata into a portable `.axm` pack.
+  *Potentially foundational — the other Axiom products can consume
+  Skill Packs as their config artifact.*
 
 What unifies them: every product uses the same AXIOM backend
 (constitutional engine, HMAC-signed manifests, latent reasoning,
@@ -57,6 +62,7 @@ positioning differs:
 | [Axiom MCP](#axiom-mcp) | standalone | near-shippable | 1-2 weeks of build *(13 MCP tools shipped; code-pattern refusal needs build)* |
 | [Axiom CallGuard](#axiom-callguard) | standalone | partial-implementation | 3-4 weeks of build *(intent patterns + signing exist; audio intake + per-industry rule engines need build)* |
 | [Axiom Data Gate](#axiom-data-gate) | standalone | near-shippable | 2 weeks of build *(HIPAA redaction + memory block registry already shipped; need other taxonomies + policy engine)* |
+| [Axiom Skill Pack Builder](#axiom-skill-pack-builder) | standalone *(foundational — see notes)* | near-shippable | 2-3 weeks of build *(AXMContainer + pack/inspect/verify/route shipped; need CLI polish, registry, marketplace)* |
 
 Update this table whenever status changes.
 
@@ -1324,6 +1330,316 @@ right-to-erasure workflow.
   the real PII. Future product hook: "Data Gate · Synthetic" — pay
   more, get model-training-safe synthetic data drawn from your real
   corpus.
+
+---
+
+## Axiom Skill Pack Builder
+
+**Tagline:** Docker containers for AI behavior. Build, sign, share,
+and install portable agent skill packs.
+
+**Status:** near-shippable
+(`AXMContainer` + pack/inspect/verify/route already ship; gaps are
+CLI polish, public registry, and a signing-trust chain for the
+marketplace)
+
+**Last updated:** 2026-05-16
+
+### Important positioning note
+
+The full ORVL-023 AXM patent describes `.AXM` as a "living execution
+graph" successor to GGUF — model weights + skill delegates + trajectory
+blocks + vector-vertex DB + proof ledger + hardware map. **That vision
+is too ambitious for v1 marketing.** Replacing GGUF is a multi-year
+ecosystem-positioning fight against HuggingFace, Ollama, llama.cpp,
+and the entire model-distribution incumbent stack.
+
+**Axiom Skill Pack Builder is the digestible v1.** It uses the same
+underlying `.axm` container format, but the product pitch is "package
+your agent's *behavior*" — not "package the model itself." Developers
+already understand Docker containers for code, npm packages for
+libraries, Helm charts for infrastructure. A "Skill Pack" is the same
+mental model applied to AI agent behavior: instructions + allowed/
+forbidden actions + domain rules + safety tests + signed metadata.
+
+Once Skill Packs are a developer-adopted format, the full AXM model-
+container vision is a v2 upgrade ("now we also ship the weights with
+the behavior"). Don't sell v2 before v1 ships.
+
+### What the customer submits / does
+
+The developer interacts with three surfaces:
+
+- **CLI** — `axiom skillpack` commands:
+  - `axiom skillpack init` — scaffold a new pack directory
+  - `axiom skillpack build` — pack the directory into a signed `.axm` artifact
+  - `axiom skillpack verify` — run the pack's own safety tests + signature checks
+  - `axiom skillpack publish` — push to the public or private registry
+  - `axiom skillpack install <name>` — install a pack from the registry
+  - `axiom skillpack list` — list installed packs
+  - `axiom skillpack inspect <name>` — show pack header + delegates + proof ledger
+  - `axiom skillpack route <name> "<task>"` — test-route a task through the pack
+- **Pack directory** — a developer authors a directory like:
+  ```
+  my_pack/
+  ├── header.json          # name, version, description, license
+  ├── core/core.json       # core logic + quantization map
+  ├── delegates/           # SkillDelegate entries (one per skill)
+  │   ├── pii_redactor/skill.json
+  │   └── tone_check/skill.json
+  ├── trajectories/*.jsonl # action sequences for each pack capability
+  ├── tests/               # BLOCKED/PASSED safety tests
+  ├── vertices.json        # semantic-class vector entries (optional)
+  └── proofs/ledger.jsonl  # Proof Ledger entries (one per sub-module)
+  ```
+- **Registry web app** — browse, search, install, publish, and review
+  packs at `packs.axiom.ai` (free tier) or
+  `<your-team>.packs.axiom.ai` (paid tier with private packs).
+
+### What the customer receives
+
+- **Portable signed `.axm` file** — fully-signed container the
+  developer can attach to a GitHub release, send via email, or
+  publish to the registry. Anyone who installs it can verify the
+  signature chain back to the publisher's key.
+- **Verification report** — `verify` output: signature chain status,
+  proof-ledger HMAC integrity, safety-test pass/fail summary, list
+  of declared capabilities
+- **Installable runtime** — installing a pack registers all its skill
+  delegates into the local `BlockRegistry`, making them available to
+  any Axiom product on the same machine
+- **Registry presence** — public packs get a permalink, version
+  history, download stats, dependency graph, security advisories
+- **Marketplace economics** (deferred to v2) — paid packs, revenue
+  share, sponsorship surfaces
+
+### Backend modules used
+
+| Deliverable | Module / endpoint | Status |
+|---|---|---|
+| `.axm` container dataclasses (AXMHeader, SkillDelegate, TrajectoryBlock, VectorVertexEntry, ProofLedgerEntry) | `axiom_axm.py` (all 6 dataclasses, all frozen, all HMAC-signed) | shipped |
+| `AXMContainer.pack(spec, output_path)` | `axiom_axm.py` | shipped |
+| `AXMContainer.from_path(path)` | `axiom_axm.py` | shipped |
+| `AXMContainer.inspect()` | `axiom_axm.py` | shipped |
+| `AXMContainer.verify_proofs()` | `axiom_axm.py` (drives the ANF coprocessor once per proof) | shipped |
+| `AXMContainer.route(task, classifier)` | `axiom_axm.py` (routes a task to matched delegates via MKB) | shipped |
+| Starter pack scaffold generator | `examples/axm_pack_starter.py` | shipped |
+| End-to-end demo | `examples/axm_demo.py` (pack → inspect → verify → route) | shipped |
+| Constitutional spec | `axiom_files/core/axiom_axm.axiom` (TRUST_LEVEL 1, STRICT MODE, HUMAN_REVIEW on container_header_change / trust_level_change / proof_ledger_rotation) | shipped |
+| MCP tool | `axiom_mcp_server.py` `axiom_axm` (action: inspect / verify / route) | shipped |
+| REST endpoints | `POST /axm/inspect`, `POST /axm/verify`, `POST /axm/route` (`axiom_server.py`) | shipped |
+| HMAC signing chain | `axiom_signing.derive_key` with 3 derived keys (container / delegate / proof) | shipped |
+| MKB registration on `route()` | `axiom_axm.py` creates `KnowledgeBlock` per matched delegate, calls `BlockRegistry.find()` first (idempotent), registers if absent | shipped |
+| Unit tests | `tests/test_axiom_axm.py` (3 BLOCKED + 4 PASSED + 2 INVARIANTS) | shipped |
+| Integration tests | `tests/test_axiom_axm_integration.py` (REST + MCP, BLOCKED + PASSED + INVARIANT per surface) | shipped |
+
+### Gaps to ship
+
+The container itself is done. What's missing is the developer-product
+wrapper around it:
+
+1. **CLI polish** — `axiom_axm.py __main__` exists with `pack /
+   inspect / verify / route` subcommands but is bare-bones. Need:
+   - A `skillpack init` scaffolder that produces a fully-working
+     starter (so the first 5 minutes are positive)
+   - Better error messages (current ones are stack traces)
+   - Coloured output, progress bars for `build`, `--dry-run` flags
+   - `axiom skillpack` aliased from the `axiom-cli` package
+   - Cross-platform Windows / macOS / Linux builds (the test path
+     uses `subprocess.run(sys.executable, tmp)` which needs Windows
+     adjustments)
+2. **Public registry** — `packs.axiom.ai`. Backed by:
+   - S3 + CloudFront for pack downloads
+   - Postgres for pack metadata + version history
+   - Search via SQLite FTS5 or Postgres full-text for v1; Algolia
+     for v2
+   - GitHub OAuth for publisher identity (avoids running our own
+     password store v1)
+3. **Signing-trust chain for marketplace** — today every pack is
+   signed with the developer's local `AXIOM_MASTER_KEY` (deployer-
+   key-specific, so committed packs don't verify across users). For
+   a public marketplace, we need:
+   - Per-publisher signing keys (held in a managed KMS — AWS KMS or
+     similar)
+   - A signing service that signs packs on publish, never exposing
+     the private key to the developer's machine
+   - A verification flow that checks the pack's signature against
+     the publisher's published-public-key fingerprint
+4. **Pack composition / dependencies** — Skill Pack A depends on
+   Skill Pack B (e.g. a "Banking · Mortgage" pack depends on
+   "Banking · UDAAP Base"). Today there's no dependency resolution.
+   Add a `dependencies: [{name, version}]` field to the header and
+   a resolver that fetches transitively.
+5. **Pack quality scoring** — automated assessment on publish:
+   - Did `verify_proofs()` pass?
+   - How many safety tests are declared? How many pass?
+   - Are there delegates without tests? (warn)
+   - Are constitutional distance bounds explicit? (recommended)
+   - Is there a CONSTRAINT line for every CANNOT_MUTATE field?
+   - Output: 0-100 "Pack Quality Score" badge on the registry page
+6. **Marketplace web UI** — register / publish / browse / search /
+   install. Same web stack as Intent Firewall / Data Gate dashboards
+   to keep ops simple.
+7. **Documentation site** — Skill Pack format spec, authoring guide,
+   examples gallery, troubleshooting, comparison with adjacent
+   formats (LangChain Hub, GGUF, OCI artifacts).
+8. **Curation / featured packs** — at launch, ship 5-10 high-quality
+   first-party packs (e.g. "Customer Support Base," "Code Review
+   Base," "FDCPA Debt Collection," "HIPAA Healthcare Intake," "GDPR
+   Article 9 Data Handler") so the registry doesn't look empty.
+
+Estimated effort: **2-3 weeks of focused build.** Items 1, 2, 3, 6,
+and 8 are the launch-blockers; 4, 5, 7 are soft-launch and can ship
+post-MVP.
+
+### Target customer + pricing
+
+- **Who buys this:**
+  - **Free tier:** Solo developers + AI engineers building agents
+    in Cursor, Claude Code, internal tools. Drives ecosystem
+    adoption.
+  - **Pro tier:** Indie SaaS founders + small AI teams who want
+    private packs (to avoid leaking their proprietary agent
+    instructions) and team-shared pack libraries.
+  - **Team / Enterprise tier:** AI platform teams at larger
+    companies who want a private corporate registry, SSO, audit
+    trail on who-published-what, integration with their existing
+    code-review process.
+- **What pain it solves:**
+  - "How do I version-control my agent instructions across 30
+    deployments?"
+  - "How do I share constitutional rules across my team without
+    pasting Markdown files?"
+  - "How do I install someone else's curated agent behavior
+    without reading 800 lines of YAML?"
+  - "How do I prove to my compliance team that the agent in prod
+    is the same one we audited?" (signed packs → audit trail)
+- **Pricing model:**
+  - **Free** — unlimited public packs, unlimited installs, basic
+    CLI, build + verify + publish + install
+  - **Pro $19/mo per developer** — private packs (unlimited),
+    quality scoring on private packs, dependency resolution,
+    extended pack history, priority support
+  - **Team $99/mo per team (5 seats)** — private team registry,
+    role-based access (publisher / reviewer / installer),
+    audit log of installs and updates, Slack/PagerDuty alerts
+    on critical-CVE packs
+  - **Enterprise — custom** — fully-private registry hosted on
+    customer's cloud, SSO, custom signing-key infrastructure
+    (HSM or KMS), audit log integration with customer SIEM,
+    dedicated support contact, contracts with paying-pack
+    marketplace economics if customer wants to sell packs
+- **Ballpark comparables:**
+  - **Docker Hub** — free public repos + paid private repos
+    ($5-25/user/mo) — closest direct analog
+  - **npm Registry + npm Pro** ($7/user/mo for private packages)
+    — the dev-tool playbook this product follows
+  - **HuggingFace Hub** — free, with paid hosted inference + spaces
+    add-ons — relevant ecosystem competitor for AI artifacts
+  - **LangChain Hub / LangSmith Prompts** — free, integrated with
+    paid LangSmith — closer feature comparable than HuggingFace
+    Hub since it's about prompts not weights
+  - **OCI Artifacts** — non-Docker artifact distribution; could
+    pitch Skill Packs as "AI behavior as OCI artifacts" for
+    enterprise customers who already have private registries
+  - Differentiator: HMAC-signed proofs at every layer (header /
+    delegate / proof ledger), constitutional safety-test
+    enforcement on publish, native integration with the rest of
+    the Axiom product family
+
+### Cross-references
+
+- **POTENTIALLY FOUNDATIONAL.** Every other Axiom product can consume
+  Skill Packs as its config artifact:
+  - **Intent Firewall** loads a Skill Pack as the per-tenant policy
+    spec instead of hand-authored `.axiom` files
+  - **MCP** installs Skill Packs as additional local governance rules
+  - **CallGuard** ships per-industry rule engines as Skill Packs
+    (FDCPA pack, TCPA pack, HIPAA-intake pack)
+  - **Data Gate** ships per-jurisdiction classification packs (HIPAA
+    pack, GDPR-special-categories pack, PCI pack)
+  - **Certify** uses Skill Packs as the canonical artifact that gets
+    audited (you submit your pack, we run our audit against it,
+    badge the pack on success)
+  - **Flight Recorder** logs which Skill Pack version was active for
+    every decision (so audit trails carry the exact behavioral
+    config used)
+- This means Skill Pack Builder is the lever for the **product flywheel:**
+  developers adopt the free pack format → pack ecosystem grows → other
+  Axiom products become more valuable because they consume packs →
+  more developers adopt → ...
+- ORVL alignment: ORVL-023 (Axiom eXchange Model / AXM). The full
+  ORVL-023 vision is the model-format successor; Skill Pack Builder
+  is its developer-facing slice that ships first.
+- Related .axiom specs: `axiom_files/core/axiom_axm.axiom` (the
+  constitutional spec for the container format itself; TRUST_LEVEL 1,
+  STRICT MODE, HUMAN_REVIEW gates on header / trust_level / proof
+  ledger changes)
+- Related modules: `axiom_axm.py`, `axiom_mkb.py` (the `KnowledgeBlock`
+  primitive that delegates become), `axiom_intent_classifier.py` (the
+  WHEN-condition matcher in `route()`), `axiom_signing.py`,
+  `bundle_v1_8.py` (content-hash for sub-module integrity in the proof
+  ledger)
+- Related examples: `examples/axm_pack_starter.py`,
+  `examples/axm_demo.py`
+- Related tests: `tests/test_axiom_axm.py` (9 unit tests),
+  `tests/test_axiom_axm_integration.py` (6 integration tests)
+
+### Notes / open questions
+
+- **The 5-product foundation argument:** if Skill Pack Builder ships
+  and adoption follows, the other five Axiom products effectively
+  become *configurable*. A customer who buys CallGuard isn't paying
+  for the rule engines themselves — they're paying for the
+  enterprise tier of the platform that runs Skill Packs +
+  multi-tenant + signed audit. This is a much more defensible
+  business than per-vertical SaaS, because the SwitchingCost on the
+  Skill Pack format is high once a customer has their own internal
+  packs depending on it. This is the strongest moat in the catalog.
+- **Open question — public registry vs private-only at launch:**
+  Public registry brings adoption but also brings governance overhead
+  (malicious packs, copyright issues, registry-as-a-service ops
+  costs from day one). Private-only at launch (only Pro/Team
+  customers get a registry) is easier ops but lower adoption. The
+  hybrid: public registry of *first-party* packs only at v1, plus
+  private registries for Pro/Team — third-party public publishing in
+  v2 after governance process is in place.
+- **Open question — signing-key custody for the marketplace:** managed
+  KMS (we hold the publisher's key in AWS KMS, never send it to
+  their machine) is operationally safer but creates a single-point-
+  of-trust. Bring-your-own-key (publisher generates their own key,
+  sends us the public-key fingerprint, signs locally) is more
+  decentralized but harder for non-crypto-native developers. Suggest
+  KMS-by-default with BYOK opt-in for advanced users.
+- **Open question — pack-format stability commitment:** the
+  developer ecosystem will not adopt a format that breaks every
+  release. Need to commit to backward compat for at least 2 years
+  before v1 ships. Versioning scheme in `AXMHeader.format_version`
+  is already in place; just need a written promise + a migration
+  story for any future breaking change.
+- **Open question — marketplace economics:** paid packs are
+  attractive (developers sell expertise), but they require revenue-
+  share infrastructure, payouts, dispute resolution, tax compliance
+  per jurisdiction. Defer to v2 unless a specific high-value
+  use case emerges in v1.
+- **Open question — IDE integrations:** beyond the CLI, developers
+  expect VS Code / Cursor / JetBrains extensions for browse-install-
+  inspect-edit-validate flow. The MCP integration (already shipped
+  via the `axiom_axm` MCP tool) gives Cursor / Claude Code partial
+  coverage today; full IDE plugins are v1.5 work.
+- **Open question — comparison with OCI artifacts:** OCI's
+  artifact spec lets anyone push non-Docker stuff to an OCI
+  registry (Helm uses this, Bicep uses this). Could ship Skill
+  Packs as OCI artifacts as well as `.axm` files, giving enterprise
+  customers compatibility with their existing Harbor / Artifactory
+  / ECR private registries. Investigate as a fast-follow.
+- **Sustained competitive risk:** LangChain Hub and HuggingFace
+  Hub are well-positioned to add "agent behavior packages" to their
+  existing offerings. The way to win this race is **signed
+  audit chain + constitutional safety tests as first-class
+  format features** — neither competitor has these natively, and
+  enterprise customers will care about them once one regulator
+  starts asking.
 
 ---
 
