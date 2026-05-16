@@ -170,10 +170,13 @@ action-sequence signal.
 
 ---
 
-## 5. Reverse QRF collapse — a designed-but-unbuilt synthetic generator
+## 5. Reverse QRF collapse — synthetic-trajectory generator
 
-This section is a **design proposal**, not implemented code. The forward
-direction exists; the reverse direction does not.
+This section describes the reverse-QRF module shipped on this branch
+(`axiom_qrf_reverse.py`, commit `a9b2fa7`). The forward direction
+existed already in `axiom_qrf.py`; reverse-QRF was added to close the
+loop and produce signed synthetic trajectories from observed
+`(prompt, answer)` pairs.
 
 ### 5.1 What forward QRF does today
 
@@ -201,32 +204,64 @@ direction exists; the reverse direction does not.
 **Forward QRF does not collapse the superposition.** It returns all
 weighted branches; the caller picks the top.
 
-### 5.2 What reverse QRF would do
+### 5.2 What reverse QRF does
 
-Given an **observed `(prompt, answer)` pair**, reverse QRF would produce
-the superposition of latent trajectories `T_1, T_2, …, T_N` consistent
-with that answer under the existing forward model.
+Given an **observed `(prompt, answer)` pair**, `ReverseQRFEngine.collapse`
+(`axiom_qrf_reverse.py:114-198`) produces a signed superposition of
+trajectory hypotheses consistent with that answer under the existing
+forward model.
 
-Algorithm sketch:
+The actual algorithm shipped on this branch:
 
+```python
+def collapse(self, prompt: str, observed_answer: str) -> ReverseQRFResult:
+    # 1. Forward QRF gives the weighted branch superposition for the prompt.
+    forward = self._forward.forecast(prompt)
+
+    # 2. Encode the observed answer (trace-only — no multiplex needed).
+    observed_intents = self._encode_trace(observed_answer)["intent_vector"]
+
+    # 3. Score each forward branch against the observation.
+    for branch in forward.branches:
+        branch_trace = self._encode_trace(branch["response"])
+        intent_alignment = jaccard(observed_intents,
+                                   branch_trace["intent_vector"])
+        quality          = branch["metrics"]["overall"]
+        compatibility    = intent_alignment * quality
+        constitutional   = checker.compute_distance(
+                              branch_trace["confidence"],
+                              rival_present=True, fields_clean=True)
+        score            = branch["probability_weight"] * compatibility
+
+        # 4. Accept if score clears tau AND trajectory stays on-manifold.
+        if score >= tau and constitutional >= MIN_TRAJECTORY_DISTANCE:
+            accepted.append(hypothesis(...))
+
+    return ReverseQRFResult(hypotheses=sorted(accepted, by=score, desc),
+                            hmac_signature=...)
 ```
-def reverse_collapse(prompt, observed_answer, domain) -> List[Trajectory]:
-    forward = QRFEngine(domain).run(prompt)
-    candidates = []
-    for branch in forward.weighted_branches:
-        # Replay LatentEngine with this branch forced as the mid_chain pick.
-        T = latent_engine.run(prompt, forced_mid_chain=branch)
-        # Score the trajectory against the observed answer.
-        compatibility = manifold_distance(T.final_state, observed_answer)
-        score = branch.forward_weight * compatibility
-        if score >= TAU:  # default TAU = 0.10 — matches L1_WARNING
-            candidates.append(SignedTrajectory(T, score))
-    return candidates
-```
 
-Each accepted candidate is a `TrajectorySample × 3` (one per stage)
-carrying intent, distance, and stage — already in the
-`axiom_latent_v2.py:51-67` shape.
+Two design choices in the shipped version that differ from the original
+proposal:
+
+- **Intent Jaccard instead of forced replay.** The original sketch
+  re-ran `LatentEngine.run(prompt, forced_mid_chain=branch)` to
+  generate each candidate trajectory. The shipped version instead
+  re-encodes each branch's response text via the trace-only phase and
+  scores by Jaccard similarity on intent label sets. Same conceptual
+  purpose (does this branch's reasoning align with the observed
+  answer?), but doesn't require modifying `LatentEngine` to accept a
+  forced branch parameter.
+- **Two-gate acceptance.** A trajectory must clear both `tau`
+  (compatibility threshold, default 0.10) AND
+  `MIN_TRAJECTORY_DISTANCE` (constitutional gate, 0.05). The second
+  gate keeps synthetic trajectories from drifting off the
+  CANNOT_MUTATE manifold even if the first gate passes.
+
+Each accepted hypothesis carries `(forward_weight, intent_alignment,
+branch_quality, compatibility, constitutional_distance, score)` — the
+multi-dimensional training signal §4 described, signed under
+`derive_key(b"axiom-qrf-reverse-v1")`.
 
 ### 5.3 Why it's called "reverse collapse"
 
@@ -281,22 +316,26 @@ from a naive epoching pass — each trajectory carries different
 intent geometry, different stage scaling, different rival branches —
 without leaving the constitutional manifold.
 
-### 5.5 What would be needed to build it
+### 5.5 What was built
 
-Out of scope for this note. A future slice would need:
+Shipped on this branch in commit `a9b2fa7`:
 
-- `axiom_qrf_reverse.py` — `ReverseQRFEngine.collapse(prompt, answer, domain)`
-- `axiom_files/core/axiom_qrf_reverse.axiom` — TRUST_LEVEL 3,
-  HUMAN_REVIEW on `tau_threshold_change` and `branch_pool_change`
-- HMAC signing under a fresh key:
-  `derive_key(b"axiom-qrf-reverse-v1")` (the four-layer pattern used
-  elsewhere in the stack)
-- Tests pinning the round-trip invariant: forward-collapse of any
-  reverse-generated trajectory must reproduce the original `(prompt, answer)`
-  with probability ≥ τ
-- A demo: `examples/reverse_qrf_demo.py`
+| Artifact | Purpose |
+|---|---|
+| `axiom_qrf_reverse.py` | `ReverseQRFEngine`, `ReverseQRFResult`, `TrajectoryHypothesis`. TRUST_LEVEL 3, frozen module, HMAC-signed under `derive_key(b"axiom-qrf-reverse-v1")`. |
+| `axiom_files/core/axiom_qrf_reverse.axiom` | TRUST_LEVEL 3 constitutional spec with HUMAN_REVIEW gates on `tau_threshold_change` and `branch_pool_change`. |
+| `tests/test_axiom_qrf_reverse.py` | 9 tests (3 BLOCKED + 3 PASSED + 3 INVARIANTS) — all pass. Covers domain rejection, tau range validation, TRUST_LEVEL/ISOLATION immutability, score sorting, tau filtering, branch conservation, and HMAC integrity. |
+| `examples/reverse_qrf_demo.py` | End-to-end demo across financial / medical / security domains, exercising all three regimes (full acceptance, partial constitutional filtering, full rejection). |
 
-The writeup in this section is the spec that module would be built from.
+CLI: `python3 -m axiom_qrf_reverse "<prompt>" "<observed_answer>"
+--domain medical --tau 0.10`.
+
+Run the demo:
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c 'import secrets;print(secrets.token_hex(32))')
+python3 examples/reverse_qrf_demo.py
+```
 
 ---
 
@@ -308,7 +347,7 @@ Three independent mechanisms, conservatively credited:
 |--------------------------------------|----------------------------------------------|
 | ANF sparse activation (§2)           | ~5× more parameters per compute budget       |
 | Latent 3D-trajectory tokens (§4)     | ~3× signal density per training sample       |
-| Reverse-QRF collapse (§5, proposed)  | ~3-5× training samples per observation       |
+| Reverse-QRF collapse (§5, shipped)   | ~3-5× training samples per observation       |
 
 The 2-3× headline parameter-scaling claim sits comfortably inside the
 sparse-compute multiplier alone (§2). Sections 4 and 5 are treated as
@@ -316,7 +355,9 @@ sparse-compute multiplier alone (§2). Sections 4 and 5 are treated as
 
 - §4 requires changing the training input format (trajectories instead
   of tokens), which is a non-trivial pipeline change.
-- §5 is an unbuilt proposal.
+- §5 is shipped as a module but has not yet been used to generate a
+  training corpus at scale — the multiplier is on paper until that
+  corpus exists.
 
 ---
 
@@ -326,8 +367,10 @@ sparse-compute multiplier alone (§2). Sections 4 and 5 are treated as
   architecture*. The headroom comes from architecture changes — sparse
   cores, modular delegates, structured trajectory inputs — not a better
   training recipe applied to a vanilla transformer.
-- Reverse-QRF is a design proposal. Section 5 is careful to say "would
-  require" rather than "does."
+- Reverse-QRF is shipped as a module but has not been validated at
+  corpus scale. The ~3-5× synthetic-data multiplier in §5.4 is the
+  designed gain per observation; the realized gain on a large run is
+  unmeasured.
 - Synthetic-data augmentation from RedAgent/BlueAgent (`axiom_red_agent.py`,
   `axiom_blue_agent.py`) is not credited in the headline number. Its real
   contribution depends on how much novel signal the synthetic data carries,
