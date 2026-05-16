@@ -38,6 +38,14 @@ product is its own SKU.
   safety tests, and signed metadata into a portable `.axm` pack.
   *Potentially foundational — the other Axiom products can consume
   Skill Packs as their config artifact.*
+- **Axiom Nightly Review** — service-style recurring report that
+  mines the previous day's signed audit trail and produces a ranked
+  list of risky prompts, near misses, bias patterns, leakage risks,
+  and suggested new rules
+- **Axiom Shield Lite** — behavioral early-warning layer for
+  suspicious AI / script / ransomware-like process activity. Local
+  monitor + dashboard + tabletop ransomware simulation service.
+  *Not* trying to replace antivirus.
 
 What unifies them: every product uses the same AXIOM backend
 (constitutional engine, HMAC-signed manifests, latent reasoning,
@@ -63,6 +71,8 @@ positioning differs:
 | [Axiom CallGuard](#axiom-callguard) | standalone | partial-implementation | 3-4 weeks of build *(intent patterns + signing exist; audio intake + per-industry rule engines need build)* |
 | [Axiom Data Gate](#axiom-data-gate) | standalone | near-shippable | 2 weeks of build *(HIPAA redaction + memory block registry already shipped; need other taxonomies + policy engine)* |
 | [Axiom Skill Pack Builder](#axiom-skill-pack-builder) | standalone *(foundational — see notes)* | near-shippable | 2-3 weeks of build *(AXMContainer + pack/inspect/verify/route shipped; need CLI polish, registry, marketplace)* |
+| [Axiom Nightly Review](#axiom-nightly-review) | standalone | near-shippable | 1-2 weeks of build *(ConstitutionalRetrospect + ImprovementRecord shipped; need report templates, scheduling, delivery)* |
+| [Axiom Shield Lite](#axiom-shield-lite) | standalone | near-shippable | 1-2 weeks for monitor product; 4-6 weeks for tabletop-simulation service *(ProcessManifold + file_access_rate + sovereign thresholds shipped)* |
 
 Update this table whenever status changes.
 
@@ -1640,6 +1650,491 @@ post-MVP.
   format features** — neither competitor has these natively, and
   enterprise customers will care about them once one regulator
   starts asking.
+
+---
+
+## Axiom Nightly Review
+
+**Tagline:** Every morning, a signed report on what your AI did
+yesterday, what almost went wrong, and what rules should change.
+
+**Status:** near-shippable
+(`ConstitutionalRetrospect` + signed audit-trail framework already
+ship; gaps are report templates, scheduling, and delivery)
+
+**Last updated:** 2026-05-16
+
+### What the customer submits
+
+Either:
+
+- **They already have Flight Recorder** — Nightly Review automatically
+  ingests the previous day's signed manifest log from their Flight
+  Recorder tenant. Zero additional integration.
+- **They don't have Flight Recorder** — upload signed manifests via
+  `POST /nightly_review/ingest`, or point at any of the other Axiom
+  products' audit logs (Intent Firewall, CallGuard, Data Gate, MCP,
+  Certify). All seven sibling products produce HMAC-signed manifests
+  that `ConstitutionalRetrospect` can consume.
+
+Customer configures **scope** (what to review: today, last 7 days,
+last month), **delivery target** (email PDF, Slack summary, S3 bucket,
+SIEM webhook, JIRA ticket), and **rule-recommendation aggressiveness**
+(conservative: only flag patterns observed ≥10 times; aggressive: flag
+anything unusual).
+
+### What the customer receives
+
+A daily/weekly signed report covering:
+
+- **Top risky prompts** — ranked by `constitutional_distance` proximity
+  to the L1/L2/L3/L4 thresholds, deduplicated by intent class
+- **Blocked attempts** — every HARM/DECEIVE refusal with the offending
+  prompt (redacted per the customer's PII policy) and the rule that
+  triggered the block
+- **Near misses** — prompts that *passed* but cleared the L1 warning
+  threshold by less than `0.02`; these are the precursors to future
+  blocks and the most-actionable category
+- **Bias patterns** — disparate-impact signals across the protected
+  categories declared in the customer's policy (e.g. "refusal rate
+  for prompts containing demographic-X is 3.2× baseline")
+- **Data leakage risks** — Data Gate verdicts that allowed but
+  redacted, plus any allow-without-redact where the classifier
+  flagged ambiguity. These are the "should we have blocked this?"
+  candidates.
+- **Suggested new rules** — the meat of the report. The retrospect
+  engine identifies repeating patterns of near-misses and proposes
+  new constraints (in `.axiom` syntax) that would have caught them.
+  Suggestions include the proposed rule, the prompts it would have
+  affected, and the false-positive risk if adopted.
+- **Updated governance pack recommendations** — if the customer uses
+  Skill Packs, recommends version bumps or new dependencies (e.g.
+  "switch from `axiom/financial-base@1.2` to `1.3` to pick up the
+  TILA-disclosure rule that would have caught 4 near-misses
+  yesterday")
+- **Trend lines** — week-over-week: risk score, block rate, near-miss
+  rate, top intent classes
+- **Signed manifest** — the entire report HMAC-signed; tamper-evident
+  for downstream regulator submission
+
+### Backend modules used
+
+| Deliverable | Module / endpoint | Status |
+|---|---|---|
+| Retrospect engine | `axiom_retrospect.py` `ConstitutionalRetrospect` class | shipped |
+| Review candidate selection | `ReviewCandidate` dataclass + manifest replay loop | shipped |
+| Replay-against-current-policy | `ReplayResult` dataclass (re-runs manifest under current rules) | shipped |
+| Improvement record output | `ImprovementRecord` dataclass | shipped |
+| Manifest entry ingestion | `ManifestEntry` dataclass + parser | shipped |
+| Signed retrospect output | `_sign(data)` (HMAC-SHA256 over canonical JSON) | shipped |
+| Review categorization | `ReviewCategory` enum | shipped |
+| Audit-trail source | Flight Recorder (`axiom_os_shield_log.jsonl` + `/guard/manifests`) | shipped |
+| Manifest retrieval | `GET /guard/manifest/{id}` (`examples/axiom_guard_api.py`) | shipped |
+| HMAC signing chain | `axiom_signing.derive_key` | shipped |
+
+### Gaps to ship
+
+1. **Report templates** — PDF + email + Slack summary versions. PDF
+   shares the gap with Certify / Flight Recorder / CallGuard /
+   Data Gate (single PDF generator, multiple templates).
+2. **Scheduling** — cron-driven trigger that runs the retrospect at
+   the customer's configured time (default: 02:00 in tenant tz) and
+   delivers to their endpoint of choice. Use a managed scheduler
+   (AWS EventBridge or similar) rather than running our own cron.
+3. **Bias pattern detection** — `axiom_acb` (Adversarial Constitutional
+   Benchmark) has the substrate for disparate-impact scoring, but the
+   retrospect engine doesn't currently call it on the previous day's
+   manifest set. Wire `ConstitutionalRetrospect` → `axiom_acb`
+   batch evaluation. ~150 LOC.
+4. **Rule-suggestion engine** — today `ConstitutionalRetrospect`
+   identifies review candidates but doesn't propose new `.axiom`
+   rules. Build a pattern miner that takes near-miss clusters and
+   outputs a draft `CONSTRAINT` line or `_HARM_PATTERN` regex. This
+   is the most novel piece of the product and worth getting right —
+   suggested rules need to be *legible* and *minimal* (no
+   over-fitting to a single prompt).
+5. **Skill Pack version recommendations** — when Skill Pack Builder
+   ships, this engine should also recommend pack version bumps. Wire
+   to the registry API: "this near-miss would have been caught by
+   `axiom/financial-base@1.3` — recommend upgrade."
+6. **Multi-tenant delivery** — each customer's reports go to their
+   declared destination (S3, email, Slack, JIRA, SIEM webhook).
+   Standard fan-out pattern, but needs build.
+7. **Self-improvement loop guardrails** — the spec says "self-
+   improvement without human annotation" but **rule changes must
+   never auto-apply** in this product. The report SUGGESTS;
+   the human REVIEWS; the human APPLIES. Hard requirement; otherwise
+   we're shipping autonomous policy mutation which is a different
+   product with a much higher trust bar.
+
+Estimated effort: **1-2 weeks of focused build.** Items 4 and 7 are
+the load-bearing ones; the rest is plumbing.
+
+### Target customer + pricing
+
+- **Who buys this:** Risk officer / compliance head / VP of AI
+  engineering at any company already running an Axiom product (so
+  there's an audit trail to mine). Also: cross-sells well as a
+  *service tier* — instead of paying for a SaaS product, the
+  customer pays for the report.
+- **What pain it solves:** "We have a Flight Recorder log of 50,000
+  decisions per day — what should I do with it?" Nightly Review
+  turns the log into actionable intelligence without requiring the
+  customer to hire a dedicated AI safety analyst.
+- **Pricing model** (recurring service, not SaaS-by-volume):
+  - **Standard** — $499/mo flat, daily PDF + Slack summary, 30-day
+    retention, conservative rule-suggestion mode
+  - **Pro** — $1,499/mo, daily + weekly + monthly reports, 1-year
+    retention, aggressive rule-suggestion mode, dedicated analyst
+    review of the weekly report
+  - **Enterprise** — $5K-15K/mo, all of Pro plus: custom report
+    templates, regulator-format export, on-call Axiom analyst, SLA
+    on rule-suggestion accuracy, custom integration into customer
+    SIEM / GRC platform
+  - **One-time deliverable** — $5K-25K for a single
+    "retrospective audit" of an existing customer audit log (good
+    sales-development motion: prospects pay for one report, see the
+    value, then convert to recurring)
+- **Ballpark comparables:**
+  - **Vanta / Drata** ($30K-100K/yr) — compliance automation, not
+    AI-specific
+  - **Datadog Compliance Monitoring** (bundled with Datadog
+    enterprise, $15-25/host/mo) — closer in shape but cloud-infra
+    focused
+  - **AuditBoard** ($30K-200K/yr) — GRC platform, not AI-specific
+  - Differentiator: this is the only product on the market that
+    mines an AI agent's *constitutional* decision log specifically.
+    The output (suggested `.axiom` rules) is unique to the AXIOM
+    ecosystem.
+
+### Cross-references
+
+- **Pairs with EVERY other product:** Nightly Review consumes
+  manifests from any of the seven sibling products. The pitch is
+  natural — "you're already producing signed audit logs; we mine
+  them and tell you what's actually happening."
+- **Flight Recorder is the most natural pairing:** Flight Recorder
+  collects, Nightly Review reports. Could be bundled at the
+  Enterprise tier ("Flight Recorder Pro + Nightly Review Standard
+  = $X/mo bundle").
+- **Skill Pack Builder is the second-most-natural pairing:** the
+  rule-suggestion engine outputs new Skill Pack versions, which
+  the customer can adopt.
+- **Certify cross-sell:** customers who run Nightly Review for 90
+  days have already produced the audit trail Certify needs.
+  Conversion path is natural.
+- ORVL alignment: ORVL-011 (Constitutional Retrospect) is the
+  spine.
+- Related .axiom specs: `axiom_files/core/axiom_retrospect.axiom`
+- Related modules: `axiom_retrospect.py`, `axiom_signing.py`,
+  `axiom_acb` (for bias scoring), every other Axiom product (as
+  data source)
+
+### Notes / open questions
+
+- **The "service vs software" pricing is intentional.** Most B2B
+  SaaS products price by volume; Nightly Review prices by report
+  cadence + analyst touch. This is more like an audit firm's pricing
+  than a software company's. The reason: the differentiating value
+  is the *judgment* in the rule-suggestion engine, not the volume of
+  data processed.
+- **Open question — autonomy boundary:** the README phrase
+  "self-improvement without human annotation" is true (the engine
+  needs no human labels to identify near-misses), but it should
+  NEVER auto-apply rule changes. The product surface is
+  recommend-only. If a customer asks for auto-apply at the
+  Enterprise tier, that's a separate product with a much higher
+  trust bar — and probably a different liability model.
+- **Open question — false-positive control on rule suggestions:**
+  the rule-suggestion engine has to be honest about over-fitting.
+  Each suggested rule should ship with a "would-have-affected" list
+  showing every prompt it would have touched if applied to
+  yesterday's traffic — so the customer can spot rules that catch
+  one true positive and 50 false positives.
+- **Open question — delivery format for regulator submission:** PDF
+  is universal, but some regulators prefer specific shapes (HHS OCR
+  uses CSV templates; CFPB uses their portal). The Enterprise tier
+  needs custom delivery formats; standard tier ships PDF + JSON.
+- **Open question — how much to summarize:** customers will hit
+  fatigue if the report is 200 pages of every near-miss. Need an
+  executive-summary layer (top 5 risks, top 3 suggested rules) plus
+  a deep-dive link for analysts who want the full data. Same
+  pattern as security operations dashboards.
+
+---
+
+## Axiom Shield Lite
+
+**Tagline:** A behavioral early-warning layer for suspicious AI,
+script, and ransomware-like activity. Not trying to replace
+antivirus. Just trying to spot the things antivirus misses because
+they look like normal binaries doing unusual amounts.
+
+**Status:** near-shippable
+(`ConstitutionalOSShield` + `ProcessManifold` + `file_access_rate`
+detection + sovereign escalation thresholds already ship; gaps are
+local dashboard, tabletop-simulation service, and the
+opinionated "Lite" packaging)
+
+**Last updated:** 2026-05-16
+
+### Important positioning note
+
+Replacing antivirus is a $20B+ market with deep incumbents
+(CrowdStrike, SentinelOne, Microsoft Defender for Endpoint). That is
+not the product. **Axiom Shield Lite is explicitly a complementary
+layer**: it watches *behavior* (file enumeration rate, child-process
+spawn patterns, network burst signatures, constitutional distance
+trajectory) rather than *signatures*. The pitch is:
+
+> "Your AV catches known-bad binaries. We catch a normal binary
+> doing 200 file reads per second."
+
+This positioning has three benefits: (1) it doesn't trigger
+incumbent competitive response, (2) it gives the customer a reason
+to keep their AV contract, (3) it sells into the "what about
+zero-days?" anxiety that AV vendors don't own.
+
+### What the customer does
+
+Two distinct product shapes share this entry:
+
+#### Shape A — Local monitor (developer / SMB)
+
+The customer installs Shield Lite on their laptop or a small fleet.
+The monitor runs as a system service, polls `psutil` at the
+`POLL_INTERVAL_MS` cadence, and tracks every running process's
+constitutional distance trajectory (rooted in `ProcessManifold`).
+
+#### Shape B — Tabletop simulation service (enterprise)
+
+We deploy Shield Lite into the customer's test environment,
+run a scripted ransomware simulation (no real encryption — synthetic
+file-touch storms, fake exfiltration patterns, ancestry-manipulation
+sequences) plus benign-baseline workloads, and deliver a written
+report on:
+
+- Which simulation steps triggered L1/L2/L3/L4 escalation
+- Time-to-detection at each level
+- False-positive rate against benign workloads
+- Recommended threshold tuning for the customer's actual environment
+- Comparison against what the customer's existing AV would have
+  detected (gap analysis, not displacement)
+
+### What the customer receives
+
+#### Shape A deliverables
+
+- **Local dashboard at `localhost:8003/shield`** — process tree with
+  constitutional distance for each, color-coded by level (NORMAL /
+  WATCH / L1_FLAG / L2_THROTTLE / L3_SUSPEND / L4_KILL)
+- **Suspicious process log** — append-only JSONL of every escalation
+  with signed manifest (HMAC-SHA256). Already shipping at
+  `axiom_os_shield_log.jsonl`.
+- **File enumeration spike detection** — alerts when
+  `file_access_rate` exceeds the learned baseline by a configurable
+  multiplier (default: 5×). Already wired in `ProcessSnapshot`.
+- **Signed incident report** — when an L2+ event fires, an auto-
+  generated incident packet: timeline, ancestry, what changed, what
+  was blocked, what would have happened next if not blocked. PDF +
+  JSON.
+- **"What happened?" timeline** — replay view that shows
+  second-by-second what the suspect process was doing before, during,
+  and after escalation. Built on the conversation-graph primitive
+  (`/ccg/seed`).
+- **Restore button** — for `L3_SUSPEND` events, the operator can
+  review and unsuspend if the trigger was a false positive
+  (`POST /shield/restore`).
+
+#### Shape B deliverables
+
+- **Engagement scoping** — 2-week pre-engagement to inventory the
+  customer's test environment and baseline their existing AV
+- **Live tabletop exercise** — half-day to full-day on-site (or
+  remote) running the ransomware-simulation script. The script
+  includes 8-12 distinct attack patterns:
+  - Synthetic mass file enumeration (mimics encryption preamble)
+  - Anomalous child-process spawn (`cmd.exe → powershell -enc → ...`)
+  - Network burst to never-seen destinations
+  - Constitutional distance regression on a known-benign binary
+  - Cross-process credential harvesting pattern
+  - Backup tampering signatures
+  - Shadow copy deletion sequence
+  - Process-injection markers
+- **Written incident report** — signed PDF covering each pattern's
+  detection result, time-to-alert, false-positive rate, threshold
+  tuning recommendations, gap analysis vs. existing AV
+- **30-day post-engagement** — review of any real incidents seen
+  during the trial, threshold-tuning support, optional conversion
+  to ongoing Shape A licenses
+
+### Backend modules used
+
+| Deliverable | Module / endpoint | Status |
+|---|---|---|
+| Process monitoring daemon | `axiom_os_shield.py` `ConstitutionalOSShield` | shipped |
+| Process snapshot data | `axiom_os_shield.py` `ProcessSnapshot` (with `file_access_rate`, `child_procs`, `network_conns` fields) | shipped |
+| Process manifold (baseline establishment) | `axiom_os_shield.py` `ProcessManifold` | shipped |
+| File enumeration rate | `ProcessSnapshot.file_access_rate` (files/sec observed) | shipped |
+| Sovereign escalation thresholds (L1/L2/L3/L4) | `axiom_os_shield.py:44` | shipped |
+| Real psutil actions (suspend / kill / restore) | `axiom_os_shield.py:268+` | shipped |
+| Daemon control endpoints | `POST /shield/start`, `POST /shield/stop`, `GET /shield/status`, `POST /shield/tick`, `POST /shield/restore` (`axiom_server.py`) | shipped |
+| Live status view | `GET /os/shield/status` (`examples/axiom_guard_api.py`) | shipped |
+| Shield console (live dashboard) | `docs/axiom_os_shield_console.html` (with zero-day notification panel from commit `2a95540`) | shipped |
+| Signed incident log | `axiom_os_shield_log.jsonl` (append-only, HMAC-signed) | shipped |
+| Constitutional distance computation | `axiom_latent_v2.py ManifoldChecker` | shipped |
+| FixPlaybook for known-ransomware patterns | `axiom_fix_playbook.py` (referenced in shield demo scenarios) | shipped |
+
+### Gaps to ship
+
+1. **Cross-platform install path (Shape A)** — today the monitor
+   runs from a checked-out repo. Needs:
+   - `pipx install axiom-shield-lite` (Linux/macOS)
+   - `.msi` installer for Windows
+   - System-service registration (launchd / systemd / Windows
+     Service)
+   - Auto-update mechanism
+2. **Local-dashboard packaging** — the shield console exists but
+   assumes the operator manually edits the endpoint field. For
+   product Shape A, the installer should drop a desktop shortcut
+   that opens the dashboard pre-pointed at `localhost:8003/shield`.
+3. **Incident-report PDF generator** — shared gap with all other
+   products (single PDF generator, multiple templates).
+4. **Tabletop simulation harness (Shape B)** — write the 8-12
+   ransomware-pattern simulation scripts as deterministic,
+   reproducible workloads with no actual destructive effects.
+   Approximate effort: 1 week for the scripts + 1 week for the
+   automated report generator. **This is the largest single piece
+   of work in this product.**
+5. **AV gap-analysis tooling (Shape B)** — automated comparison
+   harness that runs each simulated pattern, observes what the
+   customer's existing AV detected, and produces the comparison
+   matrix. Requires API integrations with CrowdStrike Falcon,
+   SentinelOne, Microsoft Defender XDR, Carbon Black. v1 supports
+   the top 2; others added by request.
+6. **Threshold-tuning UI** — today thresholds are constants in
+   `axiom_os_shield.py:44`. Operators need a UI to view their
+   current thresholds, see the false-positive rate at each, and
+   tune.
+7. **Multi-machine fleet view (Shape A Pro)** — SMB customers will
+   run Shield Lite on 5-50 machines. Need a central aggregator
+   that pulls each machine's status into one dashboard.
+8. **Constitutional baseline learning** — the LEARNING_SECONDS=60
+   default is too short for production environments. Need an
+   adaptive learning mode that runs for 1-7 days before enabling
+   enforcement, with confidence intervals on each process's
+   baseline.
+
+Estimated effort:
+- Shape A (monitor product): **1-2 weeks**
+- Shape B (tabletop service): **4-6 weeks** (mostly the simulation
+  harness and the AV-comparison tooling)
+
+### Target customer + pricing
+
+#### Shape A — Local monitor
+
+- **Who buys this:**
+  - Solo developers / power users worried about supply-chain
+    attacks on their dev machine
+  - SMB IT admins running 5-50 machines who can't afford
+    CrowdStrike but want better-than-Defender behavioral coverage
+  - Security-conscious creators / consultants handling client data
+- **Pricing model:**
+  - **Free** — single-machine local install, basic dashboard,
+    7-day log retention, no fleet view
+  - **Pro $9/mo per machine** — fleet view, 90-day log retention,
+    Slack/email alerts, custom thresholds, priority support
+  - **Team $49/mo per team (up to 10 machines)** — shared fleet
+    view, role-based access, audit log of all responses,
+    integration with Slack / PagerDuty / generic webhook
+
+#### Shape B — Tabletop simulation service
+
+- **Who buys this:**
+  - CISO / VP Security at mid-market companies (200-2,000
+    employees) doing tabletop exercises for cyber-insurance audits
+  - Cyber-insurance providers themselves, who want to commission
+    tabletop reports for high-risk clients
+  - Federal contractors meeting FedRAMP / CMMC / FISMA tabletop
+    exercise requirements
+- **Pricing model:**
+  - **Standard Tabletop** $15K-30K — half-day exercise, 8-pattern
+    simulation, written report within 2 weeks
+  - **Comprehensive Tabletop** $40K-75K — full-day on-site,
+    12-pattern simulation, AV gap-analysis matrix, threshold-
+    tuning recommendations, 30-day post-engagement support
+  - **Annual Engagement** $100K-250K/yr — quarterly tabletops,
+    ongoing threshold tuning, on-call analyst for real incidents,
+    optional conversion to managed Shape A deployment
+- **Ballpark comparables:**
+  - **CrowdStrike tabletop services** — $25K-100K per exercise
+  - **Mandiant red-team** — $50K-500K per engagement
+  - **CISA tabletop exercises** — free but constrained scope
+  - The differentiator: AXIOM tabletops are signed, reproducible,
+    and produce an `.axiom` Skill Pack of new detection rules at
+    the end. No competitor outputs a portable artifact like that.
+
+### Cross-references
+
+- **Pairs with Skill Pack Builder:** every tabletop output is a new
+  Skill Pack of detection rules (`axiom/shield-ransomware-2026q2`
+  style). Customer keeps the pack, can adopt it, or share it.
+- **Pairs with Flight Recorder:** Shield Lite events stream into
+  Flight Recorder as process-level decision events; one customer
+  contract covers both.
+- **Pairs with Nightly Review:** the previous day's shield events
+  feed into the nightly retrospective, producing weekly
+  threshold-tuning recommendations.
+- **No overlap with the other six products** — Shield Lite is the
+  only one operating at the process / OS layer instead of the
+  LLM-call / API layer.
+- ORVL alignment: ORVL-013 (Sovereign OS Shield) is the spine.
+- Related .axiom specs: `axiom_files/core/axiom_os_shield.axiom`
+- Related modules: `axiom_os_shield.py`, `axiom_latent_v2.py`
+  (ManifoldChecker for distance), `axiom_fix_playbook.py` (known-
+  pattern matching)
+- Related consoles: `docs/axiom_os_shield_console.html` (already
+  ships with the zero-day notification panel from commit `2a95540`)
+- Related tests: there are already shield scenario simulations
+  embedded in `docs/axiom_os_shield_console.html` (ransomware,
+  insider exfiltration) — usable as the seed for the tabletop
+  simulation harness
+
+### Notes / open questions
+
+- **Two-shape product is intentional and supports a sales motion.**
+  Shape B (tabletop service) is the higher-ticket but easier-to-sell
+  enterprise entry point. After a tabletop, the customer has seen
+  the product in action and is qualified to buy Shape A licenses
+  for their production fleet. Don't sell Shape A to enterprises
+  cold; sell the tabletop first.
+- **Open question — Windows priority:** Shape A needs Windows
+  support to address most of the SMB market, but `psutil`-based
+  detection is most mature on Linux. Recommend Linux + macOS at
+  Free / Pro launch, Windows for Team tier in v1.5.
+- **Open question — false-positive cost:** ransomware tabletops
+  produce a lot of false positives at first (every cron job that
+  enumerates files looks suspicious). The threshold-tuning workflow
+  needs to be **fast** (the customer can dismiss-and-tune within 30
+  seconds), otherwise the product produces alert fatigue and gets
+  uninstalled.
+- **Open question — does Shape B require ITAR/CMMC compliance for
+  federal customers?** Federal contractors are the largest tabletop-
+  buying segment. If Shape B is sold to them, our consultants need
+  ITAR-compliant equipment and clearances. Either invest in this
+  certification path or restrict federal sales to a partner.
+- **Open question — incident-response cross-sell:** customers who
+  experience a real incident during a Shape A deployment will want
+  IR consulting. We don't currently offer IR. Either build that
+  capability (much bigger lift) or partner with an existing IR firm
+  (Mandiant, Coveware, etc.) and refer.
+- **Open question — public marketing of the constitutional-
+  distance framing:** "constitutional distance for processes" is
+  novel positioning, but it requires explanation. The marketing
+  language should probably stay closer to "behavioral early-
+  warning" and leave the constitutional framing for the technical
+  documentation. Sell what the customer understands.
 
 ---
 
