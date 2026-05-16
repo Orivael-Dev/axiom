@@ -21,6 +21,9 @@ product is its own SKU.
 
 - **Axiom Flight Recorder** — continuous runtime observability and
   compliance logging for AI decisions
+- **Axiom Intent Firewall** — developer-facing API that blocks/flags
+  prompt injection, harmful instructions, PII leakage, and deceptive
+  outputs in-flight on any LLM call
 
 What unifies them: every product uses the same AXIOM backend
 (constitutional engine, HMAC-signed manifests, latent reasoning,
@@ -41,6 +44,7 @@ positioning differs:
 |---|---|---|---|
 | [Axiom Certify · Agent Audit](#axiom-certify--agent-audit) | Certify | partial-implementation | 1-2 weeks of build |
 | [Axiom Flight Recorder](#axiom-flight-recorder) | standalone | partial-implementation | 2-3 weeks of build |
+| [Axiom Intent Firewall](#axiom-intent-firewall) | standalone | near-shippable | 1 week of build *(smallest gap of all three)* |
 
 Update this table whenever status changes.
 
@@ -349,6 +353,191 @@ Estimated effort: 2-3 weeks of focused build. Multi-tenant isolation
   taxonomy (L1-L4), and don't have the replay-against-current
   capability. Positioning is "the only one regulators will accept"
   rather than "another AI observability tool."
+
+---
+
+## Axiom Intent Firewall
+
+**Tagline:** Stripe for AI safety. One API call sits between any user
+and any LLM and blocks the categories regulators care about.
+
+**Status:** near-shippable
+(backend is `axiom_guard_api.py` essentially as-is; the gap is the
+developer-facing layer — auth, SDK, billing, dashboard)
+
+**Last updated:** 2026-05-16
+
+### What the customer submits
+
+Each API call carries the prompt + the customer's policy preferences;
+no upfront artifact submission. Two main shapes:
+
+- **Filter-only mode** — single endpoint takes `{prompt, mode:
+  "input" | "output", policy?}` and returns
+  `{verdict: allow | block | flag, intent_class, reasons[],
+  signature}`. Customer integrates as a pre-flight check before
+  their existing LLM call (and optionally a post-flight check on
+  the response).
+- **Full-proxy mode** — single endpoint takes
+  `{messages[], model, policy?}` and proxies to the LLM (or the
+  customer's own provider), running input + output filters in one
+  round-trip. OpenAI-compatible request/response shape so existing
+  code drops in without changes.
+
+### What the customer receives
+
+Per-call response:
+
+- **Verdict** — one of `allow`, `block`, `flag` (with severity)
+- **Intent class** — one of the nine Constitutional Intent Typing
+  classes (INFORM / CLARIFY / REQUEST / EXPLORE / REFUSE /
+  UNCERTAIN / MANIPULATE / DECEIVE / HARM) — HARM and DECEIVE are
+  hard-blocks
+- **Reason codes** — machine-readable enum of what triggered the
+  verdict (e.g. `pii_email`, `prompt_injection_template`,
+  `policy_bypass_jailbreak`, `pii_ssn`, `harm_self`,
+  `deception_impersonation`)
+- **Redacted prompt/response** (if in redact mode) — PII fields
+  replaced with `<REDACTED:TYPE>` markers
+- **HMAC-SHA256 signature** — every verdict is cryptographically
+  signed so the customer (and downstream auditors) can prove the
+  verdict wasn't tampered with after the fact
+- **Manifest ID** — pointer to the full signed manifest retrievable
+  by `GET /guard/manifest/{id}` if the customer needs the audit
+  detail
+
+What the customer's product receives (developer dashboard):
+
+- **Live call volume + verdict breakdown** — calls/sec, allow/block/
+  flag mix, top reason codes
+- **Per-policy diff view** — show what a config change to the policy
+  would have done over the last N calls (so changes ship safely)
+- **Reason-code trend lines** — surfaces new attack patterns
+- **Replay** — fetch any blocked call by manifest ID and re-run with
+  a different policy, for tuning
+- **API key management** — issue, rotate, revoke
+- **Usage / billing** — current-period count, plan limit, overage rate
+
+### Backend modules used
+
+| Deliverable | Module / endpoint | Status |
+|---|---|---|
+| Input filter | `POST /guard/input` (`examples/axiom_guard_api.py`) | shipped |
+| Output filter | `POST /guard/output` | shipped |
+| Combined check | `POST /guard/check` | shipped |
+| Full LLM proxy | `POST /guard/proxy` | shipped |
+| OpenAI-compatible drop-in | `POST /v1/chat/completions` | shipped |
+| Intent classification | `axiom_intent_classifier.py` (9-class typing: INFORM/CLARIFY/REQUEST/EXPLORE/REFUSE/UNCERTAIN/MANIPULATE/DECEIVE/HARM) | shipped |
+| PII redaction | `POST /guard/redact`, `GET /guard/redact/patterns`, `axiom_redact.py` | shipped |
+| Signed verdicts | `axiom_signing.derive_key` + HMAC-SHA256 on every response | shipped |
+| Manifest store + retrieval | `GET /guard/manifest/{id}`, `GET /guard/manifests` | shipped |
+| Policy configuration | `POST /guard/configure`, `GET /guard/agents` | shipped |
+| Per-agent .axiom policy specs | `axiom_files/core/*.axiom` (constitutional rules per agent) | shipped |
+
+### Gaps to ship
+
+This product has the **smallest gap of the three** in the catalog —
+the backend is the existing `axiom_guard_api.py` essentially unchanged.
+What's missing is purely the developer-facing wrapper:
+
+1. **API key auth + rate limiting** — today the guard_api is open. Add
+   `X-Axiom-Key` header, per-key quotas, per-key rate limits. FastAPI
+   middleware + a SQLite or Postgres key store.
+2. **Stripe billing meter** — record per-key usage; bill at the four
+   proposed tiers; cut off (or auto-upgrade) past the threshold.
+3. **Developer dashboard** — sign-up, key management, usage, plan,
+   policy editor, replay button. The closest existing UI is
+   `docs/axiom_dashboard.html` — needs a tenant-aware rewrite.
+4. **SDK packages** — Python (`pip install axiom-firewall`),
+   TypeScript (`npm install @axiom/firewall`), curl quickstart. The
+   API surface is small enough that all three are <300 LOC each.
+5. **Docs site** — quickstart, API reference, policy guide, prompt-
+   injection threat model, comparison vs Lakera / Pangea / Rebuff.
+6. **Multi-tenant policy isolation** — today `POST /guard/configure`
+   mutates a singleton agent state. Per-tenant policy state is
+   required before scaling past one customer.
+7. **Free-tier abuse defense** — IP-based + email-domain heuristics
+   to prevent free-tier farming (industry standard for developer
+   APIs).
+
+Estimated effort: **1 week of focused build** (the smallest of the
+three catalog entries). Items 1-5 are the launch-blockers; 6-7 are
+soft-launch items.
+
+### Target customer + pricing
+
+- **Who buys this:** Solo developers, indie SaaS founders, AI
+  engineering teams at startups — anyone embedding an LLM into a
+  product who needs prompt-injection / PII / policy-bypass defense
+  *and* doesn't want to roll it themselves
+- **What pain it solves:** Avoiding the "we shipped a chatbot and
+  the news caught it saying [terrible thing]" outcome, without
+  hiring a security team or building an in-house guardrail layer
+- **Pricing model** (customer's proposal):
+  - **Free** — `0` cost, capped at e.g. 1,000 calls/mo, single API
+    key, no policy customization (default policy only)
+  - **Indie — $49/mo** — capped at ~100K calls/mo, custom policy,
+    3 API keys
+  - **Team — $299/mo** — capped at ~1M calls/mo, unlimited keys,
+    dashboard, replay
+  - **Enterprise — custom** — dedicated tenant, SLA, custom
+    .axiom specs, support
+  - **Overage** — per-check usage pricing kicks in past threshold
+    (suggest $0.30 per 1,000 calls — undercuts Lakera/Pangea
+    competitively while staying margin-positive)
+- **Ballpark comparables:**
+  - **Lakera Guard** — ~$0.50 / 1K calls, prompt-injection focused
+  - **Pangea AI Guard** — similar pricing band, broader feature set
+  - **Rebuff** — open-source + commercial, less-developed pricing
+  - The differentiator here is constitutional intent typing
+    (9-class taxonomy vs. simple "is this a prompt injection?"),
+    HMAC-signed verdicts (others don't sign), and pairing with
+    Axiom Certify / Flight Recorder for full-stack adoption
+
+### Cross-references
+
+- **Pairs cleanly with Flight Recorder:** Intent Firewall does the
+  in-flight blocking, Flight Recorder records what was blocked.
+  Cross-sell motion is natural — "you're using Firewall, now log it
+  for compliance."
+- **Pairs cleanly with Certify:** Certify-audited agents that fail
+  the audit can be retrofitted behind Intent Firewall as a stopgap
+  while remediation happens.
+- Related .axiom specs: `axiom_files/core/axiom_intent_classifier.axiom`,
+  `axiom_files/core/axiom_redact.axiom`, every `axiom_files/core/*.axiom`
+  agent (those ARE the per-tenant policies)
+- Related modules: `axiom_guard_api.py`, `axiom_intent_classifier.py`,
+  `axiom_redact.py`, `axiom_signing.py`
+- ORVL alignment: ORVL-002 (Intent Classifier) is the spine of the
+  verdict deliverable
+- Related external prior art: OWASP LLM Top 10 (the threat model);
+  Lakera, Pangea, Rebuff (the competitive landscape)
+
+### Notes / open questions
+
+- **This is probably the first revenue product.** Smallest gap,
+  clearest competitive landscape, simplest pricing model. If the
+  goal is "ship something paying customers can use this quarter,"
+  this is the natural first build, not Certify or Flight Recorder.
+- **Free-tier farming risk:** developer APIs with generous free
+  tiers are routinely abused (one user with 50 emails). Plan
+  defense before launch: email-domain blocklist (Gmail allowed,
+  10-minute-mail blocked), IP heuristics, soft-throttle past free
+  tier rather than hard-cut.
+- **Open question — policy authoring UX:** the policy is a `.axiom`
+  spec under the hood. Free tier gets the default policy. Indie
+  and above can customize. The question is whether customization
+  is YAML-style, web-form-style, or actual `.axiom` syntax. Vote
+  here matters for the first dashboard build.
+- **Open question — model-agnostic vs. opinionated:** today the
+  guard_api proxies to Anthropic Claude. The Firewall product
+  needs to support OpenAI, Anthropic, Gemini, Mistral, and local
+  models (Ollama / vLLM) for the OpenAI-compatible drop-in. The
+  routing layer needs a clean abstraction before launch.
+- **Cannibalization with Certify:** none, because the buyers are
+  different. A compliance officer doesn't write code; a developer
+  doesn't run audits. Both can sell into the same enterprise
+  through different doors.
 
 ---
 
