@@ -169,10 +169,18 @@ class SkillPackManifest:
 
 
 def _canonical_payload(d: dict) -> bytes:
-    """Canonical JSON bytes over the manifest minus the signature field."""
+    """Canonical JSON bytes over the manifest minus the signature field.
+
+    Goes through SkillPackManifest.parse so the canonical form is the
+    NORMALIZED manifest (e.g. omitted optional fields become explicit
+    None) — signatures stay stable whether the source dict is sparse
+    or fully-populated.
+    """
     payload = {k: v for k, v in d.items() if k != "signature"}
+    normalized = SkillPackManifest.parse(payload).to_dict()
+    normalized.pop("signature", None)
     return json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode("utf-8")
 
 
