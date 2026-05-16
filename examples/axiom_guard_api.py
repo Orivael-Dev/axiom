@@ -55,7 +55,7 @@ import hmac
 import time
 import uuid
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional, Literal, Dict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Header, Request
@@ -1107,6 +1107,97 @@ async def os_shield_status():
             }
     except (OSError, json.JSONDecodeError):
         return _OFFLINE_SHIELD
+
+
+# ── ORVL-021 VulnGuard — Zero-Day Discovery ──────────────────
+# Wraps axiom_vulnguard.ConstitutionalVulnGuard. State is held in
+# process memory; restart resets the last-scan cache.
+
+_vulnguard_state: dict = {
+    "last_scan_at":    None,
+    "last_report":     None,
+    "last_candidates": [],     # serialized VulnerabilityCandidate dicts
+    "scan_count":      0,
+}
+
+_DEFAULT_VULNGUARD_SURFACES: Dict[str, Dict[str, str]] = {
+    "api_endpoint":     {"type": "network",   "description": "REST API surface"},
+    "auth_module":      {"type": "privilege", "description": "Authentication and authorization"},
+    "data_store":       {"type": "data",      "description": "Persistent state and database surface"},
+    "process_ancestry": {"type": "ancestry",  "description": "Process spawn chain integrity"},
+}
+
+
+class VulnGuardScanRequest(BaseModel):
+    surfaces: Optional[Dict[str, Dict[str, str]]] = Field(
+        default=None,
+        description="Map of surface_id -> {type, description}. Omit to scan the "
+                    "default set (api_endpoint, auth_module, data_store, "
+                    "process_ancestry).",
+    )
+
+
+def _vg_serialize(candidate) -> dict:
+    """Convert VulnerabilityCandidate dataclass to JSON-safe dict."""
+    from dataclasses import asdict
+    d = asdict(candidate)
+    # Replace enum instances with their string values.
+    d["category"] = candidate.category.value
+    d["severity"] = candidate.severity.value
+    return d
+
+
+@app.post("/vulnguard/scan")
+async def vulnguard_scan(req: VulnGuardScanRequest = VulnGuardScanRequest()):
+    """Run a fresh zero-day discovery scan across attack surfaces.
+
+    Returns a signed report plus the full vulnerability list. Updates
+    the cached scan state served by GET /vulnguard/status.
+    """
+    from axiom_vulnguard import ConstitutionalVulnGuard
+
+    description = req.surfaces or _DEFAULT_VULNGUARD_SURFACES
+    vg = ConstitutionalVulnGuard()
+    surfaces = vg.map_surfaces(description)
+
+    all_candidates = []
+    for surface in surfaces:
+        all_candidates.extend(vg.run_surface_scan(surface))
+
+    serialized = [_vg_serialize(c) for c in all_candidates]
+    report = vg.generate_report(all_candidates)
+
+    _vulnguard_state["last_scan_at"]    = report["timestamp"]
+    _vulnguard_state["last_report"]     = report
+    _vulnguard_state["last_candidates"] = serialized
+    _vulnguard_state["scan_count"]     += 1
+
+    return {
+        "report":           report,
+        "vulnerabilities":  serialized,
+        "surfaces_scanned": len(surfaces),
+        "scan_count":       _vulnguard_state["scan_count"],
+    }
+
+
+@app.get("/vulnguard/status")
+async def vulnguard_status():
+    """Return the most recent VulnGuard scan state, or empty if never scanned."""
+    if _vulnguard_state["last_scan_at"] is None:
+        return {
+            "ever_scanned":        False,
+            "last_scan_at":        None,
+            "report":              None,
+            "top_vulnerabilities": [],
+            "scan_count":          0,
+        }
+    return {
+        "ever_scanned":        True,
+        "last_scan_at":        _vulnguard_state["last_scan_at"],
+        "report":              _vulnguard_state["last_report"],
+        "top_vulnerabilities": _vulnguard_state["last_candidates"][:10],
+        "scan_count":          _vulnguard_state["scan_count"],
+    }
 
 
 # ── Entry point ───────────────────────────────────────────────
