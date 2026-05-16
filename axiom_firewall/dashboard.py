@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 from time import perf_counter
 
-from fastapi import FastAPI, Form, HTTPException, Request, status
+from fastapi import FastAPI, Form, Header, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -29,6 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from axiom_intent_classifier import IntentClassifier
 from axiom_signing import derive_key
 
+from . import billing
 from .auth import (
     TIER_PRICE_USD, TIER_RATE_LIMITS,
     authenticate, check_password, hash_password, record_call,
@@ -221,3 +222,73 @@ async def guard_check(request: Request):
             "signature": result.signature,
         },
     })
+
+
+# ─── Billing ─────────────────────────────────────────────────────────────
+
+
+@app.get("/billing", response_class=HTMLResponse)
+def billing_page(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request, "billing.html",
+        _ctx(
+            request, tenant=t,
+            billing_enabled=billing.is_enabled(),
+            has_subscription=bool(t.stripe_subscription_id),
+        ),
+    )
+
+
+@app.post("/billing/upgrade/{tier}")
+def billing_upgrade(request: Request, tier: str):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if not billing.is_enabled():
+        raise HTTPException(503, "Billing is not configured on this deployment")
+    try:
+        url = billing.create_checkout_session(t, tier)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(400, str(e))
+    return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/billing/portal")
+def billing_portal(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if not billing.is_enabled():
+        raise HTTPException(503, "Billing is not configured on this deployment")
+    try:
+        url = billing.create_portal_session(t)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/billing/success", response_class=HTMLResponse)
+def billing_success(request: Request):
+    return templates.TemplateResponse(request, "billing_success.html", _ctx(request))
+
+
+@app.get("/billing/cancel", response_class=HTMLResponse)
+def billing_cancel(request: Request):
+    return templates.TemplateResponse(request, "billing_cancel.html", _ctx(request))
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request,
+                          stripe_signature: str = Header(default="")):
+    if not billing.is_enabled():
+        raise HTTPException(503, "Billing is not configured on this deployment")
+    payload = await request.body()
+    try:
+        event = billing.verify_and_parse_webhook(payload, stripe_signature)
+    except Exception as e:
+        raise HTTPException(400, f"Webhook signature verification failed: {e}")
+    result = billing.handle_event(event)
+    return JSONResponse({"ok": True, "result": result})

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Subscription active — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="form-section">
+  <h1>You're upgraded.</h1>
+  <div class="alert success">
+    <p>
+      Your subscription is active. Your dashboard will reflect the new
+      tier within a few seconds as Stripe confirms the payment.
+    </p>
+  </div>
+  <p>
+    <a href="/dashboard" class="cta-button">Back to dashboard</a>
+  </p>
+</section>
+{% endblock %}

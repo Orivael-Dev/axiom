@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from time import perf_counter
 
-from .db import find_tenant_for_secret, insert_usage
+from .db import find_tenant_by_id, find_tenant_for_secret, insert_usage
 from .models import ApiKey, Tenant, UsageRecord
 
 PBKDF2_ITERATIONS = 200_000
@@ -79,3 +79,13 @@ def record_call(*, tenant_id: str, key_id: str, endpoint: str,
         latency_ms=round((perf_counter() - started_at) * 1000, 3),
         timestamp=datetime.utcnow(),
     ))
+    # Fire metered-billing event for paid tiers (no-op if Stripe disabled).
+    # Lazy import so the dashboard runs without the stripe library installed.
+    try:
+        from . import billing
+        tenant = find_tenant_by_id(tenant_id)
+        if tenant:
+            billing.report_meter_event(tenant)
+    except Exception:
+        # Billing should NEVER block a verdict from being recorded.
+        pass

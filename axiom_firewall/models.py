@@ -15,6 +15,8 @@ class Tenant:
     pw_hash: str
     tier: str  # "free" | "indie" | "team" | "enterprise"
     created_at: datetime
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
 
     @staticmethod
     def new(email: str, pw_hash: str, tier: str = "free") -> "Tenant":

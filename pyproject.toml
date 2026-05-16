@@ -93,3 +93,19 @@ include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files
 
 [tool.setuptools.package-data]
 "axiom_files" = ["*.axiom", "core/*.axiom", "domains/*.axiom", "research/*.axiom"]
+
+# Repo-root pytest only collects server-side tests. The Firewall SDK
+# (firewall_sdk/) and the OSS Guard SDK (sdk/) each have their own
+# `pytest` invocation because both publish an `axiom_firewall` /
+# `axiom-guard` Python module that would clash with the server
+# package names in a shared sys.modules.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+    "firewall_sdk",
+    "sdk",
+    "node_modules",
+    ".git",
+    "build",
+    "dist",
+]
