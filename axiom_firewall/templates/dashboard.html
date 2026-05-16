@@ -8,10 +8,27 @@
     {{ tenant.tier|capitalize }} tier · {{ "{:,}".format(tier_limit) }} calls / month
   </p>
 
+  <div class="quota">
+    <div class="quota-label">
+      <span>This month: {{ "{:,}".format(month_used) }} / {{ "{:,}".format(tier_limit) }}</span>
+      <span>{{ usage_pct }}%</span>
+    </div>
+    <div class="quota-bar">
+      <div class="quota-fill {% if usage_pct >= 100 %}full{% elif usage_pct >= 80 %}warn{% endif %}"
+           style="width: {{ usage_pct }}%"></div>
+    </div>
+    {% if free_tier and usage_pct >= 80 %}
+      <p class="quota-warn">
+        Approaching free-tier limit. <a href="/billing">Upgrade</a> to keep
+        serving calls without interruption.
+      </p>
+    {% endif %}
+  </div>
+
   <div class="metrics">
     <div class="metric">
       <span class="value">{{ "{:,}".format(usage.total_calls) }}</span>
-      <span class="label">total calls</span>
+      <span class="label">total calls (all time)</span>
     </div>
     <div class="metric">
       <span class="value">{{ "{:,}".format(usage.blocked) }}</span>

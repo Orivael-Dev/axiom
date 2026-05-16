@@ -12,6 +12,7 @@
     <nav>
       {% if request.session.get('tenant_id') %}
         <a href="/dashboard">Dashboard</a>
+        <a href="/dashboard/policy">Policy</a>
         <a href="/billing">Billing</a>
         <form method="post" action="/logout" class="inline">
           <button type="submit" class="link">Log out</button>

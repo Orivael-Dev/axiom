@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Policy — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+  <h1>Policy editor</h1>
+  <p class="tier-badge">
+    Layer custom block patterns on top of the default classifier.
+  </p>
+
+  {% if error %}
+    <div class="alert">
+      <strong>Validation error:</strong>
+      <pre><code>{{ error }}</code></pre>
+    </div>
+  {% endif %}
+
+  {% if saved %}
+    <div class="alert success">
+      <strong>Policy saved.</strong> Next API call will use the new rules.
+    </div>
+  {% endif %}
+
+  <form method="post" action="/dashboard/policy" class="policy-form">
+    <label class="policy-label">Policy JSON</label>
+    <textarea name="body" rows="20" class="policy-editor" required spellcheck="false">{{ policy_body }}</textarea>
+    <div class="policy-actions">
+      <button type="submit" class="cta-button">Save policy</button>
+    </div>
+  </form>
+
+  {% if has_policy %}
+    <form method="post" action="/dashboard/policy/delete" class="policy-form">
+      <button type="submit" class="link" onclick="return confirm('Delete this tenant policy and revert to the default classifier?')">
+        Reset to default classifier
+      </button>
+    </form>
+  {% endif %}
+
+  <h2>Schema reference</h2>
+  <pre><code>{
+  "version": 1,
+  "additional_block_patterns": [
+    {"class": "HARM",    "regex": "..."},
+    {"class": "DECEIVE", "regex": "..."}
+  ],
+  "disabled_default_classes": ["REFUSE"],
+  "allow_only_classes": null
+}</code></pre>
+  <ul class="policy-help">
+    <li><code>additional_block_patterns</code> — regex (case-insensitive)
+      that, if matched, force a block verdict with the given class.</li>
+    <li><code>disabled_default_classes</code> — classes the default
+      classifier produces that you want to <em>allow</em> instead. Use
+      to relax the firewall for narrow use cases.</li>
+    <li><code>allow_only_classes</code> — whitelist. Anything outside
+      this list is blocked. Set <code>null</code> to disable the
+      whitelist.</li>
+  </ul>
+
+  <p>
+    Full reference: <a href="https://{{ docs_host }}/firewall/custom-policies">{{ docs_host }}/firewall/custom-policies</a>
+  </p>
+</section>
+{% endblock %}

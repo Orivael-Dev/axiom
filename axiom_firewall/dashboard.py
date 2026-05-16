@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from axiom_intent_classifier import IntentClassifier
 from axiom_signing import derive_key
 
-from . import billing
+from . import billing, policy as policy_mod
 from .auth import (
     TIER_PRICE_USD, TIER_RATE_LIMITS,
     authenticate, check_password, hash_password, record_call,
@@ -37,6 +37,11 @@ from .auth import (
 from .db import (
     find_tenant_by_email, find_tenant_by_id, init_registry,
     insert_api_key, insert_tenant, list_api_keys, usage_summary,
+)
+from .limits import (
+    SIGNUP_MAX_PER_WINDOW, SIGNUP_WINDOW_SECONDS,
+    check_monthly_quota, check_signup_rate,
+    monthly_usage_count, seconds_until_next_month,
 )
 from .models import ApiKey, Tenant
 
@@ -91,8 +96,32 @@ def signup_get(request: Request):
     return templates.TemplateResponse(request, "signup.html", _ctx(request))
 
 
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP. Honors X-Forwarded-For when behind a proxy."""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @app.post("/signup")
 def signup_post(request: Request, email: str = Form(...), password: str = Form(...)):
+    ip = _client_ip(request)
+    allowed, retry_after = check_signup_rate(ip)
+    if not allowed:
+        headers = {"Retry-After": str(retry_after)}
+        return templates.TemplateResponse(
+            request, "signup.html",
+            _ctx(
+                request,
+                error=(
+                    f"Too many signup attempts from this IP. "
+                    f"Try again in {retry_after // 60} minute(s)."
+                ),
+            ),
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers=headers,
+        )
     if find_tenant_by_email(email):
         return templates.TemplateResponse(
             request, "signup.html",
@@ -142,13 +171,19 @@ def dashboard(request: Request):
     t = _current_tenant(request)
     if not t:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    month_used = monthly_usage_count(t.tenant_id)
+    tier_limit = TIER_RATE_LIMITS[t.tier]
+    usage_pct = round(100 * month_used / tier_limit, 1) if tier_limit else 0.0
     return templates.TemplateResponse(
         request, "dashboard.html",
         _ctx(
             request, tenant=t,
             keys=list_api_keys(t.tenant_id),
             usage=usage_summary(t.tenant_id),
-            tier_limit=TIER_RATE_LIMITS[t.tier],
+            month_used=month_used,
+            usage_pct=min(usage_pct, 100.0),
+            tier_limit=tier_limit,
+            free_tier=(t.tier == "free"),
         ),
     )
 
@@ -162,6 +197,75 @@ def create_key(request: Request, name: str = Form(...)):
     insert_api_key(k)
     request.session["new_secret"] = k.secret
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# ─── Policy editor ──────────────────────────────────────────────────────
+
+
+_DEFAULT_POLICY_TEMPLATE = """{
+  "version": 1,
+  "additional_block_patterns": [
+    {"class": "HARM",    "regex": "leak the customer list"},
+    {"class": "DECEIVE", "regex": "pretend you are human"}
+  ],
+  "disabled_default_classes": [],
+  "allow_only_classes": null
+}
+"""
+
+
+@app.get("/dashboard/policy", response_class=HTMLResponse)
+def policy_get(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    body = policy_mod.get_policy_body(t.tenant_id)
+    return templates.TemplateResponse(
+        request, "policy.html",
+        _ctx(
+            request, tenant=t,
+            policy_body=body or _DEFAULT_POLICY_TEMPLATE,
+            has_policy=bool(body),
+        ),
+    )
+
+
+@app.post("/dashboard/policy")
+def policy_post(request: Request, body: str = Form(...)):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    try:
+        policy_mod.save_policy(t.tenant_id, body)
+    except ValueError as e:
+        return templates.TemplateResponse(
+            request, "policy.html",
+            _ctx(
+                request, tenant=t,
+                policy_body=body,
+                error=str(e),
+                has_policy=True,
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return templates.TemplateResponse(
+        request, "policy.html",
+        _ctx(
+            request, tenant=t,
+            policy_body=body,
+            saved=True,
+            has_policy=True,
+        ),
+    )
+
+
+@app.post("/dashboard/policy/delete")
+def policy_delete(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    policy_mod.delete_policy(t.tenant_id)
+    return RedirectResponse("/dashboard/policy", status_code=status.HTTP_303_SEE_OTHER)
 
 
 # ─── Authenticated API ───────────────────────────────────────────────────
@@ -184,6 +288,10 @@ async def guard_check(request: Request):
     Body:    {"text": "<prompt to classify>"}
     Returns: {"verdict": "allow" | "block",
               "intent": {"class", "confidence", "signals", "signature"}}
+
+    Returns 429 (with Retry-After) when a free-tier tenant has used
+    their monthly quota. Paid tiers have no hard cap — Stripe metered
+    billing handles overage.
     """
     started_at = perf_counter()
 
@@ -194,6 +302,24 @@ async def guard_check(request: Request):
         raise HTTPException(401, "Invalid or missing API key")
     tenant, key = auth
 
+    quota_ok, used, cap = check_monthly_quota(tenant)
+    if not quota_ok:
+        retry = seconds_until_next_month()
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry)},
+            content={
+                "detail": (
+                    f"Monthly quota exhausted for the free tier "
+                    f"({used}/{cap} calls). Upgrade at /billing or "
+                    f"wait {retry // 86400} day(s)."
+                ),
+                "used": used,
+                "limit": cap,
+                "retry_after_seconds": retry,
+            },
+        )
+
     try:
         body = await request.json()
     except Exception:
@@ -203,23 +329,24 @@ async def guard_check(request: Request):
     if not isinstance(text, str):
         raise HTTPException(400, "Field 'text' must be a string")
 
-    result = _classifier.classify(text)
-    verdict = _VERDICT_FOR_CLASS.get(result.intent_class, "allow")
+    base_result = _classifier.classify(text)
+    tenant_policy = policy_mod.get_policy(tenant.tenant_id)
+    verdict, final_result = policy_mod.apply_policy(base_result, tenant_policy, text)
 
     record_call(
         tenant_id=tenant.tenant_id, key_id=key.key_id,
         endpoint="/v1/guard/check",
-        verdict=verdict, intent_class=result.intent_class,
-        confidence=result.confidence, started_at=started_at,
+        verdict=verdict, intent_class=final_result.intent_class,
+        confidence=final_result.confidence, started_at=started_at,
     )
 
     return JSONResponse({
         "verdict": verdict,
         "intent": {
-            "class": result.intent_class,
-            "confidence": result.confidence,
-            "signals": list(result.signals),
-            "signature": result.signature,
+            "class": final_result.intent_class,
+            "confidence": final_result.confidence,
+            "signals": list(final_result.signals),
+            "signature": final_result.signature,
         },
     })
 
