@@ -343,3 +343,76 @@ python3 examples/anf_cost_sim.py -n 1000 | grep avg_cores_active
 
 If any number in this document contradicts the live code, the code is
 the source of truth and the document should be corrected.
+
+---
+
+## 10. External validation — third-party benchmarks
+
+This document's headline claim (sparse activation gives ~5× parameter
+headroom at the same compute budget) is grounded in well-published
+external work. The other multipliers (latent 3D trajectories, reverse-
+QRF synthetic generation) are AXIOM-specific and not yet externally
+benchmarked.
+
+### 10.1 Anchors for the §1–§3 claims
+
+- **Chinchilla** (Hoffmann et al., 2022, "Training Compute-Optimal
+  Large Language Models", arXiv:2203.15556) — source of the
+  20-tokens-per-parameter rule.
+- **Switch Transformer** (Fedus et al., 2021, "Switch Transformers:
+  Scaling to Trillion Parameter Models with Simple and Efficient
+  Sparsity", arXiv:2101.03961) — establishes that activation-ratio
+  improvements translate roughly to compute-per-token savings, which is
+  exactly the mechanism §2 invokes for ANF.
+- **Mixtral 8x7B** (Jiang et al., 2024) — concrete production MoE
+  with 12.9B active / 46.7B total parameters (~28% activation ratio).
+  Direct precedent for the "fewer active parameters per token" line.
+- **DeepSeek-V3** (DeepSeek-AI, 2024) — 37B active / 671B total
+  (~5.5% activation), plus published multi-token prediction (MTP)
+  numbers relevant to §4's signal-density argument.
+
+These four references cover the §1–§3 claims end-to-end. The §4
+latent-trajectory argument and §5 reverse-QRF proposal are
+AXIOM-specific and have no direct external precedent yet.
+
+### 10.2 Quality benchmarks AXIOM already runs
+
+These don't measure token economics but they do validate that the
+architecture produces working capability:
+
+| Benchmark    | Runner                              | Tests |
+|---           |---                                  |---    |
+| HumanEval    | `examples/axiom_humaneval_run.py`   | code synthesis (pass@1) |
+| ARC          | `examples/axiom_arc_run.py`         | science reasoning |
+| TruthfulQA   | `examples/truthfulqa_run.py`        | hallucination rate |
+| AGIEval      | `examples/axiom_agi_eval.py`        | exam-style multi-domain |
+
+All four run baseline-vs-AXIOM A/B and report accuracy deltas.
+
+### 10.3 The token-economics gap
+
+None of the four runners above tracks tokens. They report pass@1 or
+accuracy, not tokens-per-correct-answer. That's the missing
+measurement for this document's central claim.
+
+The cheapest way to close that gap is to extend
+`examples/axiom_humaneval_run.py` to record `usage.input_tokens` and
+`usage.output_tokens` from each Anthropic API response and report
+**tokens-per-correct-answer** for baseline vs AXIOM modes. The runner
+is already two-mode A/B, so the only addition is a token counter on
+the existing API loop. Result: a directly-published external metric
+(pass@1) paired with a derived token-economics metric on the same
+problem set.
+
+### 10.4 What would NOT be cheap
+
+- **DataComp-LM (DCLM)** or **Cerebras-GPT replication** — these
+  measure tokens-to-quality directly, but require actually training
+  a model. Not feasible without a training pipeline.
+- **MLPerf Training/Inference** — formal industry submission process;
+  high overhead.
+- **HELM** (Stanford) — broad evaluation, but each scenario requires
+  significant integration work.
+
+For a first external token-economics data point, §10.3's HumanEval
+extension is the right slice.
