@@ -35,7 +35,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from axiom_intent_classifier import IntentClassifier
 from axiom_signing import derive_key
 
-from . import billing, policy as policy_mod, skill_pack
+from . import billing, policy as policy_mod, registry_client, skill_pack
 from .auth import (
     TIER_PRICE_USD, TIER_RATE_LIMITS,
     authenticate, check_password, hash_password, record_call,
@@ -371,48 +371,81 @@ def policy_delete(request: Request):
 # ─── Skill Pack browser + installer ─────────────────────────────────────
 
 
-# Path to the first-party packs directory inside the repo. In a
-# production deploy these are baked into the Docker image; the registry
-# server (Phase 2 week 6) serves them over HTTP. For now the dashboard
-# reads them directly from the filesystem so the install flow can be
-# tested locally without the registry running.
+# Pack source: registry HTTP service (preferred for production) or
+# local filesystem (default for self-host + dev).
 PACKS_DIR = Path(os.environ.get(
     "AXIOM_FIREWALL_PACKS_DIR",
     str(BASE_DIR.parent / "packs"),
 ))
+REGISTRY_URL = os.environ.get("AXIOM_FIREWALL_REGISTRY_URL", "").strip()
 
 
-def _list_local_packs() -> list[skill_pack.SkillPackManifest]:
-    """Discover packs in PACKS_DIR. Each pack lives at packs/<name>/pack.json."""
+def _list_available_packs() -> list[skill_pack.SkillPackManifest]:
+    """Available packs from the configured source (registry if set, else FS).
+
+    Filesystem packs go through verify_first_party() too — same defense
+    as the registry. The dashboard NEVER serves an unsigned pack to the
+    install flow.
+    """
+    if REGISTRY_URL:
+        try:
+            return registry_client.list_packs(REGISTRY_URL)
+        except registry_client.RegistryError as e:
+            log.warning(
+                "could not reach pack registry at %s: %s — falling back to local FS",
+                REGISTRY_URL, e,
+            )
+            # Fall through to local FS so dashboard stays usable even
+            # when the registry is down.
     if not PACKS_DIR.exists():
         return []
-    packs = []
+    out: list[skill_pack.SkillPackManifest] = []
     for entry in sorted(PACKS_DIR.iterdir()):
         manifest_path = entry / "pack.json"
-        if manifest_path.is_file():
-            try:
-                packs.append(
-                    skill_pack.SkillPackManifest.parse(
-                        manifest_path.read_text(encoding="utf-8")
-                    )
-                )
-            except (ValueError, OSError) as e:
-                log.warning("skipping pack at %s: %s", manifest_path, e)
-    return packs
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = skill_pack.SkillPackManifest.parse(
+                manifest_path.read_text(encoding="utf-8")
+            )
+        except (ValueError, OSError) as e:
+            log.warning("skipping pack at %s: %s", manifest_path, e)
+            continue
+        if skill_pack.verify_first_party(manifest):
+            out.append(manifest)
+        else:
+            log.warning("skipping unsigned pack at %s", manifest_path)
+    return out
 
 
-def _load_local_pack(name: str) -> skill_pack.SkillPackManifest | None:
+def _load_pack(name: str) -> skill_pack.SkillPackManifest | None:
+    """Load one named pack from the configured source.
+
+    Verifies the first-party signature before returning. Returns None
+    on missing pack OR invalid signature.
+    """
     if not name or "/" in name or ".." in name:
         return None
+    if REGISTRY_URL:
+        try:
+            return registry_client.get_pack(REGISTRY_URL, name)
+        except registry_client.RegistryError as e:
+            log.warning(
+                "could not fetch %s from registry: %s — falling back to local FS",
+                name, e,
+            )
     manifest_path = PACKS_DIR / name / "pack.json"
     if not manifest_path.is_file():
         return None
     try:
-        return skill_pack.SkillPackManifest.parse(
+        manifest = skill_pack.SkillPackManifest.parse(
             manifest_path.read_text(encoding="utf-8")
         )
     except (ValueError, OSError):
         return None
+    if not skill_pack.verify_first_party(manifest):
+        return None
+    return manifest
 
 
 @app.get("/dashboard/packs", response_class=HTMLResponse)
@@ -424,8 +457,9 @@ def packs_index(request: Request):
         request, "packs.html",
         _ctx(
             request, tenant=t,
-            packs=_list_local_packs(),
+            packs=_list_available_packs(),
             installed=skill_pack.get_installed_pack(t.tenant_id),
+            registry_url=REGISTRY_URL or None,
         ),
     )
 
@@ -435,16 +469,20 @@ def packs_install(request: Request, name: str = Form(...)):
     t = _current_tenant(request)
     if not t:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-    manifest = _load_local_pack(name)
+    manifest = _load_pack(name)
     if manifest is None:
-        raise HTTPException(404, f"Pack {name!r} not found in local packs directory")
-    # First-party packs MUST have a valid signature before install. Third-party
-    # packs (Phase 2 week 6) will use publisher-specific keys.
+        raise HTTPException(
+            404,
+            f"Pack {name!r} not available "
+            f"(registry={'enabled' if REGISTRY_URL else 'disabled'}, "
+            "signature must be valid)",
+        )
+    # Signature check is enforced by _load_pack — verify_first_party
+    # ran during loading. Double-check here too for defense-in-depth.
     if not skill_pack.verify_first_party(manifest):
         raise HTTPException(
             400,
-            f"Pack {name!r} has an invalid or missing signature — refusing install. "
-            "Re-sign with `python scripts/sign_packs.py` after editing.",
+            f"Pack {name!r} has an invalid or missing signature — refusing install.",
         )
     skill_pack.install_pack(t.tenant_id, manifest)
     return RedirectResponse("/dashboard/packs", status_code=status.HTTP_303_SEE_OTHER)

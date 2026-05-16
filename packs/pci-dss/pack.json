@@ -1,0 +1,55 @@
+{
+  "format_version": "1.0",
+  "name": "pci-dss",
+  "title": "PCI-DSS — Payment card data",
+  "description": "Block prompts that ask the model to handle, store, log, or transmit cardholder data outside a PCI-DSS-validated channel. Required for any AI that talks to merchants, customers, or finance teams.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/pci-dss",
+  "tags": [
+    "compliance",
+    "finance",
+    "payments",
+    "pci"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:my|the\\s+customer'?s)\\s+(?:credit\\s+card|cc|card)\\s+(?:number|#)\\s+(?:is|:)\\s*\\d"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:cvv|cvc|cvv2|cid)\\s*(?:is|:|=)\\s*\\d{3,4}\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:store|save|log|record)\\s+(?:the\\s+)?(?:card\\s+number|cvv|cvc|track\\s*[12]|pan|cardholder\\s+name)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:email|fax|sms|text)\\s+(?:me|us)\\s+(?:your|the)\\s+(?:credit\\s+card|cvv|cvc|card\\s+number)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:skip|bypass|disable)\\s+(?:the\\s+)?(?:pci|tokenization|3-?d\\s+secure|cvv\\s+check)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:i\\s+am|this\\s+is)\\s+(?:from\\s+)?(?:visa|mastercard|amex|the\\s+card\\s+network|the\\s+merchant\\s+bank)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "16a85ba773f80f72cce1f294b56d9ac644b4fa0cb576f3b93b676e6405574669"
+}

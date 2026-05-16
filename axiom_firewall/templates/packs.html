@@ -23,10 +23,20 @@
   {% endif %}
 
   <h2>Available packs</h2>
+  <p class="pack-source">
+    Source:
+    {% if registry_url %}
+      registry at <code>{{ registry_url }}</code>
+    {% else %}
+      local filesystem (<code>AXIOM_FIREWALL_PACKS_DIR</code>)
+    {% endif %}
+  </p>
   {% if not packs %}
-    <p class="empty">No local packs found. Drop one in <code>packs/&lt;name&gt;/pack.json</code>
-      or fetch from <a href="https://packs.{{ brand_domain }}">packs.{{ brand_domain }}</a>
-      (Phase 2 week 6).</p>
+    <p class="empty">No packs available. Either no packs have been signed, or
+      the registry is unreachable. Drop a signed pack in
+      <code>packs/&lt;name&gt;/pack.json</code>, or set
+      <code>AXIOM_FIREWALL_REGISTRY_URL</code> to a running registry
+      (e.g. <code>https://packs.{{ brand_domain }}</code>).</p>
   {% endif %}
 
   <div class="pack-grid">

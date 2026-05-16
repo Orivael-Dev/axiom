@@ -1,0 +1,52 @@
+{
+  "format_version": "1.0",
+  "name": "coppa",
+  "title": "COPPA — Children's Online Privacy",
+  "description": "Block prompts that collect personal information from a user under 13 without verifiable parental consent. Required for any AI that may interact with children.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/coppa",
+  "tags": [
+    "compliance",
+    "privacy",
+    "children",
+    "us-federal",
+    "coppa"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:ask|tell\\s+me)\\s+(?:the\\s+)?(?:child|kid|student|minor)'?s?\\s+(?:home\\s+)?(?:address|phone\\s+number|email|school|full\\s+name|birthday|location)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:what(?:'s|\\s+is)|where(?:'s|\\s+is))\\s+(?:your|the\\s+kid'?s)\\s+(?:school|home\\s+address|mom'?s\\s+phone|parents'?\\s+(?:names?|phone))"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:meet|see)\\s+(?:me|the\\s+kid|the\\s+child)\\s+(?:in\\s+person|after\\s+school|alone|without\\s+(?:your\\s+)?parents?)"
+      },
+      {
+        "class": "HARM",
+        "regex": "don'?t\\s+tell\\s+(?:your|the\\s+kid'?s|the\\s+child'?s)\\s+(?:parents?|mom|dad|teacher|guardian)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:i\\s+am|i'?m)\\s+(?:also\\s+)?(?:\\d{1,2}\\s+years\\s+old|in\\s+(?:elementary|middle|high)\\s+school)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:skip|bypass|don'?t\\s+ask)\\s+(?:for\\s+)?(?:parental|guardian)\\s+consent"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "5560396d93f3dad8d1b0256d600506cc0d019687224aa5948f0071d49c4d7e25"
+}
