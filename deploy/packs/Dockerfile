@@ -42,4 +42,6 @@ ENV UVICORN_WORKERS=2
 ENV UVICORN_HOST=0.0.0.0
 ENV UVICORN_PORT=8005
 
-CMD ["sh", "-c", "exec uvicorn axiom_packs.server:app --host $UVICORN_HOST --port $UVICORN_PORT --workers $UVICORN_WORKERS --proxy-headers --forwarded-allow-ips=*"]
+# `python -m uvicorn` — same reason as the firewall Dockerfile:
+# pip --target installs the module but not the entry-point script.
+CMD ["sh", "-c", "exec python -m uvicorn axiom_packs.server:app --host $UVICORN_HOST --port $UVICORN_PORT --workers $UVICORN_WORKERS --proxy-headers --forwarded-allow-ips=*"]

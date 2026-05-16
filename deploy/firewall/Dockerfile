@@ -66,4 +66,8 @@ ENV UVICORN_WORKERS=2
 ENV UVICORN_HOST=0.0.0.0
 ENV UVICORN_PORT=8004
 
-CMD ["sh", "-c", "exec uvicorn axiom_firewall.dashboard:app --host $UVICORN_HOST --port $UVICORN_PORT --workers $UVICORN_WORKERS --proxy-headers --forwarded-allow-ips=*"]
+# `python -m uvicorn` is used (instead of bare `uvicorn`) because the
+# build stage installs into `--target=/install` which copies packages
+# but not entry-point scripts. Running the module directly avoids the
+# need to also wire /install/bin into PATH.
+CMD ["sh", "-c", "exec python -m uvicorn axiom_firewall.dashboard:app --host $UVICORN_HOST --port $UVICORN_PORT --workers $UVICORN_WORKERS --proxy-headers --forwarded-allow-ips=*"]
