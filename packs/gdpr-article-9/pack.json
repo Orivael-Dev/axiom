@@ -1,0 +1,51 @@
+{
+  "format_version": "1.0",
+  "name": "gdpr-article-9",
+  "title": "GDPR Article 9 — Special category data",
+  "description": "Block elicitation of GDPR Article 9 special-category personal data (health, sex life, sexual orientation, racial or ethnic origin, religious or philosophical beliefs, political opinions, trade-union membership, genetic data, biometric data) without explicit consent. Required for EU-resident processing.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/gdpr-article-9",
+  "tags": [
+    "compliance",
+    "privacy",
+    "gdpr",
+    "eu"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:tell|ask|elicit)\\s+(?:me|the\\s+user|the\\s+customer)\\s+(?:about\\s+)?(?:their\\s+)?(?:religion|sexual\\s+orientation|political\\s+(?:views?|affiliation)|race|ethnicity|trade[\\s-]?union)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:store|log|record|save)\\s+(?:the\\s+user'?s\\s+)?(?:health\\s+condition|medical\\s+history|hiv\\s+status|pregnancy\\s+status|disability)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:profile|segment|target)\\s+(?:users|customers)\\s+by\\s+(?:religion|sexual\\s+orientation|political\\s+(?:views?|affiliation)|ethnicity)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:export|share|sell|transfer)\\s+(?:biometric|genetic)\\s+data"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "you\\s+(?:have|gave)\\s+(?:implicit|implied|prior)\\s+consent\\s+(?:under|per|for)\\s+(?:gdpr|article\\s*9)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:skip|bypass|ignore)\\s+(?:the\\s+)?(?:consent\\s+(?:check|form|gate)|cookie\\s+banner|gdpr\\s+notice)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "d8ddd7599f3546e65fe837d99029434c735a3f473be23fb24ae6bc52cb8b1cc1"
+}

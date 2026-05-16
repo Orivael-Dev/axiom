@@ -1,0 +1,65 @@
+# Local prod-like test stack for the Axiom Intent Firewall.
+#
+# Spins up the Firewall behind a Caddy reverse proxy that terminates
+# TLS via Caddy's built-in Let's Encrypt support.
+#
+# For purely local testing (no TLS):
+#   docker compose -f deploy/firewall/docker-compose.yml up firewall
+#
+# For prod-like (TLS + DNS-validated cert):
+#   FIREWALL_HOST=firewall.example.com \
+#   docker compose -f deploy/firewall/docker-compose.yml up
+
+services:
+
+  firewall:
+    build:
+      context: ../..
+      dockerfile: deploy/firewall/Dockerfile
+    image: orivael/axiom-firewall:local
+    container_name: axiom-firewall
+    restart: unless-stopped
+    environment:
+      AXIOM_MASTER_KEY:               ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY (openssl rand -hex 32)}
+      AXIOM_FIREWALL_SESSION_SECRET:  ${AXIOM_FIREWALL_SESSION_SECRET:?set AXIOM_FIREWALL_SESSION_SECRET}
+      AXIOM_FIREWALL_TENANT_DIR:      /data/tenants
+      AXIOM_FIREWALL_CORS_ORIGINS:    ${AXIOM_FIREWALL_CORS_ORIGINS:-}
+      AXIOM_FIREWALL_PUBLIC_URL:      ${AXIOM_FIREWALL_PUBLIC_URL:-http://localhost:8004}
+      STRIPE_SECRET_KEY:              ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET:          ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_INDIE:             ${STRIPE_PRICE_INDIE:-}
+      STRIPE_PRICE_TEAM:              ${STRIPE_PRICE_TEAM:-}
+      STRIPE_METER_INDIE:             ${STRIPE_METER_INDIE:-}
+      STRIPE_METER_TEAM:              ${STRIPE_METER_TEAM:-}
+    volumes:
+      - firewall-data:/data
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8004/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: axiom-caddy
+    restart: unless-stopped
+    profiles: ["tls"]   # opt-in: docker compose --profile tls up
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      FIREWALL_HOST: ${FIREWALL_HOST:?set FIREWALL_HOST (e.g. firewall.example.com)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - firewall
+
+volumes:
+  firewall-data:
+  caddy-data:
+  caddy-config:

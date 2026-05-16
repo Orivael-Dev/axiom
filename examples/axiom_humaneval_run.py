@@ -5,7 +5,10 @@ Runs HumanEval (164 Python coding problems) in two modes:
   1. Baseline   — no system prompt
   2. AXIOM      — worker.axiom constitutional system prompt
 
-Reports pass@1 for each mode and the improvement delta.
+Reports pass@1, tokens-per-call, and tokens-per-correct-answer for
+each mode, plus the improvement delta. The tokens-per-correct-answer
+column answers the central question from docs/ANF_TOKEN_ECONOMICS.md
+§10: does AXIOM produce more correct answers per token spent?
 
 Usage (Nano / any machine with API key):
     pip install anthropic
@@ -93,7 +96,9 @@ _BASELINE_SYSTEM = ""  # no system prompt
 
 # ── Claude API ─────────────────────────────────────────────────────────────────
 
-def _call_claude(prompt: str, system: str, model: str, retries: int = 3) -> str:
+def _call_claude(prompt: str, system: str, model: str, retries: int = 3) -> tuple[str, int, int]:
+    """Return (response_text, input_tokens, output_tokens).
+    On error returns ("# ERROR: ...", 0, 0)."""
     import anthropic
     client = anthropic.Anthropic()
 
@@ -108,14 +113,18 @@ def _call_claude(prompt: str, system: str, model: str, retries: int = 3) -> str:
                 kwargs["system"] = system
 
             msg = client.messages.create(**kwargs)
-            return msg.content[0].text.strip()
+            return (
+                msg.content[0].text.strip(),
+                msg.usage.input_tokens,
+                msg.usage.output_tokens,
+            )
         except Exception as e:
             if attempt < retries - 1:
                 wait = 2 ** attempt
                 print(f"    [retry {attempt+1}] {e} — waiting {wait}s")
                 time.sleep(wait)
             else:
-                return f"# ERROR: {e}"
+                return (f"# ERROR: {e}", 0, 0)
 
 
 # ── Code extraction + execution ────────────────────────────────────────────────
@@ -199,6 +208,8 @@ def run_mode(
     passed = 0
     failed = 0
     errors = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
     results = []
 
     print(f"\n  {'─'*56}")
@@ -211,7 +222,10 @@ def run_mode(
         entry      = problem["entry_point"]
         tests      = problem["test"]
 
-        response   = _call_claude(prompt, system, model)
+        response, in_tok, out_tok = _call_claude(prompt, system, model)
+        total_input_tokens  += in_tok
+        total_output_tokens += out_tok
+
         completion = _extract_code(response, problem["prompt"])
         ok         = _run_tests(completion, tests, entry)
 
@@ -221,33 +235,49 @@ def run_mode(
         else:
             failed += 1
 
-        print(f"  [{i+1:>3}/{len(problems)}] {task_id:<30} {status}")
+        print(f"  [{i+1:>3}/{len(problems)}] {task_id:<30} {status}  "
+              f"({in_tok}+{out_tok} tok)")
 
         results.append({
-            "task_id":    task_id,
-            "passed":     ok,
-            "response":   response[:300],
-            "completion": completion[:500],
+            "task_id":       task_id,
+            "passed":        ok,
+            "input_tokens":  in_tok,
+            "output_tokens": out_tok,
+            "response":      response[:300],
+            "completion":    completion[:500],
         })
 
         if delay > 0:
             time.sleep(delay)
 
-    total     = passed + failed
-    pass_rate = passed / total if total else 0.0
+    total        = passed + failed
+    pass_rate    = passed / total if total else 0.0
+    total_tokens = total_input_tokens + total_output_tokens
+    tpc          = total_tokens / total  if total  else 0.0  # tokens / call
+    tpca         = total_tokens / passed if passed else float("inf")  # / correct
 
     print(f"\n  {'─'*56}")
     print(f"  {mode_name} — pass@1: {passed}/{total} = {pass_rate:.1%}")
+    print(f"  tokens: {total_tokens:,} total  "
+          f"({total_input_tokens:,} in + {total_output_tokens:,} out)")
+    print(f"  tokens/call: {tpc:.1f}   tokens/correct: "
+          f"{('∞' if tpca == float('inf') else f'{tpca:.1f}')}")
     print(f"  {'─'*56}")
 
     return {
-        "mode":       mode_name,
-        "model":      model,
-        "n":          total,
-        "passed":     passed,
-        "failed":     failed,
-        "pass_at_1":  pass_rate,
-        "results":    results,
+        "mode":                       mode_name,
+        "model":                      model,
+        "n":                          total,
+        "passed":                     passed,
+        "failed":                     failed,
+        "pass_at_1":                  pass_rate,
+        "total_input_tokens":         total_input_tokens,
+        "total_output_tokens":        total_output_tokens,
+        "total_tokens":               total_tokens,
+        "tokens_per_call":            round(tpc, 2),
+        "tokens_per_correct_answer": (None if tpca == float("inf")
+                                      else round(tpca, 2)),
+        "results":                    results,
     }
 
 
@@ -259,20 +289,51 @@ def _print_report(baseline: dict | None, axiom: dict | None):
     print(f"  AXIOM HUMANEVAL BENCHMARK REPORT")
     print(f"  {border}")
 
+    def _fmt_tpca(v):
+        return "∞" if v is None else f"{v:.1f}"
+
     if baseline:
         print(f"  Baseline (no system prompt)")
-        print(f"    pass@1 : {baseline['passed']}/{baseline['n']}  ({baseline['pass_at_1']:.1%})")
+        print(f"    pass@1                 : {baseline['passed']}/{baseline['n']}  ({baseline['pass_at_1']:.1%})")
+        print(f"    tokens (total / in / out): "
+              f"{baseline['total_tokens']:,} / "
+              f"{baseline['total_input_tokens']:,} / "
+              f"{baseline['total_output_tokens']:,}")
+        print(f"    tokens / call          : {baseline['tokens_per_call']:.1f}")
+        print(f"    tokens / correct answer: {_fmt_tpca(baseline['tokens_per_correct_answer'])}")
 
     if axiom:
         print(f"  AXIOM constitutional system prompt")
-        print(f"    pass@1 : {axiom['passed']}/{axiom['n']}  ({axiom['pass_at_1']:.1%})")
+        print(f"    pass@1                 : {axiom['passed']}/{axiom['n']}  ({axiom['pass_at_1']:.1%})")
+        print(f"    tokens (total / in / out): "
+              f"{axiom['total_tokens']:,} / "
+              f"{axiom['total_input_tokens']:,} / "
+              f"{axiom['total_output_tokens']:,}")
+        print(f"    tokens / call          : {axiom['tokens_per_call']:.1f}")
+        print(f"    tokens / correct answer: {_fmt_tpca(axiom['tokens_per_correct_answer'])}")
 
     if baseline and axiom:
         delta      = axiom["pass_at_1"] - baseline["pass_at_1"]
         delta_n    = axiom["passed"] - baseline["passed"]
         direction  = "▲" if delta > 0 else ("▼" if delta < 0 else "═")
         print(f"\n  Delta")
-        print(f"    {direction}  {delta:+.1%}  ({delta_n:+d} additional problems solved)")
+        print(f"    pass@1     : {direction}  {delta:+.1%}  ({delta_n:+d} additional problems solved)")
+
+        # Token-economics delta — the central question from §10 of the doc.
+        # Lower tokens/correct = more efficient at producing correct answers.
+        b_tpca = baseline["tokens_per_correct_answer"]
+        a_tpca = axiom["tokens_per_correct_answer"]
+        if b_tpca is not None and a_tpca is not None:
+            tpca_delta = a_tpca - b_tpca
+            tpca_pct   = (tpca_delta / b_tpca) * 100 if b_tpca else 0.0
+            tpca_dir   = "▼" if tpca_delta < 0 else ("▲" if tpca_delta > 0 else "═")
+            verdict    = ("AXIOM more efficient" if tpca_delta < 0
+                          else "baseline more efficient" if tpca_delta > 0
+                          else "tie")
+            print(f"    tokens/correct: {tpca_dir}  {tpca_delta:+.1f}  "
+                  f"({tpca_pct:+.1f}%)   → {verdict}")
+        else:
+            print(f"    tokens/correct: n/a (one mode passed zero problems)")
 
         # Per-problem breakdown
         b_map = {r["task_id"]: r["passed"] for r in baseline["results"]}

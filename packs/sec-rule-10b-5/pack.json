@@ -1,0 +1,56 @@
+{
+  "format_version": "1.0",
+  "name": "sec-rule-10b-5",
+  "title": "SEC Rule 10b-5 — Securities anti-fraud",
+  "description": "Block financial-advice AIs from producing statements that violate SEC Rule 10b-5: guarantees of returns, omitted material facts, manipulative trading suggestions, and unregistered investment-advice claims.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/sec-rule-10b-5",
+  "tags": [
+    "compliance",
+    "finance",
+    "securities",
+    "us-federal",
+    "sec"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "DECEIVE",
+        "regex": "(?:guarantee|promised?|certain)\\s+(?:returns?|profits?|gains?)\\s+(?:of|up\\s+to)?\\s*\\d+\\s*%?"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:risk[\\s-]?free|no[\\s-]?risk|zero[\\s-]?risk)\\s+(?:investment|trade|return|opportunity)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:insider|non-?public|confidential)\\s+(?:tip|information|knowledge)\\s+(?:about|on)\\s+\\w+"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:pump|dump|short[\\s-]?squeeze|coordinate)\\s+(?:the\\s+)?(?:price|stock|share|ticker)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "you\\s+(?:will|are\\s+going\\s+to)\\s+(?:double|triple|10x|moonshot)\\s+your\\s+(?:money|investment|portfolio)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:i\\s+am|this\\s+is)\\s+(?:a\\s+)?(?:registered|licensed|certified)\\s+(?:financial\\s+advisor|investment\\s+adviser|broker[\\s-]?dealer)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:wash\\s+trade|spoofing|layering|front[\\s-]?running)\\s+(?:strategy|plan|approach)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "f9f522cae538639ab06f2d124eaf69602285362756898b2182b2fd3c8899e8c1"
+}

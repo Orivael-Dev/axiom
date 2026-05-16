@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Skill Packs — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+  <h1>Skill Packs</h1>
+  <p class="tier-badge">
+    Drop-in policy bundles for common compliance + safety use cases.
+  </p>
+
+  {% if installed %}
+    <div class="alert success">
+      <strong>Active pack:</strong>
+      <code>{{ installed.name }}@{{ installed.version }}</code>
+      — {{ installed.title }}
+      <form method="post" action="/dashboard/packs/uninstall" class="inline" style="margin-top: 0.5rem">
+        <button type="submit" class="link"
+                onclick="return confirm('Uninstall {{ installed.name }} and revert to default classifier?')">
+          Uninstall
+        </button>
+      </form>
+    </div>
+  {% endif %}
+
+  <h2>Available packs</h2>
+  <p class="pack-source">
+    Source:
+    {% if registry_url %}
+      registry at <code>{{ registry_url }}</code>
+    {% else %}
+      local filesystem (<code>AXIOM_FIREWALL_PACKS_DIR</code>)
+    {% endif %}
+  </p>
+  {% if not packs %}
+    <p class="empty">No packs available. Either no packs have been signed, or
+      the registry is unreachable. Drop a signed pack in
+      <code>packs/&lt;name&gt;/pack.json</code>, or set
+      <code>AXIOM_FIREWALL_REGISTRY_URL</code> to a running registry
+      (e.g. <code>https://packs.{{ brand_domain }}</code>).</p>
+  {% endif %}
+
+  <div class="pack-grid">
+    {% for p in packs %}
+      <div class="pack-card">
+        <h3>{{ p.title }}</h3>
+        <p class="pack-meta">
+          <code>{{ p.name }}</code> v{{ p.version }} · {{ p.author }} · {{ p.license }}
+        </p>
+        <p>{{ p.description }}</p>
+        {% if p.tags %}
+          <p class="pack-tags">
+            {% for tag in p.tags %}<span class="pack-tag">{{ tag }}</span>{% endfor %}
+          </p>
+        {% endif %}
+        <form method="post" action="/dashboard/packs/install" class="inline">
+          <input type="hidden" name="name" value="{{ p.name }}">
+          {% if installed and installed.name == p.name %}
+            <button type="submit" class="cta-button" disabled>Installed</button>
+          {% else %}
+            <button type="submit" class="cta-button">Install</button>
+          {% endif %}
+        </form>
+        {% if p.homepage %}
+          <a href="{{ p.homepage }}" class="link pack-docs">Docs →</a>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <p style="margin-top: 2rem">
+    Want to build your own pack?
+    See <a href="https://{{ docs_host }}/firewall/skill-packs">skill-packs reference</a>.
+  </p>
+</section>
+{% endblock %}

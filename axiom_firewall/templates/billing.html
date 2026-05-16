@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Billing — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+  <h1>Billing</h1>
+  <p class="tier-badge">Current plan: {{ tenant.tier|capitalize }}</p>
+
+  {% if not billing_enabled %}
+    <div class="alert">
+      <p>
+        Billing is not configured on this deployment. Self-serve upgrades
+        are disabled. Contact <a href="mailto:sales@{{ brand_domain }}">sales@{{ brand_domain }}</a>
+        for enterprise pricing.
+      </p>
+    </div>
+  {% else %}
+    <h2>Upgrade your plan</h2>
+    <div class="tier-grid">
+      <div class="tier {% if tenant.tier == 'indie' %}featured{% endif %}">
+        <h3>Indie</h3>
+        <p class="price">${{ tier_prices.indie }}<span>/mo</span></p>
+        <ul>
+          <li>{{ "{:,}".format(tier_limits.indie) }} calls / month</li>
+          <li>Custom policies</li>
+          <li>Email support</li>
+        </ul>
+        {% if tenant.tier != 'indie' %}
+          <form method="post" action="/billing/upgrade/indie">
+            <button type="submit" class="cta-button">Upgrade to Indie</button>
+          </form>
+        {% else %}
+          <p class="empty">Current plan</p>
+        {% endif %}
+      </div>
+      <div class="tier {% if tenant.tier == 'team' %}featured{% endif %}">
+        <h3>Team</h3>
+        <p class="price">${{ tier_prices.team }}<span>/mo</span></p>
+        <ul>
+          <li>{{ "{:,}".format(tier_limits.team) }} calls / month</li>
+          <li>Multi-tenant policies</li>
+          <li>Dashboard analytics</li>
+        </ul>
+        {% if tenant.tier != 'team' %}
+          <form method="post" action="/billing/upgrade/team">
+            <button type="submit" class="cta-button">Upgrade to Team</button>
+          </form>
+        {% else %}
+          <p class="empty">Current plan</p>
+        {% endif %}
+      </div>
+      <div class="tier">
+        <h3>Enterprise</h3>
+        <p class="price">Custom</p>
+        <ul>
+          <li>SOC&nbsp;2, DPA, BAA</li>
+          <li>Dedicated tenant</li>
+          <li>SLA + support</li>
+        </ul>
+        <p class="empty">
+          <a href="mailto:sales@{{ brand_domain }}">Contact sales</a>
+        </p>
+      </div>
+    </div>
+
+    {% if has_subscription %}
+      <h2>Manage your subscription</h2>
+      <form method="post" action="/billing/portal">
+        <button type="submit" class="cta-button">Open billing portal</button>
+      </form>
+      <p class="empty">
+        Update payment method, view invoices, or cancel via the secure
+        Stripe portal.
+      </p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

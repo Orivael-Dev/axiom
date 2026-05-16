@@ -1,0 +1,86 @@
+{
+  "family": "axiom-firewall",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/axiomFirewallTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "firewall",
+      "image": "ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/axiom-firewall:VERSION",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8004,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "AXIOM_FIREWALL_TENANT_DIR",    "value": "/data/tenants" },
+        { "name": "AXIOM_FIREWALL_PUBLIC_URL",    "value": "https://firewall.orivael.dev" },
+        { "name": "AXIOM_FIREWALL_CORS_ORIGINS",  "value": "" },
+        { "name": "UVICORN_WORKERS",              "value": "2" }
+      ],
+      "secrets": [
+        { "name": "AXIOM_MASTER_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/master-key" },
+        { "name": "AXIOM_FIREWALL_SESSION_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/session-secret" },
+        { "name": "STRIPE_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/stripe-secret-key" },
+        { "name": "STRIPE_WEBHOOK_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/stripe-webhook-secret" },
+        { "name": "STRIPE_PRICE_INDIE",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/stripe-price-indie" },
+        { "name": "STRIPE_PRICE_TEAM",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/stripe-price-team" },
+        { "name": "STRIPE_METER_INDIE",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/stripe-meter-indie" },
+        { "name": "STRIPE_METER_TEAM",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:axiom-firewall/stripe-meter-team" }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "tenant-data",
+          "containerPath": "/data/tenants",
+          "readOnly": false
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8004/healthz').status==200 else 1)\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/axiom-firewall",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "firewall",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "tenant-data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-EFS_ID",
+        "rootDirectory": "/firewall-tenants",
+        "transitEncryption": "ENABLED",
+        "authorizationConfig": {
+          "accessPointId": "fsap-ACCESS_POINT_ID",
+          "iam": "ENABLED"
+        }
+      }
+    }
+  ]
+}

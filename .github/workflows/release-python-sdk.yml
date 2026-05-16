@@ -1,0 +1,66 @@
+name: release Python SDK to PyPI
+
+# Triggered by pushing a tag like `py-sdk-v0.1.0`.
+# Uses PyPI Trusted Publishing (OIDC) — no API token in repo secrets.
+# Configure the trusted publisher at:
+#   https://pypi.org/manage/account/publishing/
+#   project name: axiom-firewall
+#   owner:        Orivael-Dev
+#   repository:   axiom
+#   workflow:     release-python-sdk.yml
+#   environment:  pypi
+
+on:
+  push:
+    tags: ["py-sdk-v*"]
+
+permissions:
+  contents: read
+  id-token: write   # required for OIDC trusted publishing
+
+jobs:
+
+  build-and-publish:
+    name: build + publish (PyPI)
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/axiom-firewall
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Sanity check — tag matches pyproject.toml version
+        working-directory: firewall_sdk/python
+        run: |
+          set -e
+          TAG_VERSION="${GITHUB_REF_NAME#py-sdk-v}"
+          PYPROJECT_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "tag    version: $TAG_VERSION"
+          echo "pyproject version: $PYPROJECT_VERSION"
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::Tag ($TAG_VERSION) does not match pyproject.toml version ($PYPROJECT_VERSION)."
+            exit 1
+          fi
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install build pytest
+
+      - name: Run SDK tests
+        run: |
+          pip install ./firewall_sdk/python
+          python -m pytest firewall_sdk/python/tests/ -v
+
+      - name: Build sdist + wheel
+        working-directory: firewall_sdk/python
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: firewall_sdk/python/dist/

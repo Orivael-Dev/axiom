@@ -1,0 +1,110 @@
+AGENT ReverseQRFEngine
+VERSION 0.1.0
+TRUST_LEVEL 3
+PURPOSE Reverse Quantum Reasoning Forecast — given (prompt, observed_answer), recover the superposition of latent trajectories consistent with the observation
+GOAL Generate signed trajectory hypotheses from observed (prompt, answer) pairs for synthetic-data augmentation,
+     each carrying intent_alignment, branch_quality, compatibility, and constitutional_distance metadata,
+     filtered by acceptance threshold tau and the constitutional gate
+
+RECEIVES prompt: str, observed_answer: str, domain: str, hmac_key: bytes, tau: float
+EMITS reverse_qrf_result: ReverseQRFResult
+MUTATES nothing
+CANNOT_MUTATE trust_level, isolation, default_tau_threshold, min_trajectory_distance, domain_branch_counts
+
+CONSTRAINT TRUST_LEVEL is 3 and CANNOT_MUTATE
+CONSTRAINT ISOLATION is True and CANNOT_MUTATE
+CONSTRAINT Default tau threshold is 0.10 and CANNOT_MUTATE
+CONSTRAINT Minimum trajectory distance is 0.05 and CANNOT_MUTATE
+CONSTRAINT Domain branch counts inherited from axiom_qrf and CANNOT_MUTATE
+CONSTRAINT Acceptance threshold tau must lie in [0.0, 1.0]
+CONSTRAINT Each accepted hypothesis has score >= tau AND constitutional_distance >= min_trajectory_distance
+CONSTRAINT Score equals forward_probability_weight multiplied by compatibility
+CONSTRAINT Compatibility equals intent_alignment multiplied by branch_quality
+CONSTRAINT Intent alignment is Jaccard similarity over intent label sets
+CONSTRAINT All payloads UTF-8 encoded before HMAC per BUG-003 and BUG-008
+CONSTRAINT HMAC signing always calls hexdigest explicitly per BUG-007
+CONSTRAINT ReverseQRFResult HMAC computed over canonical (prompt, observed_answer, domain, tau, n_accepted, n_rejected)
+
+RULES
+- On collapse: invoke forward QRFEngine.forecast on prompt to obtain weighted branch superposition
+- On forward result: encode observed_answer via LatentEngine trace-only phase to extract intent labels
+- For each forward branch: encode branch response via LatentEngine trace-only phase
+- On compatibility: multiply Jaccard intent_alignment by branch metrics overall quality
+- On hypothesis scoring: multiply forward probability_weight by compatibility
+- On acceptance: require score >= tau AND constitutional_distance >= min_trajectory_distance
+- On accepted hypothesis set: sort by score descending
+- On rejected hypotheses: preserve for audit and never discarded
+- On result assembly: HMAC sign canonical fields and emit ReverseQRFResult
+
+PROCESS
+- ReverseQRFEngine is instantiated with domain, hmac_key, tau, optional endpoint
+- Caller invokes collapse(prompt, observed_answer)
+- Forward QRFEngine.forecast is called to produce the weighted branch superposition
+- LatentEngine trace phase is invoked once for the observed_answer to extract intent labels
+- LatentEngine trace phase is invoked once per branch response to extract branch intent labels
+- Each branch is scored via intent Jaccard, multiplex quality, forward weight, and constitutional distance
+- Hypotheses meeting both tau and constitutional gates are accepted; the remainder go to rejected
+- Accepted hypotheses are sorted descending by score
+- ReverseQRFResult is HMAC signed and returned
+
+CHECK
+- collapse with valid domain produces ReverseQRFResult
+- Unknown domain raises ValueError
+- tau outside [0.0, 1.0] raises ValueError
+- Accepted hypotheses are sorted descending by score
+- Sum of accepted and rejected equals number of branches considered
+- HMAC signature verifies against independently computed digest
+- TRUST_LEVEL assignment raises AttributeError
+- ISOLATION assignment raises AttributeError
+
+WHEN
+- collapse_requested:    activate ReverseSuperpositionRecovery
+- observation_encoded:   activate IntentAlignmentScoring
+- hypotheses_filtered:   activate ConstitutionalGate
+
+HUMAN_REVIEW
+- require on: tau_threshold_change
+- require on: branch_pool_change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
+
+FAILURE
+- On LatentEngine error: propagate to caller with context
+- On unknown domain: raise ValueError with supported domain list
+- On invalid tau: raise ValueError indicating valid range
+- On empty branch pool: return ReverseQRFResult with empty hypotheses and empty rejected
+
+CONCEPT ReverseSuperpositionRecovery
+PURPOSE Recover the trajectory superposition consistent with an observed (prompt, answer) pair
+APPLIES WHEN forward QRF produces a non-empty weighted branch superposition for the prompt
+NOT WHEN forward QRF returns zero branches
+PRIORITY 1
+REQUIRES forward QRFEngine with valid domain configuration and a working LatentEngine
+EFFECT Each forward branch becomes a candidate trajectory hypothesis scored against the observation
+
+CONCEPT IntentAlignmentScoring
+PURPOSE Score how well each branch intent labels align with the observed answer intent labels
+APPLIES WHEN both observation trace and branch trace produce non-empty intent_vector
+NOT WHEN either trace returns empty intent labels
+PRIORITY 1
+REQUIRES LatentEngine trace phase output for both observation and branch response
+EFFECT Each branch receives intent_alignment in [0.0, 1.0] via Jaccard similarity on label sets
+
+CONCEPT ConstitutionalGate
+PURPOSE Reject hypotheses whose trajectory drifts too close to the CANNOT_MUTATE boundary
+APPLIES WHEN constitutional_distance is computed from branch confidence
+NOT WHEN branch confidence is unavailable
+PRIORITY 1
+REQUIRES ManifoldChecker.compute_distance from axiom_latent_v2
+EFFECT Hypotheses with constitutional_distance below 0.05 are rejected regardless of score
+
+OUTPUT
+- reverse_qrf_result: ReverseQRFResult with prompt, observed_answer, domain, tau_threshold, hypotheses, rejected, n_branches_considered, timestamp, hmac_signature
+
+SUCCESS
+collapse_completes:               0.20
+hypotheses_sorted_descending:     0.20
+constitutional_gate_enforced:     0.20
+hmac_signature_valid:             0.20
+cannot_mutate_enforced:           0.20

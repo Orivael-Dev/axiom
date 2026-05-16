@@ -59,6 +59,20 @@ body{background:var(--bg);color:var(--white);font-family:'IBM Plex Sans',sans-se
 .tline span{position:absolute;right:2px;top:-12px;font-size:9px;font-family:'IBM Plex Mono',monospace}
 .dist-big{font-family:'IBM Plex Mono',monospace;font-size:42px;font-weight:700;text-align:center;margin-top:8px;transition:color .3s}
 
+/* ORVL-021 VulnGuard — Zero-Day Notifications */
+.vg-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto}
+.vg-row{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--bg);border:1px solid var(--edge);border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px}
+.vg-sev{padding:2px 8px;border-radius:3px;font-size:9px;font-weight:600;letter-spacing:.5px;min-width:60px;text-align:center}
+.vg-sev-CRITICAL{background:rgba(255,68,68,.15);color:var(--red);border:1px solid rgba(255,68,68,.3)}
+.vg-sev-HIGH{background:rgba(245,197,24,.15);color:var(--gold);border:1px solid rgba(245,197,24,.3)}
+.vg-sev-MEDIUM{background:rgba(34,211,238,.15);color:var(--cyan);border:1px solid rgba(34,211,238,.3)}
+.vg-sev-LOW{background:rgba(100,116,139,.15);color:var(--mgray);border:1px solid rgba(100,116,139,.3)}
+.vg-cls{color:var(--white);flex:1}
+.vg-cliff{color:var(--mgray);font-size:10px}
+.vg-tally{display:flex;gap:14px;margin-bottom:10px;font-size:11px;font-family:'IBM Plex Mono',monospace;align-items:center}
+.vg-tally span span{font-weight:600;margin-left:4px}
+.pb-empty{color:var(--mgray);font-style:italic;font-size:11px}
+
 /* Sovereign Level */
 .level-display{text-align:center;padding:20px 0}
 .level-label{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:700;letter-spacing:1px;transition:color .3s}
@@ -88,7 +102,7 @@ body{background:var(--bg);color:var(--white);font-family:'IBM Plex Sans',sans-se
   <div class="logo">AXIOM OS SHIELD<span>v0.1 · ORVL-013</span></div>
   <div id="modeBadge" class="badge badge-green">LEARNING MODE</div>
   <div class="right">
-    <input id="endpoint" type="text" placeholder="http://localhost:8400" value="http://localhost:8400">
+    <input id="endpoint" type="text" placeholder="http://localhost:8001" value="http://localhost:8001">
     <button class="btn btn-connect" onclick="toggleConnect()">CONNECT</button>
     <div style="display:flex;gap:8px;align-items:center">
       <button id="btn-demo-random" class="btn-run">&#9654; Random Attack Demo</button>
@@ -165,6 +179,40 @@ body{background:var(--bg);color:var(--white);font-family:'IBM Plex Sans',sans-se
       <div id="scenarioContext" class="scenario-context"></div>
       <div style="font-size:10px;color:var(--mgray);margin-top:8px">HMAC-SHA256 signed audit log</div>
       <div id="sigPreview" class="mono" style="font-size:9px;color:var(--sgray);margin-top:6px;word-break:break-all">—</div>
+    </div>
+  </div>
+
+  <!-- ORVL-021 VulnGuard — Zero-Day Notifications (span 2) -->
+  <div class="card span2">
+    <div class="card-head">
+      <span class="card-title">ZERO-DAY NOTIFICATIONS · ORVL-021</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="vgCount" class="badge badge-green" style="font-size:9px">NO SCANS</span>
+        <button id="vgScanBtn" class="btn-run" style="padding:4px 10px;font-size:10px" onclick="runVulnGuardScan()">&#9654; Scan</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="vg-tally">
+        <span>CRIT <span id="vgCrit" style="color:var(--red)">—</span></span>
+        <span>HIGH <span id="vgHigh" style="color:var(--gold)">—</span></span>
+        <span>MED  <span id="vgMed"  style="color:var(--cyan)">—</span></span>
+        <span>LOW  <span id="vgLow"  style="color:var(--mgray)">—</span></span>
+        <span style="margin-left:auto;color:var(--mgray)">Last: <span id="vgWhen">never</span></span>
+      </div>
+      <div id="vgList" class="vg-list">
+        <span class="pb-empty">No scans run &mdash; click &#9654; Scan to discover zero-day candidates</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scan integrity (1 col) -->
+  <div class="card">
+    <div class="card-head"><span class="card-title">SCAN INTEGRITY</span></div>
+    <div class="card-body" style="text-align:center">
+      <div id="vgScans" class="mono" style="font-size:32px;font-weight:700;color:var(--purple)">0</div>
+      <div style="font-size:10px;color:var(--mgray);margin-top:4px">TOTAL SCANS</div>
+      <div style="font-size:10px;color:var(--mgray);margin-top:8px">HMAC-SHA256 signed report</div>
+      <div id="vgSig" class="mono" style="font-size:9px;color:var(--sgray);margin-top:4px;word-break:break-all">&mdash;</div>
     </div>
   </div>
 
@@ -374,7 +422,119 @@ async function pollAPI() {
     const data = await res.json();
     updateUI(data);
   } catch (e) { /* silently retry */ }
+
+  // VulnGuard status — poll at 1/10th the cadence so we don't hammer it
+  vgPollCounter = (vgPollCounter + 1) % 10;
+  if (vgPollCounter === 0) fetchVulnGuardStatus();
 }
+
+/* ORVL-021 VulnGuard — Zero-Day Notifications ─────────────────── */
+let vgPollCounter = 0;
+
+async function fetchVulnGuardStatus() {
+  const ep = document.getElementById('endpoint').value;
+  try {
+    const r = await fetch(ep + '/vulnguard/status');
+    if (!r.ok) return;
+    renderVulnGuard(await r.json());
+  } catch (e) { /* offline — leave panel as-is */ }
+}
+
+function renderVulnGuard(data) {
+  const report = data.report || {};
+  const vulns  = data.top_vulnerabilities || [];
+
+  const crit = report.critical || 0;
+  const high = report.high || 0;
+  const total = report.vulnerabilities_found || vulns.length;
+  // MED/LOW: count from the top list (full counts not in report header)
+  const med  = vulns.filter(v => v.severity === 'MEDIUM').length;
+  const low  = vulns.filter(v => v.severity === 'LOW').length;
+
+  document.getElementById('vgCrit').textContent  = crit;
+  document.getElementById('vgHigh').textContent  = high;
+  document.getElementById('vgMed').textContent   = med;
+  document.getElementById('vgLow').textContent   = low;
+  document.getElementById('vgScans').textContent = data.scan_count || 0;
+
+  const badge = document.getElementById('vgCount');
+  if (!data.ever_scanned) {
+    badge.className = 'badge badge-green'; badge.textContent = 'NO SCANS';
+  } else if (crit > 0) {
+    badge.className = 'badge badge-red';   badge.textContent = crit + ' CRITICAL';
+    badge.style.animation = 'pulse 1.2s infinite';
+  } else if (high > 0) {
+    badge.className = 'badge badge-gold';  badge.textContent = high + ' HIGH';
+    badge.style.animation = '';
+  } else if (total > 0) {
+    badge.className = 'badge badge-green'; badge.textContent = total + ' FINDINGS';
+    badge.style.animation = '';
+  } else {
+    badge.className = 'badge badge-green'; badge.textContent = 'CLEAN';
+    badge.style.animation = '';
+  }
+
+  const when = data.last_scan_at;
+  document.getElementById('vgWhen').textContent =
+    when ? (when.includes('T') ? when.split('T')[1].slice(0,8) + ' UTC' : when) : 'never';
+
+  const list = document.getElementById('vgList');
+  if (!vulns.length) {
+    list.innerHTML = data.ever_scanned
+      ? '<span class="pb-empty">No vulnerabilities in last scan &mdash; surfaces clean</span>'
+      : '<span class="pb-empty">No scans run &mdash; click &#9654; Scan to discover zero-day candidates</span>';
+  } else {
+    list.innerHTML = vulns.map(v => {
+      const sev = (v.severity || 'LOW').toUpperCase();
+      const cls = (v.vulnerability_class || 'unknown').replace(/_/g, ' ');
+      const sid = v.surface_id || '?';
+      const mag = (v.cliff_magnitude || 0).toFixed(4);
+      const intn = (v.cliff_intensity || 0).toFixed(2);
+      return `<div class="vg-row">
+        <span class="vg-sev vg-sev-${sev}">${sev}</span>
+        <span class="vg-cls">${cls} &middot; ${sid}</span>
+        <span class="vg-cliff">cliff ${mag} @ I=${intn}</span>
+      </div>`;
+    }).join('');
+  }
+
+  if (report.hmac_signature) {
+    document.getElementById('vgSig').textContent =
+      report.hmac_signature.slice(0, 24) + '...';
+  }
+}
+
+async function runVulnGuardScan() {
+  const btn = document.getElementById('vgScanBtn');
+  const ep  = document.getElementById('endpoint').value;
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = 'Scanning...';
+  try {
+    const r = await fetch(ep + '/vulnguard/scan', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    '{}'
+    });
+    if (!r.ok) { alert('Scan failed: HTTP ' + r.status); return; }
+    const d = await r.json();
+    renderVulnGuard({
+      ever_scanned:        true,
+      last_scan_at:        d.report.timestamp,
+      report:              d.report,
+      top_vulnerabilities: (d.vulnerabilities || []).slice(0, 10),
+      scan_count:          d.scan_count,
+    });
+  } catch (e) {
+    alert('Scan error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// Initial fetch so the panel populates before the user clicks CONNECT.
+fetchVulnGuardStatus();
 
 /* Demo setters */
 function updateAncestry(chain, flagged) { renderAncestry(chain, flagged); }

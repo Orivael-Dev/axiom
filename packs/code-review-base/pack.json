@@ -1,0 +1,50 @@
+{
+  "format_version": "1.0",
+  "name": "code-review-base",
+  "title": "Code Review — Base",
+  "description": "Baseline for AI-driven code-review bots. Blocks prompts asking the model to add backdoors, weaken auth, or paste customer code outside the review scope.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/code-review-base",
+  "tags": [
+    "base",
+    "developer-tools",
+    "code-review"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "add\\s+(?:a\\s+)?(?:backdoor|magic\\s+(?:password|token)|hidden\\s+(?:admin|root)\\s+(?:account|access))"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:disable|remove|skip)\\s+(?:the\\s+)?(?:authentication|authorization|auth\\s+check|signature\\s+(?:check|verification))"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:hard-?code|hardcode)\\s+(?:the\\s+)?(?:api\\s+key|secret|password|credential)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:log|print|exfiltrate)\\s+(?:the\\s+)?(?:environment\\s+variables?|secrets?|api\\s+keys?)\\s+(?:to|via)\\s+(?:webhook|external|remote)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:ignore|skip)\\s+(?:the\\s+)?(?:linter|security\\s+(?:scan|review|check)|coverage\\s+(?:gate|requirement))"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "mark\\s+(?:this|the)\\s+(?:diff|pr|change)\\s+as\\s+(?:safe|reviewed|approved)\\s+(?:without|even\\s+if)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "d3029383fe7626d8959799c9c37d9993b18935898caf24eae095cf7f63e548ca"
+}

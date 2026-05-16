@@ -1,0 +1,66 @@
+{
+  "format_version": "1.0",
+  "name": "prompt-injection-strict",
+  "title": "Prompt injection — Strict",
+  "description": "Stricter prompt-injection defense than the default classifier. Catches developer-mode tricks, system-prompt overrides, refuse-to-refuse loops, and emotionally-manipulative bypass attempts. Pair with another domain pack for layered defense.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/prompt-injection-strict",
+  "tags": [
+    "security",
+    "prompt-injection",
+    "jailbreak"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "DECEIVE",
+        "regex": "(?:enter|enable|activate|switch\\s+to)\\s+(?:dev|developer|debug|admin|root|god|jailbreak|dan|sudo)\\s+mode"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:ignore|disregard|forget|override)\\s+(?:all\\s+)?(?:previous|prior|earlier|above|system|safety)\\s+(?:instructions?|prompts?|rules?|constraints?|guidelines?)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:repeat|reveal|output|show)\\s+(?:the\\s+)?(?:system|initial|hidden|secret)\\s+prompt"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:start|begin|reply|respond)\\s+(?:every|each|all)\\s+(?:response|message|answer)\\s+with"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:no|never)\\s+refuse|do\\s+not\\s+refuse|don'?t\\s+(?:say|tell\\s+me)\\s+(?:no|you\\s+can'?t)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:you\\s+are|let'?s\\s+pretend|imagine\\s+you\\s+are)\\s+(?:an?\\s+)?(?:ai|model|assistant)\\s+(?:with|that\\s+has)\\s+no\\s+(?:filter|restriction|guardrail|safety)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:my\\s+)?(?:grandmother|grandma|grandpa|deceased\\s+(?:mother|father))\\s+(?:used\\s+to|would)\\s+(?:read|tell|whisper)\\s+(?:me|you)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "for\\s+(?:educational|research|academic|hypothetical)\\s+purposes?\\s+only"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "\\[\\s*(?:system|admin|root|developer)\\s*\\]\\s*(?:override|prompt|message)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:base64|rot13|hex|reverse)\\s*(?:encoded?|decoded?)?\\s*(?:bypass|jailbreak|inject)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "b109cb4c605d87674ecb4833e237625a0f5cacb70f59f6acfb9220ad8ebd0325"
+}

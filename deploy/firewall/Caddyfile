@@ -1,0 +1,27 @@
+{$FIREWALL_HOST} {
+    encode gzip
+
+    # Reverse proxy to the Firewall app on port 8004.
+    reverse_proxy firewall:8004 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For {remote_host}
+    }
+
+    # Security headers — match what AWS ALB + CloudFront would set.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        # CSP is intentionally lax for the dashboard (Jinja templates need
+        # inline styles). Tighten for the public API host if separated.
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+        -Server
+    }
+
+    # Caddy logs to stdout in JSON for easy ingest.
+    log {
+        output stdout
+        format json
+    }
+}

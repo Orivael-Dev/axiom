@@ -1,0 +1,54 @@
+{
+  "format_version": "1.0",
+  "name": "customer-support-base",
+  "title": "Customer Support — Base",
+  "description": "Defensive baseline for customer-support chatbots. Blocks impersonation attempts, refund-fraud language, and prompt-injection patterns that try to override your support policy.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/customer-support-base",
+  "tags": [
+    "base",
+    "customer-support",
+    "chatbot"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "DECEIVE",
+        "regex": "i\\s+(?:am|work)\\s+(?:for|at)\\s+your\\s+(?:company|support|fraud)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "this\\s+is\\s+(?:the\\s+)?(?:ceo|executive|manager)\\s+speaking"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "you\\s+must\\s+escalate\\s+this\\s+to\\s+(?:tier|level)\\s*\\d"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "process\\s+(?:my|this)\\s+refund\\s+(?:without|skip|bypass)\\s+verification"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "the\\s+(?:previous|last|earlier)\\s+agent\\s+(?:promised|approved|authorised|authorized)\\s+(?:a\\s+)?refund"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:i\\s+)?(?:will|am\\s+going\\s+to)\\s+(?:sue|take\\s+legal\\s+action)\\s+(?:if|unless)\\s+you\\s+(?:don'?t|do\\s+not)"
+      },
+      {
+        "class": "HARM",
+        "regex": "post\\s+(?:to|on)\\s+(?:reddit|twitter|x\\.com)\\s+(?:if|unless)\\s+you\\s+don'?t\\s+(?:refund|comp)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "669be8a5fd5d4ab9a0452b94e27dadccf1bd5ece6ef2fb6bb02cc24c153429fe"
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@axiom/firewall",
+  "version": "0.1.0",
+  "description": "Official TypeScript client for Axiom Intent Firewall — constitutional safety verdicts for LLM calls",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-vm-modules --import tsx --test tests/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "safety",
+    "firewall",
+    "constitutional-ai",
+    "guard",
+    "moderation",
+    "axiom",
+    "orivael"
+  ],
+  "homepage": "https://firewall.orivael.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Orivael-Dev/axiom"
+  },
+  "author": "Orivael Dev <support@orivael.dev>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
