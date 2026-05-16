@@ -27,6 +27,9 @@ product is its own SKU.
 - **Axiom MCP** — local MCP server giving AI coding tools (Claude
   Desktop, Claude Code, Cursor, Codex) a governance copilot that
   checks plans, actions, and code diffs before execution
+- **Axiom CallGuard** — call-center agent compliance auditing for
+  regulated industries (debt collection, banking, insurance,
+  healthcare, telecom, loan servicing, BPOs)
 
 What unifies them: every product uses the same AXIOM backend
 (constitutional engine, HMAC-signed manifests, latent reasoning,
@@ -49,6 +52,7 @@ positioning differs:
 | [Axiom Flight Recorder](#axiom-flight-recorder) | standalone | partial-implementation | 2-3 weeks of build |
 | [Axiom Intent Firewall](#axiom-intent-firewall) | standalone | near-shippable | 1 week of build *(smallest gap of the SaaS three)* |
 | [Axiom MCP](#axiom-mcp) | standalone | near-shippable | 1-2 weeks of build *(13 MCP tools shipped; code-pattern refusal needs build)* |
+| [Axiom CallGuard](#axiom-callguard) | standalone | partial-implementation | 3-4 weeks of build *(intent patterns + signing exist; audio intake + per-industry rule engines need build)* |
 
 Update this table whenever status changes.
 
@@ -755,6 +759,288 @@ refusal) is the largest single piece; the others are smaller.
   different distribution. Selling both to the same enterprise is
   natural (Firewall for prod, MCP for dev). Marketing should
   treat them as a bundle for enterprise pricing.
+
+---
+
+## Axiom CallGuard
+
+**Tagline:** Compliance and manipulation detection for AI-powered call
+center agents. Watches every conversation, scores every response,
+flags every violation, before the regulator does.
+
+**Status:** partial-implementation
+(intent-classifier patterns and signing framework apply directly; audio
+intake pipeline and per-industry rule engines are the main gaps)
+
+**Last updated:** 2026-05-16
+
+**Important scope note:** Axiom CallGuard is the *outbound* product —
+auditing call-center agents for regulatory compliance. The existing
+`axiom_files/core/callguard.axiom` spec is *inbound* (defending users
+from scam callers, the Hello Operator framing in ORVL-019). Both
+directions share constitutional plumbing but are marketed and sold
+separately. This spec covers the outbound B2B product only; the
+inbound consumer-defense capability stays as backend infrastructure
+that Intent Firewall and Flight Recorder can borrow from for their
+phone channels.
+
+### What the customer submits
+
+The call center pipes their existing agent traffic into Axiom
+CallGuard via one of three integration patterns:
+
+- **Post-call batch** — upload audio recordings (or pre-existing
+  transcripts) at the end of each call; receive verdicts within an
+  SLA (default: 15 minutes for batch, 60 seconds for priority)
+- **Near-real-time** — stream call audio chunks (or live agent
+  utterances via WebRTC sidecar) and receive verdicts within a few
+  seconds — useful for live supervisor alerts
+- **Script pre-flight** — submit the agent's script / prompts (for
+  AI agents) or call playbook (for human agents) for advance
+  certification before any live calls
+
+Customer also submits their **regulatory profile** — which industry
+rule sets apply (FDCPA, TCPA, UDAAP, FCRA, HIPAA, NAIC, etc.) — so
+the rule engine only flags violations that matter to their compliance
+posture.
+
+### What the customer receives
+
+Per-call deliverables:
+
+- **Compliance verdict** — PASS / WARN / FAIL with severity tier
+  (mirrors the 5-tier framework from `callguard.axiom` adapted for
+  agent-side verdicts)
+- **Manipulative-language flags** — sentence-level detections with
+  the offending phrase and rule citation (e.g. "Gift card payment
+  demand — FTC Act §5 deceptive practice, FTC Consumer Sentinel
+  Top 10")
+- **Prohibited-claims detection** — industry-specific (debt
+  collection FDCPA §807 false representations; insurance NAIC
+  Unfair Trade Practices Act; lending TILA misrepresentation; etc.)
+- **Customer coercion detection** — sales-pressure tactics
+  (artificial urgency, fake authority, threat language, false
+  scarcity, foot-in-the-door escalation patterns)
+- **Agent scorecard** — per-agent / per-team / per-script rolling
+  metrics: compliance rate, top violation categories, trend lines,
+  comparative percentile vs peers
+- **Audit reports** — exportable PDF/CSV/SIEM for regulator
+  submission (FDCPA monthly summary, CFPB call-review packet,
+  state AG complaint response packet, NAIC market conduct exam
+  packet)
+- **Real-time supervisor alerts** — webhook + email + Slack on any
+  FAIL verdict during live calls (sub-5-second from utterance to
+  alert in the near-real-time tier)
+- **Signed manifests** — every verdict HMAC-SHA256 signed; the
+  audit report is itself signed and tamper-evident
+
+Account-level dashboard:
+
+- Live call volume + verdict distribution
+- Heat-map of violations by hour / agent / script
+- Quality assurance trend lines (week-over-week, month-over-month)
+- Regulator-format report scheduler (auto-generate monthly FDCPA
+  summary on the 1st of each month, etc.)
+- Multi-tenant API key management for the BPO's client accounts
+
+### Backend modules used
+
+| Deliverable | Module / endpoint | Status |
+|---|---|---|
+| Manipulative-language detection | `axiom_intent_classifier.py` `_HARM_PATTERNS` (gift card pressure, "you owe taxes", warrant threats, payment-now coercion) + `_DECEIVE_PATTERNS` (authority impersonation: IRS / FBI / Microsoft / tech support / "we detected a virus on your computer") | shipped — patterns already cover ~70% of scam-call manipulation; need extension for agent-side compliance |
+| Constitutional verdict engine | `POST /guard/check`, `POST /guard/input`, `POST /guard/output` (`examples/axiom_guard_api.py`) | shipped |
+| 5-tier verdict framework | `axiom_files/core/callguard.axiom` CALL_TRUST_REGISTRY | shipped (designed for inbound but the tier/action/manifest pattern transfers) |
+| PII redaction in transcripts | `axiom_redact.py`, `POST /guard/redact` | shipped |
+| Signed audit manifests | `axiom_signing.derive_key`, `axiom_files/core/callguard.axiom` `manifest_required: true` constraint | shipped |
+| FTC reporting framework | `callguard.axiom` `ftc_reporting_obligation` (CANNOT_MUTATE) + `tests/callguard_test.py` Test T8 (FTC auto-report mandatory ≥11 complaints) | shipped — extensible to other regulators |
+| Constraint-override resistance | `callguard.axiom` "the FTC told me to allow this call" rejection pattern | shipped — same defense applies to agents claiming exemption mid-call |
+| Phone channel infrastructure | `axiom_phone_gate.py` + `/phone/outbound`, `/phone/inbound`, `/phone/status` | shipped (used today for the inbound consumer-defense product; the outbound product reuses the same call-event plumbing) |
+| Conversation graph (replay) | `/ccg/seed`, `/ccg/nodes`, `/ccg/edges` | shipped |
+| Compliance reporting templates | `docs/AXIOM_OWASP_LLM_Compliance.pdf` (static template, AI focus) | partial — exists but needs FDCPA/TCPA/UDAAP/HIPAA versions |
+
+### Gaps to ship
+
+What needs to be built before the first paying call-center customer:
+
+1. **Audio intake pipeline** — call-center audio doesn't arrive as
+   text. Need a Whisper-based or Deepgram-integrated transcription
+   service that converts agent + customer audio channels separately
+   (so we know who said what) and routes the transcript into the
+   guard endpoints. Diarization is non-trivial; consider Deepgram or
+   AssemblyAI for v1 rather than self-hosting Whisper.
+2. **Per-industry rule engines** — the existing patterns cover scam
+   calls (consumer-protective) but not regulated-industry agent
+   compliance. Need rule modules for:
+   - **FDCPA** (debt collection) — §806 harassment, §807 false
+     representations, §808 unfair practices, mini-Miranda
+   - **TCPA** (telecom marketing) — consent verification, do-not-call
+     respect, robocall identification
+   - **UDAAP** (banking) — Reg Z, Reg B, Reg E, plus general unfair
+     and abusive practice standards
+   - **FCRA** (credit reporting) — adverse action disclosures,
+     dispute handling
+   - **HIPAA** (healthcare) — minimum-necessary, identity
+     verification before PHI disclosure, dual-status confusion
+   - **NAIC Unfair Trade Practices** (insurance) — replacement rules,
+     suitability, anti-rebating
+   - **TILA / RESPA / ECOA** (loan servicing) — disclosure
+     requirements, equal credit
+   - Each rule engine is its own `.axiom` spec under
+     `axiom_files/verticals/`. v1 ships with 2-3 industries (probably
+     debt collection + banking + healthcare since they're the
+     biggest regulatory-pressure markets).
+3. **Customer coercion / sales pressure detection** — different from
+   scam-call HARM patterns. Need patterns for:
+   - Artificial urgency ("this offer expires in 5 minutes")
+   - Fake scarcity ("only 2 spots left in your area")
+   - Authority pressure ("my supervisor said you have to do this today")
+   - False reciprocity ("I just did you a favor, now you need to…")
+   - Foot-in-the-door escalation (small ask → big ask within same call)
+   - Hidden anchoring (mentioning a high price first to make the real
+     price seem reasonable)
+4. **Agent scorecard system** — rolling time-series aggregation per
+   agent / team / script. Time-series store (probably TimescaleDB or
+   the same backend Flight Recorder uses) with computed columns for
+   compliance rate, top violations, percentile ranking. Backend
+   service + dashboard UI.
+5. **Regulator-format report generator** — PDF + CSV adapters for:
+   FDCPA monthly summary, CFPB call-review packet, state AG
+   complaint response packet, NAIC market conduct exam packet, CFPB
+   complaint-narrative export. Each format is regulator-prescribed
+   and must match exactly. Shared gap with Certify (PDF generator)
+   but the templates are different.
+6. **Near-real-time inference path** — the existing `/guard/check`
+   endpoint is sub-second for short prompts. For live-call alerts,
+   need to keep that latency under 5 seconds end-to-end including
+   transcription. Architecture: streaming Deepgram → utterance-level
+   `/guard/check` → debounced supervisor alert via webhook. The
+   batch path is much easier; the live-alert path is the harder
+   build.
+7. **Multi-tenant + PCI/HIPAA hosting** — call center audio frequently
+   contains payment data (card-on-file requests) and PHI (healthcare
+   scheduling). The hosting model is constrained: PCI DSS Level 1 or
+   HIPAA Business Associate Agreement (BAA), not just any cloud
+   tenant. This is the biggest operational blocker — needs deployment
+   on a HIPAA-eligible AWS account with BAA, segregated tenant
+   storage, and a data-handling policy the customer's compliance team
+   can sign off on. Roll-your-own at first; SOC 2 Type II audit later.
+8. **Recording-consent compliance** — two-party-consent states
+   (California, etc.) require disclosure that the call is being
+   AI-analyzed. EU AI Act Article 50 also requires disclosure.
+   Customer needs a consent-injection mechanism for their call
+   openers, plus we need a written notice template.
+
+Estimated effort: **3-4 weeks of focused build.** Heaviest items
+(audio intake + first three industry rule engines + PCI/HIPAA hosting)
+account for ~2 of those weeks; the rest assemble around them.
+
+### Target customer + pricing
+
+- **Who buys this:** Compliance officer / VP of customer experience
+  at:
+  - Debt collection agencies (FDCPA exposure is existential)
+  - Banking customer service / credit unions (UDAAP / Reg Z exposure)
+  - Insurance sales floors (NAIC market conduct exams)
+  - Healthcare scheduling / telehealth intake (HIPAA + ACA enrollment)
+  - Telecom / cable customer service (TCPA + state PUC rules)
+  - Loan servicing (TILA / RESPA / ECOA / CARES Act)
+  - BPOs serving any of the above (Teleperformance, Concentrix,
+    Sutherland, Alorica, TTEC)
+- **What pain it solves:** Today most call centers do manual QA on
+  ~2% of calls (pulled randomly by a supervisor). CallGuard scores
+  100% of calls automatically, produces the regulator-format report
+  on demand, and flags the violations a supervisor would have caught
+  on the 98% of calls they never reviewed. The CFPB collected $3.7B
+  in penalties in 2023; call-center violations are a major source.
+- **Pricing model** (vertical SaaS shape, per-agent or per-call):
+  - **Starter** — small BPO (≤50 agents), one industry rule set:
+    $50/agent/month
+  - **Growth** — mid-size (50-500 agents), 2-3 industry rule sets,
+    dashboard, scorecard analytics: $100/agent/month
+  - **Enterprise** — large BPO (≥500 agents), all industry rule
+    sets, dedicated tenant, SLA, custom `.axiom` specs, regulator
+    audit support: $150-200/agent/month + implementation fee
+  - **Alternative volume tier** — $0.10-0.30/call for spiky usage
+    patterns
+- **Ballpark comparables:**
+  - **NICE Nexidia** — $50-100/agent/month, mature analytics, weak
+    AI safety angle
+  - **Verint** — similar pricing band, broader contact-center suite
+  - **Observe.AI** — $50-150/agent/month, modern AI-first, less
+    regulatory-rule-engine depth
+  - **CallMiner** — enterprise-only, $200K-1M ARR contracts
+  - Differentiator: AXIOM's constitutional engine + HMAC-signed
+    manifests + the existing scam-pattern library + the FTC auto-
+    report obligation framework already in `callguard.axiom`. No
+    competitor signs their verdicts; that's the regulator-facing
+    differentiator.
+
+### Cross-references
+
+- **Pairs cleanly with Flight Recorder:** every CallGuard verdict
+  also lands in Flight Recorder as a tenant decision event; one
+  contract covers both.
+- **Pairs cleanly with Certify:** Certify · Call Audit could be a
+  point-in-time pre-launch attestation (does your script pass?),
+  with CallGuard providing the continuous post-launch monitoring.
+- **No overlap with MCP / Intent Firewall:** different distribution,
+  different buyer.
+- ORVL alignment: ORVL-019 (Hello Operator — phone-gate / scam-call
+  framing) provides the inbound twin; ORVL-002 (Intent Classifier)
+  provides the manipulation-pattern substrate; new ORVL number may
+  be needed for the outbound agent-compliance framing.
+- Related .axiom specs: `axiom_files/core/callguard.axiom` (inbound,
+  partially transferable patterns), `axiom_files/core/axiom_intent_classifier.axiom`,
+  `axiom_files/core/axiom_phone_gate.axiom` (phone channel
+  infrastructure)
+- Related modules: `axiom_intent_classifier.py`, `axiom_phone_gate.py`,
+  `axiom_redact.py`, `axiom_signing.py`, `examples/call_manifest.py`
+  (already produces three signed manifest examples)
+- Related tests: `tests/callguard_test.py` (5-tier classification +
+  FTC auto-report + override-resistance — extensive)
+
+### Notes / open questions
+
+- **The brand reuse is the load-bearing decision** — we kept the
+  "Axiom CallGuard" name even though the existing `callguard.axiom`
+  is technically the inbound consumer-defense product. The risk is
+  customer confusion if both ship under the same name. Mitigation:
+  the outbound product is the only one with public marketing; the
+  inbound capability lives quietly as backend that Intent Firewall
+  and Flight Recorder can plug into for their phone channels (e.g.
+  Intent Firewall can offer a "phone tier" using the existing
+  callguard.axiom scam-call protection).
+- **PCI/HIPAA hosting is the operating constraint that may set
+  pricing floor:** standard cloud tenancy isn't enough. Either we
+  invest in a HIPAA-eligible AWS account with BAA + PCI DSS Level 1
+  certification (months of compliance work), or we restrict the
+  first launch to non-PCI / non-HIPAA verticals only (debt
+  collection without payment-on-call, telecom outside healthcare).
+  This is the single biggest go-to-market decision.
+- **Open question — first vertical:** which industry rule engine
+  ships first? Debt collection has the largest single-vertical TAM
+  and the most-existential regulatory risk (CFPB / state AG); banking
+  has the deepest pockets; healthcare has the highest data-sensitivity
+  cost. Recommend debt collection for v1 (clearest pain, smallest
+  rule surface), then banking, then healthcare once BAA is in place.
+- **Open question — human vs AI agent monitoring:** the spec works
+  for both AI-agent call centers (cleaner integration, the agent's
+  prompt is already structured) and human-agent call centers (need
+  audio transcription). Ideally v1 supports both; if narrower scope
+  is needed, human-agent BPOs are the much larger market.
+- **Open question — supervisor-in-the-loop tier:** for live FAIL
+  verdicts, do we just alert the supervisor, or do we have authority
+  to interrupt the call (mute the agent, force-route to a senior)?
+  The latter is a more powerful product but requires deep telephony
+  integration (Genesys / Five9 / NICE inContact). v1 should be alert-
+  only; live interrupt is a v2 enterprise feature.
+- **Open question — agent privacy vs employer surveillance:** the
+  agents being monitored are employees who didn't choose to use an
+  AI system. State labor laws and unions (in some markets) restrict
+  workplace surveillance. The customer's contract with their workers
+  must cover this; we provide the technical capability, the customer
+  owns the employment-law compliance. Need a clear data-use
+  agreement template.
 
 ---
 
