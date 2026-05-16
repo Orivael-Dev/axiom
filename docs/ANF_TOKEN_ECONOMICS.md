@@ -9,23 +9,49 @@ conservative; the broader theoretical envelope is sketched but not credited.
 
 ---
 
-## 1. Baseline — the dense transformer Chinchilla rule
+## 1. Baseline — from Chinchilla (2022) to modern over-training (2024–2026)
 
-The Chinchilla scaling result says compute-optimal training for a dense
-transformer wants roughly **20 training tokens per parameter**. A 1B-parameter
-model wants ~20B tokens.
+The Chinchilla scaling result (Hoffmann et al., 2022, arXiv:2203.15556)
+said compute-optimal training for a dense transformer wants roughly
+**20 training tokens per parameter**. A 1B-parameter model wants ~20B
+tokens. That ratio framed the field for about two years.
 
-Two assumptions sit underneath that ratio:
+**The field has since moved past it.** Modern frontier practice
+deliberately *over-trains* small dense models far past the
+compute-optimal point:
 
-1. **Every forward pass touches every parameter.** Each token's gradient flows
-   through the whole network, so per-token compute is proportional to total
-   parameter count.
-2. **A token is one categorical ID drawn from a vocabulary.** The embedding is
-   high-dimensional, but the *input stream* is a flat 1D sequence; each
-   position carries one unit of "what was said next."
+| Model              | Params | Tokens | Tokens/param |
+|---                 |---     |---     |---           |
+| Chinchilla optimum | —      | —      | **20**       |
+| Llama 2 70B        | 70 B   | 2 T    | 29           |
+| Llama 3.1 405B     | 405 B  | 15 T   | 37           |
+| NVFP4 12B (2025)   | 12 B   | 10 T   | **833**      |
+| Llama 3 8B         | 8 B    | 15 T   | **1,875**    |
+| Phi-3 mini         | 3.8 B  | 3.3 T  | 868          |
 
-Both assumptions are violated in different ways by AXIOM's architecture. The
-rest of this note walks through how, and what that does to the ratio.
+**Why the over-training?** Training compute is paid once. Inference
+compute repeats forever. If you'll serve a model billions of times,
+every fraction of a percentage point of accuracy you can squeeze out
+at training time pays back across the full deployed lifetime. The
+break-even point is around 10–100 B inference tokens served — easily
+exceeded by any production model. So the modern strategy is: pick a
+size convenient for inference, then train it at 200–2000 tokens per
+parameter until the data saturates.
+
+**Two assumptions still sit underneath every variant of the ratio:**
+
+1. **Every forward pass touches every parameter.** Each token's gradient
+   flows through the whole network, so per-token compute is proportional
+   to total parameter count.
+2. **A token is one categorical ID drawn from a vocabulary.** The
+   embedding is high-dimensional, but the *input stream* is a flat 1D
+   sequence; each position carries one unit of "what was said next."
+
+Both assumptions are violated in different ways by AXIOM's architecture.
+The rest of this note walks through how, and what that does to the
+ratio. Where Sections 6 and 8 cite an absolute token budget, they use
+the modern over-trained range (200–2000 tokens/param) rather than the
+2022 Chinchilla baseline.
 
 ---
 
@@ -215,7 +241,7 @@ recovers the `{(w_i, branch_i)}` set that would have produced the
 observed answer with non-trivial weight. The math is the same; the
 direction of inference is inverted.
 
-### 5.4 Synthetic-data multiplier
+### 5.4 Synthetic-data multiplier — and the natural-data ceiling
 
 | Today                              | With reverse QRF                                 |
 |------------------------------------|--------------------------------------------------|
@@ -225,6 +251,35 @@ direction of inference is inverted.
 
 Conservative multiplier: **~3-5× more training units per observation**,
 each ~3× denser than a flat token.
+
+**Why this isn't a "nice to have."** §1's modern over-training
+practice (200–2000 tokens/param) runs into a hard ceiling: there is
+not enough high-quality natural text on the internet to keep scaling.
+"Scaling Laws for Quantized LLMs with 100T Training Tokens" (Kumar et
+al., 2024, arXiv:2411.17691) shows diminishing returns kick in around
+**~1000 tokens per parameter** for typical web-quality data — past
+that, the model starts memorizing rather than generalizing. NVFP4 12B
+stopped at 10T tokens (833 tokens/param) for exactly this reason: 12T
+would have hit saturation, 50T would have wasted compute.
+
+A 12B AXIOM model trained at the same modern ratio would need ~10T
+training trajectories. Natural sources cap out well below that
+(Common Crawl filtered ~1–3T, all of arXiv ~10B, all of Wikipedia
+~4B). The gap has to be filled by synthetic generation. Reverse-QRF
+collapse is exactly that generator: take a smaller corpus of
+high-quality `(prompt, answer)` pairs and produce 3–8× more
+trajectories per pair, each carrying intent + manifold metadata at
+the granularity of `axiom_latent_v2.TrajectorySample`. The
+constitutional gate (`MIN_TRAJECTORY_DISTANCE = 0.05`) and acceptance
+threshold (`τ = 0.10`) keep the synthetic data within bounds the
+forward QRF would have produced anyway, so it doesn't drift the
+distribution off-manifold.
+
+The gap is the point. Reverse-QRF turns a `~3T natural-token` corpus
+into a `~10–25T trajectory-sample` corpus that's genuinely different
+from a naive epoching pass — each trajectory carries different
+intent geometry, different stage scaling, different rival branches —
+without leaving the constitutional manifold.
 
 ### 5.5 What would be needed to build it
 
@@ -285,21 +340,27 @@ sparse-compute multiplier alone (§2). Sections 4 and 5 are treated as
 
 ## 8. Worked example — a 1B-parameter target
 
-Dense Chinchilla baseline:
+Modern over-trained baseline (per §1, picking the middle of the 200–2000
+tokens/param range):
 
-- 1B params × 20 = **20B training tokens**.
+- 1B params × ~1000 tokens/param = **~1T training tokens**.
+- 2022 Chinchilla baseline would have said 20B; the field has moved on.
 
 With ANF sparse activation only (§2):
 
-- Same 20B training tokens.
+- Same ~1T training tokens.
 - ~5× compute headroom → **2-3B parameters** trainable in the same
   wall-clock and compute budget.
 
-With reverse-QRF synthetic generation layered on (§5, if built):
+With reverse-QRF synthetic generation layered on (§5, now built — see
+`axiom_qrf_reverse.py`):
 
-- 2-3B parameters trained on ~20B observed tokens, augmented to
-  **~60-100B reverse-collapsed trajectory units**, each carrying ~3× the
+- 2-3B parameters trained on ~1T observed tokens, augmented to
+  **~3-5T reverse-collapsed trajectory units**, each carrying ~3× the
   signal density of a flat token (§4).
+- This pushes past the natural-data saturation ceiling identified in §5.4
+  (~1000 tokens/param for typical web-quality data) by replacing scarce
+  natural tokens with constitutional-bounded synthetic trajectories.
 
 The 2-3B parameter figure is the conservative line. The trajectory-density
 and reverse-collapse multipliers are *bonus headroom*, not part of the
