@@ -30,6 +30,9 @@ product is its own SKU.
 - **Axiom CallGuard** — call-center agent compliance auditing for
   regulated industries (debt collection, banking, insurance,
   healthcare, telecom, loan servicing, BPOs)
+- **Axiom Data Gate** — permissions layer for AI memory: classify,
+  redact, and gate every piece of data before an AI agent reads,
+  remembers, or exports it
 
 What unifies them: every product uses the same AXIOM backend
 (constitutional engine, HMAC-signed manifests, latent reasoning,
@@ -53,6 +56,7 @@ positioning differs:
 | [Axiom Intent Firewall](#axiom-intent-firewall) | standalone | near-shippable | 1 week of build *(smallest gap of the SaaS three)* |
 | [Axiom MCP](#axiom-mcp) | standalone | near-shippable | 1-2 weeks of build *(13 MCP tools shipped; code-pattern refusal needs build)* |
 | [Axiom CallGuard](#axiom-callguard) | standalone | partial-implementation | 3-4 weeks of build *(intent patterns + signing exist; audio intake + per-industry rule engines need build)* |
+| [Axiom Data Gate](#axiom-data-gate) | standalone | near-shippable | 2 weeks of build *(HIPAA redaction + memory block registry already shipped; need other taxonomies + policy engine)* |
 
 Update this table whenever status changes.
 
@@ -1041,6 +1045,285 @@ account for ~2 of those weeks; the rest assemble around them.
   must cover this; we provide the technical capability, the customer
   owns the employment-law compliance. Need a clear data-use
   agreement template.
+
+---
+
+## Axiom Data Gate
+
+**Tagline:** A permissions layer for AI memory. Classify, redact, and
+gate every piece of data before an AI agent reads, remembers, or
+exports it.
+
+**Status:** near-shippable
+(HIPAA Safe Harbor redaction + memory block registry + signing chain
+already ship; gaps are the additional regulated-data taxonomies,
+per-agent policy engine, and vector-DB integrations)
+
+**Last updated:** 2026-05-16
+
+### What the customer submits
+
+The enterprise points their existing data flows at Data Gate via one
+of three integration patterns:
+
+- **Pre-flight check** — single endpoint takes
+  `{data: <raw_text|json|file>, agent_id, action: "read" | "write" |
+  "export" | "remember"}` and returns
+  `{verdict: allow | block | redact, redacted_data, classifications[],
+  policy_violations[], signature}`. The customer's agent code calls
+  this before passing data to or storing it from the model.
+- **Memory proxy mode** — Data Gate sits between the agent and the
+  vector store (Pinecone / Weaviate / Qdrant / pgvector / ChromaDB).
+  Every write is classified and policy-checked; every read is filtered
+  according to the requesting agent's policy. Drop-in proxy at the
+  vector DB layer.
+- **Batch classification** — upload a corpus / database snapshot
+  before connecting an AI agent to it; receive a classification map
+  (per-field PII / regulated / public) plus a recommended `.axiom`
+  policy spec the customer can review and apply.
+
+Customer also submits their **regulatory profile** (HIPAA / GDPR /
+CCPA / FCRA / GLBA / PCI / CUI) plus **per-agent role definitions**
+(which agent is allowed to see what class of data).
+
+### What the customer receives
+
+Per-request response:
+
+- **Classification** — array of detected classes: HIPAA PHI (which
+  of the 18 Safe Harbor identifiers), GDPR special-category data
+  (race, religion, health, biometric, sex life, criminal record),
+  PCI cardholder data (PAN, CVV, expiration), FCRA covered data
+  (credit reports, employment verification), GLBA NPI (non-public
+  personal information), CUI / ITAR / EAR, custom enterprise
+  taxonomies
+- **Verdict** — `allow` / `block` / `redact` with rule citations
+- **Redacted data** (if `redact`) — the original payload with
+  classified fields replaced by typed placeholders (`[NAME REDACTED]`,
+  `[SSN REDACTED]`, etc.) following the existing HIPAA Safe Harbor
+  pattern
+- **Policy violations** — if `block`, the specific rule(s) the
+  request would have violated (per-agent role, data class, action)
+- **Memory write decision** — for `action: "remember"`, whether the
+  agent is permitted to write this to long-term memory (vector
+  store / cache / log) or must process it transiently only
+- **HMAC-SHA256 signature** — every verdict cryptographically signed
+- **Audit-log entry** — appended to the tenant's tamper-evident
+  data-access log; queryable via `GET /data_gate/log`
+
+Tenant dashboard:
+
+- **Data classification map** — heat-map of what classes of data
+  flowed through which agents over a time window
+- **Right-to-erasure workflow** — accept GDPR Article 17 / CCPA
+  Section 1798.105 / state-equivalent deletion requests, find every
+  log entry and memory block containing the subject's data, and
+  produce a signed deletion certificate (or an explanation of which
+  artifacts can't be deleted, with the lawful-basis citation)
+- **Policy editor** — author per-agent access rules in a structured
+  UI (which agent can see which class for which action); compiles to
+  a `.axiom` spec under the hood
+- **Vector-store sweep** — periodically re-classify existing
+  embeddings (data classifications evolve; what was acceptable
+  yesterday may be regulated tomorrow when a new state law passes)
+- **Compliance export** — Article 30 records of processing, HIPAA
+  audit log packet, CCPA personal-information inventory
+
+### Backend modules used
+
+| Deliverable | Module / endpoint | Status |
+|---|---|---|
+| HIPAA Safe Harbor de-identification (18 identifiers) | `axiom_redact.py` implementing 45 CFR 164.514(b)(2) | shipped |
+| PII redaction endpoint | `POST /guard/redact`, `GET /guard/redact/patterns` (`examples/axiom_guard_api.py`) | shipped |
+| Memory block primitive | `axiom_mkb.py` `KnowledgeBlock`, `ComposedBlock` | shipped |
+| Memory block certification | `KnowledgeBlock.certify()`, `_sign_block` (HMAC-signed at registration) | shipped |
+| Memory block registry | `BlockRegistry.register()`, `BlockRegistry.find()` | shipped |
+| Load from `.axiom` spec | `load_from_axiom(filepath, hmac_key)` | shipped |
+| Signed audit manifests | `axiom_signing.derive_key`, every guard verdict already HMAC-signed | shipped |
+| Per-agent intent classification | `axiom_intent_classifier.py` (used to decide which agents can do what action class) | shipped |
+| Per-agent policy via SkillDelegate | `axiom_axm.py SkillDelegate.intent_classes` (existing pattern for "this agent only handles these intents" — generalizes to "this agent only sees these data classes") | shipped |
+| Append-only data access log | reuse `axiom_os_shield_log.jsonl` pattern + new `axiom_data_gate_log.jsonl` | partial (pattern shipped) |
+
+### Gaps to ship
+
+What needs to be built before the first paying customer:
+
+1. **Additional regulated-data taxonomies** — `axiom_redact.py`
+   covers HIPAA Safe Harbor; need parallel pattern libraries for:
+   - **GDPR Article 9 special categories** — race, religion, health,
+     biometric, sex life, criminal record, trade-union membership
+   - **PCI DSS** — PAN (13-19 digit card numbers with Luhn check),
+     CVV (3-4 digit, never store), track data, expiration date
+     after first six (BIN-only is non-PCI)
+   - **FCRA covered data** — credit reports, employment background,
+     tenant screening
+   - **GLBA NPI** — non-public personal information from financial
+     institutions
+   - **CUI / ITAR / EAR** — for government contractors and defense
+   - Each is its own `.axiom` spec under `axiom_files/taxonomies/`
+   - V1 ships HIPAA (done) + GDPR special categories + PCI; FCRA /
+     GLBA / CUI in v2
+2. **Per-agent policy engine** — today's `SkillDelegate.intent_classes`
+   gates by intent. Data Gate needs to gate by `(agent_id, action,
+   data_class)` triples. Generalize the AXM delegate pattern, add a
+   policy-evaluation function `is_allowed(agent_id, action,
+   classifications) -> verdict`. ~400 lines of new code; the
+   pattern is established.
+3. **Memory write/read gate** — `BlockRegistry.register()` is
+   unconditional today. Add a pre-registration hook that checks the
+   policy before accepting a write, and a pre-read hook that filters
+   `find()` results according to the requesting agent's policy.
+4. **Vector-DB integrations** — Pinecone, Weaviate, Qdrant, pgvector,
+   ChromaDB. v1 ships with one (probably pgvector since it's
+   self-hostable and easy to wrap); the rest are connectors that
+   follow the same pattern. ~200 lines per connector.
+5. **Right-to-erasure workflow** — find every log line and memory
+   block containing a subject's identifier, delete them, produce a
+   signed deletion certificate. For vector embeddings, "deletion"
+   is technically possible (delete the vector) but **proving** the
+   subject's data isn't latently encoded elsewhere is hard — needs
+   a written limitation in the deletion certificate.
+6. **Policy authoring UI** — same gap pattern as Intent Firewall:
+   either the customer hand-writes `.axiom` specs, fills in a web
+   form, or uses a YAML shim. Recommend web form for v1 with raw
+   `.axiom` export.
+7. **Compliance export templates** — GDPR Article 30 records of
+   processing, HIPAA audit log packet, CCPA personal-information
+   inventory, CCPA right-to-know report. PDF generator shared gap
+   with Certify and CallGuard.
+8. **Vector-store classification sweep** — background job that
+   re-scans existing embeddings against current classifiers (since
+   regulations and patterns evolve). Cron-style; reports new
+   findings to the dashboard.
+
+Estimated effort: **2 weeks of focused build.** This is shorter than
+CallGuard because the regulatory plumbing already exists in
+`axiom_redact.py` and the memory primitives already exist in
+`axiom_mkb.py`. Most of the work is policy-engine + connectors +
+right-to-erasure workflow.
+
+### Target customer + pricing
+
+- **Who buys this:** Chief Privacy Officer / Data Protection Officer
+  / VP of Engineering at:
+  - Banks + credit unions (GLBA, CCPA, state privacy laws, FCRA for
+    underwriting AI)
+  - Healthcare systems / payors / telehealth (HIPAA, state medical
+    privacy, ACA enrollment)
+  - Government contractors (CUI, ITAR, EAR, FedRAMP boundary)
+  - Enterprise AI teams in any sector (GDPR Article 22 automated
+    decision-making, EU AI Act data governance requirements)
+  - Legal services (attorney-client privilege preservation when AI
+    summarizes docs)
+  - HR tech (ADA, FCRA for background checks, NYC Local Law 144)
+  - Any EU-presence company (GDPR Articles 5, 9, 17, 22, 32)
+- **What pain it solves:** The "we connected our AI agent to our
+  Snowflake / Confluence / Salesforce and now what?" problem. Right
+  now most enterprises either give the agent full access (and pray)
+  or wire up an ad-hoc patchwork of row-level security + column
+  masking + custom prompt filters. Data Gate replaces all of that
+  with a single policy layer that's auditable, signed, and produces
+  the regulator-format records by default.
+- **Pricing model** (per-call + per-tenant):
+  - **Free** — ~1K classification calls/mo, default PII patterns
+    only (HIPAA + basic PII), single agent, no memory proxy
+  - **Indie $99/mo** — ~50K calls/mo, custom policies, 3 agents,
+    one vector-store connector
+  - **Team $499/mo** — ~500K calls/mo, unlimited agents, all
+    vector-store connectors, dashboard, audit log 90-day retention
+  - **Enterprise** — custom, dedicated tenant, GDPR DPA + SOC 2
+    Type II + HIPAA BAA, audit log multi-year retention, custom
+    `.axiom` taxonomies, on-prem deployment option
+  - **Overage** — $0.50 per 1,000 classification calls past tier
+    threshold
+- **Ballpark comparables:**
+  - **Immuta** — $50-200K/yr data access governance, not AI-native
+  - **Skyflow** — per-record pricing, privacy vault (different
+    architecture; they store the data, we gate access to it where it
+    already lives)
+  - **Microsoft Purview** — bundled with M365 E5 ($57/user/mo);
+    broad data governance but weak on AI-agent permissions
+  - **Pangea Vault / Pangea Redact** — closer comparable, per-API-
+    call pricing
+  - **Lakera Guard** — prompt-injection focus, not data-permissions
+  - Differentiator: tight coupling of `(agent_id, action,
+    data_class)` policy + memory-write gating + right-to-erasure
+    across embeddings + HMAC-signed audit log. No competitor signs
+    their audit log; that's the regulator-facing differentiator.
+
+### Cross-references
+
+- **Pairs cleanly with Intent Firewall:** Firewall checks the
+  prompt; Data Gate checks the data the prompt is going to access.
+  Natural bundle.
+- **Pairs cleanly with Flight Recorder:** every Data Gate verdict
+  also lands in Flight Recorder as a decision event.
+- **Pairs cleanly with MCP:** MCP gates *code* the agent writes;
+  Data Gate gates *data* the agent reads. A dev agent that touches
+  prod data wants both.
+- **Pairs cleanly with CallGuard:** call-center transcripts contain
+  PHI / PCI / GLBA data; Data Gate classifies + redacts before the
+  AI agent sees the transcript.
+- **Pairs cleanly with Certify:** data-handling compliance is part
+  of any agent audit; Certify uses Data Gate's classification engine
+  to score the data-permissions surface of the audited agent.
+- ORVL alignment: ORVL-004 (Modular Knowledge Block / MKB) provides
+  the memory primitive; new ORVL number may be needed for the
+  Data Gate framing.
+- Related .axiom specs: `axiom_files/core/axiom_mkb.axiom`,
+  `axiom_files/core/axiom_redact.axiom`,
+  `axiom_files/core/axiom_axm.axiom`
+- Related modules: `axiom_redact.py` (HIPAA Safe Harbor), `axiom_mkb.py`
+  (memory blocks + registry), `axiom_axm.py` (delegate pattern),
+  `axiom_intent_classifier.py`, `axiom_signing.py`
+
+### Notes / open questions
+
+- **This is the most "missing in the market" of the six products.**
+  Everyone talks about agent tool-use; few talk about agent
+  data-permissions. Immuta + Skyflow are close but neither tightly
+  couples agent identity + action + memory write gating + signed
+  audit log in one product. The competitive moat is narrow but
+  defensible.
+- **Right-to-erasure across embeddings is a research-grade problem.**
+  Deleting a vector is easy; proving the subject's information
+  isn't latently encoded elsewhere in the embedding space is hard
+  (model-stealing literature, membership inference attacks). The
+  deletion certificate needs an explicit limitation: "we have
+  deleted all explicit records and known embeddings; latent encoding
+  in trained model weights is outside our deletion scope and would
+  require model retraining." Get this language in writing before
+  shipping.
+- **Open question — first taxonomy beyond HIPAA:** GDPR special
+  categories has the broadest TAM (any EU presence forces it).
+  PCI has the most-existential per-violation fine ($5K-100K per
+  card record exposed). FCRA is largest credit/HR market.
+  Recommend GDPR special categories for v1 (most universal) + PCI
+  (highest per-incident risk).
+- **Open question — bring-your-own-classifier:** enterprises often
+  have custom data classifications (internal taxonomies, trade
+  secrets, contract-sensitive info). v1 should support customer-
+  defined classification patterns alongside the regulated-data
+  defaults. Same `.axiom` spec mechanism as the per-tenant policy.
+- **Open question — vector-store consistency model:** if a customer
+  deletes data via right-to-erasure, but their vector store has
+  3 replicas + a snapshot in S3 + cached query results, the
+  deletion has to propagate everywhere. Need explicit guarantees:
+  "deletion request accepted within 100ms; full propagation
+  guaranteed within 24h; replication-lag risk acknowledged in
+  the certificate."
+- **Open question — DPIA as a paid deliverable:** a Data Protection
+  Impact Assessment (GDPR Article 35) is something every enterprise
+  needs before deploying high-risk AI. Data Gate's classification
+  output is 80% of a DPIA. Could be a $5-15K one-time deliverable
+  bolted onto the Enterprise tier — natural Certify · Data Audit
+  cross-sell.
+- **Open question — synthetic data generation:** the reverse-QRF
+  module shipped on this branch could generate synthetic training
+  examples that match a customer's data shape without including
+  the real PII. Future product hook: "Data Gate · Synthetic" — pay
+  more, get model-training-safe synthetic data drawn from your real
+  corpus.
 
 ---
 
