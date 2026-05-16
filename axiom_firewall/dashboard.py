@@ -16,7 +16,11 @@ Run:
 """
 from __future__ import annotations
 
+import logging
 import os
+import sys
+import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
 
@@ -24,6 +28,8 @@ from fastapi import FastAPI, Form, Header, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from axiom_intent_classifier import IntentClassifier
@@ -55,8 +61,76 @@ SESSION_SECRET = os.environ.get(
     "dev-only-replace-before-deploy",
 )
 
-app = FastAPI(title="Axiom Intent Firewall — Dashboard")
+# CORS — locked down by default. Set AXIOM_FIREWALL_CORS_ORIGINS to a
+# comma-separated list of origins (or "*" to allow all). The signup /
+# dashboard pages are served same-origin, so this only matters for
+# /v1/guard/check called directly from a browser.
+_cors_origins_raw = os.environ.get("AXIOM_FIREWALL_CORS_ORIGINS", "").strip()
+CORS_ORIGINS: list[str] = (
+    [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+    if _cors_origins_raw
+    else []
+)
+
+log = logging.getLogger("axiom_firewall")
+# Emit to stdout so the startup banner + warnings show up in container
+# logs without requiring a custom uvicorn --log-config.
+if not log.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(levelname)s:    %(message)s"))
+    log.addHandler(_h)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    log.info("axiom-firewall starting")
+    log.info("  brand:           %s", BRAND_DOMAIN)
+    log.info("  tenant dir:      %s",
+             os.environ.get("AXIOM_FIREWALL_TENANT_DIR", "tenants"))
+    log.info("  billing enabled: %s", billing.is_enabled())
+    log.info("  cors origins:    %s", CORS_ORIGINS or "(none)")
+    if SESSION_SECRET == "dev-only-replace-before-deploy":
+        log.warning(
+            "AXIOM_FIREWALL_SESSION_SECRET is using the dev default. "
+            "Set it to a 32+ byte random string before exposing the "
+            "dashboard publicly — otherwise anyone can forge session cookies."
+        )
+    yield
+    log.info("axiom-firewall shutting down")
+
+
+app = FastAPI(
+    title="Axiom Intent Firewall — Dashboard",
+    lifespan=_lifespan,
+)
+
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+        max_age=3600,
+    )
+
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+
+
+class _RequestIdMiddleware(BaseHTTPMiddleware):
+    """Tag every response + log entry with an X-Request-ID for tracing."""
+
+    async def dispatch(self, request, call_next):
+        rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        request.state.request_id = rid
+        response = await call_next(request)
+        response.headers["x-request-id"] = rid
+        return response
+
+
+app.add_middleware(_RequestIdMiddleware)
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -64,6 +138,32 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 init_registry()
 _classifier = IntentClassifier(derive_key(b"axiom-firewall-v1"))
+
+
+# ─── Health checks (ALB / Kubernetes liveness + readiness) ──────────────
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    """Liveness probe — the process is running. Never blocks; never hits the DB."""
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/readyz", include_in_schema=False)
+def readyz():
+    """Readiness probe — the process can serve traffic. Validates DB write.
+
+    Returns 503 if the registry DB is unreachable (disk full / permissions /
+    EFS hiccup). ALB / Kubernetes pull the pod out of rotation on 503.
+    """
+    try:
+        init_registry()
+        return JSONResponse({"status": "ready"})
+    except Exception as e:
+        log.exception("readiness check failed")
+        return JSONResponse(
+            {"status": "unready", "error": str(e)},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
 
 def _ctx(request: Request, **extra) -> dict:

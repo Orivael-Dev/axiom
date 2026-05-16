@@ -1,0 +1,374 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Axiom Intent Firewall — full production stack.
+  ECS Fargate service behind an ALB with ACM TLS, Route53 record,
+  Secrets Manager for all secrets, EFS for tenant SQLite files,
+  CloudWatch logs. Deploy with:
+    aws cloudformation deploy \
+      --template-file deploy/firewall/cloudformation.yaml \
+      --stack-name axiom-firewall-prod \
+      --parameter-overrides DomainName=firewall.orivael.dev \
+                            HostedZoneId=ZXXXXXX \
+                            CertificateArn=arn:aws:acm:us-east-1:... \
+                            ImageUri=... \
+      --capabilities CAPABILITY_NAMED_IAM
+
+Parameters:
+  DomainName:
+    Type: String
+    Default: firewall.orivael.dev
+    Description: DNS name for the dashboard (must already have a hosted zone).
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route53 hosted zone ID for the domain's parent.
+  CertificateArn:
+    Type: String
+    Description: ACM certificate ARN for DomainName (must be in us-east-1).
+  ImageUri:
+    Type: String
+    Description: ECR image URI (e.g. 123.dkr.ecr.us-east-1.amazonaws.com/axiom-firewall:v0.1.0).
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for the ALB + ECS tasks.
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: At least 2 public subnets across AZs for the ALB.
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: At least 2 private subnets across AZs for the ECS tasks + EFS.
+  DesiredCount:
+    Type: Number
+    Default: 2
+    Description: Number of Fargate tasks (2 = HA across AZs).
+
+Resources:
+
+  # ── Secrets Manager: all sensitive config ─────────────────────────────
+  MasterKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/master-key
+      Description: HMAC root for signing intent verdicts.
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+  SessionSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/session-secret
+      Description: Cookie signing secret for the dashboard session.
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+  StripeSecretKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/stripe-secret-key
+      Description: Populate via console after stripe_setup.py runs.
+
+  StripeWebhookSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/stripe-webhook-secret
+      Description: Populate via console after creating the webhook endpoint.
+
+  StripePriceIndieSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/stripe-price-indie
+  StripePriceTeamSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/stripe-price-team
+  StripeMeterIndieSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/stripe-meter-indie
+  StripeMeterTeamSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: axiom-firewall/stripe-meter-team
+
+  # ── EFS: persistent tenant SQLite files ───────────────────────────────
+  TenantFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      LifecyclePolicies:
+        - TransitionToIA: AFTER_30_DAYS
+      FileSystemTags:
+        - Key: Name
+          Value: axiom-firewall-tenants
+
+  TenantAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref TenantFileSystem
+      PosixUser: { Uid: "999", Gid: "999" }
+      RootDirectory:
+        Path: /firewall-tenants
+        CreationInfo:
+          OwnerUid: "999"
+          OwnerGid: "999"
+          Permissions: "0750"
+
+  EfsMountSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow NFS from ECS tasks to EFS.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref EcsTaskSecurityGroup
+
+  EfsMountTargetA:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref TenantFileSystem
+      SubnetId: !Select [0, !Ref PrivateSubnetIds]
+      SecurityGroups: [!Ref EfsMountSecurityGroup]
+
+  EfsMountTargetB:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref TenantFileSystem
+      SubnetId: !Select [1, !Ref PrivateSubnetIds]
+      SecurityGroups: [!Ref EfsMountSecurityGroup]
+
+  # ── ECS cluster + service ─────────────────────────────────────────────
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: axiom-firewall
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: axiomFirewallTaskExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref MasterKeySecret
+                  - !Ref SessionSecret
+                  - !Ref StripeSecretKey
+                  - !Ref StripeWebhookSecret
+                  - !Ref StripePriceIndieSecret
+                  - !Ref StripePriceTeamSecret
+                  - !Ref StripeMeterIndieSecret
+                  - !Ref StripeMeterTeamSecret
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: axiomFirewallTaskRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/axiom-firewall
+      RetentionInDays: 30
+
+  EcsTaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Firewall ECS tasks.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8004
+          ToPort: 8004
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: axiom-firewall
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      Volumes:
+        - Name: tenant-data
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref TenantFileSystem
+            TransitEncryption: ENABLED
+            AuthorizationConfig:
+              AccessPointId: !Ref TenantAccessPoint
+              IAM: ENABLED
+      ContainerDefinitions:
+        - Name: firewall
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8004
+              Protocol: tcp
+          MountPoints:
+            - SourceVolume: tenant-data
+              ContainerPath: /data/tenants
+          Environment:
+            - { Name: AXIOM_FIREWALL_TENANT_DIR,   Value: /data/tenants }
+            - { Name: AXIOM_FIREWALL_PUBLIC_URL,   Value: !Sub "https://${DomainName}" }
+            - { Name: AXIOM_FIREWALL_CORS_ORIGINS, Value: "" }
+            - { Name: UVICORN_WORKERS,             Value: "2" }
+          Secrets:
+            - { Name: AXIOM_MASTER_KEY,              ValueFrom: !Ref MasterKeySecret }
+            - { Name: AXIOM_FIREWALL_SESSION_SECRET, ValueFrom: !Ref SessionSecret }
+            - { Name: STRIPE_SECRET_KEY,             ValueFrom: !Ref StripeSecretKey }
+            - { Name: STRIPE_WEBHOOK_SECRET,         ValueFrom: !Ref StripeWebhookSecret }
+            - { Name: STRIPE_PRICE_INDIE,            ValueFrom: !Ref StripePriceIndieSecret }
+            - { Name: STRIPE_PRICE_TEAM,             ValueFrom: !Ref StripePriceTeamSecret }
+            - { Name: STRIPE_METER_INDIE,            ValueFrom: !Ref StripeMeterIndieSecret }
+            - { Name: STRIPE_METER_TEAM,             ValueFrom: !Ref StripeMeterTeamSecret }
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8004/healthz').status==200 else 1)"
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 15
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: firewall
+
+  EcsService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - LoadBalancerListener
+      - EfsMountTargetA
+      - EfsMountTargetB
+    Properties:
+      ServiceName: axiom-firewall
+      Cluster: !Ref EcsCluster
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: !Ref PrivateSubnetIds
+          SecurityGroups: [!Ref EcsTaskSecurityGroup]
+      LoadBalancers:
+        - ContainerName: firewall
+          ContainerPort: 8004
+          TargetGroupArn: !Ref TargetGroup
+      HealthCheckGracePeriodSeconds: 60
+
+  # ── ALB + listener + target group ─────────────────────────────────────
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Firewall ALB — 443 from the world.
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 80,  ToPort: 80,  CidrIp: 0.0.0.0/0 }
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: axiom-firewall-alb
+      Type: application
+      Scheme: internet-facing
+      Subnets: !Ref PublicSubnetIds
+      SecurityGroups: [!Ref AlbSecurityGroup]
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: axiom-firewall-tg
+      VpcId: !Ref VpcId
+      Port: 8004
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /healthz
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher: { HttpCode: 200 }
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  HttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+  # ── Route53 alias ─────────────────────────────────────────────────────
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt LoadBalancer.DNSName
+        EvaluateTargetHealth: true
+
+Outputs:
+  DashboardURL:
+    Value: !Sub "https://${DomainName}"
+    Description: Public dashboard URL once DNS propagates.
+  TaskDefinitionArn:
+    Value: !Ref TaskDefinition
+  EcsServiceName:
+    Value: !Ref EcsService
+  LogGroupName:
+    Value: !Ref LogGroup

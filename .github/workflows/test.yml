@@ -1,0 +1,112 @@
+name: tests
+
+on:
+  push:
+    branches: [main, master, "claude/*"]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+
+  server:
+    name: server (axiom_firewall)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install runtime + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            fastapi==0.136.* \
+            uvicorn==0.32.* \
+            jinja2==3.1.* \
+            python-multipart==0.0.* \
+            itsdangerous==2.2.* \
+            stripe==15.1.* \
+            httpx \
+            pytest pytest-cov
+
+      - name: Run server tests
+        env:
+          AXIOM_MASTER_KEY: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+        run: |
+          python -m pytest \
+            tests/test_axiom_firewall.py \
+            tests/test_axiom_firewall_billing.py \
+            tests/test_axiom_firewall_limits.py \
+            tests/test_axiom_firewall_policy.py \
+            tests/test_axiom_firewall_hardening.py \
+            -v --cov=axiom_firewall --cov-report=term-missing
+
+  python-sdk:
+    name: SDK (Python)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install SDK + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./firewall_sdk/python pytest
+
+      - name: Run SDK tests
+        run: python -m pytest firewall_sdk/python/tests/ -v
+
+      - name: Build distribution
+        run: |
+          pip install build
+          cd firewall_sdk/python && python -m build
+
+  typescript-sdk:
+    name: SDK (TypeScript)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: firewall_sdk/typescript/package-lock.json
+
+      - name: Install
+        working-directory: firewall_sdk/typescript
+        run: npm install
+
+      - name: Typecheck
+        working-directory: firewall_sdk/typescript
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: firewall_sdk/typescript
+        run: npm run build
+
+      - name: Test
+        working-directory: firewall_sdk/typescript
+        run: npm test
