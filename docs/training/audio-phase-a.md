@@ -1,7 +1,20 @@
-# Axiom Audio — Phase A (ambient / physical-event)
+# Axiom Audio — Phase A (ambient / physical-event + tempo)
 
 Internal training note. Reflects what shipped in
 `axiom_audio/` and the Phase B / C runway.
+
+Phase A actually ships TWO agents, not one:
+
+- **AmbientAudioAgent** — what kind of event happened (glass shatter,
+  metal ring, wood knock, fabric thud) → fuzzy categorical labels
+- **TempoEstimator** — at what BPM is the rhythm → numeric ground truth
+
+The tempo agent serves as the **numeric-truth anchor** for the audio
+testing library: a 120 BPM metronome IS 120 BPM, so you can validate
+agent correctness against an absolute number, not just a subjective
+material label. Tempo also crosses all three audio families
+(ambient / voice / music), so the same building block plugs into
+Phase B and Phase C unchanged.
 
 ## What Phase A is
 
@@ -91,15 +104,45 @@ LayerReport, that LayerReport is re-signed under
 
 ```
 axiom_audio/
-  __init__.py          public exports
-  features.py          stdlib DSP primitives (FFT, envelope, onsets, centroid)
-  ambient.py           AmbientAudioAgent — rule-based classifier
-  report.py            signed AudioReport dataclass + namespace
+  __init__.py            public exports
+  features.py            stdlib DSP primitives (FFT, envelope, onsets, centroid)
+  ambient.py             AmbientAudioAgent — rule-based material classifier
+  tempo.py               TempoEstimator — autocorrelation BPM (axiom-tempo-v1)
+  report.py              signed AudioReport + namespace (axiom-audio-v1)
+axiom_event_token/
+  agents.py              AudioAgent + TempoAgent registered with Coordinator
 examples/
-  audio_demo.py        synthesize glass-shatter + print signed report
+  audio_demo.py          synthesize glass-shatter + print signed report
+scripts/
+  audio_synth.py         write 20 labeled WAV stimuli to disk for HUMAN listening
+  audio_harness.py       measure CLASSIFIER accuracy against gate thresholds
 tests/
-  test_axiom_audio.py  10 tests covering acceptance + signing + integration
+  test_axiom_audio.py    10 tests — ambient classifier
+  test_axiom_tempo.py    15 tests — BPM accuracy ±3 across [60, 90, 100, 120, 150, 180]
+  test_audio_harness.py  3 tests — harness smoke
 ```
+
+## Listening to the test stimuli (playback workflow)
+
+The server is headless and the synth stimuli need ear-validation, so
+the workflow is: synthesize to disk → copy to your laptop → play in
+any media player.
+
+```bash
+# On the server:
+python3 scripts/audio_synth.py --out ./samples
+# Writes 20 WAV files into ./samples/{glass-like,metal-like,wood-like,
+# fabric-like,background,metronome}/*.wav  (~32s of audio total)
+
+# From your laptop:
+scp -r box:axiom/samples ./
+# Double-click any .wav — Windows Media Player, VLC, QuickTime,
+# Chrome, Firefox all play 16-bit mono PCM natively.
+```
+
+`audio_synth.py` reuses the exact same generators that the harness +
+tempo tests use, so what you hear is byte-identical to what the
+classifiers run on.
 
 ## What to measure before Phase B
 

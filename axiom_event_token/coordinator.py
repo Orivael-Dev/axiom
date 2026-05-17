@@ -31,6 +31,10 @@ DEFAULT_ACTIVATION: tuple[str, ...] = (
     "text", "audio", "video", "physics", "governance",
 )
 
+# `tempo` is intentionally OFF by default — it's selectively activated
+# when the task wants rhythm analysis. Keeping it out of the default
+# set preserves the patent-claim "Coordinator runs ONLY what was asked".
+
 
 class Coordinator:
     """Compose multimodal event tokens from per-agent reports.
@@ -108,6 +112,7 @@ class Coordinator:
             activated_agents=activated,
             text=       layer_reports.get("text"),
             audio=      layer_reports.get("audio"),
+            tempo=      layer_reports.get("tempo"),
             video=      layer_reports.get("video"),
             physics=    layer_reports.get("physics"),
             governance= layer_reports.get("governance"),
@@ -136,6 +141,7 @@ def _token_kwargs(token: EventToken) -> dict:
         "activated_agents": token.activated_agents,
         "text":             token.text,
         "audio":            token.audio,
+        "tempo":            token.tempo,
         "video":            token.video,
         "physics":          token.physics,
         "governance":       token.governance,

@@ -218,12 +218,51 @@ class GovernanceAgent(Agent):
         )
 
 
+# ─── Tempo Agent (real — autocorrelation BPM estimator) ────────────────
+
+
+class TempoAgent(Agent):
+    """Real tempo/BPM agent.
+
+    Activates when the caller wants rhythm analysis as a first-class
+    citizen alongside other layers (vs. the coarse rhythm field the
+    ambient agent already emits). Input shape mirrors AudioAgent:
+    `inputs["audio"]["wav_path"]` or raw `inputs["audio"]["samples"]`
+    + `inputs["audio"]["sample_rate"]`.
+
+    Why a separate agent: tempo crosses all three audio families
+    (ambient / voice / music) AND it has objective ground truth, so
+    it serves as the numeric-truth anchor for the audio testing
+    library.
+    """
+    agent_name = "tempo"
+
+    def run(self, inputs: dict[str, Any]) -> LayerReport:
+        provided = inputs.get("audio", {})
+        if not isinstance(provided, dict):
+            provided = {}
+        from axiom_audio import TempoEstimator, classify_tempo_clip
+        wav_path = provided.get("wav_path")
+        if wav_path:
+            tempo_report = classify_tempo_clip(wav_path)
+        else:
+            samples = provided.get("samples", [])
+            sr = int(provided.get("sample_rate", 16_000))
+            tempo_report = TempoEstimator().estimate(samples, sr)
+        return LayerReport.signed(
+            agent=self.agent_name,
+            payload=tempo_report.payload,
+            confidence=tempo_report.confidence,
+        )
+
+
 # ─── Registry ───────────────────────────────────────────────────────────
 
 
 AGENT_REGISTRY: dict[str, type[Agent]] = {
     "text":       TextAgent,
     "audio":      AudioAgent,
+    "tempo":      TempoAgent,
     "video":      VideoAgent,
     "physics":    PhysicsAgent,
     "governance": GovernanceAgent,

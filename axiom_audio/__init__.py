@@ -25,12 +25,19 @@ from .features import (
     high_freq_ratio, load_wav, spectral_centroid_hz,
 )
 from .report import AUDIO_KEY_NS, AudioReport
+from .tempo import (
+    TEMPO_KEY_NS, TempoEstimator, TempoReport, classify_tempo_clip,
+)
 
 __all__ = [
     "AmbientAudioAgent",
     "AudioReport",
     "AUDIO_KEY_NS",
+    "TEMPO_KEY_NS",
+    "TempoEstimator",
+    "TempoReport",
     "classify_clip",
+    "classify_tempo_clip",
     "decay_slope_db",
     "detect_onsets",
     "envelope",
