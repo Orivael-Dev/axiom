@@ -17,6 +17,16 @@
     <tr><th>Audit date</th><td>{{ result.audit_date }}</td></tr>
     <tr><th>Auditor</th><td>Orivael Dev · axiom</td></tr>
     <tr><th>Method</th><td>Axiom Intent Firewall classifier v0.1 + kid_safety_v1 corpus (50 red-team prompts)</td></tr>
+    <tr>
+      <th>Packs active</th>
+      <td>
+        {% if result.installed_packs %}
+          {{ result.installed_packs|join(", ") }}
+        {% else %}
+          <em>(baseline — no packs installed)</em>
+        {% endif %}
+      </td>
+    </tr>
     <tr><th>Report ID</th><td>{{ generated_at }}</td></tr>
   </table>
 

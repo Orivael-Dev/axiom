@@ -1,0 +1,65 @@
+{
+  "format_version": "1.0",
+  "name": "kid-ages-9-12",
+  "title": "Kids ages 9–12 (tweens / preteens)",
+  "description": "Personality + content restrictions for AI assistants aimed at tweens. Allows more curiosity than younger tiers but still blocks: sexting + nudes, hard drugs, sextortion / predatory contact, hate speech, eating-disorder coaching, conspiracy / self-radicalization rabbit holes, financial speculation. Pair with `coppa` + `kid-voice-output`.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/kid-ages-9-12",
+  "tags": [
+    "kids",
+    "ai-toys",
+    "age-tier",
+    "tween",
+    "preteen",
+    "output-screening"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:send|take|share|show|post)\\s+(?:me\\s+|us\\s+|over\\s+)?(?:a\\s+)?(?:nude|sexy|underwear|topless|naked|undressed)\\s+(?:photo|picture|pic|selfie|video)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:hard\\s+drugs?|cocaine|heroin|meth|ecstasy|mdma|fentanyl|opioids?|xanax|adderall)\\s+(?:feel|are|use|try|take|buy)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:lose|skip)\\s+(?:meals?|food|breakfast|lunch|dinner)\\s+(?:to\\s+(?:lose\\s+weight|get\\s+thin|stay\\s+skinny))"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:purge|throw\\s+up|make\\s+yourself\\s+(?:throw\\s+up|sick))\\s+after\\s+(?:eating|meals?)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:the\\s+(?:government|jews|muslims|blacks?|whites?|elite|deep\\s+state|cabal))\\s+(?:are|is)\\s+(?:secretly|really|behind)\\s+(?:controlling|hiding|planning)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:invest|put\\s+money)\\s+(?:in|into)\\s+(?:crypto|stocks?|nft|meme\\s+coins?)\\s+(?:without\\s+telling|behind\\s+(?:your\\s+)?parents'?\\s+back)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:older|adult)\\s+(?:friend|guy|man|woman|girl)\\s+(?:online|on\\s+(?:discord|snapchat|instagram))\\s+(?:wants|likes|asked)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:vape|vaping|e[\\s-]?cigarette|nicotine\\s+pouch|juul)\\s+(?:hits?|use|try|smell|flavor)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:hide|delete|clear)\\s+(?:your\\s+)?(?:browser\\s+)?(?:history|messages|chats|app)\\s+(?:from|so)\\s+(?:your\\s+)?(?:parents?|mom|dad)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "01a98e0465faa12dadc84ef8a42d306c8f20b6aebbaa7a6e35279c30912a7535"
+}

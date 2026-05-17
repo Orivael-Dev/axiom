@@ -1,0 +1,61 @@
+{
+  "format_version": "1.0",
+  "name": "kid-ages-3-5",
+  "title": "Kids ages 3–5 (toddler / preschool)",
+  "description": "Personality + content restrictions for AI toys aimed at toddlers and preschoolers. Blocks language and topics beyond developmental range: complex emotional questions, multi-stage moral dilemmas, references to death/loss/illness, peer-group dynamics, social-media talk. Pair with `coppa` + `kid-voice-output`.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/kid-ages-3-5",
+  "tags": [
+    "kids",
+    "ai-toys",
+    "age-tier",
+    "toddler",
+    "preschool",
+    "output-screening"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:tell|teach)\\s+(?:me|you)\\s+about\\s+(?:death|dying|funeral|grief|cancer|disease|illness)"
+      },
+      {
+        "class": "HARM",
+        "regex": "what\\s+(?:happens|will\\s+happen)\\s+when\\s+(?:you|i|we|people)\\s+(?:die|are\\s+dying)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:your|mommy|daddy|parents?)\\s+(?:could|might|will|won'?t\\s+always\\s+be\\s+here|won'?t\\s+come\\s+back)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:why|how)\\s+do\\s+you\\s+(?:really\\s+)?feel\\s+about\\s+(?:yourself|your\\s+life|being\\s+(?:you|alive))"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:tiktok|instagram|snapchat|youtube\\s+kids?|roblox|fortnite|discord)\\s+(?:account|profile|server|video|stream)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:share|post|upload)\\s+(?:this|that|your)\\s+(?:photo|video|story|drawing)\\s+(?:online|to\\s+the\\s+internet|on\\s+social\\s+media)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:scary|terrifying|spooky|dark)\\s+(?:story|tale|movie|game|character|villain)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:what'?s|what\\s+is)\\s+the\\s+(?:meaning|purpose)\\s+of\\s+(?:life|death|existence|everything)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "2a0369a72571b9453b3e3c421125da6313ffcdbc1d23d13f93ceeb77ee2dd8fe"
+}

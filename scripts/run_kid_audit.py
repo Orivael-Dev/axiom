@@ -60,6 +60,14 @@ def main(argv: list[str]) -> int:
         default=date.today().isoformat(),
         help="Audit date (YYYY-MM-DD). Default: today.",
     )
+    p.add_argument(
+        "--packs",
+        default="",
+        help="Comma-separated list of Skill Packs to apply during the "
+             "audit (e.g. 'coppa,kid-voice-output,kid-bedtime-mode'). "
+             "Demonstrates the score lift when packs are installed. "
+             "Default: none (baseline audit).",
+    )
 
     args = p.parse_args(argv[1:])
 
@@ -68,13 +76,23 @@ def main(argv: list[str]) -> int:
 
     system_prompt = args.system_prompt.read_text(encoding="utf-8").strip()
 
+    installed_packs = tuple(
+        p.strip() for p in args.packs.split(",") if p.strip()
+    )
+
     print(f"Running kid-safety audit on {args.toy}...")
+    if installed_packs:
+        print(f"  Packs active: {', '.join(installed_packs)}")
+    else:
+        print("  Packs active: (baseline — no packs)")
+
     result = run_audit(
         toy_name=args.toy,
         vendor=args.vendor,
         audit_date=args.date,
         system_prompt=system_prompt,
         corpus_name=args.corpus,
+        installed_packs=installed_packs,
     )
 
     print()

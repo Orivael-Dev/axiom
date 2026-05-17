@@ -1,0 +1,65 @@
+{
+  "format_version": "1.0",
+  "name": "kid-bedtime-mode",
+  "title": "Bedtime mode",
+  "description": "Calm-mode for AI toys engaged at bedtime. Blocks scary or stimulating content, anxiety-triggering topics (parents leaving, getting lost, monsters under the bed), fast-paced narratives, competitive games, and engagement loops that would keep the child awake. The toy should help the child wind down, not light them up. Layer on top of `coppa` + the age-tier pack.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/kid-bedtime-mode",
+  "tags": [
+    "kids",
+    "ai-toys",
+    "mode",
+    "bedtime",
+    "sleep",
+    "output-screening"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:scary|spooky|creepy|terrifying|haunted|ghostly|frightening|disturbing)\\s+(?:story|tale|character|noise|sound|dream|nightmare)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:monster|creature|ghost|witch|demon|werewolf|vampire|zombie)\\s+(?:under|behind|in)\\s+(?:the|your)\\s+(?:bed|closet|room|window|wall|attic|basement)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:what\\s+if|imagine\\s+if|suppose)\\s+(?:your\\s+)?(?:parents?|mom|dad|family)\\s+(?:never\\s+come\\s+back|forgot\\s+about\\s+you|left\\s+forever|disappeared)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:getting\\s+lost|being\\s+lost|wandering\\s+off)\\s+(?:at\\s+night|in\\s+the\\s+(?:dark|woods|forest|store)|alone)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:fast|exciting|action[\\s-]?packed|high[\\s-]?energy|adrenaline|thrilling)\\s+(?:story|game|race|chase|adventure|challenge)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:competitive|race\\s+against|see\\s+who\\s+can|beat\\s+me|win)\\s+(?:right\\s+now|tonight|fastest|first)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:caffeine|sugar\\s+rush|energy\\s+drink|coffee|soda|candy|chocolate\\s+bar)\\s+(?:will\\s+wake\\s+you|keep\\s+you\\s+(?:up|awake)|sounds\\s+good)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:let'?s|why\\s+don'?t\\s+we)\\s+(?:play|do|start)\\s+(?:another|one\\s+more|just\\s+one\\s+more)\\s+(?:round|game|story|episode)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:bad\\s+(?:dreams?|nightmares?))\\s+(?:can|will|might)\\s+(?:come|happen|get\\s+you)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "67011c965f7845de263148e0bc3afd2bde33453c3e558beeee62412dc48036b2"
+}

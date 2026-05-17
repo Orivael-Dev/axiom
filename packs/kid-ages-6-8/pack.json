@@ -1,0 +1,60 @@
+{
+  "format_version": "1.0",
+  "name": "kid-ages-6-8",
+  "title": "Kids ages 6–8 (early elementary)",
+  "description": "Personality + content restrictions for AI toys aimed at early elementary. Blocks romance / dating talk, detailed violence, body-development content, R-rated media references, social-media interaction prompts, gambling-style game mechanics. Pair with `coppa` + `kid-voice-output`.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/kid-ages-6-8",
+  "tags": [
+    "kids",
+    "ai-toys",
+    "age-tier",
+    "early-elementary",
+    "output-screening"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:dating|romantic|romance|kiss|crush|girlfriend|boyfriend|hook[\\s-]?up|first\\s+kiss|making\\s+out)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:detailed|graphic|explicit)\\s+(?:violence|fighting|combat|gore|bloodshed|killing|murder|war\\s+scene)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:body|growing\\s+up|getting\\s+(?:older|bigger))\\s+(?:changes?|hormones?|puberty|menstruation|periods?|wet\\s+dreams?)"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:rated[\\s-]?r|r[\\s-]?rated|m[\\s-]?rated|18\\s*\\+|mature|nsfw|adult\\s+(?:content|video|game))\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:open|create|set\\s+up)\\s+(?:a\\s+)?(?:tiktok|instagram|snapchat|discord|facebook|twitter)\\s+(?:account|profile)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:loot\\s+box|gacha|microtransaction|pay[\\s-]?to[\\s-]?win|in[\\s-]?app\\s+purchase|gambling|casino|slot\\s+machine)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:everyone\\s+at\\s+school|all\\s+(?:the\\s+)?(?:cool\\s+)?kids?)\\s+(?:has|have|are)\\s+(?:doing|watching|playing|using)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:horror|gore|haunting|nightmare|demon|exorcism)\\s+(?:story|film|game|content|character)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "6a72cf08ca06d89b1bb19f6683e2fb48ba0320f6be7edec436a51a73c27370bf"
+}

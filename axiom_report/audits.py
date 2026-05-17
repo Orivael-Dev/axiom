@@ -109,6 +109,8 @@ class AuditResult:
     recommended_packs: tuple[str, ...]
     recommended_custom_patterns: tuple[dict, ...]
 
+    installed_packs: tuple[str, ...] = ()   # packs ACTIVE during this audit
+
 
 # ─── Scoring ────────────────────────────────────────────────────────────
 
@@ -263,22 +265,60 @@ def run_audit(
     audit_date: str,
     system_prompt: str,
     corpus_name: str = "kid_safety_v1",
+    installed_packs: tuple[str, ...] = (),
 ) -> AuditResult:
     """Run the full audit and return scored results.
 
     The Firewall classifier runs with the kid_safety_v1 corpus as input.
     The toy's system prompt is reviewed heuristically (not run through
     the LLM — that's the toy company's job in production).
+
+    If `installed_packs` is provided (e.g. ('coppa', 'kid-voice-output',
+    'kid-bedtime-mode')), each pack's policy is merged into a combined
+    policy applied to every classification result — the same way it
+    would behave in production on /v1/guard/check + /v1/guard/output.
+    Use this to demonstrate the before/after lift when a customer
+    installs our recommended packs.
     """
+    from pathlib import Path
+    import json as _json
+    from axiom_firewall.policy import TenantPolicy, apply_policy
+    from axiom_firewall.skill_pack import SkillPackManifest
+
     classifier = IntentClassifier(derive_key(b"axiom-firewall-v1"))
     corpus = load_corpus(corpus_name)
 
-    # 1. Run every red-team prompt through the classifier
+    # Load and merge installed packs into one combined policy.
+    combined_policy: Optional[TenantPolicy] = None
+    if installed_packs:
+        packs_dir = Path(__file__).resolve().parents[1] / "packs"
+        merged_block_patterns: list[dict] = []
+        disabled_classes: set[str] = set()
+        for name in installed_packs:
+            manifest_path = packs_dir / name / "pack.json"
+            if not manifest_path.is_file():
+                raise ValueError(f"Pack {name!r} not found at {manifest_path}")
+            raw = _json.loads(manifest_path.read_text(encoding="utf-8"))
+            pack = SkillPackManifest.parse(raw)
+            merged_block_patterns.extend(pack.policy["additional_block_patterns"])
+            disabled_classes.update(pack.policy.get("disabled_default_classes", []))
+        combined_policy = TenantPolicy.parse({
+            "version": 1,
+            "additional_block_patterns": merged_block_patterns,
+            "disabled_default_classes": list(disabled_classes),
+            "allow_only_classes": None,
+        })
+
+    # 1. Run every red-team prompt through the classifier (+ optional packs)
     BLOCK_CLASSES = {"HARM", "DECEIVE"}
     per_prompt: list[PromptResult] = []
     for rt in corpus:
-        result = classifier.classify(rt.prompt)
-        actual_verdict = "block" if result.intent_class in BLOCK_CLASSES else "allow"
+        base = classifier.classify(rt.prompt)
+        if combined_policy is None:
+            result = base
+            actual_verdict = "block" if base.intent_class in BLOCK_CLASSES else "allow"
+        else:
+            actual_verdict, result = apply_policy(base, combined_policy, rt.prompt)
         per_prompt.append(PromptResult(
             rt=rt,
             actual_class=result.intent_class,
@@ -301,11 +341,15 @@ def run_audit(
     parent_trust_stars = max(min(safety_stars, privacy_stars, age_fit_stars), 3)
 
     # 4. Pack + custom-pattern recommendations based on weakness areas.
+    # Don't recommend packs the customer already has installed.
+    installed_set = set(installed_packs)
     recs_packs = []
     recs_patterns: list[dict] = []
-    if privacy_stars < 5:
+    if privacy_stars < 5 and "coppa" not in installed_set:
         recs_packs.append("coppa")
-    if safety_stars < 5:
+    if safety_stars < 5 and "kid-voice-output" not in installed_set:
+        recs_packs.append("kid-voice-output")
+    if safety_stars < 5 and "prompt-injection-strict" not in installed_set:
         recs_packs.append("prompt-injection-strict")
     # Look at categories with stars < 4 → recommend custom patterns
     for cs in per_cat:
@@ -333,6 +377,7 @@ def run_audit(
         parent_trust_stars=parent_trust_stars,
         recommended_packs=tuple(sorted(set(recs_packs))),
         recommended_custom_patterns=tuple(recs_patterns[:10]),
+        installed_packs=tuple(installed_packs),
     )
 
 

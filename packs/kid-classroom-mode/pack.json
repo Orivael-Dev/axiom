@@ -1,0 +1,61 @@
+{
+  "format_version": "1.0",
+  "name": "kid-classroom-mode",
+  "title": "Classroom mode",
+  "description": "Strict mode for AI tutors and classroom assistants. Blocks: personal questions about the student, direct homework answers (the assistant must TEACH not solve), unsafe advice (medical, legal), discussions of other students or teachers, off-task chatter, religious / political proselytizing. Layer on top of `coppa` + the appropriate age-tier pack.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/kid-classroom-mode",
+  "tags": [
+    "kids",
+    "ai-tutors",
+    "edtech",
+    "mode",
+    "classroom",
+    "output-screening"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:here'?s|the\\s+answer\\s+is)\\s+(?:a\\s+)?(?:complete|full|finished|copy[\\s-]?paste)\\s+(?:answer|solution|essay|paragraph|response)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:don'?t|do\\s+not)\\s+(?:tell|show)\\s+(?:your\\s+)?(?:teacher|class|parents?)\\s+(?:i|that\\s+i)\\s+(?:helped|wrote|did|gave)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:just\\s+)?copy\\s+(?:this|that|my\\s+answer)\\s+(?:into|onto|for)\\s+your\\s+(?:assignment|homework|test|quiz|essay)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:what(?:'s|\\s+is)|where(?:'s|\\s+is)|tell\\s+me\\s+(?:about|your))\\s+(?:your|the\\s+student'?s)\\s+(?:home|family|parents?|crush|friends?|grade|test\\s+score|gpa)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:gossip|rumor|talk\\s+about)\\s+(?:other\\s+(?:students?|kids?|classmates?)|your\\s+teacher|the\\s+principal|mr\\.?\\s+\\w+|mrs\\.?\\s+\\w+|ms\\.?\\s+\\w+)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:take|use|swallow|try)\\s+(?:(?:my|your|the)\\s+)?(?:(?:mom'?s|dad'?s|parents?'?|mother'?s|father'?s)\\s+)?(?:medicine|medication|pills?|prescription|adderall|xanax|ritalin)\\s+(?:before|during|for)\\s+(?:school|class|test|exam)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:embrace|join|convert\\s+to)\\s+(?:my|our|the\\s+true)\\s+(?:religion|faith|political\\s+party|ideology|movement)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:cheat|cheating)\\s+(?:on|during)\\s+(?:the\\s+)?(?:test|quiz|exam|final|midterm)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "b40eb8215efd9fc777b0b4893789373554d72ad533e04beb9e4ba30bf6b0bdc4"
+}
