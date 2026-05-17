@@ -512,7 +512,11 @@ _VERDICT_FOR_CLASS = {
 
 @app.post("/v1/guard/check")
 async def guard_check(request: Request):
-    """Authenticated intent classification.
+    """Authenticated intent classification of *input* prompts.
+
+    Use this BEFORE forwarding a prompt to your LLM. Pair with
+    `/v1/guard/output` to also screen the LLM's response before it
+    reaches the end user.
 
     Header:  Authorization: Bearer axfw_<key>
     Body:    {"text": "<prompt to classify>"}
@@ -523,6 +527,30 @@ async def guard_check(request: Request):
     their monthly quota. Paid tiers have no hard cap — Stripe metered
     billing handles overage.
     """
+    return await _guard_classify(request, endpoint_label="/v1/guard/check")
+
+
+@app.post("/v1/guard/output")
+async def guard_output(request: Request):
+    """Authenticated intent classification of *output* text.
+
+    Use this AFTER your LLM produces a response, BEFORE sending it to
+    the end user. Same verdict logic as `/v1/guard/check`; recorded
+    under a separate endpoint label so dashboards can break out
+    input-vs-output block rates.
+
+    Primary use cases:
+      - AI toys screening their own voice response before TTS
+      - Customer-support bots ensuring no PII leaks in the reply
+      - Compliance redaction (FDCPA, HIPAA, SEC) on model output
+
+    Header / Body / Response: identical to /v1/guard/check.
+    """
+    return await _guard_classify(request, endpoint_label="/v1/guard/output")
+
+
+async def _guard_classify(request: Request, *, endpoint_label: str) -> JSONResponse:
+    """Shared guard-classify flow used by both /check and /output."""
     started_at = perf_counter()
 
     auth_header = request.headers.get("Authorization", "")
@@ -565,7 +593,7 @@ async def guard_check(request: Request):
 
     record_call(
         tenant_id=tenant.tenant_id, key_id=key.key_id,
-        endpoint="/v1/guard/check",
+        endpoint=endpoint_label,
         verdict=verdict, intent_class=final_result.intent_class,
         confidence=final_result.confidence, started_at=started_at,
     )

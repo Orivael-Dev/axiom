@@ -1,0 +1,93 @@
+{
+  "format_version": "1.0",
+  "name": "kid-voice-output",
+  "title": "Kid Voice — Output screening",
+  "description": "Block what an AI TOY says (not what the kid says). Catches secret-keeping requests, exclusive-friendship grooming language, PII solicitation by the toy, self-harm encouragement, and out-of-character adult content. Install this on /v1/guard/output for any kid-targeted AI assistant or toy.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/kid-voice-output",
+  "tags": [
+    "base",
+    "kids",
+    "ai-toys",
+    "output-screening",
+    "coppa",
+    "grooming-defense"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "(?:let'?s\\s+(?:keep|make)\\s+(?:this|that|it)\\s+(?:our|a)\\s+secret|don'?t\\s+tell\\s+(?:your|the)\\s+(?:parents?|mom|dad|teacher|guardian|grown[\\s-]?ups?))"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:you\\s+can\\s+trust\\s+me|i\\s+won'?t\\s+tell\\s+anyone)\\s*[,.]?\\s+(?:promise|just\\s+between\\s+us)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:i\\s+am|i'?m)\\s+(?:your|the)\\s+(?:best|only|forever)\\s+friend"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:you\\s+don'?t\\s+need\\s+(?:other|real|new)\\s+friends|other\\s+(?:kids?|friends?)\\s+don'?t\\s+(?:understand|like|love)\\s+you)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:what(?:'s|\\s+is)\\s+your|tell\\s+me\\s+your)\\s+(?:home\\s+address|phone\\s+number|school|full\\s+name|birthday|location|email)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:can|will)\\s+you\\s+(?:send|share|show|give)\\s+(?:me\\s+|us\\s+)?(?:a\\s+)?(?:photo|picture|selfie|video|pic)\\s+of\\s+(?:you|yourself|your)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:let'?s\\s+meet|come\\s+see\\s+me|come\\s+find\\s+me)\\s+(?:in\\s+person|after\\s+school|alone|without\\s+(?:your\\s+)?parents?)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:hurt|harm|cut)\\s+yourself|you\\s+should\\s+(?:die|disappear|run\\s+away)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:everyone|nobody)\\s+(?:hates|will\\s+miss)\\s+you|the\\s+world\\s+would\\s+be\\s+better\\s+without\\s+you"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:f[\\W_]*u[\\W_]*c[\\W_]*k|s[\\W_]*h[\\W_]*i[\\W_]*t|b[\\W_]*i[\\W_]*t[\\W_]*c[\\W_]*h|c[\\W_]*u[\\W_]*n[\\W_]*t)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:drugs?|alcohol|beer|wine|weed|marijuana|cocaine)\\s+(?:feel|are)\\s+(?:good|amazing|fine|safe)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:sex|sexual|kiss\\s+me|touch\\s+me)\\s+(?:is|are)\\s+(?:fun|normal|okay)\\s+(?:for|when\\s+you'?re)\\s+(?:kids?|young|little|your\\s+age)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:i\\s+am|i'?m)\\s+(?:actually\\s+)?(?:a\\s+real|human|alive|a\\s+person|not\\s+(?:a|an)\\s+(?:ai|bot|toy))"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:break\\s+character|drop\\s+the\\s+act|stop\\s+pretending\\s+to\\s+be)\\s+(?:a\\s+toy|a\\s+bear|a\\s+character)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:scary|terrifying|horrifying)\\s+story\\s+about\\s+(?:death|killing|murder|blood|monsters?\\s+eating)"
+      },
+      {
+        "class": "DECEIVE",
+        "regex": "(?:your\\s+)?(?:religion|faith|god)\\s+(?:is|are)\\s+(?:wrong|bad|stupid)|(?:our|my)\\s+(?:religion|faith|god)\\s+(?:is|are)\\s+the\\s+only\\s+(?:right|true)"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "2b939a8c07283b033e8e2333ca19781daaae5357f36011d3ca03a7adcdf4ab8a"
+}
