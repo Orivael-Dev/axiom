@@ -50,7 +50,8 @@ def init_registry() -> None:
                 tier                   TEXT NOT NULL,
                 created_at             TEXT NOT NULL,
                 stripe_customer_id     TEXT,
-                stripe_subscription_id TEXT
+                stripe_subscription_id TEXT,
+                recovery_hash          TEXT
             )
         """)
         # Idempotent migration for tenants tables created by an earlier release.
@@ -59,6 +60,8 @@ def init_registry() -> None:
             c.execute("ALTER TABLE tenants ADD COLUMN stripe_customer_id TEXT")
         if "stripe_subscription_id" not in existing:
             c.execute("ALTER TABLE tenants ADD COLUMN stripe_subscription_id TEXT")
+        if "recovery_hash" not in existing:
+            c.execute("ALTER TABLE tenants ADD COLUMN recovery_hash TEXT")
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_stripe_customer "
             "ON tenants(stripe_customer_id)"
@@ -139,24 +142,67 @@ def insert_tenant(t: Tenant) -> None:
     init_tenant_db(t.tenant_id)
     with _conn(_registry_path()) as c:
         c.execute(
-            "INSERT INTO tenants VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tenants "
+            "(tenant_id, email, pw_hash, tier, created_at, "
+            " stripe_customer_id, stripe_subscription_id, recovery_hash) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 t.tenant_id, t.email, t.pw_hash, t.tier,
                 t.created_at.isoformat(),
                 t.stripe_customer_id, t.stripe_subscription_id,
+                t.recovery_hash,
             ),
         )
 
 
 def _row_to_tenant(r) -> Tenant:
+    keys = r.keys()
     return Tenant(
         tenant_id=r["tenant_id"], email=r["email"], pw_hash=r["pw_hash"],
         tier=r["tier"], created_at=datetime.fromisoformat(r["created_at"]),
         stripe_customer_id=r["stripe_customer_id"]
-            if "stripe_customer_id" in r.keys() else None,
+            if "stripe_customer_id" in keys else None,
         stripe_subscription_id=r["stripe_subscription_id"]
-            if "stripe_subscription_id" in r.keys() else None,
+            if "stripe_subscription_id" in keys else None,
+        recovery_hash=r["recovery_hash"] if "recovery_hash" in keys else None,
     )
+
+
+def update_tenant_password(tenant_id: str, *, pw_hash: str) -> None:
+    """Set a new password hash for the tenant. Used by the reset flow."""
+    init_registry()
+    with _conn(_registry_path()) as c:
+        c.execute(
+            "UPDATE tenants SET pw_hash = ? WHERE tenant_id = ?",
+            (pw_hash, tenant_id),
+        )
+
+
+def update_tenant_recovery_hash(tenant_id: str, *, recovery_hash: str) -> None:
+    """Rotate the recovery-code hash for the tenant (also after a reset)."""
+    init_registry()
+    with _conn(_registry_path()) as c:
+        c.execute(
+            "UPDATE tenants SET recovery_hash = ? WHERE tenant_id = ?",
+            (recovery_hash, tenant_id),
+        )
+
+
+def delete_tenant(tenant_id: str) -> None:
+    """Right-to-erasure: remove the tenant row + the per-tenant DB file.
+
+    Order: drop the registry row FIRST so any concurrent lookup sees the
+    tenant as gone before the data file disappears. Best-effort unlink
+    of the SQLite file; missing file is not an error (already removed).
+    """
+    init_registry()
+    with _conn(_registry_path()) as c:
+        c.execute("DELETE FROM tenants WHERE tenant_id = ?", (tenant_id,))
+    db_path = _tenant_path(tenant_id)
+    try:
+        db_path.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def update_tenant_tier(

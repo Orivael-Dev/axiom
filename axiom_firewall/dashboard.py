@@ -39,11 +39,13 @@ from axiom_signing import derive_key
 from . import billing, policy as policy_mod, registry_client, skill_pack
 from .auth import (
     TIER_PRICE_USD, TIER_RATE_LIMITS,
-    authenticate, check_password, hash_password, record_call,
+    authenticate, check_password, generate_recovery_code, hash_password,
+    normalize_recovery_code, record_call,
 )
 from .db import (
-    find_tenant_by_email, find_tenant_by_id, init_registry,
-    insert_api_key, insert_tenant, list_api_keys, usage_summary,
+    delete_tenant, find_tenant_by_email, find_tenant_by_id, init_registry,
+    insert_api_key, insert_tenant, list_api_keys,
+    update_tenant_password, update_tenant_recovery_hash, usage_summary,
 )
 from .limits import (
     SIGNUP_MAX_PER_WINDOW, SIGNUP_WINDOW_SECONDS,
@@ -327,9 +329,18 @@ def signup_post(request: Request, email: str = Form(...), password: str = Form(.
             _ctx(request, error="Password must be at least 8 characters."),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
-    t = Tenant.new(email=email, pw_hash=hash_password(password), tier="free")
+    recovery_code = generate_recovery_code()
+    t = Tenant.new(
+        email=email,
+        pw_hash=hash_password(password),
+        tier="free",
+        recovery_hash=hash_password(recovery_code),
+    )
     insert_tenant(t)
     request.session["tenant_id"] = t.tenant_id
+    # Stash the plaintext recovery code so the dashboard shows it ONCE.
+    # Popped on render; never persisted past the next page view.
+    request.session["new_recovery_code"] = recovery_code
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -390,6 +401,200 @@ def create_key(request: Request, name: str = Form(...)):
     insert_api_key(k)
     request.session["new_secret"] = k.secret
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# ─── Password reset (recovery-code flow) ────────────────────────────────
+#
+# No SMTP infra at launch. We give every tenant a single-use recovery
+# code at signup (like a 2FA backup code). To reset: enter email +
+# recovery code → set a new password. A fresh recovery code is issued
+# at the end so the user always has exactly one usable code.
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_get(request: Request):
+    return templates.TemplateResponse(
+        request, "forgot_password.html", _ctx(request),
+    )
+
+
+@app.post("/forgot-password")
+def forgot_password_post(
+    request: Request,
+    email: str = Form(...),
+    recovery_code: str = Form(...),
+    new_password: str = Form(...),
+):
+    if len(new_password) < 8:
+        return templates.TemplateResponse(
+            request, "forgot_password.html",
+            _ctx(request, error="New password must be at least 8 characters."),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    # Treat email-not-found + bad-code identically to avoid leaking which
+    # emails are registered. Constant-time PBKDF2 against a dummy hash on
+    # the not-found branch to keep timing comparable.
+    t = find_tenant_by_email(email)
+    code_ok = False
+    if t and t.recovery_hash:
+        code_ok = check_password(normalize_recovery_code(recovery_code), t.recovery_hash)
+    else:
+        # Run a PBKDF2 anyway so the no-account branch isn't instantly fast.
+        check_password("dummy", hash_password("dummy"))
+    if not t or not code_ok:
+        return templates.TemplateResponse(
+            request, "forgot_password.html",
+            _ctx(request, error="Email + recovery code did not match."),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    update_tenant_password(t.tenant_id, pw_hash=hash_password(new_password))
+    new_code = generate_recovery_code()
+    update_tenant_recovery_hash(
+        t.tenant_id, recovery_hash=hash_password(new_code),
+    )
+    # Auto-login the user + show them the fresh recovery code once.
+    request.session["tenant_id"] = t.tenant_id
+    request.session["new_recovery_code"] = new_code
+    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# ─── Account settings + deletion ────────────────────────────────────────
+
+
+@app.get("/dashboard/account", response_class=HTMLResponse)
+def account_get(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request, "account.html",
+        _ctx(request, tenant=t, has_subscription=bool(t.stripe_subscription_id)),
+    )
+
+
+@app.post("/dashboard/account/recovery/rotate")
+def account_rotate_recovery(request: Request, password: str = Form(...)):
+    """Issue a fresh recovery code. Requires current password as proof."""
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if not check_password(password, t.pw_hash):
+        return templates.TemplateResponse(
+            request, "account.html",
+            _ctx(
+                request, tenant=t,
+                has_subscription=bool(t.stripe_subscription_id),
+                error="Current password did not match — recovery code NOT rotated.",
+            ),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    new_code = generate_recovery_code()
+    update_tenant_recovery_hash(
+        t.tenant_id, recovery_hash=hash_password(new_code),
+    )
+    request.session["new_recovery_code"] = new_code
+    return RedirectResponse(
+        "/dashboard/account", status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@app.post("/dashboard/account/password")
+def account_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if not check_password(current_password, t.pw_hash):
+        return templates.TemplateResponse(
+            request, "account.html",
+            _ctx(
+                request, tenant=t,
+                has_subscription=bool(t.stripe_subscription_id),
+                error="Current password did not match.",
+            ),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    if len(new_password) < 8:
+        return templates.TemplateResponse(
+            request, "account.html",
+            _ctx(
+                request, tenant=t,
+                has_subscription=bool(t.stripe_subscription_id),
+                error="New password must be at least 8 characters.",
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    update_tenant_password(t.tenant_id, pw_hash=hash_password(new_password))
+    return templates.TemplateResponse(
+        request, "account.html",
+        _ctx(
+            request, tenant=t,
+            has_subscription=bool(t.stripe_subscription_id),
+            password_saved=True,
+        ),
+    )
+
+
+@app.post("/dashboard/account/delete")
+def account_delete(
+    request: Request,
+    password: str = Form(...),
+    confirm: str = Form(""),
+):
+    """Permanently delete the tenant + all per-tenant data.
+
+    Requires:
+      - Logged-in session
+      - Current password (anti-CSRF-ish + intent confirmation)
+      - The literal word DELETE in the `confirm` field
+
+    Cascade order:
+      1. Best-effort cancel Stripe subscription (don't fail deletion if Stripe errors)
+      2. Drop tenant row + per-tenant SQLite file
+      3. Clear session, redirect to landing
+    """
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if not check_password(password, t.pw_hash):
+        return templates.TemplateResponse(
+            request, "account.html",
+            _ctx(
+                request, tenant=t,
+                has_subscription=bool(t.stripe_subscription_id),
+                error="Password did not match — account NOT deleted.",
+            ),
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    if confirm.strip() != "DELETE":
+        return templates.TemplateResponse(
+            request, "account.html",
+            _ctx(
+                request, tenant=t,
+                has_subscription=bool(t.stripe_subscription_id),
+                error='Type the word DELETE (uppercase) to confirm.',
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    # Best-effort Stripe subscription cancellation.
+    if t.stripe_subscription_id and billing.is_enabled():
+        try:
+            stripe = billing._stripe()
+            stripe.Subscription.delete(t.stripe_subscription_id)
+        except Exception:
+            log.exception(
+                "stripe subscription cancellation failed for tenant %s "
+                "during account deletion — proceeding anyway",
+                t.tenant_id,
+            )
+    delete_tenant(t.tenant_id)
+    request.session.clear()
+    return templates.TemplateResponse(
+        request, "account_deleted.html", _ctx(request),
+    )
 
 
 # ─── Policy editor ──────────────────────────────────────────────────────
