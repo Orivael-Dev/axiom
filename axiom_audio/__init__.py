@@ -28,6 +28,13 @@ from .report import AUDIO_KEY_NS, AudioReport
 from .tempo import (
     TEMPO_KEY_NS, TempoEstimator, TempoReport, classify_tempo_clip,
 )
+from .vad import (
+    VAD_KEY_NS, VADReport, VoiceActivityDetector,
+    classify_vad_clip, voice_activity_regions,
+)
+from .voice import (
+    VOICE_KEY_NS, VoiceAgent, VoiceReport, classify_voice_clip,
+)
 
 __all__ = [
     "AmbientAudioAgent",
@@ -36,8 +43,16 @@ __all__ = [
     "TEMPO_KEY_NS",
     "TempoEstimator",
     "TempoReport",
+    "VAD_KEY_NS",
+    "VADReport",
+    "VOICE_KEY_NS",
+    "VoiceActivityDetector",
+    "VoiceAgent",
+    "VoiceReport",
     "classify_clip",
     "classify_tempo_clip",
+    "classify_vad_clip",
+    "classify_voice_clip",
     "decay_slope_db",
     "detect_onsets",
     "envelope",
@@ -45,4 +60,5 @@ __all__ = [
     "high_freq_ratio",
     "load_wav",
     "spectral_centroid_hz",
+    "voice_activity_regions",
 ]

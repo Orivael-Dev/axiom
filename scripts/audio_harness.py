@@ -1,33 +1,40 @@
 #!/usr/bin/env python3
 """Audio Phase A measurement harness.
 
-Drives the three gate metrics from docs/training/audio-phase-a.md:
+Drives the gate metrics from docs/training/audio-phase-a.md:
 
   1. Material accuracy on labeled positive clips    — target ≥ 80%
   2. Latency on a 1-second clip (p95)               — target < 100 ms
   3. False-positive rate on background clips        — target < 5%
      (any sharp_transient or soft_transient verdict on a background
      clip counts as a false positive)
+  4. Tempo accuracy on metronome clips (--tempo-*)  — target ≥ 80%
+     within ±3 BPM. ONLY evaluated when a tempo-* subdirectory is
+     present in the dataset, OR --demo is used.
 
 Usage:
 
-  # Run the built-in synthetic demo suite — no recordings required.
+  # Built-in synthetic demo — covers materials AND tempo.
   AXIOM_MASTER_KEY=... python3 scripts/audio_harness.py --demo
 
-  # Run against your own labeled directory.
+  # Real labeled directory.
   AXIOM_MASTER_KEY=... python3 scripts/audio_harness.py --dataset ./audio_dataset
 
-Dataset layout (one folder per material label; 'background' = negatives):
+Dataset layout (one folder per label; 'background' = negatives;
+'tempo-NNN' = a metronome at NNN BPM):
 
   audio_dataset/
-    glass-like/    *.wav   — positives, expected verdict = glass-like
+    glass-like/    *.wav    expected verdict = glass-like
     metal-like/    *.wav
     wood-like/     *.wav
     fabric-like/   *.wav
-    background/    *.wav   — negatives; any transient verdict = false positive
+    background/    *.wav    negatives — transient verdict = false positive
+    tempo-60/      *.wav    expected BPM = 60   (folder name carries the BPM)
+    tempo-120/     *.wav
+    ...
 
-Exit code is 0 only when all three gate thresholds are met. CI can
-gate Phase B greenlight on this script's exit code.
+Exit code is 0 only when all applicable gate thresholds are met. CI
+can gate Phase B greenlight on this script's exit code.
 """
 from __future__ import annotations
 
@@ -54,6 +61,8 @@ sys.path.insert(0, str(REPO_ROOT))
 MATERIAL_ACCURACY_GATE = 0.80   # ≥ 80% of positive clips classified correctly
 LATENCY_P95_GATE_MS = 100.0     # 95th percentile under 100 ms / clip
 FALSE_POSITIVE_GATE = 0.05      # ≤ 5% of background clips flagged transient
+TEMPO_ACCURACY_GATE = 0.80      # ≥ 80% of tempo clips within ±BPM_TOL
+TEMPO_BPM_TOLERANCE = 3.0       # ±3 BPM tolerance on metronome clips
 
 SAMPLE_RATE = 16_000
 TRANSIENT_LABELS = {"sharp_transient", "soft_transient"}
@@ -73,6 +82,17 @@ class ClipResult:
     confidence: float
     latency_ms: float
     hit: Optional[bool]  # None for background; True/False for positive clips
+
+
+@dataclass
+class TempoClipResult:
+    path: str
+    expected_bpm: float
+    predicted_bpm: float
+    tempo_stability: float
+    confidence: float
+    latency_ms: float
+    hit: bool   # |expected - predicted| <= TEMPO_BPM_TOLERANCE
 
 
 # ─── WAV I/O for synthetic demo dataset ─────────────────────────────────
@@ -171,6 +191,26 @@ def synth_fabric(seed: int) -> list[float]:
     return out
 
 
+def synth_metronome(bpm: float, duration_s: float = 4.0) -> list[float]:
+    """Periodic clicks at the given BPM. Each click is a 10ms broadband
+    burst with sharp linear-decay envelope — easy for the onset
+    detector to find. Deterministic LCG for byte-identical output
+    across runs."""
+    n = int(duration_s * SAMPLE_RATE)
+    out = [0.0] * n
+    period_samples = int(60.0 * SAMPLE_RATE / bpm)
+    click_len = int(0.010 * SAMPLE_RATE)
+    state = 1
+    pos = 0
+    while pos + click_len < n:
+        for i in range(click_len):
+            state = (state * 1103515245 + 12345) & 0x7fffffff
+            r = (state / 0x7fffffff) * 2 - 1
+            out[pos + i] += r * 0.85 * (1.0 - i / click_len)
+        pos += period_samples
+    return out
+
+
 def synth_background(seed: int) -> list[float]:
     """Room-tone style noise with occasional gentle hum, NO transients."""
     rng = random.Random(seed)
@@ -188,7 +228,11 @@ def synth_background(seed: int) -> list[float]:
 
 
 def build_demo_dataset(root: Path) -> None:
-    """Write ~14 synthetic clips into a directory tree for demo runs."""
+    """Write ~20 synthetic clips into a directory tree for demo runs.
+
+    Layout includes BOTH material categories AND tempo-NNN folders
+    so the harness exercises every gate in one run.
+    """
     plan = {
         "glass-like":  [(synth_glass, [(1,), (2,), (3,), (4,)])],
         "metal-like":  [(synth_metal, [(11,), (12,), (13,)])],
@@ -202,26 +246,51 @@ def build_demo_dataset(root: Path) -> None:
         for fn, arglist in groups:
             for i, args in enumerate(arglist):
                 _write_wav(d / f"{label}_{i:02d}.wav", fn(*args))
+    # Metronome clips — one folder per BPM, named tempo-NNN
+    for bpm in (60, 90, 120, 150, 180):
+        d = root / f"tempo-{bpm}"
+        d.mkdir(parents=True, exist_ok=True)
+        _write_wav(d / f"metronome_{bpm}bpm.wav", synth_metronome(bpm))
 
 
 # ─── Discovery + execution ──────────────────────────────────────────────
 
 
-def discover_clips(dataset_root: Path) -> list[tuple[Path, Optional[str], bool]]:
-    """Walk dataset_root. Each subdir name is the expected material label;
-    'background' is the negatives directory."""
+def discover_clips(
+    dataset_root: Path,
+) -> tuple[list[tuple[Path, Optional[str], bool]], list[tuple[Path, float]]]:
+    """Walk dataset_root and split clips into material vs. tempo lists.
+
+    Material/background folders: glass-like, metal-like, wood-like,
+    fabric-like, background. Tempo folders: tempo-NNN where NNN is the
+    expected BPM. Unrecognized folder names are ignored with a warning.
+
+    Returns (material_clips, tempo_clips) where:
+      material_clips = [(path, expected_label_or_None, is_background), ...]
+      tempo_clips    = [(path, expected_bpm), ...]
+    """
     if not dataset_root.exists():
         raise SystemExit(f"Dataset directory does not exist: {dataset_root}")
-    out: list[tuple[Path, Optional[str], bool]] = []
+    material: list[tuple[Path, Optional[str], bool]] = []
+    tempo: list[tuple[Path, float]] = []
     for sub in sorted(dataset_root.iterdir()):
         if not sub.is_dir():
             continue
         label = sub.name.strip()
-        is_bg = (label == "background")
-        for wav in sorted(sub.glob("*.wav")):
-            expected = None if is_bg else label
-            out.append((wav, expected, is_bg))
-    return out
+        if label.startswith("tempo-"):
+            try:
+                bpm = float(label[len("tempo-"):])
+            except ValueError:
+                print(f"  WARN: ignoring folder with bad tempo label: {sub.name}")
+                continue
+            for wav in sorted(sub.glob("*.wav")):
+                tempo.append((wav, bpm))
+        else:
+            is_bg = (label == "background")
+            for wav in sorted(sub.glob("*.wav")):
+                expected = None if is_bg else label
+                material.append((wav, expected, is_bg))
+    return material, tempo
 
 
 def evaluate_clip(path: Path, expected: Optional[str], is_bg: bool) -> ClipResult:
@@ -246,10 +315,30 @@ def evaluate_clip(path: Path, expected: Optional[str], is_bg: bool) -> ClipResul
     )
 
 
+def evaluate_tempo_clip(path: Path, expected_bpm: float) -> TempoClipResult:
+    from axiom_audio import classify_tempo_clip
+    t0 = time.perf_counter()
+    report = classify_tempo_clip(str(path))
+    latency_ms = (time.perf_counter() - t0) * 1000
+    predicted = report.payload["bpm"]
+    return TempoClipResult(
+        path=str(path), expected_bpm=expected_bpm,
+        predicted_bpm=predicted,
+        tempo_stability=report.payload["tempo_stability"],
+        confidence=report.confidence,
+        latency_ms=round(latency_ms, 2),
+        hit=abs(predicted - expected_bpm) <= TEMPO_BPM_TOLERANCE,
+    )
+
+
 # ─── Aggregation + reporting ────────────────────────────────────────────
 
 
-def summarize(results: list[ClipResult]) -> dict:
+def summarize(
+    results: list[ClipResult],
+    tempo_results: list[TempoClipResult] | None = None,
+) -> dict:
+    tempo_results = tempo_results or []
     positives = [r for r in results if not r.is_background]
     backgrounds = [r for r in results if r.is_background]
 
@@ -276,8 +365,11 @@ def summarize(results: list[ClipResult]) -> dict:
             "recall": round(recall, 3),
         }
 
-    # Latency
-    latencies = [r.latency_ms for r in results]
+    # Latency — material + tempo clips together, since they share the
+    # same FFT-driven pipeline and the gate is "per-clip ms"
+    latencies = [r.latency_ms for r in results] + [
+        t.latency_ms for t in tempo_results
+    ]
     latency_stats = {
         "mean": round(statistics.fmean(latencies), 2) if latencies else 0.0,
         "median": round(statistics.median(latencies), 2) if latencies else 0.0,
@@ -289,6 +381,28 @@ def summarize(results: list[ClipResult]) -> dict:
     # False-positive rate: background clips that yielded a transient verdict
     fp_count = sum(1 for r in backgrounds if r.predicted_impact in TRANSIENT_LABELS)
     fp_rate = fp_count / len(backgrounds) if backgrounds else 0.0
+
+    # Tempo accuracy (when tempo clips were provided)
+    tempo_summary = None
+    if tempo_results:
+        tempo_hits = sum(1 for t in tempo_results if t.hit)
+        tempo_accuracy = tempo_hits / len(tempo_results)
+        tempo_summary = {
+            "clips":              len(tempo_results),
+            "accuracy":           round(tempo_accuracy, 3),
+            "tolerance_bpm":      TEMPO_BPM_TOLERANCE,
+            "per_clip":           [
+                {
+                    "path":           t.path,
+                    "expected_bpm":   t.expected_bpm,
+                    "predicted_bpm":  t.predicted_bpm,
+                    "stability":      t.tempo_stability,
+                    "confidence":     t.confidence,
+                    "hit":            t.hit,
+                }
+                for t in tempo_results
+            ],
+        }
 
     # Gate verdicts
     gates = {
@@ -308,12 +422,19 @@ def summarize(results: list[ClipResult]) -> dict:
             "pass": fp_rate <= FALSE_POSITIVE_GATE,
         },
     }
+    if tempo_summary is not None:
+        gates["tempo_accuracy"] = {
+            "value": tempo_summary["accuracy"],
+            "threshold": TEMPO_ACCURACY_GATE,
+            "pass": tempo_summary["accuracy"] >= TEMPO_ACCURACY_GATE,
+        }
     overall_pass = all(g["pass"] for g in gates.values())
 
-    return {
-        "clips_total": len(results),
+    summary = {
+        "clips_total": len(results) + len(tempo_results),
         "clips_positive": len(positives),
         "clips_background": len(backgrounds),
+        "clips_tempo": len(tempo_results),
         "material_accuracy": round(accuracy, 3),
         "per_label": per_label,
         "latency_ms": latency_stats,
@@ -323,6 +444,9 @@ def summarize(results: list[ClipResult]) -> dict:
         "overall_pass": overall_pass,
         "results": [asdict(r) for r in results],
     }
+    if tempo_summary is not None:
+        summary["tempo"] = tempo_summary
+    return summary
 
 
 def _percentile(xs: list[float], p: float) -> float:
@@ -336,8 +460,13 @@ def _percentile(xs: list[float], p: float) -> float:
 
 def print_report(summary: dict, *, quiet: bool = False) -> None:
     print()
-    print(f"  Clips evaluated:         {summary['clips_total']} "
-          f"(positives={summary['clips_positive']}, background={summary['clips_background']})")
+    breakdown = (
+        f"positives={summary['clips_positive']}, "
+        f"background={summary['clips_background']}"
+    )
+    if summary.get("clips_tempo"):
+        breakdown += f", tempo={summary['clips_tempo']}"
+    print(f"  Clips evaluated:         {summary['clips_total']} ({breakdown})")
     print()
     print("  ── Gates ─────────────────────────────────────────────")
     for name, g in summary["gates"].items():
@@ -348,6 +477,8 @@ def print_report(summary: dict, *, quiet: bool = False) -> None:
             print(f"  [{mark}] latency p95         {g['value']:>6.1f} ms (threshold < {g['threshold']:.0f} ms)")
         elif name == "false_positive_rate":
             print(f"  [{mark}] false-positive rate {g['value']:.1%}  (threshold ≤ {g['threshold']:.0%})")
+        elif name == "tempo_accuracy":
+            print(f"  [{mark}] tempo accuracy      {g['value']:.1%}  (threshold ≥ {g['threshold']:.0%}, ±{TEMPO_BPM_TOLERANCE:.0f} BPM)")
     print()
     if quiet:
         print(f"  Overall: {'PASS' if summary['overall_pass'] else 'FAIL'}")
@@ -364,6 +495,17 @@ def print_report(summary: dict, *, quiet: bool = False) -> None:
     print(f"  mean {L['mean']:>6.1f}   median {L['median']:>6.1f}   "
           f"p95 {L['p95']:>6.1f}   p99 {L['p99']:>6.1f}   max {L['max']:>6.1f}")
     print()
+    if summary.get("tempo"):
+        print("  ── Tempo (BPM) ───────────────────────────────────────")
+        t = summary["tempo"]
+        print(f"  Clips: {t['clips']}   accuracy: {t['accuracy']:.1%}   "
+              f"tolerance: ±{t['tolerance_bpm']:.0f} BPM")
+        for clip in t["per_clip"]:
+            mark = "✓" if clip["hit"] else "✗"
+            print(f"  {mark}  expected={clip['expected_bpm']:>6.1f}  "
+                  f"predicted={clip['predicted_bpm']:>6.1f}  "
+                  f"stability={clip['stability']:.2f}")
+        print()
     print(f"  Overall: {'PASS' if summary['overall_pass'] else 'FAIL'}")
     print()
 
@@ -388,6 +530,8 @@ def markdown_report(summary: dict) -> str:
             lines.append(f"| latency p95 | {g['value']:.1f} ms | < {g['threshold']:.0f} ms | {verdict} |")
         elif name == "false_positive_rate":
             lines.append(f"| false-positive rate | {g['value']:.1%} | ≤ {g['threshold']:.0%} | {verdict} |")
+        elif name == "tempo_accuracy":
+            lines.append(f"| tempo accuracy | {g['value']:.1%} | ≥ {g['threshold']:.0%} (±{TEMPO_BPM_TOLERANCE:.0f} BPM) | {verdict} |")
     lines.append("")
     lines.append("## Per-material breakdown")
     lines.append("")
@@ -440,16 +584,21 @@ def main() -> int:
         dataset_root = args.dataset
 
     try:
-        clips = discover_clips(dataset_root)
-        if not clips:
+        material_clips, tempo_clips = discover_clips(dataset_root)
+        if not material_clips and not tempo_clips:
             sys.exit(f"No .wav files found under {dataset_root}. "
                      "Pass --demo to run the synthetic suite, or populate the directory.")
 
-        results: list[ClipResult] = []
-        for path, expected, is_bg in clips:
-            results.append(evaluate_clip(path, expected, is_bg))
+        results: list[ClipResult] = [
+            evaluate_clip(path, expected, is_bg)
+            for path, expected, is_bg in material_clips
+        ]
+        tempo_results: list[TempoClipResult] = [
+            evaluate_tempo_clip(path, expected_bpm)
+            for path, expected_bpm in tempo_clips
+        ]
 
-        summary = summarize(results)
+        summary = summarize(results, tempo_results)
         print_report(summary, quiet=args.quiet)
 
         args.output_json.write_text(json.dumps(summary, indent=2))

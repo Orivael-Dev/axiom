@@ -1,20 +1,33 @@
-# Axiom Audio — Phase A (ambient / physical-event + tempo)
+# Axiom Audio — Phase A + B (ambient + tempo + VAD + voice)
 
-Internal training note. Reflects what shipped in
-`axiom_audio/` and the Phase B / C runway.
+Internal training note. Reflects what shipped in `axiom_audio/` and
+the Phase C runway.
 
-Phase A actually ships TWO agents, not one:
+Four agents now in production behind the AXIOM_EVENT_TOKEN Coordinator:
 
 - **AmbientAudioAgent** — what kind of event happened (glass shatter,
   metal ring, wood knock, fabric thud) → fuzzy categorical labels
 - **TempoEstimator** — at what BPM is the rhythm → numeric ground truth
+- **VoiceActivityDetector** — silence/dead-air gate, returns the
+  active timeline regions
+- **VoiceAgent** — pitch + prosody + speaker register + voicing
+  ratio + syllable rate (NOT speech-to-text — that's a separate
+  layer for later)
 
 The tempo agent serves as the **numeric-truth anchor** for the audio
 testing library: a 120 BPM metronome IS 120 BPM, so you can validate
 agent correctness against an absolute number, not just a subjective
-material label. Tempo also crosses all three audio families
-(ambient / voice / music), so the same building block plugs into
-Phase B and Phase C unchanged.
+material label.
+
+The VAD agent serves three jobs simultaneously:
+
+1. Standalone activation — emit a signed timeline of active regions
+   in a long recording (chunking for streaming).
+2. Preprocess inside VoiceAgent — silence is gated out before pitch
+   analysis, so a 5-second clip with 200ms of speech in the middle
+   produces the same verdict as a 200ms speech-only clip.
+3. Audit-visible dead-air metric — "this 5-second clip is 80%
+   silence" surfaces as a first-class fact in the EventToken trace.
 
 ## What Phase A is
 
@@ -105,20 +118,27 @@ LayerReport, that LayerReport is re-signed under
 ```
 axiom_audio/
   __init__.py            public exports
-  features.py            stdlib DSP primitives (FFT, envelope, onsets, centroid)
+  features.py            stdlib DSP primitives (FFT, envelope, onsets, centroid, ZCR)
   ambient.py             AmbientAudioAgent — rule-based material classifier
   tempo.py               TempoEstimator — autocorrelation BPM (axiom-tempo-v1)
+  vad.py                 VoiceActivityDetector — energy + ZCR gate (axiom-vad-v1)
+  voice.py               VoiceAgent — autocorrelation F0 + prosody (axiom-voice-v1)
   report.py              signed AudioReport + namespace (axiom-audio-v1)
 axiom_event_token/
-  agents.py              AudioAgent + TempoAgent registered with Coordinator
+  agents.py              5 audio agents (AudioAgent + TempoAgent + VADAgent +
+                         VoiceAgent + GovernanceAgent) registered with Coordinator
 examples/
   audio_demo.py          synthesize glass-shatter + print signed report
 scripts/
-  audio_synth.py         write 20 labeled WAV stimuli to disk for HUMAN listening
+  audio_synth.py         write labeled WAV stimuli to disk for HUMAN listening
+                         (now 26 clips: materials + background + metronome + voice)
   audio_harness.py       measure CLASSIFIER accuracy against gate thresholds
+                         (now 4 gates: material + latency + FP rate + tempo)
 tests/
   test_axiom_audio.py    10 tests — ambient classifier
   test_axiom_tempo.py    15 tests — BPM accuracy ±3 across [60, 90, 100, 120, 150, 180]
+  test_axiom_vad.py      13 tests — silence detection, region merging, blip filtering
+  test_axiom_voice.py    12 tests — F0 estimation, register, prosody, VAD integration
   test_audio_harness.py  3 tests — harness smoke
 ```
 
@@ -155,6 +175,7 @@ and reports against all three gate thresholds.
 | Material accuracy | ≥ 80% | Positive clips classified into the right material |
 | Latency p95       | < 100 ms | One classification on a 1-second clip |
 | False-positive rate | ≤ 5% | Background clips falsely flagged as a transient |
+| Tempo accuracy    | ≥ 80% within ±3 BPM | Metronome clips estimated correctly |
 
 ### Demo run (no recordings needed)
 
@@ -180,6 +201,10 @@ audio_dataset/
   wood-like/     *.wav
   fabric-like/   *.wav
   background/    *.wav
+  tempo-60/      *.wav    metronome at 60 BPM
+  tempo-90/      *.wav
+  tempo-120/     *.wav
+  ...                     one folder per BPM you have recordings for
 ```
 
 Suggested minimum: 20 clips per material (80 positives) + 50

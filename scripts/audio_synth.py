@@ -52,6 +52,25 @@ synth_random_clicks = _tt.synth_random_clicks
 SAMPLE_RATE = h.SAMPLE_RATE
 
 
+# Voice stimuli — reuse the same synth helper the voice tests use,
+# pulled via the same importlib trick that picks up the metronome.
+_vspec = importlib.util.spec_from_file_location(
+    "_voice_tests", REPO_ROOT / "tests" / "test_axiom_voice.py"
+)
+_vt = importlib.util.module_from_spec(_vspec)
+_vspec.loader.exec_module(_vt)
+synth_voice_at_pitch = _vt.synth_voice_at_pitch
+
+
+def _voice_with_silence_padding(f0_hz: float, voice_s: float = 1.5,
+                                lead_s: float = 0.6, trail_s: float = 0.6,
+                                jitter: float = 0.05) -> list[float]:
+    """Voice clip wrapped in dead air — illustrates the VAD/gate's job."""
+    pre = [0.0] * int(lead_s * SAMPLE_RATE)
+    post = [0.0] * int(trail_s * SAMPLE_RATE)
+    return pre + synth_voice_at_pitch(f0_hz, voice_s, jitter) + post
+
+
 CATEGORY_BUILDERS = {
     "glass-like":  [("glass_01", h.synth_glass, (1,)),
                     ("glass_02", h.synth_glass, (2,)),
@@ -70,6 +89,13 @@ CATEGORY_BUILDERS = {
     "metronome":   [(f"metronome_{bpm}bpm", synth_metronome, (bpm,))
                     for bpm in (60, 90, 120, 150, 180)] + [
                     ("metronome_random_clicks", synth_random_clicks, ())],
+    "voice":       [("voice_low_110hz",       synth_voice_at_pitch, (110,)),
+                    ("voice_mid_180hz",       synth_voice_at_pitch, (180,)),
+                    ("voice_high_280hz",      synth_voice_at_pitch, (280,)),
+                    ("voice_monotone",        synth_voice_at_pitch, (180, 1.5, 0.0)),
+                    ("voice_excited",         synth_voice_at_pitch, (180, 1.5, 0.6)),
+                    ("voice_with_silence_padding",
+                                              _voice_with_silence_padding, (180,))],
 }
 
 

@@ -256,6 +256,72 @@ class TempoAgent(Agent):
         )
 
 
+# ─── VAD Agent (gate / dead-air cutter) ────────────────────────────────
+
+
+class VADAgent(Agent):
+    """Voice Activity Detection — the silence gate.
+
+    Activates when the caller wants a timeline of active vs. silent
+    regions in an audio clip. Used to chunk long recordings, gate
+    out dead air before downstream classification, or surface
+    "this 5-second clip is 80% silence" as an audit-visible fact.
+
+    Real implementation: axiom_audio.VoiceActivityDetector.
+    """
+    agent_name = "vad"
+
+    def run(self, inputs: dict[str, Any]) -> LayerReport:
+        provided = inputs.get("audio", {})
+        if not isinstance(provided, dict):
+            provided = {}
+        from axiom_audio import VoiceActivityDetector, classify_vad_clip
+        wav_path = provided.get("wav_path")
+        if wav_path:
+            vad_report = classify_vad_clip(wav_path)
+        else:
+            samples = provided.get("samples", [])
+            sr = int(provided.get("sample_rate", 16_000))
+            vad_report = VoiceActivityDetector().detect(samples, sr)
+        return LayerReport.signed(
+            agent=self.agent_name,
+            payload=vad_report.payload,
+            confidence=vad_report.confidence,
+        )
+
+
+# ─── Voice Agent (real — pitch + prosody, ASR is a future layer) ───────
+
+
+class VoiceAgent(Agent):
+    """Voice characterization — pitch + prosody + speaker register.
+
+    Runs VAD internally so silence is already gated before pitch
+    analysis. Phase B scope: prosody only, NOT speech-to-text.
+
+    Real implementation: axiom_audio.VoiceAgent.
+    """
+    agent_name = "voice"
+
+    def run(self, inputs: dict[str, Any]) -> LayerReport:
+        provided = inputs.get("audio", {})
+        if not isinstance(provided, dict):
+            provided = {}
+        from axiom_audio import VoiceAgent as _VoiceClassifier, classify_voice_clip
+        wav_path = provided.get("wav_path")
+        if wav_path:
+            voice_report = classify_voice_clip(wav_path)
+        else:
+            samples = provided.get("samples", [])
+            sr = int(provided.get("sample_rate", 16_000))
+            voice_report = _VoiceClassifier().classify(samples, sr)
+        return LayerReport.signed(
+            agent=self.agent_name,
+            payload=voice_report.payload,
+            confidence=voice_report.confidence,
+        )
+
+
 # ─── Registry ───────────────────────────────────────────────────────────
 
 
@@ -263,6 +329,8 @@ AGENT_REGISTRY: dict[str, type[Agent]] = {
     "text":       TextAgent,
     "audio":      AudioAgent,
     "tempo":      TempoAgent,
+    "vad":        VADAgent,
+    "voice":      VoiceAgent,
     "video":      VideoAgent,
     "physics":    PhysicsAgent,
     "governance": GovernanceAgent,

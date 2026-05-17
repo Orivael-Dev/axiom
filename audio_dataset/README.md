@@ -5,9 +5,8 @@ audio harness (`scripts/audio_harness.py`) walks this directory.
 
 ## Layout
 
-One folder per material label. The folder name IS the expected label.
-A folder called `background` holds negative examples (any transient
-verdict on a background clip is a false positive).
+One folder per label. The folder name IS the expected label. Three
+folder families recognized:
 
 ```
 audio_dataset/
@@ -16,6 +15,9 @@ audio_dataset/
   wood-like/     *.wav   — knocks on doors, drumsticks, blocks
   fabric-like/   *.wav   — cushion drops, cloth thuds, soft falls
   background/    *.wav   — room tone, kitchen hum, TV chatter
+                            (any transient verdict here = false positive)
+  tempo-NNN/     *.wav   — clips at known BPM (NNN); folder name carries
+                            the expected BPM. tempo-60/, tempo-120/, etc.
 ```
 
 ## File format
@@ -43,7 +45,8 @@ failed. CI can gate Phase B greenlight on this exit code.
 |---|---|
 | Material accuracy on positive clips | ≥ 80% |
 | Latency p95 per 1-second clip       | < 100 ms |
-| False-positive rate on background    | ≤ 5% |
+| False-positive rate on background   | ≤ 5% |
+| Tempo accuracy on metronome clips   | ≥ 80% within ±3 BPM |
 
 ## Source ideas for real recordings
 
