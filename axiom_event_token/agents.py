@@ -69,16 +69,27 @@ class TextAgent(Agent):
 
 
 class AudioAgent(Agent):
-    """Stub Audio agent — returns the audio fields from a caller-provided
-    dict at inputs['audio'] OR a fixed plausible shape if absent.
+    """Audio agent — runs the real ambient classifier when a `wav_path`
+    is provided, otherwise echoes a caller-supplied dict (back-compat
+    for the original stub behaviour).
 
-    Real implementation: axiom_audio (per saved plan). This stub validates
-    that the container holds together end-to-end with a believable shape.
+    Real implementation: `axiom_audio.AmbientAudioAgent`. Phase A ships
+    ambient/physical-event analysis; voice + music agents land in later
+    phases behind the same Audio layer slot.
     """
     agent_name = "audio"
 
     def run(self, inputs: dict[str, Any]) -> LayerReport:
         provided = inputs.get("audio", {})
+        wav_path = provided.get("wav_path") if isinstance(provided, dict) else None
+        if wav_path:
+            from axiom_audio import classify_clip
+            audio_report = classify_clip(wav_path)
+            return LayerReport.signed(
+                agent=self.agent_name,
+                payload=audio_report.payload,
+                confidence=audio_report.confidence,
+            )
         payload = {
             "impact_profile":    provided.get("impact_profile", "neutral"),
             "material_signature": provided.get("material_signature", "unknown"),
