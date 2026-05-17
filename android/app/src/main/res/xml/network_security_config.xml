@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Only the Android-emulator → host loopback (10.0.2.2) and standard
-    localhost may use cleartext HTTP. Every other destination requires
-    TLS. This narrows the cleartext window to dev-only traffic without
-    weakening production calls.
+    Cleartext HTTP is allowed only for explicitly-named dev destinations:
+      - 10.0.2.2          Android-emulator → host loopback
+      - localhost / 127.* standard loopback
+      - 192.168.86.x      home-LAN dev range (physical phone → Windows host)
+
+    Every other destination still requires TLS. Production calls
+    (firewall.orivael.dev) hit the second config block.
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>
+
+        <!-- Home-LAN dev. Add other LAN IPs here if your laptop's
+             DHCP lease changes; better, pin a DHCP reservation on
+             your router so this IP stays stable. -->
+        <domain includeSubdomains="true">192.168.86.115</domain>
     </domain-config>
 </network-security-config>
