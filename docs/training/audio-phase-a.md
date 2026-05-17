@@ -103,18 +103,79 @@ tests/
 
 ## What to measure before Phase B
 
-The "measure" gate in the staged plan. Drive these before voice ships:
+The "measure" gate in the staged plan. Driven by
+`scripts/audio_harness.py` — one CLI that takes a labeled dataset
+and reports against all three gate thresholds.
 
-1. **Real-recording accuracy** — feed 20 actual recordings (cups,
-   doors, fabric drops, drumsticks, glass) — what fraction get the
-   right material_signature? Target: ≥ 80% on the four named
-   categories.
-2. **Latency** — currently the FFT is pure-Python and the demo
-   runs in ~30ms for a 1-second clip. If real customer clips push
-   us past 100ms, drop in numpy behind the `fft_magnitude`
-   function without changing the API.
-3. **False-positive rate on background noise** — feed 50 clips of
-   room tone / TV chatter / kitchen background. How often do we
-   wrongly emit a `sharp_transient`? Target: < 5%.
+| Metric | Threshold | What it tests |
+|---|---|---|
+| Material accuracy | ≥ 80% | Positive clips classified into the right material |
+| Latency p95       | < 100 ms | One classification on a 1-second clip |
+| False-positive rate | ≤ 5% | Background clips falsely flagged as a transient |
 
-Once those three pass, Phase B (voice) is greenlit.
+### Demo run (no recordings needed)
+
+```bash
+export AXIOM_MASTER_KEY=...
+python3 scripts/audio_harness.py --demo
+```
+
+Synthesizes ~14 clips in process and runs the full gate. Current
+demo measurement: 100% accuracy, 44.6 ms p95 latency, 0% FP rate.
+This validates the methodology + the classifier on purpose-built
+stimuli; it is NOT the real-world gate.
+
+### Real-data run (the actual gate)
+
+Drop labeled WAV files into `audio_dataset/` (layout documented in
+`audio_dataset/README.md`):
+
+```
+audio_dataset/
+  glass-like/    *.wav
+  metal-like/    *.wav
+  wood-like/     *.wav
+  fabric-like/   *.wav
+  background/    *.wav
+```
+
+Suggested minimum: 20 clips per material (80 positives) + 50
+background clips. Then:
+
+```bash
+python3 scripts/audio_harness.py --dataset ./audio_dataset \
+    --output-json results.json \
+    --markdown results.md
+```
+
+Exit code 0 ⇒ all three gates passed and Phase B (voice) is
+greenlit. Non-zero ⇒ at least one gate failed; the JSON output has
+per-clip predictions so you can see which calls the classifier
+botched.
+
+### When latency fails the gate
+
+The pure-Python FFT is the hot path. If the p95 climbs past 100 ms
+on real-customer clips:
+- Drop in numpy behind `axiom_audio.features.fft_magnitude` — no
+  caller changes needed
+- OR swap to scipy.fft if a numpy dep is already pulled in
+
+### When material accuracy fails the gate
+
+The per-label breakdown in the harness output shows which
+categories miss. The fix is usually one of:
+- Loosen / tighten the threshold in `axiom_audio.ambient._classify_material`
+  (e.g. wood's `800 < centroid < 2500 Hz` window)
+- Add a new branch (e.g. plastic-like) if a category is collapsing
+  into "unknown"
+- Pull in a real recording, run it through the harness with
+  `--output-json`, and inspect the `debug` block to see which
+  numeric feature is off
+
+### When false-positive rate fails the gate
+
+Background clips firing transient verdicts means the onset
+detector's adaptive threshold is too sensitive. Tune
+`detect_onsets(rel_threshold=...)` upward, or lengthen the
+trailing-median window, in `axiom_audio.features.detect_onsets`.

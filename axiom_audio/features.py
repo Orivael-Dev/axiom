@@ -181,9 +181,12 @@ def fft_magnitude(samples: Sequence[float]) -> list[float]:
 
 
 def spectral_centroid_hz(mag: Sequence[float], sample_rate: int) -> float:
-    """Frequency-weighted mean of the magnitude spectrum, in Hz.
+    """Power-weighted frequency centroid, in Hz.
 
-    Quick proxy for "brightness". Glass shatter centroids land high
+    Power weighting (m**2) instead of magnitude rejects the noise
+    floor across many small bins and emphasizes perceptually-loud
+    bins — the conventional definition in audio analysis. Quick
+    proxy for "brightness". Glass shatter centroids land high
     (>4 kHz); thuds land low (<800 Hz).
     """
     n_bins = len(mag)
@@ -193,8 +196,9 @@ def spectral_centroid_hz(mag: Sequence[float], sample_rate: int) -> float:
     total = 0.0
     weighted = 0.0
     for i, m in enumerate(mag):
-        total += m
-        weighted += m * (i * bin_hz)
+        p = m * m
+        total += p
+        weighted += p * (i * bin_hz)
     return weighted / total if total > 0 else 0.0
 
 
