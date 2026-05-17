@@ -41,6 +41,27 @@ def hash_password(pw: str) -> str:
     return f"pbkdf2${PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
 
 
+RECOVERY_CODE_BYTES = 16  # 128 bits → 26-char base32 string
+
+
+def generate_recovery_code() -> str:
+    """Produce a single-use recovery code shown ONCE to the user at signup
+    (or after rotation). Format: 4 groups of base32, dash-separated, e.g.
+    `K7QM-9XHT-V2RB-3LFC-DE5J-W8YA`. Hash this with hash_password() before
+    persisting — never store the plaintext.
+    """
+    import base64
+    raw = secrets.token_bytes(RECOVERY_CODE_BYTES)
+    b32 = base64.b32encode(raw).decode("ascii").rstrip("=")
+    return "-".join(b32[i:i + 4] for i in range(0, len(b32), 4))
+
+
+def normalize_recovery_code(code: str) -> str:
+    """User input may have whitespace / lowercase / missing dashes. Strip + uppercase + re-dash."""
+    cleaned = "".join(ch for ch in code.upper() if ch.isalnum())
+    return "-".join(cleaned[i:i + 4] for i in range(0, len(cleaned), 4))
+
+
 def check_password(pw: str, pw_hash: str) -> bool:
     try:
         scheme, iters, salt_hex, digest_hex = pw_hash.split("$")

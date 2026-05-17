@@ -17,15 +17,22 @@ class Tenant:
     created_at: datetime
     stripe_customer_id: str | None = None
     stripe_subscription_id: str | None = None
+    recovery_hash: str | None = None
 
     @staticmethod
-    def new(email: str, pw_hash: str, tier: str = "free") -> "Tenant":
+    def new(
+        email: str,
+        pw_hash: str,
+        tier: str = "free",
+        recovery_hash: str | None = None,
+    ) -> "Tenant":
         return Tenant(
             tenant_id=str(uuid.uuid4()),
             email=email.strip().lower(),
             pw_hash=pw_hash,
             tier=tier,
             created_at=datetime.utcnow(),
+            recovery_hash=recovery_hash,
         )
 
 

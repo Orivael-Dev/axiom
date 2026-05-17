@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Account — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+  <h1>Account</h1>
+  <p class="tier-badge">
+    {{ tenant.email }} · {{ tenant.tier|capitalize }} tier
+  </p>
+
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if password_saved %}<p class="alert success">Password updated.</p>{% endif %}
+
+  {% if request.session.get('new_recovery_code') %}
+    <div class="alert success">
+      <strong>New recovery code — save it now.</strong>
+      The old code is no longer valid. Shown ONCE:
+      <pre><code>{{ request.session.pop('new_recovery_code') }}</code></pre>
+    </div>
+  {% endif %}
+
+  <h2>Change password</h2>
+  <form method="post" action="/dashboard/account/password" class="stacked-form">
+    <label>Current password
+      <input type="password" name="current_password" required
+             autocomplete="current-password">
+    </label>
+    <label>New password
+      <input type="password" name="new_password" minlength="8" required
+             autocomplete="new-password">
+    </label>
+    <button type="submit">Update password</button>
+  </form>
+
+  <h2>Rotate recovery code</h2>
+  <p>
+    Issues a new single-use recovery code and invalidates the old one.
+    Use this if you've lost your code or suspect it's been seen by someone else.
+  </p>
+  <form method="post" action="/dashboard/account/recovery/rotate" class="stacked-form">
+    <label>Current password (required)
+      <input type="password" name="password" required
+             autocomplete="current-password">
+    </label>
+    <button type="submit">Generate new recovery code</button>
+  </form>
+
+  <h2 class="danger-heading">Delete account</h2>
+  <p>
+    Permanently deletes your account, all API keys, your installed Skill
+    Pack, your custom policy, and every usage record. This cannot be
+    undone.
+    {% if has_subscription %}
+      Your Stripe subscription will also be cancelled.
+    {% endif %}
+  </p>
+  <form method="post" action="/dashboard/account/delete" class="stacked-form danger-form"
+        onsubmit="return confirm('This permanently deletes your account. Continue?');">
+    <label>Current password
+      <input type="password" name="password" required
+             autocomplete="current-password">
+    </label>
+    <label>Type <code>DELETE</code> to confirm
+      <input type="text" name="confirm" required autocomplete="off"
+             spellcheck="false" placeholder="DELETE">
+    </label>
+    <button type="submit" class="danger">Permanently delete my account</button>
+  </form>
+</section>
+{% endblock %}

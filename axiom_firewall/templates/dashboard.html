@@ -40,6 +40,16 @@
     </div>
   </div>
 
+  {% if request.session.get('new_recovery_code') %}
+    <div class="alert success">
+      <strong>Your recovery code — save it now.</strong>
+      Stored only here, shown ONCE. You'll need it to reset your password
+      if you forget it. Treat it like a 2FA backup code:
+      <pre><code>{{ request.session.pop('new_recovery_code') }}</code></pre>
+      <p>Lost it? <a href="/dashboard/account">Rotate to a fresh one</a> after logging in.</p>
+    </div>
+  {% endif %}
+
   {% if request.session.get('new_secret') %}
     <div class="alert success">
       <strong>New API key created.</strong>
