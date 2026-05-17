@@ -87,6 +87,13 @@ replication.
 
 **DECIDED:** WeasyPrint (HTML → PDF).
 
+**STATUS: SHIPPED** (2026-05-16) — see `axiom_report/`. First user is
+the kid-toy compliance audit (`scripts/run_kid_audit.py`).
+Generator at `axiom_report/generator.py` + WeasyPrint + Jinja2.
+HMAC-signed PDFs under namespace `axiom-report-v1`.
+
+
+
 - Templates: Jinja2 HTML
 - Generator module: `axiom_report.py` (single module, multiple
   template entry points)

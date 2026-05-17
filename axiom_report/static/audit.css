@@ -1,0 +1,253 @@
+@page {
+  size: Letter;
+  margin: 1.25cm 1.5cm;
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    font-size: 9pt;
+    color: #5c6773;
+  }
+  @bottom-left {
+    content: "Axiom · " string(toy_name);
+    font-size: 9pt;
+    color: #5c6773;
+  }
+}
+
+@page :first {
+  @bottom-right { content: ""; }
+  @bottom-left { content: ""; }
+  background-color: #0a0e14;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  color: #1c2733;
+  margin: 0;
+}
+
+/* ── Cover page (dark brand) ──────────────────────────────────── */
+
+section.cover {
+  background: #0a0e14;
+  color: #e6e1cf;
+  height: 100vh;
+  padding: 3cm 2cm;
+  page-break-after: always;
+  string-set: toy_name attr(data-toy-name);
+}
+
+.cover .kicker {
+  color: #ffb454;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 9pt;
+  margin: 0 0 0.5cm 0;
+}
+.cover h1 {
+  font-size: 36pt;
+  margin: 0 0 0.3cm 0;
+  color: #ffb454;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.cover .subtitle {
+  font-size: 13pt;
+  color: #cbd1d8;
+  margin: 0 0 2cm 0;
+}
+.cover-meta {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2cm;
+}
+.cover-meta th, .cover-meta td {
+  text-align: left;
+  padding: 6pt 12pt 6pt 0;
+  font-size: 11pt;
+  vertical-align: top;
+  border-bottom: 1px solid #1f2630;
+}
+.cover-meta th {
+  color: #5c6773;
+  font-weight: normal;
+  width: 30%;
+}
+.cover-meta td { color: #e6e1cf; }
+.cover-foot {
+  margin-top: 3cm;
+  font-size: 9pt;
+  color: #5c6773;
+  border-top: 1px solid #1f2630;
+  padding-top: 12pt;
+}
+
+/* ── Body pages ───────────────────────────────────────────────── */
+
+section.page {
+  page-break-before: always;
+  padding-top: 0.3cm;
+}
+
+h2 {
+  color: #d97a00;
+  border-bottom: 2px solid #d97a00;
+  padding-bottom: 4pt;
+  margin-top: 0;
+  font-size: 16pt;
+}
+h3 {
+  color: #1c2733;
+  margin-top: 18pt;
+  font-size: 12pt;
+}
+
+.lede { font-size: 11pt; color: #3a4250; }
+.muted { color: #5c6773; font-size: 9.5pt; }
+
+code, pre {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9pt;
+}
+
+code {
+  background: #f5f3ed;
+  color: #d97a00;
+  padding: 1pt 4pt;
+  border-radius: 2pt;
+}
+
+.codeblock {
+  background: #f5f3ed;
+  color: #1c2733;
+  padding: 10pt;
+  border-radius: 4pt;
+  border-left: 3pt solid #ffb454;
+  white-space: pre-wrap;
+  font-size: 9pt;
+  line-height: 1.45;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* ── Score table on summary ──────────────────────────────────── */
+
+.scoreboard {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12pt 0 18pt 0;
+}
+.scoreboard th, .scoreboard td {
+  text-align: left;
+  padding: 8pt 10pt;
+  border-bottom: 1px solid #d8dade;
+  vertical-align: top;
+}
+.scoreboard th {
+  background: #1c2733;
+  color: #e6e1cf;
+  font-weight: 600;
+  font-size: 9.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.scoreboard td:nth-child(2) {
+  font-size: 14pt;
+  color: #d97a00;
+  white-space: nowrap;
+  width: 22%;
+}
+.scoreboard td:nth-child(3) { font-size: 9.5pt; color: #3a4250; }
+
+.callout {
+  background: #fff7e8;
+  border-left: 3pt solid #ffb454;
+  padding: 10pt 12pt;
+  margin: 16pt 0;
+  font-size: 10pt;
+}
+
+/* ── Findings list ───────────────────────────────────────────── */
+
+.findings { padding-left: 18pt; }
+.findings li { padding: 4pt 0; }
+
+/* ── Per-category table ───────────────────────────────────────── */
+
+.cat-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8pt;
+  font-size: 9.5pt;
+}
+.cat-table th, .cat-table td {
+  text-align: left;
+  padding: 6pt 8pt;
+  border-bottom: 1px solid #d8dade;
+  vertical-align: top;
+}
+.cat-table th {
+  background: #1c2733;
+  color: #e6e1cf;
+}
+.cat-table td:nth-child(3) {
+  color: #d97a00;
+  white-space: nowrap;
+}
+
+.fails {
+  margin: 0;
+  padding-left: 14pt;
+  font-size: 9pt;
+}
+.fails li { padding: 2pt 0; }
+.ok { color: #4a7c3f; }
+
+.badge {
+  display: inline-block;
+  font-size: 7.5pt;
+  background: #1c2733;
+  color: #ffb454;
+  padding: 1pt 5pt;
+  border-radius: 2pt;
+  margin-right: 4pt;
+  font-family: ui-monospace, monospace;
+}
+
+/* ── Full results appendix ───────────────────────────────────── */
+
+.all-results {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+  margin-top: 8pt;
+}
+.all-results th, .all-results td {
+  text-align: left;
+  padding: 3pt 5pt;
+  border-bottom: 1px solid #e8eaef;
+  vertical-align: top;
+}
+.all-results th {
+  background: #1c2733;
+  color: #e6e1cf;
+  font-size: 8pt;
+}
+.all-results .prompt-cell {
+  max-width: 6cm;
+  overflow-wrap: break-word;
+}
+.all-results tr.fail td { background: #fff0eb; }
+.all-results tr.fail td:last-child { color: #c0392b; font-weight: bold; }
+.all-results tr.ok td:last-child { color: #4a7c3f; }
+
+.footer {
+  margin-top: 18pt;
+  font-size: 8.5pt;
+  color: #5c6773;
+  border-top: 1px solid #d8dade;
+  padding-top: 8pt;
+}
