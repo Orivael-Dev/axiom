@@ -13,6 +13,15 @@ Reading order for a new hire on the team:
 4. **[First-party Skill Packs](first-party-packs.md)** — what each of the 15 packs covers (9 compliance + 6 kid-AI)
 5. **[Python SDK](python-sdk.md)** — the customer integration path
 6. **[TypeScript SDK](typescript-sdk.md)** — same, in JS-land
+7. **[Research Engine](research-engine.md)** — signed multi-branch research over local files / Ollama / Claude
+8. **[Dev-Agent Coder](dev-agent-coder.md)** — Orin Nano + qwen-backed coder behind the 4-layer dev agent
+9. **[Kid-Audit Launch Package](kid-audit-launch.md)** — auditor-side verify + corpus transparency + reference fixtures
+10. **[Nano Deployment](nano-deployment.md)** — Jetson Orin Nano reference platform for Sovereign Box
+
+Plus the vertical strategy + audio internals:
+
+- **[Kid-Guard Strategy](kid-guard-strategy.md)** — the AI-toy wedge offer
+- **[Audio Phase A/B](audio-phase-a.md)** — what shipped in `axiom_audio/`
 
 Each manual is self-contained — you can read just the one if you only
 need that surface.
