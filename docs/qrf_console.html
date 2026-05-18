@@ -307,8 +307,8 @@ select{background:var(--bg);border:1px solid var(--edge);border-radius:5px;color
     <div class="card-hdr"><span class="card-title">QRF Settings</span></div>
     <div class="card-body" style="font-family:'IBM Plex Mono',monospace;font-size:11px">
       <div style="margin-bottom:14px">
-        <div style="color:var(--mgray);margin-bottom:5px">AXIOM Guard API Endpoint</div>
-        <input class="prompt-area" id="endpoint" value="http://localhost:8001" style="height:36px;font-size:11px">
+        <div style="color:var(--mgray);margin-bottom:5px">AXIOM Guard API Endpoint <span style="color:var(--mgray);font-size:9px">(blank = same origin, recommended when served from /console)</span></div>
+        <input class="prompt-area" id="endpoint" value="" placeholder="http://localhost:8001 — or leave blank when this page is served by the API" style="height:36px;font-size:11px">
       </div>
       <div style="margin-bottom:14px">
         <div style="color:var(--mgray);margin-bottom:5px">Constitutional Distance Warning Threshold</div>

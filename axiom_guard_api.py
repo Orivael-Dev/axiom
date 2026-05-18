@@ -61,7 +61,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
 # ── Try to import Anthropic for proxy mode ─────────────────────
@@ -1052,6 +1052,47 @@ async def openai_chat_proxy(request: Request):
 
 
 # ── QRF forecast endpoint ─────────────────────────────────────
+
+# ── Static console — serve the QRF/Research HTML same-origin ────
+#
+# Avoids file:// + content:// + CORS pain on phones. Visit
+# http://<host>:8001/console from any browser; the page hits the
+# same origin for /qrf/run + /research/run + /guard/status so
+# there's nothing to configure on the client side.
+_DOCS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
+
+
+@app.get("/")
+def console_root():
+    """Redirect bare host to the QRF console."""
+    return FileResponse(
+        os.path.join(_DOCS_DIR, "qrf_console.html"),
+        media_type="text/html",
+    )
+
+
+@app.get("/console")
+def console():
+    """Serve docs/qrf_console.html — the QRF + Research console."""
+    return FileResponse(
+        os.path.join(_DOCS_DIR, "qrf_console.html"),
+        media_type="text/html",
+    )
+
+
+@app.get("/console/{name}")
+def console_other(name: str):
+    """Serve other consoles under docs/ — axiom_console.html, axiom_os_shield_console.html.
+
+    Path-traversal guarded: `name` must end in .html and contain no slashes.
+    """
+    if "/" in name or ".." in name or not name.endswith(".html"):
+        raise HTTPException(404, "not found")
+    path = os.path.join(_DOCS_DIR, name)
+    if not os.path.isfile(path):
+        raise HTTPException(404, "not found")
+    return FileResponse(path, media_type="text/html")
+
 
 @app.get("/qrf/run")
 async def qrf_run(prompt: str, domain: str = "financial", n: int = 8):
