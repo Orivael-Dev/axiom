@@ -22,6 +22,7 @@ Plus the vertical strategy + audio internals:
 
 - **[Kid-Guard Strategy](kid-guard-strategy.md)** — the AI-toy wedge offer
 - **[Audio Phase A/B](audio-phase-a.md)** — what shipped in `axiom_audio/`
+- **[Audio Agent vs LLM audio learning](audio-agent-vs-llm.md)** — positioning vs Whisper / GPT-4o audio / Deepgram; the composition pitch
 
 Each manual is self-contained — you can read just the one if you only
 need that surface.
