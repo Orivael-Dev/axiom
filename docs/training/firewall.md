@@ -148,7 +148,7 @@ a verdict** — billing failures are logged and swallowed.
 
 ### Workflow B: Customer wants stricter behavior
 
-1. Dashboard → **Packs** → browse 9 first-party packs.
+1. Dashboard → **Packs** → browse 15 first-party packs (9 compliance + 6 kid-AI).
 2. Click **Install** on (say) `fdcpa`.
 3. Pack's policy now drives verdicts on next request.
 4. Optional: Dashboard → **Policy** → edit the JSON to add custom

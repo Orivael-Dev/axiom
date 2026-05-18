@@ -199,6 +199,56 @@ python scripts/sign_packs.py packs/fdcpa
 
 Then redeploy + invalidate cache.
 
+### Workflow E: Install packs via the CLI client (customer side)
+
+Customers don't read the JSON wire format — they use the
+`axiom-packs` CLI shipped at `axiom_packs_cli.py` in the repo
+root. Stdlib-only (no requests / no httpx) so it works in
+minimal Docker images and on Sovereign-Box / Orin-Nano installs
+without extra dependencies. 13 tests cover the CLI contract
+(see `tests/test_axiom_packs_cli.py`).
+
+The five commands support the install lifecycle:
+
+```bash
+axiom-packs list                          # ls every pack the registry serves
+axiom-packs show fdcpa                    # full manifest + inline sig check
+axiom-packs show fdcpa --version 0.1.0    # exact version
+axiom-packs install coppa                 # verify-FIRST then write ./packs/coppa/pack.json
+axiom-packs install fdcpa --dest /etc/axiom/packs --force
+axiom-packs verify /etc/axiom/packs/fdcpa/pack.json   # local-only re-check
+axiom-packs sources                       # which registry am I pointing at?
+```
+
+Registry URL resolution priority (lock these in muscle memory —
+sales + support will get this question):
+
+1. `--registry <url>` flag
+2. `AXIOM_PACKS_REGISTRY` env var
+3. `http://localhost:8002` (sensible default for self-hosted)
+
+Public registry env:
+
+```bash
+export AXIOM_PACKS_REGISTRY=https://packs.orivael.dev
+```
+
+Verify-first contract — **important for talking to compliance buyers:**
+the CLI's `install` command runs signature verification *before*
+writing anything to disk. A pack whose signature doesn't verify
+under the first-party namespace is rejected with exit code 2 and
+nothing lands. There is no "trust on first use" — every install
+re-derives the namespaced key from `AXIOM_MASTER_KEY` and
+re-validates.
+
+Exit codes (use these in CI / scripted installs):
+
+| code | meaning |
+|------|---------|
+| `0`  | install / verify passed |
+| `1`  | usage error, missing file, or registry network error |
+| `2`  | signature verification failed — never accept this pack |
+
 ## Test scenarios
 
 | # | Scenario | Expected |

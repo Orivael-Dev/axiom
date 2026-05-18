@@ -20,9 +20,9 @@ verticals in 2026:
 - **Generic competitors don't fit** — Lakera, Pangea, Rebuff are
   enterprise-generic. None speak parent. None ship a COPPA pack.
 
-The Axiom Firewall + 9 first-party packs (COPPA included) is already
-~80% of what a toy company needs. The remaining 20% is a vertical
-wrapper.
+The Axiom Firewall + 15 first-party packs (COPPA + the 6 kid-AI
+packs all included) is already ~80% of what a toy company needs.
+The remaining 20% is a vertical wrapper.
 
 ## Product naming — **AXIOM KID GUARD (maybe)**
 

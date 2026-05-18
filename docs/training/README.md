@@ -10,7 +10,7 @@ Reading order for a new hire on the team:
 1. **[Axiom Intent Firewall](firewall.md)** — the SaaS itself
 2. **[Skill Pack Format](skill-pack-format.md)** — the unit of distribution
 3. **[Skill Pack Registry](skill-pack-registry.md)** — how packs reach customers
-4. **[First-party Skill Packs](first-party-packs.md)** — what each of the 9 packs covers
+4. **[First-party Skill Packs](first-party-packs.md)** — what each of the 15 packs covers (9 compliance + 6 kid-AI)
 5. **[Python SDK](python-sdk.md)** — the customer integration path
 6. **[TypeScript SDK](typescript-sdk.md)** — same, in JS-land
 
@@ -25,8 +25,12 @@ need that surface.
 | **Python SDK** | `pip install axiom-firewall` | v0.1.0, 13 tests green |
 | **TypeScript SDK** | `npm install @axiom/firewall` | v0.1.0, 13 tests green |
 | **Skill Pack format** | Signed JSON manifest spec (`format_version 1.0`) | Committed for 2 years of backward-compat |
-| **Skill Pack registry** | Read-only HTTP service at `packs.orivael.dev` | 9 first-party packs live |
-| **First-party packs** | 9 curated policy bundles | Customer Support, Code Review, FDCPA, HIPAA Intake, GDPR Article 9, PCI-DSS, COPPA, SEC Rule 10b-5, Prompt-Injection Strict |
+| **Skill Pack registry** | Read-only HTTP service at `packs.orivael.dev` | 15 first-party packs live |
+| **Skill Pack registry CLI** | `axiom-packs list/show/install/verify` — stdlib-only client | 13 tests green |
+| **First-party packs** | 15 curated policy bundles — **9 compliance** (Customer Support, Code Review, FDCPA, HIPAA Intake, GDPR Article 9, PCI-DSS, COPPA, SEC Rule 10b-5, Prompt-Injection Strict) + **6 kid-AI** (ages 3-5 / 6-8 / 9-12, bedtime mode, classroom mode, voice output) | All signed |
+| **Research engine** | `axiom_research/` — retrieve → QRF → synthesize → signed `ResearchReport`. Three LLM backends (Ollama / Claude / Stub). | 17 tests green |
+| **Dev-Agent Coder** | `axiom_ollama_coder.py` — Orin Nano + qwen-backed, 4-layer constitutional review (reflex / reviewer / curriculum / examiner). | 16 tests green |
+| **Kid-audit launch package** | `verify_kid_audit.py` + `inspect_kid_corpus.py` + signed baseline fixtures + `docs/AUDIT_LAUNCH.md` for third-party auditors | 11 tests green |
 
 ## What's coming
 

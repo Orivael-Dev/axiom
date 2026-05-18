@@ -1,10 +1,11 @@
 # Training manual — First-party Skill Packs
 
-> Nine curated baselines shipped with the registry. Each is one
-> `pack.json` under `packs/<name>/`. This manual is the catalog
-> support and sales should know cold.
+> Fifteen curated baselines shipped with the registry — **9 compliance
+> packs** (this catalog) plus **6 kid-AI packs** (see below).
+> Each is one `pack.json` under `packs/<name>/`. This manual is the
+> catalog support and sales should know cold.
 
-## The nine
+## The nine compliance packs
 
 | Pack | Audience | Patterns | Block class bias |
 |---|---|---|---|
@@ -17,6 +18,27 @@
 | [`coppa`](#coppa) | AIs that may interact with children | 6 | HARM-heavy |
 | [`sec-rule-10b-5`](#sec-rule-10b-5) | Financial-advice AIs | 7 | DECEIVE-heavy |
 | [`prompt-injection-strict`](#prompt-injection-strict) | Layered defense add-on | 10 | DECEIVE-only |
+
+## The six kid-AI packs
+
+Separate from the compliance catalog because they're age-bracketed
+*pre-configurations* rather than regulator-aligned rule sets. All
+six chain with `coppa` (above) — the privacy baseline — and add
+age-appropriate output screening on top. Full strategy + buyer
+profile lives in [`kid-guard-strategy.md`](kid-guard-strategy.md).
+
+| Pack | What it tunes for | Pairs with |
+|---|---|---|
+| `kid-ages-3-5` | Toddler / preschool output screening | `coppa` |
+| `kid-ages-6-8` | Early-elementary output screening | `coppa` |
+| `kid-ages-9-12` | Late-elementary / middle-school screening | `coppa` |
+| `kid-bedtime-mode` | Calm-down content + session wind-down patterns | any age-tier pack |
+| `kid-classroom-mode` | School-day modes — no off-task content, no off-brand topics | any age-tier pack |
+| `kid-voice-output` | Voice-channel screening — grooming defense + COPPA at the speaker layer | any age-tier pack |
+
+When to recommend each: kid-AI lead → start with an age-tier pack +
+`coppa` + (if voice) `kid-voice-output`. Add `kid-bedtime-mode` or
+`kid-classroom-mode` only if the customer's product has those modes.
 
 ## Quick decision tree
 
