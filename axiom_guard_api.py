@@ -33,6 +33,7 @@ Endpoints:
   POST /guard/configure    — update guard configuration
   POST /v1/chat/completions — OpenAI-compatible guarded proxy
   GET  /qrf/run            — run QRF probability forecast
+  POST /research/run       — run signed multi-branch research pipeline
   GET  /os/shield/status   — OS Shield daemon status
 
 Enterprise:
@@ -119,6 +120,17 @@ try:
     QRF_AVAILABLE = True
 except ImportError:
     QRF_AVAILABLE = False
+
+# ── Research engine (axiom_research) ─────────────────────────
+try:
+    from axiom_research import (
+        ClaudeClient, LocalFilesRetriever, OllamaClient,
+        ResearchEngine, StubLLMClient,
+    )
+    from axiom_research.engine import DOMAIN_BRANCH_COUNTS_EXT
+    RESEARCH_AVAILABLE = True
+except ImportError:
+    RESEARCH_AVAILABLE = False
 
 # ── OS Shield ────────────────────────────────────────────────
 try:
@@ -1069,6 +1081,79 @@ async def qrf_run(prompt: str, domain: str = "financial", n: int = 8):
         "prompt": r.prompt, "domain": r.domain, "n": len(branches),
         "branches": branches, "killed": killed,
         "manifold": {"alert": mf.get("alert", "none"), "min_dist": round(mf.get("min_dist", 1.0), 4)},
+    }
+
+
+# ── Research endpoint (axiom_research) ───────────────────────
+
+
+class ResearchRunRequest(BaseModel):
+    query:       str
+    backend:     Literal["stub", "ollama", "claude"] = "stub"
+    domain:      str = "general"
+    top_k_docs:  int = 5
+    qrf_enabled: bool = True
+    # Optional overrides — defaults match the engine's own defaults
+    retriever_root: Optional[str] = None
+    ollama_url:     Optional[str] = None
+    ollama_model:   Optional[str] = None
+    claude_model:   Optional[str] = None
+
+
+@app.post("/research/run")
+def research_run(req: ResearchRunRequest):
+    """Run the full axiom_research pipeline → signed ResearchReport.
+
+    Returns the report's payload + verification status. The synthesizer
+    LLM is picked from the request body — keeps the QRF console
+    decoupled from server-side env vars so the user can swap stub /
+    ollama / claude per request without restarting the API.
+    """
+    if not RESEARCH_AVAILABLE:
+        raise HTTPException(503, "axiom_research not available on this server")
+    if req.domain not in DOMAIN_BRANCH_COUNTS_EXT:
+        raise HTTPException(
+            400, f"Unknown domain {req.domain!r}. "
+                 f"Known: {sorted(DOMAIN_BRANCH_COUNTS_EXT)}"
+        )
+
+    # Build the LLM client per the requested backend
+    if req.backend == "stub":
+        llm = StubLLMClient()
+    elif req.backend == "ollama":
+        llm = OllamaClient(
+            model=req.ollama_model or "llama3.2:3b",
+            host=req.ollama_url or "http://localhost:11434",
+        )
+    elif req.backend == "claude":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise HTTPException(
+                400, "ANTHROPIC_API_KEY not set on server — "
+                     "use backend=stub or backend=ollama"
+            )
+        llm = ClaudeClient(model=req.claude_model or "claude-haiku-4-5-20251001")
+
+    # Default retriever root: repo's docs/ next to this file
+    root = req.retriever_root or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "docs"
+    )
+    retriever = LocalFilesRetriever(root)
+
+    engine = ResearchEngine(
+        llm=llm, retriever=retriever,
+        domain=req.domain, qrf_enabled=req.qrf_enabled,
+    )
+
+    try:
+        report = engine.run(req.query, top_k_docs=req.top_k_docs)
+    except Exception as e:
+        raise HTTPException(500, f"Research engine failed: {e}")
+
+    return {
+        "verified":   report.verify(),
+        "confidence": report.confidence,
+        "signature":  report.signature,
+        "payload":    report.payload,
     }
 
 

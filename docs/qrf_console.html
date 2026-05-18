@@ -75,6 +75,7 @@ select{background:var(--bg);border:1px solid var(--edge);border-radius:5px;color
   <button class="nav-btn"        id="nb-manifold" >&#11041; Manifold</button>
   <button class="nav-btn"        id="nb-killed"   >&#10005; Killed</button>
   <button class="nav-btn"        id="nb-history"  >&#9678; History</button>
+  <button class="nav-btn"        id="nb-research" >&#9750; Research</button>
   <button class="nav-btn"        id="nb-settings" >&#9881; Settings</button>
   <div class="nav-spacer"></div>
   <div class="nav-divider"></div>
@@ -223,6 +224,83 @@ select{background:var(--bg);border:1px solid var(--edge);border-radius:5px;color
   </div>
 </div>
 
+<!-- RESEARCH -->
+<div class="screen" id="screen-research">
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">Signed Research Pipeline</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="research-backend">
+          <option value="stub" selected>Backend: Stub (offline)</option>
+          <option value="ollama">Backend: Ollama (local)</option>
+          <option value="claude">Backend: Claude (API)</option>
+        </select>
+        <select id="research-domain">
+          <option value="general" selected>Domain: General</option>
+          <option value="medical">Domain: Medical</option>
+          <option value="financial">Domain: Financial</option>
+          <option value="supply_chain">Domain: Supply Chain</option>
+          <option value="hr">Domain: HR</option>
+          <option value="security">Domain: Security</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <input class="prompt-area" id="research-query" style="height:44px;flex:1;min-width:240px"
+          value="Does the AXIOM event-token support selective activation?">
+        <button class="btn-run" id="btn-research-run">&#9654; Research</button>
+      </div>
+      <details style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mgray)">
+        <summary style="cursor:pointer;padding:6px 0">Advanced (Ollama URL / model / retriever root)</summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <div>
+            <div style="margin-bottom:4px">Ollama URL</div>
+            <input class="prompt-area" id="research-ollama-url" value="http://localhost:11434" style="height:32px;font-size:10px">
+          </div>
+          <div>
+            <div style="margin-bottom:4px">Ollama Model</div>
+            <input class="prompt-area" id="research-ollama-model" value="llama3.2:3b" style="height:32px;font-size:10px">
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="margin-bottom:4px">Retriever Root (server-relative; blank = repo docs/)</div>
+            <input class="prompt-area" id="research-retriever-root" placeholder="docs/" style="height:32px;font-size:10px">
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:14px">
+    <div class="stat-box"><div class="stat-val" id="research-stat-band" style="color:var(--indigo)">--</div><div class="stat-lbl">PROBABILITY BAND</div></div>
+    <div class="stat-box"><div class="stat-val" id="research-stat-citations" style="color:var(--green)">--</div><div class="stat-lbl">CITATIONS</div></div>
+    <div class="stat-box"><div class="stat-val" id="research-stat-branches" style="color:var(--purp)">--</div><div class="stat-lbl">BRANCHES</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr">
+      <span class="card-title">Answer</span>
+      <span class="badge badge-green" id="research-verify-badge">--</span>
+    </div>
+    <div class="card-body" id="research-answer" style="font-family:'Inter',sans-serif;font-size:13px;color:var(--white);line-height:1.6;white-space:pre-wrap">Run a research query to see the synthesized answer here.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">QRF Branches</span><span class="badge badge-indigo" id="research-top-branch-badge">--</span></div>
+    <div class="card-body" id="research-branches" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mgray)">No branches yet.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Citations</span></div>
+    <div class="card-body" id="research-citations" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mgray)">No citations yet.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-hdr"><span class="card-title">Signature</span></div>
+    <div class="card-body" id="research-signature" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mgray);word-break:break-all">--</div>
+  </div>
+</div>
+
 <!-- SETTINGS -->
 <div class="screen" id="screen-settings">
   <div class="card">
@@ -326,8 +404,8 @@ var DEMO_BUSINESS = {
 var QRF_DATA = null;
 var history  = [];
 
-var PAGES = {forecast:"Forecast",branches:"Branches",manifold:"Manifold",killed:"Kill Log",history:"History",settings:"Settings"};
-var SUBS  = {forecast:"Constitutional probability forecasting -- N-branch outcome distribution",branches:"All forecast branches sorted by probability weight",manifold:"Constitutional distance per branch -- boundary proximity",killed:"Branches killed by MonotonicGate before reaching output",history:"Prior forecasts -- CCG coordinate propagation",settings:"Configuration -- endpoint -- thresholds"};
+var PAGES = {forecast:"Forecast",branches:"Branches",manifold:"Manifold",killed:"Kill Log",history:"History",research:"Research",settings:"Settings"};
+var SUBS  = {forecast:"Constitutional probability forecasting -- N-branch outcome distribution",branches:"All forecast branches sorted by probability weight",manifold:"Constitutional distance per branch -- boundary proximity",killed:"Branches killed by MonotonicGate before reaching output",history:"Prior forecasts -- CCG coordinate propagation",research:"Retrieve -> QRF -> Synthesize -> Signed ResearchReport",settings:"Configuration -- endpoint -- thresholds"};
 
 function showScreen(id, btn) {
   document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});
@@ -340,7 +418,7 @@ function showScreen(id, btn) {
 }
 
 window.addEventListener('load', function() {
-  var ids = ['forecast','branches','manifold','killed','history','settings'];
+  var ids = ['forecast','branches','manifold','killed','history','research','settings'];
   ids.forEach(function(id) {
     var btn = document.getElementById('nb-'+id);
     if (!btn) return;
@@ -363,7 +441,118 @@ window.addEventListener('load', function() {
   document.getElementById('btn-forecast').addEventListener('click',runForecast);
   document.getElementById('btn-go-branches').addEventListener('click',function(){showScreen('branches',document.getElementById('nb-branches'));});
   document.getElementById('btn-go-manifold').addEventListener('click',function(){showScreen('manifold',document.getElementById('nb-manifold'));});
+  var rbtn = document.getElementById('btn-research-run');
+  if (rbtn) {
+    rbtn.addEventListener('click', runResearch);
+    rbtn.addEventListener('touchstart', function(e){e.preventDefault();runResearch();}, {passive:false});
+  }
 });
+
+// ─── Research pipeline ────────────────────────────────────────
+//
+// POSTs to /research/run on the AXIOM Guard API. The server runs
+// retrieve -> QRF -> synthesize -> sign and returns the signed
+// ResearchReport. We render answer + branches + citations and
+// show the HMAC signature so the user can copy-verify out-of-band.
+async function runResearch() {
+  var query = (document.getElementById('research-query').value || '').trim();
+  if (!query) return;
+  var ep = document.getElementById('endpoint').value.trim();
+  var backend = document.getElementById('research-backend').value;
+  var domain  = document.getElementById('research-domain').value;
+  var retrieverRoot = document.getElementById('research-retriever-root').value.trim();
+  var ollamaUrl   = document.getElementById('research-ollama-url').value.trim();
+  var ollamaModel = document.getElementById('research-ollama-model').value.trim();
+
+  var body = {query: query, backend: backend, domain: domain, qrf_enabled: true};
+  if (retrieverRoot) body.retriever_root = retrieverRoot;
+  if (backend === 'ollama') {
+    if (ollamaUrl)   body.ollama_url   = ollamaUrl;
+    if (ollamaModel) body.ollama_model = ollamaModel;
+  }
+
+  var badge = document.getElementById('research-verify-badge');
+  badge.textContent = 'Running...';
+  badge.className = 'badge badge-gold';
+  document.getElementById('research-answer').textContent = 'Synthesizing...';
+
+  try {
+    var r = await fetch(ep + '/research/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      var err = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + err);
+    }
+    var data = await r.json();
+    renderResearch(data);
+  } catch (e) {
+    badge.textContent = 'ERROR';
+    badge.className = 'badge badge-red';
+    document.getElementById('research-answer').textContent = 'Request failed: ' + e.message;
+  }
+}
+
+function renderResearch(data) {
+  var p = data.payload || {};
+  var badge = document.getElementById('research-verify-badge');
+  if (data.verified) {
+    badge.textContent = 'SIGNED + VERIFIED';
+    badge.className = 'badge badge-green';
+  } else {
+    badge.textContent = 'UNVERIFIED';
+    badge.className = 'badge badge-red';
+  }
+
+  document.getElementById('research-stat-band').textContent      = p.probability_band || '--';
+  document.getElementById('research-stat-citations').textContent = (p.citations || []).length;
+  document.getElementById('research-stat-branches').textContent  = (p.branches || []).length;
+  document.getElementById('research-top-branch-badge').textContent = p.top_branch || '--';
+
+  document.getElementById('research-answer').textContent = p.answer_markdown || '(no answer)';
+
+  var bx = document.getElementById('research-branches');
+  if (!p.branches || p.branches.length === 0) {
+    bx.textContent = 'No branches (QRF disabled or empty result).';
+  } else {
+    bx.innerHTML = p.branches.map(function(b, i) {
+      var w = (b.probability_weight || 0);
+      var pct = Math.round(w * 100);
+      var color = i === 0 ? 'var(--green)' : 'var(--indigo)';
+      return '<div style="margin-bottom:8px">'
+        + '<div style="display:flex;justify-content:space-between;color:var(--white)">'
+        + '<span>' + escapeHtml(b.branch_label || '(unlabeled)') + '</span>'
+        + '<span style="font-weight:600;color:' + color + '">' + w.toFixed(3) + '</span>'
+        + '</div>'
+        + '<div class="prob-bar-wrap"><div class="prob-bar" style="width:' + pct + '%;background:' + color + '"></div></div>'
+        + '</div>';
+    }).join('');
+  }
+
+  var cx = document.getElementById('research-citations');
+  if (!p.citations || p.citations.length === 0) {
+    cx.textContent = 'No documents retrieved.';
+  } else {
+    cx.innerHTML = p.citations.map(function(c, i) {
+      return '<div style="margin-bottom:10px;padding:8px;background:var(--bg);border:1px solid var(--edge);border-radius:6px">'
+        + '<div style="color:var(--indigo);font-weight:600">[doc_' + i + '] ' + escapeHtml(c.path) + '</div>'
+        + '<div style="color:var(--mgray);font-size:10px;margin-top:3px">score=' + (c.score || 0).toFixed(3) + '</div>'
+        + '<div style="color:var(--white);font-size:11px;margin-top:5px;line-height:1.5">' + escapeHtml(c.snippet || '') + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  document.getElementById('research-signature').textContent =
+    'namespace=axiom-research-v1  synth=' + (p.synth_model || '?') + '\nsig=' + (data.signature || '');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
+}
 
 function updateDomain() {
   var dom = document.getElementById('domain-select').value;
