@@ -110,6 +110,7 @@ class EventToken:
     tempo:       Optional[LayerReport] = None
     vad:         Optional[LayerReport] = None
     voice:       Optional[LayerReport] = None
+    qrf:         Optional[LayerReport] = None
     video:       Optional[LayerReport] = None
     physics:     Optional[LayerReport] = None
     governance:  Optional[LayerReport] = None
@@ -130,6 +131,7 @@ class EventToken:
             "tempo":      self.tempo.to_dict()      if self.tempo      else None,
             "vad":        self.vad.to_dict()        if self.vad        else None,
             "voice":      self.voice.to_dict()      if self.voice      else None,
+            "qrf":        self.qrf.to_dict()        if self.qrf        else None,
             "video":      self.video.to_dict()      if self.video      else None,
             "physics":    self.physics.to_dict()    if self.physics    else None,
             "governance": self.governance.to_dict() if self.governance else None,
@@ -149,6 +151,7 @@ class EventToken:
             tempo=      LayerReport.from_dict(d["tempo"])      if d.get("tempo")      else None,
             vad=        LayerReport.from_dict(d["vad"])        if d.get("vad")        else None,
             voice=      LayerReport.from_dict(d["voice"])      if d.get("voice")      else None,
+            qrf=        LayerReport.from_dict(d["qrf"])        if d.get("qrf")        else None,
             video=      LayerReport.from_dict(d["video"])      if d.get("video")      else None,
             physics=    LayerReport.from_dict(d["physics"])    if d.get("physics")    else None,
             governance= LayerReport.from_dict(d["governance"]) if d.get("governance") else None,
@@ -166,7 +169,8 @@ class EventToken:
         outer token signature must all check out.
         """
         for layer in (self.text, self.audio, self.tempo, self.vad,
-                      self.voice, self.video, self.physics, self.governance):
+                      self.voice, self.qrf, self.video, self.physics,
+                      self.governance):
             if layer is not None and not layer.verify():
                 return False
         if self.coordinator_sig:
@@ -205,6 +209,7 @@ def _canonical_coordinator(token: EventToken) -> bytes:
             "tempo":       token.tempo.signature      if token.tempo      else None,
             "vad":         token.vad.signature        if token.vad        else None,
             "voice":       token.voice.signature      if token.voice      else None,
+            "qrf":         token.qrf.signature        if token.qrf        else None,
             "video":       token.video.signature      if token.video      else None,
             "physics":     token.physics.signature    if token.physics    else None,
             "governance":  token.governance.signature if token.governance else None,

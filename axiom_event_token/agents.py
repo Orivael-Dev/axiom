@@ -322,6 +322,85 @@ class VoiceAgent(Agent):
         )
 
 
+# ─── QRF Agent (research / probability-weighted reasoning) ─────────────
+
+
+class QRFAgent(Agent):
+    """Quantum Reasoning Forecast agent.
+
+    Activates when the caller wants a multi-branch probability forecast
+    as a peer layer alongside text/audio/video/physics. Wraps
+    axiom_qrf.QRFEngine; supports the same five domains
+    (medical / financial / supply_chain / hr / security) plus
+    "general" added by axiom_research.
+
+    Input:  inputs["qrf"] = {"query": str, "domain": str}
+    Output: payload with top_branch, probability_band, branches[],
+            n_killed — same shape as axiom_qrf.QRFResult.
+
+    Falls back to a deterministic empty-result LayerReport if QRF's
+    LatentEngine can't reach an LLM endpoint — the COORDINATOR shape
+    keeps working even when reasoning is unavailable.
+    """
+    agent_name = "qrf"
+
+    def run(self, inputs: dict[str, Any]) -> LayerReport:
+        provided = inputs.get("qrf", {})
+        if not isinstance(provided, dict):
+            provided = {}
+        query = provided.get("query", "")
+        domain = provided.get("domain", "financial")
+        if not query:
+            return LayerReport.signed(
+                agent=self.agent_name,
+                payload={
+                    "top_branch": "(no-query)",
+                    "probability_band": "UNCERTAIN",
+                    "branches": [],
+                    "n_killed": 0,
+                    "domain": domain,
+                },
+                confidence=0.0,
+            )
+        from axiom_qrf import DOMAIN_BRANCH_COUNTS as QRF_DOMAINS, QRFEngine
+        from axiom_signing import derive_key
+        qrf_domain = domain if domain in QRF_DOMAINS else "financial"
+        try:
+            engine = QRFEngine(qrf_domain, derive_key(b"axiom-research-qrf-v1"))
+            result = engine.forecast(query)
+        except Exception:
+            return LayerReport.signed(
+                agent=self.agent_name,
+                payload={
+                    "top_branch": "(qrf-error)",
+                    "probability_band": "UNCERTAIN",
+                    "branches": [],
+                    "n_killed": 0,
+                    "domain": domain,
+                },
+                confidence=0.0,
+            )
+        band_to_conf = {"HIGH": 0.9, "MODERATE": 0.7, "LOW": 0.5, "UNCERTAIN": 0.3}
+        return LayerReport.signed(
+            agent=self.agent_name,
+            payload={
+                "top_branch":       result.top_branch,
+                "probability_band": result.probability_band,
+                "branches": [
+                    {
+                        "branch_label": b.get("branch_label")
+                                          or b.get("label", "(unlabeled)"),
+                        "probability_weight": b.get("probability_weight", 0.0),
+                    }
+                    for b in result.branches[:6]
+                ],
+                "n_killed": len(result.killed),
+                "domain":   domain,
+            },
+            confidence=band_to_conf.get(result.probability_band, 0.5),
+        )
+
+
 # ─── Registry ───────────────────────────────────────────────────────────
 
 
@@ -331,6 +410,7 @@ AGENT_REGISTRY: dict[str, type[Agent]] = {
     "tempo":      TempoAgent,
     "vad":        VADAgent,
     "voice":      VoiceAgent,
+    "qrf":        QRFAgent,
     "video":      VideoAgent,
     "physics":    PhysicsAgent,
     "governance": GovernanceAgent,

@@ -64,6 +64,7 @@ class Coordinator:
         audio: Optional[dict] = None,
         video: Optional[dict] = None,
         physics: Optional[dict] = None,
+        qrf: Optional[dict] = None,
         activate: Iterable[str] = DEFAULT_ACTIVATION,
         token_id: Optional[str] = None,
     ) -> EventToken:
@@ -83,6 +84,7 @@ class Coordinator:
             "audio":   audio or {},
             "video":   video or {},
             "physics": physics or {},
+            "qrf":     qrf or {},
         }
 
         # Run all activated agents EXCEPT governance first
@@ -115,6 +117,7 @@ class Coordinator:
             tempo=      layer_reports.get("tempo"),
             vad=        layer_reports.get("vad"),
             voice=      layer_reports.get("voice"),
+            qrf=        layer_reports.get("qrf"),
             video=      layer_reports.get("video"),
             physics=    layer_reports.get("physics"),
             governance= layer_reports.get("governance"),
@@ -146,6 +149,7 @@ def _token_kwargs(token: EventToken) -> dict:
         "tempo":            token.tempo,
         "vad":              token.vad,
         "voice":            token.voice,
+        "qrf":              token.qrf,
         "video":            token.video,
         "physics":          token.physics,
         "governance":       token.governance,
