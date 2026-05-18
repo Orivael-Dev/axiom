@@ -253,3 +253,31 @@ def test_cli_requires_task_and_path_outside_repl(isolated):
     with pytest.raises(SystemExit) as exc:
         main(["axiom_ollama_coder.py", "--backend", "stub"])
     assert "task" in str(exc.value).lower() or "repl" in str(exc.value).lower()
+
+
+def test_cli_picks_up_ollama_url_and_model_from_env(isolated, monkeypatch):
+    """The whole point of putting OLLAMA_URL / OLLAMA_MODEL in
+    ~/.bashrc is so users stop passing --ollama-url every call.
+    Lock the contract: argparse defaults read those env vars when
+    no flag is provided."""
+    monkeypatch.setenv("OLLAMA_URL", "http://orin.tailnet.ts.net:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:1.5b")
+    monkeypatch.setenv("AXIOM_CODER_BACKEND", "stub")
+    from axiom_ollama_coder import build_parser
+    args = build_parser().parse_args(["--task", "x", "--path", "y.py"])
+    assert args.ollama_url == "http://orin.tailnet.ts.net:11434"
+    assert args.model == "qwen2.5:1.5b"
+    assert args.backend == "stub"
+
+
+def test_cli_flags_still_override_env(isolated, monkeypatch):
+    monkeypatch.setenv("OLLAMA_URL", "http://orin.tailnet.ts.net:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:1.5b")
+    from axiom_ollama_coder import build_parser
+    args = build_parser().parse_args([
+        "--ollama-url", "http://elsewhere:99",
+        "--model",      "phi3:mini",
+        "--task",       "x", "--path", "y.py",
+    ])
+    assert args.ollama_url == "http://elsewhere:99"
+    assert args.model == "phi3:mini"

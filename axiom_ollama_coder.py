@@ -343,18 +343,21 @@ def _repl(coder: OllamaCoder, *, verbose: bool) -> None:
         print(f"unknown command: {line}")
 
 
-def main(argv: list[str]) -> int:
-    if not os.environ.get("AXIOM_MASTER_KEY"):
-        sys.exit("AXIOM_MASTER_KEY must be set — "
-                 "the dev agent's signing chain derives from it.")
-
+def build_parser() -> argparse.ArgumentParser:
+    """Built separately from main() so tests can assert on the env-var
+    fallback contract without going through main()'s side effects."""
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--backend", choices=["ollama", "claude", "stub"],
-                   default="ollama", help="LLM backend. Default: ollama.")
-    p.add_argument("--ollama-url", default="http://localhost:11434",
-                   help="Ollama host URL.")
-    p.add_argument("--model", default=None,
-                   help="Model name. Defaults: qwen2.5:1.5b (ollama), "
+                   default=os.environ.get("AXIOM_CODER_BACKEND", "ollama"),
+                   help="LLM backend. Default: $AXIOM_CODER_BACKEND or ollama.")
+    p.add_argument("--ollama-url",
+                   default=os.environ.get("OLLAMA_URL", "http://localhost:11434"),
+                   help="Ollama host URL. Default: $OLLAMA_URL or "
+                        "http://localhost:11434.")
+    p.add_argument("--model",
+                   default=os.environ.get("OLLAMA_MODEL", None),
+                   help="Model name. Defaults: $OLLAMA_MODEL, else "
+                        "qwen2.5:1.5b (ollama), "
                         "claude-haiku-4-5-20251001 (claude).")
     p.add_argument("--temperature", type=float, default=0.2,
                    help="LLM temperature. Default: 0.2 (deterministic-ish).")
@@ -370,7 +373,14 @@ def main(argv: list[str]) -> int:
                    help="Drop into interactive REPL instead of one-shot.")
     p.add_argument("--verbose", "-v", action="store_true",
                    help="Print every attempt's generated code.")
-    args = p.parse_args(argv[1:])
+    return p
+
+
+def main(argv: list[str]) -> int:
+    if not os.environ.get("AXIOM_MASTER_KEY"):
+        sys.exit("AXIOM_MASTER_KEY must be set — "
+                 "the dev agent's signing chain derives from it.")
+    args = build_parser().parse_args(argv[1:])
 
     llm = _build_llm(args)
     coder = OllamaCoder(llm, max_retries=args.max_retries)
