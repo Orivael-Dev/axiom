@@ -1,8 +1,9 @@
 # AXIOM bundle exports
 *.axiom.bundle
 
-# Evolution logs and run history
-logs/
+# Evolution logs and run history — ignore contents, keep the dir
+logs/*
+!logs/.gitkeep
 .snapshots/
 axiom_files/.history/
 axiom_files/.snapshots/

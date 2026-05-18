@@ -1,136 +1,239 @@
 AXIOM — Setup & Launch Guide
 ==============================
 
+The AXIOM repo ships four entry points. Pick the one(s) you need;
+they share configuration but you don't have to set up all four.
+
+  1. DSL Evolution Loop      — agents that rewrite themselves
+                               (run_axiom.py / ui.py / main.py)
+  2. Firewall / Guard API    — production HTTP server (axiom_guard_api.py)
+                               see docs/firewall/quickstart.md
+  3. Research Engine         — signed multi-branch research
+                               see axiom_research/README.md
+  4. Dev-Agent Coder (Nano)  — LLM-backed dev agent on Orin Nano
+                               see docs/NANO_DEV_AGENT.md
+
+Plus the kid-safety auditor onboarding: docs/AUDIT_LAUNCH.md.
+
+
 REQUIREMENTS
 ------------
-- Windows 10/11
-- Python 3.11 or higher  (python.org/downloads)
-- A free NVIDIA NIM API key  (build.nvidia.com → sign up → API Keys)
+- Python 3.11 or higher
+- Platform: macOS, Linux, or Windows
+- An LLM backend (pick one or more):
+    Path A: local Ollama (Orin Nano or laptop)        — recommended
+    Path B: Anthropic API (Claude)
+    Path C: NVIDIA NIM (cloud, free tier available)
+    Path D: any OpenAI-compatible endpoint
+
+The DSL Evolution Loop (entry point #1) currently expects NVIDIA NIM
+or any OpenAI-compatible endpoint. The Firewall / Research / Dev-Agent
+entry points (#2 / #3 / #4) work with any of Paths A–D.
 
 
 FIRST-TIME SETUP
 ----------------
-1. Open PowerShell and run:
+1. Clone + cd into the repo:
 
-   cd i:\vsCode\promt-agent
-   python -m venv venv
-   .\venv\Scripts\pip install -r requirements.txt
+       git clone https://github.com/Orivael-Dev/axiom.git
+       cd axiom
 
-2. Edit .env and paste your NVIDIA API key:
+2. Create a virtual environment + install deps:
 
-   NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxx
+   macOS / Linux:
+       python3 -m venv .venv
+       source .venv/bin/activate
+       pip install -r requirements.txt
 
-   (The key starts with "nvapi-". Do not add any extra text.)
+   Windows (PowerShell):
+       python -m venv .venv
+       .\.venv\Scripts\Activate.ps1
+       pip install -r requirements.txt
+
+3. Copy the env template and fill in what you need:
+
+       cp .env.example .env       # macOS / Linux
+       copy .env.example .env     # Windows
+
+   Edit .env. The ONE required value is:
+
+       AXIOM_MASTER_KEY=<64 hex chars — generate with secrets.token_hex(32)>
+
+   Then add ONE of:
+
+       OLLAMA_URL=http://localhost:11434       # if running Ollama
+       OLLAMA_MODEL=qwen2.5:1.5b
+
+   — or —
+
+       ANTHROPIC_API_KEY=sk-ant-...            # if using Claude
+
+   — or —
+
+       NVIDIA_API_KEY=nvapi-xxxx                # legacy DSL loop
+       NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+       AXIOM_MODEL=meta/llama-3.3-70b-instruct
 
 
-LAUNCHING THE UI (Browser)
---------------------------
-Every time you want to use AXIOM, run:
+ENTRY POINT 1 — DSL EVOLUTION LOOP
+-----------------------------------
+Streamlit browser UI:
 
-   cd i:\vsCode\promt-agent
-   .\venv\Scripts\streamlit run ui.py
+       streamlit run ui.py
 
-Then open in your browser:  http://localhost:8501
+       → http://localhost:8501
 
-On the same WiFi network from another device:  http://192.168.86.44:8501
-(Replace the IP with your machine's local IP if different)
+Terminal-driven loop:
+
+       python run_axiom.py
+
+       → prompts you for a task; loads worker / evaluator / rewriter
+         from axiom_files/core/, runs the constitutional evolution
+         loop, rewrites worker.axiom on disk after each iteration.
+
+CLI runner (typer-based):
+
+       python main.py --help
 
 
-ACCESS FROM ANYWHERE (Public URL)
+ENTRY POINT 2 — FIREWALL / GUARD API
+-------------------------------------
+       uvicorn axiom_guard_api:app --host 0.0.0.0 --port 8001
+
+       → http://localhost:8001/console  (QRF + Research UI, no separate file://)
+       → http://localhost:8001/guard/status
+       → http://localhost:8001/research/run    (POST — see axiom_research/README.md)
+
+Full quickstart: docs/firewall/quickstart.md
+
+
+ENTRY POINT 3 — RESEARCH ENGINE
+--------------------------------
+       python examples/research_demo.py
+
+Backends (set via env var, no code changes needed):
+
+       AXIOM_RESEARCH_BACKEND=stub   python examples/research_demo.py
+       AXIOM_RESEARCH_BACKEND=ollama python examples/research_demo.py
+       AXIOM_RESEARCH_BACKEND=claude python examples/research_demo.py
+
+Full docs: axiom_research/README.md
+
+
+ENTRY POINT 4 — DEV-AGENT CODER ON NANO
+----------------------------------------
+       python axiom_ollama_coder.py \
+         --backend ollama --model qwen2.5:1.5b \
+         --task "function that returns the SHA-256 of a string" \
+         --path axiom_hash_utils.py
+
+Or REPL:
+
+       python axiom_ollama_coder.py --backend ollama --model qwen2.5:1.5b --repl
+
+Full deployment guide: docs/NANO_DEV_AGENT.md
+
+
+KID-AUDIT VERIFICATION (auditors)
 ----------------------------------
-While the UI is running, open a second PowerShell window and run:
-
-   cd i:\vsCode\promt-agent
-   .\venv\Scripts\python -c "from pyngrok import ngrok; t = ngrok.connect(8501); print(t.public_url)"
-
-This prints a URL like https://abc123.ngrok-free.app
-Open that on any device, anywhere.
-
-To install pyngrok if needed:
-   .\venv\Scripts\pip install pyngrok
-
-
-RUNNING THE AXIOM DSL LOOP (Terminal)
---------------------------------------
-To run the language-driven evolution loop from the command line:
-
-   cd i:\vsCode\promt-agent
-   .\venv\Scripts\python run_axiom.py
-
-You will be prompted to type a task. The system will:
-1. Load agent behaviour from axiom_files/worker.axiom
-2. Execute the task (Worker)
-3. Score the output (Evaluator)
-4. Rewrite worker.axiom on disk (Rewriter)
-5. Repeat until quality threshold or max iterations
-
-After the run, open axiom_files/worker.axiom to see how the
-language rewrote itself.
-
-
-UI TABS
--------
-Tab 1 — Prompt Evolution
-  Classic mode. Agents evolve their system prompts in memory.
-  Best prompts saved to prompts/ folder. Full logs in logs/.
-
-Tab 2 — AXIOM DSL (Language Test)
-  DSL mode. Agents are defined by .axiom files.
-  The Rewriter mutates worker.axiom on disk after each iteration.
-  This is the language rewriting itself.
-
-
-CONFIGURATION (.env)
----------------------
-NVIDIA_API_KEY       = your key from build.nvidia.com
-NVIDIA_BASE_URL      = https://integrate.api.nvidia.com/v1
-AXIOM_MODEL          = meta/llama-3.3-70b-instruct
-AXIOM_MAX_ITERATIONS = 10       (default iterations per run)
-AXIOM_QUALITY_THRESHOLD = 8.0   (stop when score reaches this)
-AXIOM_META_DEPTH     = 2        (how deep meta-evolution goes)
+If you received a signed kid-safety audit PDF, see docs/AUDIT_LAUNCH.md
+for the verification + corpus-inspection toolchain.
 
 
 FILE STRUCTURE
 --------------
-promt-agent/
-  .env                   API key + config
-  requirements.txt       Dependencies
-  main.py                CLI runner (alternative to UI)
-  ui.py                  Streamlit browser UI
-  run_axiom.py           DSL loop terminal runner
-  SETUP.txt              This file
-  axiom/                 Core engine (agents, evolution, client)
-  axiom_files/           .axiom language files + parser
-    worker.axiom         Worker agent definition
-    evaluator.axiom      Evaluator agent definition
-    rewriter.axiom       Rewriter agent definition
-    parser.py            .axiom → system prompt converter
-  prompts/               Evolved prompts (saved per task)
-  logs/                  Full run traces (JSONL)
+  axiom/                       (repo root)
+    .env                       your config (gitignored)
+    .env.example               template — copy to .env
+    requirements.txt           Python dependencies
+    main.py                    CLI runner (DSL loop)
+    ui.py                      Streamlit browser UI (DSL loop)
+    run_axiom.py               Terminal runner (DSL loop)
+    axiom_guard_api.py         FastAPI server (Firewall + Research API)
+    axiom_ollama_coder.py      Dev agent on Nano
+    axiom_constitutional/      Core engine — agents, evolution, client
+    axiom_files/
+      core/                    worker.axiom / evaluator.axiom / rewriter.axiom
+      domains/                 domain-specific .axiom files
+      research/                research-pipeline .axiom files
+      parser.py                .axiom → system prompt converter
+      validator.py             .axiom file linter
+    axiom_research/            Multi-branch research engine module
+    axiom_report/              Signed audit PDF generator
+    docs/
+      AUDIT_LAUNCH.md          auditor onboarding (kid-safety package)
+      NANO_DEV_AGENT.md        dev-agent deployment on Orin Nano
+      FIREWALL_PHASE_STATUS.md phase 1-4 status snapshot
+      firewall/                firewall docs (quickstart, ops, SDK refs)
+      GAME_PLAN.md             product roadmap
+    scripts/                   verify_kid_audit / inspect_kid_corpus / etc.
+    tests/                     pytest test suites (253+ passing)
+    fixtures/                  baseline test fixtures
+    prompts/                   evolved prompts saved per task
+    logs/                      runtime traces (gitignored, kept via .gitkeep)
 
 
-STOPPING THE UI
----------------
-Press Ctrl+C in the PowerShell window where Streamlit is running.
+STOPPING SERVICES
+-----------------
+- Streamlit / uvicorn:   Ctrl+C in the running terminal
+- Docker'd Ollama:       docker stop ollama
 
 
 TROUBLESHOOTING
 ---------------
-"can't open file" error
-  → You are in the wrong folder. Run: cd i:\vsCode\promt-agent first.
+"AXIOM_MASTER_KEY not set"
+  → Edit .env, generate a key:
+       python -c "import secrets;print(secrets.token_hex(32))"
+    then set AXIOM_MASTER_KEY=<that value>
 
-"NVIDIA_API_KEY not set"
-  → Edit .env and replace "your_nvidia_api_key_here" with your real key.
+"NVIDIA_API_KEY not set" (DSL loop only)
+  → Add your key from https://build.nvidia.com → API Keys
+    Or switch to OLLAMA_URL/ANTHROPIC_API_KEY if you're not using NIM.
 
-"404 Not Found" from API
+"404 Not Found" from NIM
   → Wrong model name. Check AXIOM_MODEL in .env.
-  → Valid models: meta/llama-3.3-70b-instruct, meta/llama-3.1-8b-instruct
-  → Full list: .\venv\Scripts\python -c "
-      from dotenv import load_dotenv; load_dotenv()
-      from openai import OpenAI; import os
-      c = OpenAI(api_key=os.environ['NVIDIA_API_KEY'], base_url='https://integrate.api.nvidia.com/v1')
-      [print(m.id) for m in c.models.list().data]"
+  → Valid: meta/llama-3.3-70b-instruct, meta/llama-3.1-8b-instruct
+  → List models:
+       python -c "from dotenv import load_dotenv; load_dotenv()
+       from openai import OpenAI; import os
+       c = OpenAI(api_key=os.environ['NVIDIA_API_KEY'],
+                  base_url='https://integrate.api.nvidia.com/v1')
+       [print(m.id) for m in c.models.list().data]"
 
-Score converges on iteration 1 (score >= 8)
-  → Task is too easy for the seed prompt.
-  → Try a harder, more specific task or lower the threshold in the UI slider.
+Connection refused on :11434 (Ollama path)
+  → Container not running. Restart:
+       docker ps --filter name=ollama
+       docker start ollama
+  → Or curl the Orin's Tailscale URL instead of localhost.
+
+"No such file or directory: worker.axiom"
+  → Parser searches axiom_files/, axiom_files/core/, and
+    axiom_files/research/ automatically. Check that
+    axiom_files/core/worker.axiom exists in your clone.
+
+Score converges on iteration 1 (DSL loop)
+  → Task too easy for the seed. Try a more specific task or
+    lower the threshold via AXIOM_QUALITY_THRESHOLD in .env.
+
+OOM mid-generation on Orin Nano
+  → See docs/NANO_DEV_AGENT.md "Troubleshooting" — swap setup +
+    dropping to a smaller model fixes 95% of cases.
+
+Tests fail with "AXIOM_MASTER_KEY not set"
+  → Set it before running pytest:
+       export AXIOM_MASTER_KEY=<64-hex>
+       python -m pytest tests/
+
+       Windows PowerShell:
+       $env:AXIOM_MASTER_KEY = "<64-hex>"
+       python -m pytest tests/
+
+
+SEE ALSO
+--------
+  docs/GAME_PLAN.md             — product roadmap (phases 1-4)
+  docs/FIREWALL_PHASE_STATUS.md — what currently ships
+  docs/AUDIT_LAUNCH.md          — kid-safety audit verification
+  docs/NANO_DEV_AGENT.md        — Orin Nano dev-agent deployment
+  axiom_research/README.md      — research engine
+  docs/firewall/quickstart.md   — firewall in 5 minutes
