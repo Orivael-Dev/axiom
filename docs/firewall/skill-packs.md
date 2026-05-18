@@ -20,9 +20,55 @@ regex yourself.
 
 **Via dashboard:** Dashboard → **Packs** → click **Install** on the one you want.
 
-That's it. The pack's policy becomes your active policy. Verdicts on
-`/v1/guard/check` now incorporate the pack's patterns alongside the
-default classifier.
+**Via CLI** (recommended for CI / Sovereign-Box / scripted setups):
+
+```bash
+# List what the registry offers
+axiom-packs list
+
+# Install a pack into ./packs/<name>/pack.json (downloads + verifies)
+axiom-packs install fdcpa
+
+# Or into a specific directory + a specific version
+axiom-packs install fdcpa --version 0.1.0 --dest /etc/axiom/packs
+
+# Show a pack's manifest without installing
+axiom-packs show coppa
+
+# Locally verify a pack you've already got
+axiom-packs verify /etc/axiom/packs/fdcpa/pack.json
+
+# Where am I pointing?
+axiom-packs sources
+```
+
+The CLI is `axiom_packs_cli.py` at the repo root — alias it as
+`axiom-packs` for convenience:
+
+```bash
+alias axiom-packs='python3 /path/to/axiom/axiom_packs_cli.py'
+```
+
+Registry resolution priority:
+
+1. `--registry <url>` flag
+2. `AXIOM_PACKS_REGISTRY` env var
+3. `http://localhost:8002` (the default when self-hosting the registry image)
+
+Public Orivael-Dev registry:
+
+```bash
+export AXIOM_PACKS_REGISTRY=https://packs.orivael.dev
+```
+
+Every install verifies the pack's HMAC signature under the
+`axiom-skill-pack-first-party-v1` namespace **before** writing
+anything to disk. A pack that fails verification is never
+installed; the CLI exits non-zero.
+
+Once a pack is on disk, the firewall picks it up the same way it
+does for dashboard installs — the install path is identical, only
+the trigger differs.
 
 ## What's in a pack
 
