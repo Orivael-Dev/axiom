@@ -426,6 +426,9 @@ window.addEventListener('load', function() {
     btn.addEventListener('click',handler,false);
     btn.addEventListener('touchstart',handler,{passive:false});
   });
+  // Restore + wire persistence BEFORE any handlers fire so user input
+  // landing on a restored value still re-saves on change.
+  restoreSettings();
   document.getElementById('btn-demo').addEventListener('click',loadDemo);
   document.getElementById('btn-demo').addEventListener('touchstart',function(e){e.preventDefault();loadDemo();},{passive:false});
   var hbtn=document.getElementById('btn-hanta-demo');
@@ -447,6 +450,62 @@ window.addEventListener('load', function() {
     rbtn.addEventListener('touchstart', function(e){e.preventDefault();runResearch();}, {passive:false});
   }
 });
+
+// ─── Settings persistence ─────────────────────────────────────
+//
+// Settings live in localStorage under a single namespaced key so a
+// future feature flag (eg "axiom-console:v2") can migrate cleanly.
+// Persisted fields: endpoint + research backend/domain/query +
+// the three Ollama/retriever advanced inputs + the distance
+// threshold. Demo banners are NOT persisted (transient state).
+var SETTINGS_KEY = 'axiom-console:v1';
+var PERSIST_IDS  = [
+  'endpoint',
+  'dist-threshold',
+  'research-backend',
+  'research-domain',
+  'research-query',
+  'research-ollama-url',
+  'research-ollama-model',
+  'research-retriever-root',
+];
+
+function loadSettings() {
+  try {
+    var raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+}
+
+function saveSettings(patch) {
+  try {
+    var cur = loadSettings();
+    Object.keys(patch).forEach(function(k) { cur[k] = patch[k]; });
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(cur));
+  } catch (e) { /* private mode / quota / etc — silently no-op */ }
+}
+
+function restoreSettings() {
+  var s = loadSettings();
+  PERSIST_IDS.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    // Hydrate from storage if we have a saved value (including empty string)
+    if (Object.prototype.hasOwnProperty.call(s, id)) {
+      el.value = s[id];
+    }
+    // Save on every change — change covers blur for inputs + select pick
+    el.addEventListener('change', function() {
+      var patch = {}; patch[id] = el.value; saveSettings(patch);
+    });
+    // For text inputs, also catch typing (so refresh mid-edit preserves draft)
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.addEventListener('input', function() {
+        var patch = {}; patch[id] = el.value; saveSettings(patch);
+      });
+    }
+  });
+}
 
 // ─── Research pipeline ────────────────────────────────────────
 //
