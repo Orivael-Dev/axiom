@@ -23,5 +23,20 @@ __version__ = "0.1.0"
 
 from .models import EventToken, LayerReport
 from .coordinator import Coordinator
+from .backends import (
+    SLMBackend, BackendResult, BackendError,
+    NIMBackend, LocalNanoBackend, ChainedBackend,
+    make_backend, default_backend,
+)
+from .router import DelegateRouter, RoutingDecision
+from .delegate_runtime import DelegateAgent
 
-__all__ = ["EventToken", "LayerReport", "Coordinator", "__version__"]
+__all__ = [
+    "EventToken", "LayerReport", "Coordinator",
+    "SLMBackend", "BackendResult", "BackendError",
+    "NIMBackend", "LocalNanoBackend", "ChainedBackend",
+    "make_backend", "default_backend",
+    "DelegateRouter", "RoutingDecision",
+    "DelegateAgent",
+    "__version__",
+]

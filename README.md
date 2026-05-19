@@ -443,6 +443,8 @@ ORVL-024. Extends AXIOM beyond text, agents, memory, and physical intelligence i
 
 Each output is combined into a multimodal evidence graph through the `axiom_event_token.Coordinator`, which selectively activates only the agents a given query needs — text + audio + video + physics + governance compose into one signed `EventToken`. Same selective-activation patent claim applied to sensory inputs.
 
+**Modular SLM delegates (per-event token thrift):** `Coordinator.compose_from_delegates(...)` adds an LLM-backed path. The non-LLM `IntentClassifier` routes each event to a small set of AXM `SkillDelegate`s (each with its own scoped `system_prompt.txt` and `prompt_budget`), and only the matching delegates fire. Backends are pluggable — `LocalNanoBackend` (Ollama on a Jetson Orin Nano or any host) and `NIMBackend` (NVIDIA NIM API, OpenAI-compatible) ship today, with a `ChainedBackend` for local-first / NIM-fallback. The result is a signed `EventToken` carrying per-delegate token counts so cost is dashboardable. End-to-end demo: `examples/event_token_modular_demo.py`. Benchmark: `benchmarks/token_savings_modular_vs_monolith.py` (target: ≥5× fewer tokens per event vs a monolithic kitchen-sink agent).
+
 Live demo (pure Python + PIL, no numpy / cv2 / GPU):
 
 ```bash

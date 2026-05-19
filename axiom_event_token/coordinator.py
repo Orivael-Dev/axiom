@@ -27,6 +27,18 @@ from .models import (
     _canonical_coordinator, _canonical_token, _sign, now_iso,
 )
 
+# `_SLOT_FOR_MODALITY` maps event modality (which input was provided)
+# to the EventToken slot a delegate's report lands in. Delegates beyond
+# the first matched modality flow into the `governance` slot as a
+# summary — preserving the 9-slot wire format.
+_SLOT_FOR_MODALITY = {
+    "text":    "text",
+    "audio":   "audio",
+    "video":   "video",
+    "physics": "physics",
+    "qrf":     "qrf",
+}
+
 DEFAULT_ACTIVATION: tuple[str, ...] = (
     "text", "audio", "video", "physics", "governance",
 )
@@ -134,6 +146,101 @@ class Coordinator:
             **{**_token_kwargs(token), "signature": outer_sig},
         )
 
+        return token
+
+
+    def compose_from_delegates(
+        self,
+        *,
+        axm_container,                          # AXMContainer
+        text:     Optional[str] = None,
+        audio:    Optional[dict] = None,
+        video:    Optional[dict] = None,
+        physics:  Optional[dict] = None,
+        qrf:      Optional[dict] = None,
+        backend=None,                           # SLMBackend, default = default_backend()
+        router=None,                            # DelegateRouter, default = fresh
+        token_id: Optional[str] = None,
+    ) -> EventToken:
+        """Route the event to its matching AXM delegates, fire them,
+        and assemble a signed EventToken — the modular per-event-token
+        path.
+
+        Each delegate's signed LayerReport lands in its modality slot
+        (text/audio/video/physics/qrf). Additional matches beyond the
+        first slot are summarised into the `governance` slot so the
+        9-slot wire format stays intact.
+        """
+        from .router import DelegateRouter
+        from .delegate_runtime import DelegateAgent
+        from .backends import default_backend
+
+        be = backend or default_backend()
+        rt = router  or DelegateRouter()
+
+        decision = rt.route(
+            delegates=list(axm_container.delegates),
+            text=text,
+        )
+        # Build a name → delegate lookup once.
+        by_name = {d.name: d for d in axm_container.delegates}
+
+        # Pick the primary modality slot from the inputs the caller
+        # supplied. Order matters — first-supplied wins.
+        modality_slot = "text"
+        for k, v in (("text", text), ("audio", audio), ("video", video),
+                     ("physics", physics), ("qrf", qrf)):
+            if v:
+                modality_slot = _SLOT_FOR_MODALITY.get(k, "text")
+                break
+
+        inputs = {
+            "text":    text,
+            "audio":   audio or {},
+            "video":   video or {},
+            "physics": physics or {},
+            "qrf":     qrf or {},
+        }
+
+        layer_reports: dict[str, LayerReport] = {}
+        activated: list[str] = []
+        for idx, dname in enumerate(decision.delegate_names):
+            delegate = by_name[dname]
+            agent = DelegateAgent(
+                delegate=delegate,
+                axm_root=axm_container.path,
+                backend=be,
+            )
+            report = agent.run(inputs)
+            assert report.verify(), \
+                f"delegate '{dname}' produced invalid LayerReport"
+            slot = modality_slot if idx == 0 else "governance"
+            # If two delegates would both land in governance, the second
+            # overwrites — caller can inspect activated_agents for the
+            # full ordered list.
+            layer_reports[slot] = report
+            activated.append(dname)
+
+        token = EventToken(
+            id=token_id or f"event_{uuid.uuid4().hex[:12]}",
+            created_at=now_iso(),
+            activated_agents=tuple(activated),
+            text=       layer_reports.get("text"),
+            audio=      layer_reports.get("audio"),
+            tempo=      layer_reports.get("tempo"),
+            vad=        layer_reports.get("vad"),
+            voice=      layer_reports.get("voice"),
+            qrf=        layer_reports.get("qrf"),
+            video=      layer_reports.get("video"),
+            physics=    layer_reports.get("physics"),
+            governance= layer_reports.get("governance"),
+        )
+        coord_sig = _sign(_canonical_coordinator(token), COORD_KEY_NS)
+        token = EventToken(**{**_token_kwargs(token),
+                              "coordinator_sig": coord_sig})
+        outer_sig = _sign(_canonical_token(token), TOKEN_KEY_NS)
+        token = EventToken(**{**_token_kwargs(token),
+                              "signature": outer_sig})
         return token
 
 

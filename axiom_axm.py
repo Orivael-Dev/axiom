@@ -148,21 +148,39 @@ class AXMHeader:
         }
 
 
+_DEFAULT_PROMPT_BUDGET = 512
+_DEFAULT_OUTPUT_BUDGET = 256
+_DEFAULT_BACKEND_CHAIN: Tuple[str, ...] = ("local",)
+
+
 @dataclass(frozen=True)
 class SkillDelegate:
     name:            str
     when_condition:  str
     intent_classes:  Tuple[str, ...]
     weight_manifest: str
+    # Optional runtime-budget fields. Default-skipping in _payload()
+    # preserves signature back-compat with delegates packed before
+    # these fields existed.
+    prompt_budget:   int = _DEFAULT_PROMPT_BUDGET
+    output_budget:   int = _DEFAULT_OUTPUT_BUDGET
+    backend_chain:   Tuple[str, ...] = _DEFAULT_BACKEND_CHAIN
     signature:       str = ""
 
     def _payload(self) -> dict:
-        return {
+        d: dict = {
             "name":            self.name,
             "when_condition":  self.when_condition,
             "intent_classes":  list(self.intent_classes),
             "weight_manifest": self.weight_manifest,
         }
+        if self.prompt_budget != _DEFAULT_PROMPT_BUDGET:
+            d["prompt_budget"] = self.prompt_budget
+        if self.output_budget != _DEFAULT_OUTPUT_BUDGET:
+            d["output_budget"] = self.output_budget
+        if tuple(self.backend_chain) != _DEFAULT_BACKEND_CHAIN:
+            d["backend_chain"] = list(self.backend_chain)
+        return d
 
 
 @dataclass(frozen=True)
@@ -358,6 +376,12 @@ class AXMContainer:
                 when_condition=data["when_condition"],
                 intent_classes=tuple(data.get("intent_classes") or ()),
                 weight_manifest=data.get("weight_manifest", ""),
+                prompt_budget=int(data.get("prompt_budget",
+                                            _DEFAULT_PROMPT_BUDGET)),
+                output_budget=int(data.get("output_budget",
+                                            _DEFAULT_OUTPUT_BUDGET)),
+                backend_chain=tuple(data.get("backend_chain")
+                                     or _DEFAULT_BACKEND_CHAIN),
                 signature=data.get("signature", ""),
             )
             out.append(sd)
@@ -499,6 +523,12 @@ class AXMContainer:
                 intent_classes=tuple(dspec.get("intent_classes") or ()),
                 weight_manifest=dspec.get("weight_manifest",
                                           f"delegates/{name}/weights.bin"),
+                prompt_budget=int(dspec.get("prompt_budget",
+                                             _DEFAULT_PROMPT_BUDGET)),
+                output_budget=int(dspec.get("output_budget",
+                                             _DEFAULT_OUTPUT_BUDGET)),
+                backend_chain=tuple(dspec.get("backend_chain")
+                                     or _DEFAULT_BACKEND_CHAIN),
             )
             payload = sd._payload()
             signed = SkillDelegate(**{**asdict(sd),
@@ -510,6 +540,14 @@ class AXMContainer:
                             indent=2, ensure_ascii=True),
                 encoding="utf-8",
             )
+            # Optional per-delegate system prompt — read by DelegateAgent
+            # at runtime. Out of the signed payload (free-form text), but
+            # the file is hash-anchored via the proof ledger entry below.
+            prompt_text = dspec.get("system_prompt")
+            if prompt_text is not None:
+                (ddir / "system_prompt.txt").write_text(
+                    prompt_text, encoding="utf-8",
+                )
             delegate_names.append(name)
 
         # Trajectories
