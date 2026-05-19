@@ -86,6 +86,14 @@
       border-radius: 999px;
       padding: 9px 14px;
       font-size: 13px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+
+    .nav-pill:hover {
+      color: var(--text);
+      border-color: rgba(114, 247, 212, 0.32);
     }
 
     .nav-pill.active {
@@ -93,6 +101,8 @@
       background: rgba(114, 247, 212, 0.12);
       border-color: rgba(114, 247, 212, 0.4);
     }
+
+    html { scroll-behavior: smooth; }
 
     .hero {
       text-align: center;
@@ -665,11 +675,11 @@
         </div>
       </div>
 
-      <nav class="top-nav" aria-label="Console sections">
-        <span class="nav-pill active">Research</span>
-        <span class="nav-pill">Reasoning Paths</span>
-        <span class="nav-pill">Sources</span>
-        <a class="nav-pill" href="/ledger" style="text-decoration:none;">Ledger →</a>
+      <nav class="top-nav" aria-label="Console sections" id="topNav">
+        <a class="nav-pill active" href="#section-research"  data-section="research">Research</a>
+        <a class="nav-pill"        href="#section-branches"  data-section="branches">Reasoning Paths</a>
+        <a class="nav-pill"        href="#section-sources"   data-section="sources">Sources</a>
+        <a class="nav-pill"        href="/ledger">Ledger →</a>
       </nav>
     </header>
 
@@ -689,7 +699,7 @@
         <span class="stage"><strong>sign</strong> &amp; record</span>
       </div>
 
-      <section class="search-panel" aria-label="Research query">
+      <section class="search-panel" aria-label="Research query" id="section-research">
         <div class="search-row">
           <input
             id="researchInput"
@@ -766,7 +776,7 @@
           </div>
         </article>
 
-        <article class="card">
+        <article class="card" id="section-sources">
           <div class="card-head">
             <h2>Retrieved Sources</h2>
             <span class="badge blue" id="sourcesCountBadge">0 sources</span>
@@ -785,7 +795,7 @@
       </div>
 
       <div class="col-stack">
-        <article class="card">
+        <article class="card" id="section-branches">
           <div class="card-head">
             <h2>QRF Reasoning Paths</h2>
             <span class="badge purple">Multi-branch</span>
@@ -896,6 +906,38 @@
       customer_discovery:   "Customer Discovery",
       patent_counsel_packet:"Patent Packet",
     };
+
+    // Top-nav: smooth-scroll to the corresponding section and sync the
+    // .active pill. The "Ledger →" pill is a real href (/ledger) and
+    // navigates away — let the browser handle it.
+    const topNav = document.getElementById("topNav");
+    topNav.addEventListener("click", (event) => {
+      const pill = event.target.closest(".nav-pill[data-section]");
+      if (!pill) return;
+      topNav.querySelectorAll(".nav-pill").forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+      // Anchor-href handles the actual scroll smoothly via CSS.
+    });
+
+    // Scroll-spy: as the user scrolls, light up the pill for whichever
+    // section is closest to the top of the viewport.
+    const sections = [
+      ["research", document.getElementById("section-research")],
+      ["branches", document.getElementById("section-branches")],
+      ["sources",  document.getElementById("section-sources")],
+    ].filter(([, el]) => el);
+    const navPillFor = (name) => topNav.querySelector(`.nav-pill[data-section="${name}"]`);
+    function syncActiveFromScroll() {
+      const y = window.scrollY + 140;       // small offset for the header
+      let active = "research";
+      for (const [name, el] of sections) {
+        if (el.offsetTop <= y) active = name;
+      }
+      topNav.querySelectorAll(".nav-pill[data-section]").forEach(p => p.classList.remove("active"));
+      const p = navPillFor(active);
+      if (p) p.classList.add("active");
+    }
+    window.addEventListener("scroll", syncActiveFromScroll, { passive: true });
 
     els.domainRow.addEventListener("click", (event) => {
       const b = event.target.closest(".filter");
