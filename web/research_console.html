@@ -918,7 +918,14 @@
     els.runBtn.addEventListener("click", runResearchOnUi);
     els.input.addEventListener("keydown", (e) => { if (e.key === "Enter") runResearchOnUi(); });
 
-    function runResearchOnUi() {
+    // When the page is served from the live FastAPI server, /api/research
+    // is real. When opened as file:// or hosted elsewhere, fall back to
+    // the deterministic mock and show a banner.
+    const API_BASE = (location.protocol === "http:" || location.protocol === "https:")
+                       ? location.origin
+                       : null;
+
+    async function runResearchOnUi() {
       const query = els.input.value.trim();
       if (!query) {
         els.reportBody.innerHTML =
@@ -930,8 +937,32 @@
       els.branchResults.innerHTML = "";
       els.detailPanel.classList.remove("open");
 
-      const result = runResearch(query, activeDomain, activeWorkflow);
-      renderResult(result);
+      let result;
+      let mode = "mock";
+      if (API_BASE) {
+        try {
+          const resp = await fetch(API_BASE + "/api/research", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ query, domain: activeDomain, workflow: activeWorkflow }),
+          });
+          if (!resp.ok) {
+            const detail = await resp.text();
+            throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 200)}`);
+          }
+          result = await resp.json();
+          mode = "live";
+        } catch (err) {
+          els.reportBody.innerHTML =
+            `<p class="answer-text" style="color: var(--warning);">Live API call failed (${escapeHtml(String(err.message || err))}). Falling back to demo mock data.</p>`;
+          await new Promise(r => setTimeout(r, 600));
+          result = runResearch(query, activeDomain, activeWorkflow);
+          mode = "mock-fallback";
+        }
+      } else {
+        result = runResearch(query, activeDomain, activeWorkflow);
+      }
+      renderResult(result, mode);
     }
 
     function runResearch(query, domain, workflow) {
@@ -1102,10 +1133,13 @@
       };
     }
 
-    function renderResult(result) {
+    function renderResult(result, mode) {
       const passed = result.branches.filter((b) => b.status !== "killed").length;
 
-      els.reportBadge.textContent = "Signed result";
+      const badgeLabel = mode === "live" ? "Live · signed"
+                        : mode === "mock-fallback" ? "Mock (API failed)"
+                        : "Demo · mock";
+      els.reportBadge.textContent = badgeLabel;
       els.workflowMetric.textContent = result.workflowLabel;
       els.domainMetric.textContent   = result.domainLabel;
       els.probMetric.textContent     = Math.round(result.probabilityBand * 100) + "%";

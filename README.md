@@ -451,7 +451,9 @@ Persistent audit ledger (`axiom_exoskeleton_ledger`): every exoskeleton invocati
 
 NIM smoke test (`scripts/exoskeleton_nim_smoketest.py`): one-shot runner that fires all 9 exoskeleton delegates against either NVIDIA NIM (default, free-tier compatible) or local Ollama (`--backend local`) and dumps a per-delegate JSON report (input/output tokens, latency, output excerpt, EventToken verification status) to `benchmarks/results/exoskeleton_smoketest_<backend>_<timestamp>.json`.
 
-Web prototype (`web/research_console.html`): single-file HTML for the AXIOM Re:Search Engine — a retrieve → QRF → synthesize → sign workspace. Switch synthesizer via the **Workflow** picker (maps to exoskeleton delegates) and bound retrieval via the **Domain** picker. Mock data today; replace the `runResearch()` function with a fetch to your API when you're ready. Open it directly in a browser, ship it on GitHub Pages / Netlify / Vercel.
+Web prototype (`web/research_console.html`): single-file HTML for the AXIOM Re:Search Engine — a retrieve → QRF → synthesize → sign workspace. Switch synthesizer via the **Workflow** picker (maps to exoskeleton delegates) and bound retrieval via the **Domain** picker. Page detects whether it's served live or opened as `file://` and falls back to mock data with a clear banner when no API is reachable.
+
+Live HTTP server (`axiom_research_server`): wires the HTML to a real ExoskeletonAgent + signed ledger. Routes: `GET /` (HTML), `GET /api/health`, `GET /api/use-cases`, `POST /api/research` (real delegate invocation, real signed EventToken, real ledger write), `GET /api/ledger?limit=N`. Start with `bash scripts/serve_research_console.sh` (or `python3 -m axiom_research_server`) — defaults to `127.0.0.1:8765`, picks `LocalNanoBackend` against Ollama unless `AXIOM_BACKEND=nim` + `NVIDIA_NIM_API_KEY` are set. Bearer auth activates when `AXIOM_RESEARCH_TOKEN` is set; CORS off by default. Retrieval + QRF branches are stubbed for now (marked `STUB` in the response) so the page is responsive without a retriever or live LatentEngine — the synthesis call IS real.
 
 Live demo (pure Python + PIL, no numpy / cv2 / GPU):
 
