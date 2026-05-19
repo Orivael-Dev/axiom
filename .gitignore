@@ -13,6 +13,12 @@ axiom_files/.honesty/
 axiom_files/.reviews/
 axiom_constitutional/axiom_files/
 
+# Private strategy / sales / patent-counsel materials.
+# The README stub is tracked so the directory is discoverable;
+# everything else is local-only.
+docs/internal/*
+!docs/internal/README.md
+
 # Lab results — internal benchmark runs
 axiom_lab/results/
 axiom_lab/benchmarks/domains/*/results/

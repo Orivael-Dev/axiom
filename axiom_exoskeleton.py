@@ -52,27 +52,38 @@ class ExoskeletonAgent:
     """
 
     def __init__(self, axm_container, backend=None, *,
-                 ledger=None) -> None:
+                 ledger=None, sales_context_root: Optional[Path] = None,
+                 ) -> None:
         if not getattr(axm_container, "delegates", None):
             raise ExoskeletonError("AXM container has no delegates")
         self._container = axm_container
         self._backend   = backend
         self._ledger    = ledger
         self._by_name   = {d.name: d for d in axm_container.delegates}
+        self._sales_root = (
+            Path(sales_context_root) if sales_context_root else None
+        )
 
     # ── construction ─────────────────────────────────────────────────
 
     @classmethod
     def from_path(cls, axm_path, backend=None, *,
-                  ledger=None) -> "ExoskeletonAgent":
+                  ledger=None,
+                  sales_context_root: Optional[Path] = None,
+                  ) -> "ExoskeletonAgent":
         """Load an exoskeleton AXM container from a path on disk."""
         from axiom_axm import AXMContainer
         container = AXMContainer.from_path(str(axm_path))
-        return cls(container, backend=backend, ledger=ledger)
+        return cls(
+            container, backend=backend, ledger=ledger,
+            sales_context_root=sales_context_root,
+        )
 
     @classmethod
     def from_default_pack(cls, backend=None, *,
-                          ledger=None) -> "ExoskeletonAgent":
+                          ledger=None,
+                          sales_context_root: Optional[Path] = None,
+                          ) -> "ExoskeletonAgent":
         """Build the 9-delegate pack in a tempdir + load it.
 
         The tempdir is owned by this instance for the process lifetime.
@@ -82,7 +93,10 @@ class ExoskeletonAgent:
         from examples.exoskeleton_pack import build_exoskeleton_pack
         tmp = Path(tempfile.mkdtemp(prefix="axiom_exo_pack_"))
         container = build_exoskeleton_pack(tmp / "exoskeleton.axm")
-        instance = cls(container, backend=backend, ledger=ledger)
+        instance = cls(
+            container, backend=backend, ledger=ledger,
+            sales_context_root=sales_context_root,
+        )
         instance._owned_tmpdir = tmp  # keep alive
         return instance
 
@@ -109,12 +123,18 @@ class ExoskeletonAgent:
         input_text: str,
         *,
         extra_context: Optional[dict] = None,
+        auto_context: bool = True,
     ):
         """Run the named delegate against `input_text`.
 
         Returns a signed `EventToken` whose `text` layer carries the
         delegate's structured output, token counts, backend identity,
         and latency.
+
+        When `auto_context=True` (the default) and `extra_context` is
+        not explicitly supplied, sales-related delegates auto-load
+        relevant context from `docs/internal/sales/`. Set
+        `auto_context=False` to opt out per-call.
         """
         if not isinstance(input_text, str) or not input_text.strip():
             raise ExoskeletonError("input_text must be a non-empty string")
@@ -124,6 +144,9 @@ class ExoskeletonAgent:
         from axiom_event_token.router import RoutingDecision
 
         backend = self._backend or default_backend()
+
+        if (extra_context is None and auto_context):
+            extra_context = self._auto_sales_context(use_case, input_text)
 
         class _ExplicitRouter:
             """One-delegate router — ignores intent classification."""
@@ -147,6 +170,7 @@ class ExoskeletonAgent:
             backend=backend,
             router=_ExplicitRouter(),
             token_id=f"exo_{uuid.uuid4().hex[:12]}",
+            extra_context=extra_context,
         )
         if self._ledger is not None:
             self._ledger.append(
@@ -163,6 +187,35 @@ class ExoskeletonAgent:
                 f"Available: {', '.join(sorted(self._by_name))}"
             )
         return self._by_name[use_case]
+
+    def _auto_sales_context(
+        self, use_case: str, input_text: str,
+    ) -> Optional[dict]:
+        """Load a `{sales_context: ...}` dict for the 5 sales delegates.
+
+        Returns None for non-sales delegates or when the store is
+        empty / unreadable — the caller treats None as "no injection."
+        Import is local so non-sales runs don't pay the cost.
+        """
+        try:
+            from axiom_sales_context import (
+                SALES_USE_CASES, SalesContext, default_context_root,
+            )
+        except ImportError:
+            return None
+        if use_case not in SALES_USE_CASES:
+            return None
+        try:
+            root = self._sales_root or default_context_root()
+            ctx = SalesContext.load(root)
+            snippet = ctx.relevant_for(use_case, input_text)
+        except Exception:
+            # Any sales-store failure is non-fatal — the delegate still
+            # runs without the optional context block.
+            return None
+        if not snippet:
+            return None
+        return {"sales_context": snippet}
 
 
 # ── Output formatting helpers ─────────────────────────────────────────────
@@ -230,6 +283,13 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                          "override env AXIOM_EXOSKELETON_LEDGER)")
     ap.add_argument("--no-ledger", action="store_true",
                     help="skip ledger append for this invocation")
+    ap.add_argument("--no-context", action="store_true",
+                    help="skip auto-injection of sales context for "
+                         "sales delegates")
+    ap.add_argument("--context-root",
+                    help="path to the sales context store "
+                         "(default: docs/internal/sales/, "
+                         "override env AXIOM_SALES_CONTEXT_ROOT)")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
     if "AXIOM_MASTER_KEY" not in os.environ:
@@ -249,9 +309,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             Path(args.ledger) if args.ledger else default_ledger_path()
         )
 
-    exo = (ExoskeletonAgent.from_path(args.pack, ledger=ledger)
+    sales_root = Path(args.context_root) if args.context_root else None
+    exo = (ExoskeletonAgent.from_path(
+                args.pack, ledger=ledger,
+                sales_context_root=sales_root,
+            )
            if args.pack
-           else ExoskeletonAgent.from_default_pack(ledger=ledger))
+           else ExoskeletonAgent.from_default_pack(
+                ledger=ledger, sales_context_root=sales_root,
+            ))
 
     if args.list:
         for name in exo.use_cases():
@@ -271,7 +337,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         ap.error("provide input via --input, --input-file, or stdin.")
 
     try:
-        token = exo.invoke(args.use_case, text)
+        token = exo.invoke(
+            args.use_case, text,
+            auto_context=(not args.no_context),
+        )
     except ExoskeletonError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

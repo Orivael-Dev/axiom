@@ -24,6 +24,15 @@ and platform moat eventually:
 Five foundational decisions need to be made **this week** before any
 phase ships (see §1 below).
 
+> **Private overlay in parallel.** A separate 5-month investor/GTM
+> tracker (months → weeks → asset checklists) lives at
+> `docs/internal/ROADMAP_TRACKER.md` — gitignored, hand-edited, and
+> read by `python3 -m axiom_status` for live state. Same calendar
+> as this plan, but holds buyer-tailored detail that doesn't belong
+> on the public mirror. The two stay loosely in sync; this file is
+> the canonical phase plan, the private tracker is the canonical
+> week-by-week TODO list.
+
 ---
 
 ## 1. Foundational decisions (THIS WEEK, blocking everything)

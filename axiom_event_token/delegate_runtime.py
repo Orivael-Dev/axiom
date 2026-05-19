@@ -48,7 +48,13 @@ def _compact_inputs(inputs: dict[str, Any]) -> str:
         text: <verbatim text>
         audio.impact_profile: <value>
         ...
-    Empty / None values are skipped so the prompt stays tight.
+        ---
+        CONTEXT (do not echo back; use as background):
+        <extra_context block>
+        ---
+    Empty / None values are skipped so the prompt stays tight. The
+    `extra_context` block is appended LAST so it's the first thing
+    trimmed when the prompt budget is tight — text remains sacred.
     """
     lines: list[str] = []
     text = inputs.get("text")
@@ -61,6 +67,21 @@ def _compact_inputs(inputs: dict[str, Any]) -> str:
                 if v is None or v == "":
                     continue
                 lines.append(f"{key}.{k}: {v}")
+    extra = inputs.get("extra_context")
+    if isinstance(extra, dict) and extra:
+        rendered = "\n".join(
+            f"{k}: {v}" for k, v in sorted(extra.items())
+            if v not in (None, "", {})
+        )
+    elif isinstance(extra, str) and extra.strip():
+        rendered = extra.strip()
+    else:
+        rendered = ""
+    if rendered:
+        lines.append("---")
+        lines.append("CONTEXT (do not echo back; use as background):")
+        lines.append(rendered)
+        lines.append("---")
     return "\n".join(lines)
 
 

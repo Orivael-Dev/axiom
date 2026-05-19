@@ -161,6 +161,7 @@ class Coordinator:
         backend=None,                           # SLMBackend, default = default_backend()
         router=None,                            # DelegateRouter, default = fresh
         token_id: Optional[str] = None,
+        extra_context: Optional[dict] = None,
     ) -> EventToken:
         """Route the event to its matching AXM delegates, fire them,
         and assemble a signed EventToken — the modular per-event-token
@@ -201,6 +202,8 @@ class Coordinator:
             "physics": physics or {},
             "qrf":     qrf or {},
         }
+        if extra_context:
+            inputs["extra_context"] = extra_context
 
         layer_reports: dict[str, LayerReport] = {}
         activated: list[str] = []
