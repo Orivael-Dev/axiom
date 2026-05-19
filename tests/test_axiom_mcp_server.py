@@ -180,3 +180,61 @@ class TestInvariants:
             assert "code" in parsed["error"]
             assert "message" in parsed["error"]
             assert isinstance(parsed["error"]["code"], int)
+
+
+class TestSelfHeal:
+    """Regression: MCP client must not see error -32000 just because the
+    spawning harness didn't inherit the user's AXIOM_MASTER_KEY env var.
+
+    Before the self-heal patch, the server's `from axiom_signing import
+    derive_key` line raised RuntimeError at import time when the env
+    var was missing → JSON-RPC transport never came up → client surfaced
+    error -32000 ("connection failed"). After the patch, the server
+    generates an ephemeral key on stderr-warning and boots normally.
+    """
+
+    def test_server_boots_with_missing_master_key(self):
+        import subprocess
+        repo_root = Path(__file__).resolve().parents[1]
+        env = {k: v for k, v in os.environ.items() if k != "AXIOM_MASTER_KEY"}
+        proc = subprocess.Popen(
+            [sys.executable, "axiom_mcp_server.py"],
+            cwd=str(repo_root),
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        init_msg = json.dumps({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "regtest", "version": "0"}},
+        }) + "\n"
+        try:
+            out, err = proc.communicate(input=init_msg.encode("utf-8"),
+                                          timeout=8)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, err = proc.communicate()
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+
+        err_text = err.decode("utf-8", errors="replace")
+        out_text = out.decode("utf-8", errors="replace")
+        # Self-heal warning visible to the client (helps debugging).
+        assert "AXIOM_MASTER_KEY missing" in err_text, \
+            f"warning not emitted; stderr was: {err_text[:400]}"
+        # The fatal import-time crash must NOT happen.
+        assert "RuntimeError" not in err_text, \
+            f"server still crashes at import; stderr was: {err_text[:400]}"
+        # And the JSON-RPC initialize response actually came back.
+        resp_line = next((line for line in out_text.splitlines() if line.strip()),
+                         "")
+        assert resp_line, f"no JSON-RPC response on stdout; got: {out_text[:200]}"
+        parsed = json.loads(resp_line)
+        assert parsed["jsonrpc"] == "2.0"
+        assert parsed["id"] == 1
+        assert "result" in parsed
+        assert parsed["result"]["serverInfo"]["name"] == "axiom"

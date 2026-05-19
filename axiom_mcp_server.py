@@ -29,6 +29,20 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+# Self-heal: an MCP harness that didn't inherit our shell env (common
+# on macOS dock launches, IDE-spawned MCP processes, etc.) lands here
+# with AXIOM_MASTER_KEY empty, which crashes axiom_signing at import
+# → JSON-RPC transport dies → client sees error -32000.
+# Generate an ephemeral key so the server boots; signatures produced
+# under that key won't verify outside this process — export a stable
+# key (see README) when persistent verification matters.
+if not os.environ.get("AXIOM_MASTER_KEY"):
+    import secrets
+    os.environ["AXIOM_MASTER_KEY"] = secrets.token_hex(32)
+    print("[axiom-mcp] WARNING: AXIOM_MASTER_KEY missing from env; "
+          "booted with an ephemeral key. Signed artifacts won't "
+          "verify outside this process.", file=sys.stderr, flush=True)
+
 from axiom_signing import derive_key
 
 SIGNING_KEY = derive_key(b"axiom-mcp-v1")
