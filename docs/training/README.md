@@ -18,11 +18,12 @@ Reading order for a new hire on the team:
 9. **[Kid-Audit Launch Package](kid-audit-launch.md)** — auditor-side verify + corpus transparency + reference fixtures
 10. **[Nano Deployment](nano-deployment.md)** — Jetson Orin Nano reference platform for Sovereign Box
 
-Plus the vertical strategy + audio internals:
+Plus the vertical strategy + sensory internals:
 
 - **[Kid-Guard Strategy](kid-guard-strategy.md)** — the AI-toy wedge offer
 - **[Audio Phase A/B](audio-phase-a.md)** — what shipped in `axiom_audio/`
-- **[Audio Agent vs LLM audio learning](audio-agent-vs-llm.md)** — positioning vs Whisper / GPT-4o audio / Deepgram; the composition pitch
+- **[Audio Agent vs LLM audio learning](audio-agent-vs-llm.md)** — positioning vs Whisper / GPT-4o audio / Deepgram
+- **[Video Agent (Phase A)](video-agent.md)** — `axiom_video/` modular detectors, signed event chains, 14 reference scenes
 
 Each manual is self-contained — you can read just the one if you only
 need that surface.
@@ -41,6 +42,7 @@ need that surface.
 | **Research engine** | `axiom_research/` — retrieve → QRF → synthesize → signed `ResearchReport`. Three LLM backends (Ollama / Claude / Stub). | 17 tests green |
 | **Dev-Agent Coder** | `axiom_ollama_coder.py` — Orin Nano + qwen-backed, 4-layer constitutional review (reflex / reviewer / curriculum / examiner). | 16 tests green |
 | **Kid-audit launch package** | `verify_kid_audit.py` + `inspect_kid_corpus.py` + signed baseline fixtures + `docs/AUDIT_LAUNCH.md` for third-party auditors | 11 tests green |
+| **Video agent (Phase A)** | `axiom_video/` — 4 modular detectors (object tracker / motion / impact / temporal chain), 14 synthetic reference scenes, signed event chains | 25 tests green, 14/14 harness gates |
 
 ## What's coming
 

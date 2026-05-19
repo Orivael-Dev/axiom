@@ -108,25 +108,94 @@ class AudioAgent(Agent):
 
 
 class VideoAgent(Agent):
-    """Stub Video agent — emits an object-tracks + temporal-chain shape
-    matching the video-topology concept doc.
+    """Real Video agent — runs the axiom_video detector ladder
+    (ObjectTracker → MotionClassifier → ImpactDetector →
+    TemporalChainExtractor) against an input scene graph and emits
+    a signed LayerReport whose payload carries all four sub-reports
+    plus a summary.
 
-    Real implementation: axiom_video (concept doc shipped).
+    Input shape:
+      inputs["video"] = {
+          "scene_graph": SceneGraph instance (or list of Scene dicts),
+          ...
+      }
+
+    Back-compat: if a caller passes hand-coded fields (objects,
+    object_motion, impact_point, fracture_pattern, temporal_chain)
+    instead of a scene_graph, we fall back to the legacy stub shape
+    so existing tests + the older event-token contract keep working.
     """
     agent_name = "video"
 
     def run(self, inputs: dict[str, Any]) -> LayerReport:
-        provided = inputs.get("video", {})
+        provided = inputs.get("video", {}) or {}
+        scene_graph = provided.get("scene_graph")
+        if scene_graph is None:
+            # Legacy / stub mode — preserve the prior contract.
+            payload = {
+                "objects":          provided.get("objects", []),
+                "object_motion":    provided.get("object_motion", "static"),
+                "impact_point":     provided.get("impact_point", None),
+                "fracture_pattern": provided.get("fracture_pattern", None),
+                "temporal_chain":   provided.get("temporal_chain", []),
+                "mode":             "stub",
+            }
+            return LayerReport.signed(
+                agent=self.agent_name, payload=payload,
+                confidence=float(provided.get("confidence", 0.5)),
+            )
+
+        # Real-detector mode
+        try:
+            from axiom_video import (
+                ImpactDetector, MotionClassifier, ObjectTracker,
+                TemporalChainExtractor,
+            )
+        except ImportError:
+            return LayerReport.signed(
+                agent=self.agent_name,
+                payload={"mode": "unavailable",
+                         "reason": "axiom_video not importable"},
+                confidence=0.0,
+            )
+
+        try:
+            tracks = ObjectTracker().track(scene_graph)
+            motions = MotionClassifier().classify(tracks)
+            impacts = ImpactDetector().detect(tracks, motions)
+            chain = TemporalChainExtractor().extract(tracks, motions, impacts)
+        except Exception as e:
+            return LayerReport.signed(
+                agent=self.agent_name,
+                payload={"mode": "error",
+                         "reason": f"{type(e).__name__}: {e}"},
+                confidence=0.0,
+            )
+
+        # Surface a compact summary alongside the four sub-reports
+        # so downstream consumers can read the headline without
+        # walking the full payload.
         payload = {
-            "objects":          provided.get("objects", []),
-            "object_motion":    provided.get("object_motion", "static"),
-            "impact_point":     provided.get("impact_point", None),
-            "fracture_pattern": provided.get("fracture_pattern", None),
-            "temporal_chain":   provided.get("temporal_chain", []),
+            "mode": "real",
+            "summary": {
+                "n_tracks":         tracks.payload["n_tracks"],
+                "dominant_motion":  motions.payload.get("dominant_class",
+                                                          "none"),
+                "n_impacts":        impacts.payload["n_events"],
+                "n_chain_events":   chain.payload["n_events"],
+            },
+            "object_track_report":   tracks.to_dict(),
+            "motion_report":         motions.to_dict(),
+            "impact_report":         impacts.to_dict(),
+            "temporal_chain_report": chain.to_dict(),
         }
-        confidence = float(provided.get("confidence", 0.5))
+        # Roll up confidence — mean of the four sub-reports
+        sub_confs = [tracks.confidence, motions.confidence,
+                     impacts.confidence, chain.confidence]
+        conf = sum(sub_confs) / len(sub_confs)
         return LayerReport.signed(
-            agent=self.agent_name, payload=payload, confidence=confidence,
+            agent=self.agent_name, payload=payload,
+            confidence=round(conf, 4),
         )
 
 
