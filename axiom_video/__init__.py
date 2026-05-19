@@ -42,6 +42,10 @@ from __future__ import annotations
 
 from .color_watcher import ColorReport, ColorWatcher, classify_color
 from .impact import ImpactDetector, ImpactReport
+from .ingest import (
+    DetectedObject, FrameIngester, ObjectDetectorProtocol,
+    ScriptedObjectDetector, sample_dominant_color,
+)
 from .motion import MotionClassifier, MotionReport
 from .object_tracker import ObjectTracker, ObjectTrackReport
 from .scene import Object, Scene, SceneGraph
@@ -51,18 +55,23 @@ from .time_keeper import TimeKeeper, TimeKeeperReport
 __all__ = [
     "ColorReport",
     "ColorWatcher",
+    "DetectedObject",
+    "FrameIngester",
     "ImpactDetector",
     "ImpactReport",
     "MotionClassifier",
     "MotionReport",
     "Object",
+    "ObjectDetectorProtocol",
     "ObjectTracker",
     "ObjectTrackReport",
     "Scene",
     "SceneGraph",
+    "ScriptedObjectDetector",
     "TemporalChainExtractor",
     "TemporalChainReport",
     "TimeKeeper",
     "TimeKeeperReport",
     "classify_color",
+    "sample_dominant_color",
 ]

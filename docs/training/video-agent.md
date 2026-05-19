@@ -53,21 +53,21 @@ Same architecture as audio Phase A (material / voice / VAD / tempo).
 
 ## Phase A scope — what we shipped vs deferred
 
-| Piece | Phase A | Deferred |
-|---|:---:|:---:|
-| 4 core detector agents, each signed | ✅ | |
-| **TimeKeeper** — rhythm + silence + burst over event stream | ✅ | |
-| **ColorWatcher** — HSV partitioning + shift events | ✅ | |
-| 14 synthetic reference scenes | ✅ | |
-| Acceptance gates (motion / impact / signatures) | ✅ 100/100/100 | |
-| EventToken integration (`VideoAgent` 6 sub-reports + summary) | ✅ | |
-| Back-compat with legacy stub-shape inputs | ✅ | |
-| 51 hermetic tests (25 detector + 26 time/color) | ✅ | |
-| Raw-frame ingestion (frames → scene graph) | | Phase B |
-| Pixel-sampling color ingester (frames → extras['color']) | | Phase B |
-| Object-class fine-tuning / vision model | | n/a — customer brings |
-| Fracture-pattern classifier (`radial_scatter` etc.) | | Phase B |
-| Live-camera streaming demo | | Phase B |
+| Piece | Phase A | Phase B | Deferred |
+|---|:---:|:---:|:---:|
+| 4 core detector agents, each signed | ✅ | | |
+| **TimeKeeper** — rhythm + silence + burst over event stream | ✅ | | |
+| **ColorWatcher** — HSV partitioning + shift events | ✅ | | |
+| 14 synthetic reference scenes | ✅ | | |
+| Acceptance gates (motion / impact / signatures) | ✅ 100/100/100 | | |
+| EventToken integration (`VideoAgent` 6 sub-reports + summary) | ✅ | | |
+| Back-compat with legacy stub-shape inputs | ✅ | | |
+| 68 hermetic tests (25 detector + 26 time/color + 17 ingest) | ✅ | | |
+| **Raw-frame ingestion** (frames → SceneGraph + color sampling) | | ✅ | |
+| **Live demo** (frames → ingester → 6 detectors → signed token) | | ✅ | |
+| Fracture-pattern classifier (`radial_scatter` etc.) | | | Phase C |
+| Live-camera streaming windowed pipeline | | | Phase C |
+| Object-class fine-tuning / vision model | | | n/a — customer brings |
 
 ## Who it's for
 
@@ -134,7 +134,47 @@ Acceptance gates (locked in by `test_harness_passes_all_gates`):
 
 ## Common workflows
 
-### Workflow A: One-off detection on a scene graph
+### Workflow A (Phase B): Live demo — real frames to signed token
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c 'import secrets;print(secrets.token_hex(32))')
+python3 scripts/video_live_demo.py
+```
+
+Output: a printed `EventToken` summary with all 6 sub-reports +
+HMAC signatures from a procedurally-rendered "red cup falls on
+blue floor" clip. The whole pipeline runs in pure Python + PIL
+— no numpy, no cv2, no GPU. Same hardware target as a Raspberry
+Pi 5 or Orin Nano headless.
+
+To customize the demo with your own detector:
+
+```python
+from axiom_video import FrameIngester, DetectedObject
+from axiom_event_token import Coordinator
+
+class MyYoloAdapter:
+    def __init__(self, model): self.model = model
+    def detect(self, frame):
+        results = self.model(frame)[0]
+        h, w = results.orig_shape
+        return [
+            DetectedObject(
+                label=results.names[int(b.cls)],
+                bbox=(float(b.xyxy[0][0])/w, float(b.xyxy[0][1])/h,
+                      float(b.xyxy[0][2])/w, float(b.xyxy[0][3])/h),
+                confidence=float(b.conf),
+            )
+            for b in results.boxes
+        ]
+
+# Then drop into the same call:
+sg = FrameIngester(MyYoloAdapter(yolo_model)).ingest(frames, fps=30)
+token = Coordinator().compose(video={"scene_graph": sg},
+                                activate=("video", "governance"))
+```
+
+### Workflow B: One-off detection on a hand-built scene graph
 
 ```python
 from axiom_video import (
@@ -187,18 +227,30 @@ For machine-readable: `--json` flag. For a single scene:
 
 ## Key concepts
 
-### Detector-agnostic input
+### Detector-agnostic input — Phase A direct + Phase B ingested
 
 AXIOM video doesn't classify pixels. It consumes the OUTPUT of an
 object detector — `{frame_index, objects: [{id, label, bbox, ...}]}`
-per frame. Customer brings their own tracker:
+per frame. Two paths in:
+
+**Phase A direct path**: customer hand-constructs `SceneGraph` from
+their detector output. Used in the kid-audit baseline fixtures
+and any offline pre-computed clip analysis.
+
+**Phase B ingested path**: customer's detector is an adapter
+satisfying `ObjectDetectorProtocol` (one method:
+`detect(frame) -> list[DetectedObject]`). `FrameIngester` calls it
+once per frame, samples pixel colors inside each bbox, builds the
+`SceneGraph`. Frame shape is auto-detected — PIL.Image, numpy
+ndarray, or nested list of RGB tuples — no hard dep on any one.
 
 | Their stack | How they feed AXIOM |
 |---|---|
-| YOLOv8 + Norfair tracker | Map `Tracker.update` output → list of `Object` |
+| YOLOv8 | Wrap `model(frame)[0].boxes` in an adapter class; ~10 lines |
 | Detectron2 | Same shape |
-| OpenCV multi-tracker | Use the OpenCV bbox + a fixed `id` per tracker handle |
-| Custom edge silicon | Whatever produces the bbox + ID; just map to `Object` |
+| OpenCV multi-tracker | Map `Tracker.update()` to `DetectedObject`s with normalized coords |
+| Custom edge silicon | Whatever produces bbox + label → `DetectedObject` |
+| Pre-computed JSON | `ScriptedObjectDetector` replays canned detections per frame |
 
 Cross-frame identity matching is OPTIONAL — if the upstream
 detector carries stable IDs (e.g. `"cup-A"`), AXIOM passes them
