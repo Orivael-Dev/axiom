@@ -51,24 +51,28 @@ class ExoskeletonAgent:
     EventToken via the existing event-token Coordinator path.
     """
 
-    def __init__(self, axm_container, backend=None) -> None:
+    def __init__(self, axm_container, backend=None, *,
+                 ledger=None) -> None:
         if not getattr(axm_container, "delegates", None):
             raise ExoskeletonError("AXM container has no delegates")
         self._container = axm_container
         self._backend   = backend
+        self._ledger    = ledger
         self._by_name   = {d.name: d for d in axm_container.delegates}
 
     # ── construction ─────────────────────────────────────────────────
 
     @classmethod
-    def from_path(cls, axm_path, backend=None) -> "ExoskeletonAgent":
+    def from_path(cls, axm_path, backend=None, *,
+                  ledger=None) -> "ExoskeletonAgent":
         """Load an exoskeleton AXM container from a path on disk."""
         from axiom_axm import AXMContainer
         container = AXMContainer.from_path(str(axm_path))
-        return cls(container, backend=backend)
+        return cls(container, backend=backend, ledger=ledger)
 
     @classmethod
-    def from_default_pack(cls, backend=None) -> "ExoskeletonAgent":
+    def from_default_pack(cls, backend=None, *,
+                          ledger=None) -> "ExoskeletonAgent":
         """Build the 9-delegate pack in a tempdir + load it.
 
         The tempdir is owned by this instance for the process lifetime.
@@ -78,7 +82,7 @@ class ExoskeletonAgent:
         from examples.exoskeleton_pack import build_exoskeleton_pack
         tmp = Path(tempfile.mkdtemp(prefix="axiom_exo_pack_"))
         container = build_exoskeleton_pack(tmp / "exoskeleton.axm")
-        instance = cls(container, backend=backend)
+        instance = cls(container, backend=backend, ledger=ledger)
         instance._owned_tmpdir = tmp  # keep alive
         return instance
 
@@ -144,6 +148,10 @@ class ExoskeletonAgent:
             router=_ExplicitRouter(),
             token_id=f"exo_{uuid.uuid4().hex[:12]}",
         )
+        if self._ledger is not None:
+            self._ledger.append(
+                token=token, use_case=use_case, input_text=input_text,
+            )
         return token
 
     # ── internals ────────────────────────────────────────────────────
@@ -216,6 +224,12 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     default=None, help="force backend (default: env)")
     ap.add_argument("--save-token",
                     help="write the signed EventToken JSON to this path")
+    ap.add_argument("--ledger",
+                    help="JSONL audit-ledger path "
+                         "(default: ~/.axiom/exoskeleton-ledger.jsonl, "
+                         "override env AXIOM_EXOSKELETON_LEDGER)")
+    ap.add_argument("--no-ledger", action="store_true",
+                    help="skip ledger append for this invocation")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
     if "AXIOM_MASTER_KEY" not in os.environ:
@@ -228,8 +242,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     elif args.backend:
         os.environ["AXIOM_BACKEND"] = args.backend
 
-    exo = (ExoskeletonAgent.from_path(args.pack) if args.pack
-           else ExoskeletonAgent.from_default_pack())
+    ledger = None
+    if not args.no_ledger:
+        from axiom_exoskeleton_ledger import LedgerWriter, default_ledger_path
+        ledger = LedgerWriter(
+            Path(args.ledger) if args.ledger else default_ledger_path()
+        )
+
+    exo = (ExoskeletonAgent.from_path(args.pack, ledger=ledger)
+           if args.pack
+           else ExoskeletonAgent.from_default_pack(ledger=ledger))
 
     if args.list:
         for name in exo.use_cases():

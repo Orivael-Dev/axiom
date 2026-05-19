@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AXIOM Re:Search Engine</title>
+  <style>
+    :root {
+      --bg: #050810;
+      --panel: rgba(255, 255, 255, 0.055);
+      --panel-strong: rgba(255, 255, 255, 0.095);
+      --border: rgba(255, 255, 255, 0.14);
+      --text: #f4f7fb;
+      --muted: #aab6ca;
+      --soft: rgba(170, 182, 202, 0.18);
+      --accent: #72f7d4;
+      --accent-2: #8ea7ff;
+      --accent-3: #c89cff;
+      --warning: #ffd166;
+      --danger: #ff6b6b;
+      --success: #63e6be;
+      --shadow: 0 22px 80px rgba(0, 0, 0, 0.42);
+      --mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 6%, rgba(114, 247, 212, 0.16), transparent 30%),
+        radial-gradient(circle at 92% 14%, rgba(142, 167, 255, 0.18), transparent 32%),
+        radial-gradient(circle at 70% 110%, rgba(200, 156, 255, 0.12), transparent 30%),
+        var(--bg);
+      overflow-x: hidden;
+    }
+
+    .shell {
+      width: min(1320px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 56px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 36px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .logo-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(114, 247, 212, 0.24), rgba(200, 156, 255, 0.22));
+      border: 1px solid var(--border);
+      box-shadow: inset 0 0 24px rgba(114, 247, 212, 0.12);
+      font-size: 18px;
+    }
+
+    .top-nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav-pill {
+      color: var(--muted);
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.035);
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 13px;
+    }
+
+    .nav-pill.active {
+      color: var(--text);
+      background: rgba(114, 247, 212, 0.12);
+      border-color: rgba(114, 247, 212, 0.4);
+    }
+
+    .hero {
+      text-align: center;
+      max-width: 960px;
+      margin: 0 auto 22px;
+      padding: 16px 22px 4px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(114, 247, 212, 0.32);
+      background: rgba(114, 247, 212, 0.08);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    .chip .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(114, 247, 212, 0.7);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 6vw, 64px);
+      line-height: 0.96;
+      letter-spacing: -0.06em;
+    }
+
+    h1 .re {
+      color: var(--accent);
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: clamp(15px, 1.6vw, 18px);
+      line-height: 1.55;
+      max-width: 780px;
+      margin: 18px auto 0;
+    }
+
+    .pipeline {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .stage {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .stage strong { color: var(--text); font-weight: 700; }
+    .arrow { color: var(--accent-2); }
+
+    .search-panel {
+      margin: 26px auto 0;
+      max-width: 1060px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.095), rgba(255,255,255,0.045));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .search-row {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+    }
+
+    .search-row input {
+      width: 100%;
+      border: 1px solid var(--border);
+      outline: none;
+      border-radius: 22px;
+      background: rgba(7, 10, 18, 0.72);
+      color: var(--text);
+      padding: 18px 20px;
+      font-size: 17px;
+    }
+
+    .search-row input::placeholder { color: rgba(170, 182, 202, 0.72); }
+
+    .search-row button,
+    .ghost-button,
+    .branch-action {
+      border: 0;
+      cursor: pointer;
+      border-radius: 22px;
+      padding: 0 24px;
+      font-weight: 800;
+      color: #061110;
+      background: linear-gradient(135deg, var(--accent), #c7fff0);
+      transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+      white-space: nowrap;
+    }
+
+    .search-row button:hover,
+    .branch-action:hover,
+    .ghost-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 30px rgba(114, 247, 212, 0.22);
+    }
+
+    .mode-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: center;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    .mode-row .label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    .filter.active,
+    .filter:hover {
+      color: var(--text);
+      border-color: rgba(114, 247, 212, 0.42);
+      background: rgba(114, 247, 212, 0.09);
+    }
+
+    .filter.workflow.active {
+      border-color: rgba(200, 156, 255, 0.45);
+      background: rgba(200, 156, 255, 0.10);
+    }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      max-width: 1060px;
+      margin: 18px auto 24px;
+    }
+
+    .metric {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.045);
+      border-radius: 18px;
+      padding: 13px 14px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      font-family: var(--mono);
+    }
+
+    .metric strong {
+      font-size: 19px;
+    }
+
+    .metric small { color: var(--muted); font-size: 12px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .col-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      overflow: hidden;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .card-head h2 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -0.01em;
+    }
+
+    .badge {
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--accent);
+      background: rgba(114, 247, 212, 0.09);
+      border: 1px solid rgba(114, 247, 212, 0.2);
+      font-family: var(--mono);
+      letter-spacing: 0.04em;
+    }
+
+    .badge.purple {
+      color: var(--accent-3);
+      background: rgba(200, 156, 255, 0.10);
+      border-color: rgba(200, 156, 255, 0.3);
+    }
+
+    .badge.blue {
+      color: var(--accent-2);
+      background: rgba(142, 167, 255, 0.10);
+      border-color: rgba(142, 167, 255, 0.3);
+    }
+
+    .card-body { padding: 22px; }
+
+    .report-section {
+      margin-bottom: 18px;
+    }
+
+    .report-section h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-family: var(--mono);
+    }
+
+    .report-section p {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.55;
+      color: #eef3fb;
+    }
+
+    .report-section ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+
+    .report-section ul li {
+      color: #d8e2f2;
+      font-size: 14px;
+      padding-left: 18px;
+      position: relative;
+      line-height: 1.5;
+    }
+
+    .report-section ul li::before {
+      content: "▸";
+      color: var(--accent);
+      position: absolute;
+      left: 0;
+    }
+
+    .citations-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .citation {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .citation .src-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .citation .src-title {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .citation .src-meta {
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+
+    .citation .src-snippet {
+      color: #cbd5e6;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .citation .score-bar {
+      height: 4px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      margin-top: 9px;
+      overflow: hidden;
+    }
+
+    .citation .score-bar > i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 999px;
+    }
+
+    .branch-stack { display: grid; gap: 12px; }
+
+    .branch-card {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.045);
+      padding: 15px;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .branch-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(114, 247, 212, 0.3);
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .branch-card.killed {
+      opacity: 0.72;
+      border-style: dashed;
+      border-color: rgba(255, 107, 107, 0.34);
+    }
+
+    .branch-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .branch-title strong { font-size: 15px; }
+    .branch-title small { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+
+    .prob {
+      font-weight: 900;
+      font-size: 19px;
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+
+    .prob.killed-text {
+      color: var(--danger);
+      font-size: 12px;
+      padding-top: 4px;
+    }
+
+    .branch-summary {
+      color: #dbe4f2;
+      line-height: 1.48;
+      margin: 0 0 10px;
+      font-size: 13px;
+    }
+
+    .branch-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .branch-meta span {
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(0, 0, 0, 0.18);
+      border-radius: 999px;
+      padding: 5px 8px;
+      font-family: var(--mono);
+    }
+
+    .branch-action {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 13px;
+      font-size: 12px;
+    }
+
+    .details-panel {
+      margin-top: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(0, 0, 0, 0.22);
+      padding: 14px;
+      display: none;
+    }
+
+    .details-panel.open { display: block; }
+
+    .details-panel h3 { margin: 0 0 8px; font-size: 14px; }
+
+    .details-panel pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      font-family: var(--mono);
+    }
+
+    .receipt {
+      border: 1px solid rgba(114, 247, 212, 0.18);
+      background: rgba(114, 247, 212, 0.04);
+      border-radius: 18px;
+      padding: 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .receipt .ok { color: var(--success); font-weight: 700; }
+    .receipt .key { color: var(--accent); }
+
+    .receipt .row {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 10px;
+      padding: 3px 0;
+    }
+
+    .receipt .row strong { color: var(--text); font-weight: 600; }
+
+    .cost-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .cost {
+      padding: 9px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .cost span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .cost strong {
+      font-size: 16px;
+      color: var(--text);
+      font-family: var(--mono);
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .mini-card {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 16px;
+    }
+
+    .mini-card h3 { margin: 0 0 7px; font-size: 14px; }
+    .mini-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .mini-card code {
+      background: rgba(114, 247, 212, 0.08);
+      color: var(--accent);
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 28px;
+      font-family: var(--mono);
+    }
+
+    @media (max-width: 980px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .search-row { flex-direction: column; }
+      .search-row button { min-height: 54px; }
+      .status-strip { grid-template-columns: repeat(2, 1fr); }
+      .grid, .bottom-grid { grid-template-columns: 1fr; }
+      .hero { padding-left: 0; padding-right: 0; }
+      .cost-grid { grid-template-columns: 1fr; }
+      .receipt .row { grid-template-columns: 100px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="logo">
+        <div class="logo-mark">◈</div>
+        <div>
+          <div>AXIOM Re:Search Engine</div>
+          <small style="color: var(--muted); font-weight: 500;">Retrieve → reason → synthesize, with a signed audit trail</small>
+        </div>
+      </div>
+
+      <nav class="top-nav" aria-label="Console sections">
+        <span class="nav-pill active">Research</span>
+        <span class="nav-pill">Reasoning Paths</span>
+        <span class="nav-pill">Sources</span>
+        <span class="nav-pill">Ledger</span>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="chip"><span class="dot"></span>QRF · Modular Delegates · Signed Event Tokens</div>
+      <h1>Ask. Retrieve. Reason. <span class="re">Re:</span>port.</h1>
+      <p>
+        AXIOM's research engine retrieves real sources, runs them through QRF's
+        multi-branch probability reasoning, synthesizes a verifiable report,
+        and signs every step. Pick a workflow to switch the synthesizer's
+        delegate; pick a domain to bound the retrieval scope.
+      </p>
+      <div class="pipeline" aria-hidden="true">
+        <span class="stage"><strong>retrieve</strong></span><span class="arrow">→</span>
+        <span class="stage"><strong>QRF</strong> branches</span><span class="arrow">→</span>
+        <span class="stage"><strong>synthesize</strong></span><span class="arrow">→</span>
+        <span class="stage"><strong>sign</strong> &amp; record</span>
+      </div>
+
+      <section class="search-panel" aria-label="Research query">
+        <div class="search-row">
+          <input
+            id="researchInput"
+            type="search"
+            placeholder="Ask a research question — e.g. Which AI governance startups have raised in 2025?"
+            autocomplete="off"
+          />
+          <button id="researchBtn">Run Research</button>
+        </div>
+
+        <div class="mode-row">
+          <div class="label">Domain</div>
+          <div class="filter-row" id="domainRow">
+            <button class="filter active" data-domain="general">General</button>
+            <button class="filter" data-domain="medical">Medical</button>
+            <button class="filter" data-domain="finance">Finance</button>
+            <button class="filter" data-domain="security">Security</button>
+            <button class="filter" data-domain="hr">HR</button>
+            <button class="filter" data-domain="supply_chain">Supply Chain</button>
+          </div>
+        </div>
+
+        <div class="mode-row">
+          <div class="label">Workflow</div>
+          <div class="filter-row" id="workflowRow">
+            <button class="filter workflow active" data-workflow="general_research">General Research</button>
+            <button class="filter workflow" data-workflow="investor_research">Investor Research</button>
+            <button class="filter workflow" data-workflow="enterprise_targeting">Enterprise Targeting</button>
+            <button class="filter workflow" data-workflow="competitive_analysis">Competitive Analysis</button>
+            <button class="filter workflow" data-workflow="customer_discovery">Customer Discovery</button>
+            <button class="filter workflow" data-workflow="patent_counsel_packet">Patent Packet</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="status-strip" aria-label="Run status metrics">
+      <div class="metric">
+        <span>Workflow</span>
+        <strong id="workflowMetric">General Research</strong>
+      </div>
+      <div class="metric">
+        <span>Domain</span>
+        <strong id="domainMetric">General</strong>
+      </div>
+      <div class="metric">
+        <span>Probability band</span>
+        <strong id="probMetric">—</strong>
+      </div>
+      <div class="metric">
+        <span>Constitutional distance</span>
+        <strong id="distanceMetric">—</strong>
+      </div>
+      <div class="metric">
+        <span>Branch health</span>
+        <strong id="healthMetric">—</strong>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="col-stack">
+        <article class="card">
+          <div class="card-head">
+            <h2>Synthesized Report</h2>
+            <span class="badge" id="reportBadge">Demo mode</span>
+          </div>
+          <div class="card-body" id="reportBody">
+            <p class="answer-text" style="color: var(--muted);">
+              Submit a question above to generate a signed research report.
+              This demo page uses local mock data and can be opened directly
+              in your browser — wire the <code>runResearch()</code> function
+              to your API endpoint when you're ready.
+            </p>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <h2>Retrieved Sources</h2>
+            <span class="badge blue" id="sourcesCountBadge">0 sources</span>
+          </div>
+          <div class="card-body">
+            <ul class="citations-list" id="citationsList">
+              <li class="citation">
+                <div class="src-head">
+                  <span class="src-title">Sources will appear here after a run.</span>
+                </div>
+                <div class="src-snippet">Each retrieved document is ranked, scored, and feeds into the QRF reasoning step. Kept documents are cited inline in the report; lower-scored documents are still surfaced for review.</div>
+              </li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+      <div class="col-stack">
+        <article class="card">
+          <div class="card-head">
+            <h2>QRF Reasoning Paths</h2>
+            <span class="badge purple">Multi-branch</span>
+          </div>
+          <div class="card-body">
+            <div class="branch-stack" id="branchResults">
+              <div style="color: var(--muted); font-size: 13px;">
+                Reasoning branches appear here. Killed branches are preserved as
+                signed audit records — not silently hidden.
+              </div>
+            </div>
+            <div class="details-panel" id="detailPanel">
+              <h3 id="detailTitle">Branch Detail</h3>
+              <pre id="detailBody"></pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <h2>Signed Event Receipt</h2>
+            <span class="badge" id="receiptBadge">awaiting run</span>
+          </div>
+          <div class="card-body">
+            <div class="receipt" id="receipt">
+              <div class="row"><strong>token_id</strong><span>—</span></div>
+              <div class="row"><strong>workflow</strong><span>—</span></div>
+              <div class="row"><strong>backend</strong><span>—</span></div>
+              <div class="row"><strong>signed_at</strong><span>—</span></div>
+              <div class="row"><strong>verified</strong><span>—</span></div>
+              <div class="row"><strong>ledger</strong><span>—</span></div>
+            </div>
+            <div class="cost-grid">
+              <div class="cost"><span>in tokens</span><strong id="inTokMetric">—</strong></div>
+              <div class="cost"><span>out tokens</span><strong id="outTokMetric">—</strong></div>
+              <div class="cost"><span>latency</span><strong id="latencyMetric">—</strong></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="bottom-grid">
+      <div class="mini-card">
+        <h3>Backend hook</h3>
+        <p>Replace <code>runResearch()</code> with a fetch to your own endpoint, e.g. <code>POST /api/research</code>. The expected response shape matches AXIOM's <code>EventToken</code> — see <code>axiom_event_token/models.py</code>.</p>
+      </div>
+      <div class="mini-card">
+        <h3>Workflow vs domain</h3>
+        <p><strong>Workflow</strong> selects the exoskeleton delegate that synthesizes the report (one of the §9 founder-workflow agents). <strong>Domain</strong> bounds the retrieval scope.</p>
+      </div>
+      <div class="mini-card">
+        <h3>Signed audit trail</h3>
+        <p>Every run produces a signed <code>EventToken</code> appended to <code>~/.axiom/exoskeleton-ledger.jsonl</code>. Each ledger entry carries its own HMAC under <code>axiom-exoskeleton-ledger-v1</code> — independent of the EventToken's signatures.</p>
+      </div>
+    </section>
+
+    <footer>
+      AXIOM Re:Search Engine prototype · single-file HTML · ready for GitHub Pages, Netlify, Vercel, or local browser testing
+    </footer>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const els = {
+      input:        $("researchInput"),
+      runBtn:       $("researchBtn"),
+      domainRow:    $("domainRow"),
+      workflowRow:  $("workflowRow"),
+      workflowMetric: $("workflowMetric"),
+      domainMetric:   $("domainMetric"),
+      probMetric:     $("probMetric"),
+      distanceMetric: $("distanceMetric"),
+      healthMetric:   $("healthMetric"),
+      reportBody:     $("reportBody"),
+      reportBadge:    $("reportBadge"),
+      sourcesCountBadge: $("sourcesCountBadge"),
+      citationsList:  $("citationsList"),
+      branchResults:  $("branchResults"),
+      detailPanel:    $("detailPanel"),
+      detailTitle:    $("detailTitle"),
+      detailBody:     $("detailBody"),
+      receipt:        $("receipt"),
+      receiptBadge:   $("receiptBadge"),
+      inTokMetric:    $("inTokMetric"),
+      outTokMetric:   $("outTokMetric"),
+      latencyMetric:  $("latencyMetric"),
+    };
+
+    let activeDomain   = "general";
+    let activeWorkflow = "general_research";
+
+    const domainLabels = {
+      general:      "General",
+      medical:      "Medical",
+      finance:      "Finance",
+      security:     "Security",
+      hr:           "HR",
+      supply_chain: "Supply Chain",
+    };
+
+    const workflowLabels = {
+      general_research:     "General Research",
+      investor_research:    "Investor Research",
+      enterprise_targeting: "Enterprise Targeting",
+      competitive_analysis: "Competitive Analysis",
+      customer_discovery:   "Customer Discovery",
+      patent_counsel_packet:"Patent Packet",
+    };
+
+    els.domainRow.addEventListener("click", (event) => {
+      const b = event.target.closest(".filter");
+      if (!b) return;
+      els.domainRow.querySelectorAll(".filter").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      activeDomain = b.dataset.domain;
+      els.domainMetric.textContent = domainLabels[activeDomain] || "General";
+    });
+
+    els.workflowRow.addEventListener("click", (event) => {
+      const b = event.target.closest(".filter");
+      if (!b) return;
+      els.workflowRow.querySelectorAll(".filter").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      activeWorkflow = b.dataset.workflow;
+      els.workflowMetric.textContent = workflowLabels[activeWorkflow] || "General Research";
+    });
+
+    els.runBtn.addEventListener("click", runResearchOnUi);
+    els.input.addEventListener("keydown", (e) => { if (e.key === "Enter") runResearchOnUi(); });
+
+    function runResearchOnUi() {
+      const query = els.input.value.trim();
+      if (!query) {
+        els.reportBody.innerHTML =
+          '<p class="answer-text" style="color: var(--warning);">Enter a research question first. The engine needs a target before it can retrieve + branch.</p>';
+        return;
+      }
+      els.reportBody.innerHTML = '<p class="answer-text" style="color: var(--muted);">Retrieving sources · running QRF branches · synthesizing report…</p>';
+      els.citationsList.innerHTML = "";
+      els.branchResults.innerHTML = "";
+      els.detailPanel.classList.remove("open");
+
+      const result = runResearch(query, activeDomain, activeWorkflow);
+      renderResult(result);
+    }
+
+    function runResearch(query, domain, workflow) {
+      /*
+        BACKEND INTEGRATION POINT
+
+        Replace this mock with a real call to AXIOM's research endpoint.
+        The expected shape mirrors EventToken + retrieval metadata:
+
+          const response = await fetch("/api/research", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, domain, workflow }),
+          });
+          return await response.json();
+      */
+      const wfLabel = workflowLabels[workflow] || "General Research";
+      const domLabel = domainLabels[domain] || "General";
+      const now = new Date();
+      const isoNow = now.toISOString();
+
+      // Per-workflow report shape — same structure, different framing.
+      const reports = {
+        general_research: {
+          tldr: `For "${query}", AXIOM's retrieve→reason→synthesize pipeline produced a governed answer in the ${domLabel} domain. The visible report separates the synthesized answer from rival reasoning paths and kept sources.`,
+          keyFindings: [
+            "Primary branch held inside the confidence gate (band 0.74) and produced the cleanest synthesis.",
+            "A rival branch remains visible because it has plausible supporting evidence at lower confidence.",
+            "One overclaim branch was killed; its rejection record is preserved in the audit trail.",
+          ],
+          openQuestions: [
+            "Which retrieval sources qualify for the production allowlist?",
+            "Should the killed branch threshold tighten in the medical domain?",
+          ],
+        },
+        investor_research: {
+          tldr: `Investor-research synthesis for "${query}". Identified fund archetypes, search criteria, and the AXIOM outreach angle for the ${domLabel} thesis.`,
+          keyFindings: [
+            "Fund archetypes: thesis-driven seed funds, AI-safety-aligned operators, regulated-vertical specialists.",
+            "Disqualifiers: ≥$3M check size, post-Series-B funds, US-only mandate (limits Canada/UK reach).",
+            "Outreach angle: AXIOM's signed audit trail directly addresses 2025 EU AI Act enforcement timeline.",
+          ],
+          openQuestions: [
+            "Which 5 funds match all qualifiers AND have led an AI-governance round in the last 12 months?",
+            "What's the warm-intro path to the top 3?",
+          ],
+        },
+        enterprise_targeting: {
+          tldr: `Enterprise-targeting synthesis for "${query}". Identified role signals, buyer personas, and pain hypotheses for the ${domLabel} segment.`,
+          keyFindings: [
+            "Role signals: 'AI Governance Lead', 'Head of Trust & Safety', 'Responsible AI Director', 'Model Risk Manager'.",
+            "Buyer personas: CISO, Chief Risk Officer, Head of Engineering Compliance.",
+            "Pain hypothesis: model-risk-management gap for in-production LLM agents under regulatory scrutiny.",
+          ],
+          openQuestions: [
+            "Are the top 10 prospects hiring for these roles right now?",
+            "What's the right discovery question to validate the pain in one 15-min call?",
+          ],
+        },
+        competitive_analysis: {
+          tldr: `Competitive-analysis synthesis for "${query}". Mapped category, strengths, gaps, AXIOM's wedge, and an honest concession.`,
+          keyFindings: [
+            "Category: LLM output validation library + paid cloud product.",
+            "Their strength: developer-first DX, large community, free open-source tier.",
+            "Their gap: no multi-modal coverage (text only); no signed audit trail; no patent moat.",
+            "AXIOM wedge: signed EventToken with text + audio + video + physics layers, enterprise-grade audit.",
+            "Honest concession: they have far better SDK polish and integration breadth today.",
+          ],
+          openQuestions: [
+            "Which deals are we actually contending against them on?",
+            "Is the patent moat real to a buyer's procurement team?",
+          ],
+        },
+        customer_discovery: {
+          tldr: `Customer-discovery synthesis for "${query}". Extracted pain, urgency, buyer role, agreed next step, and a product implication.`,
+          keyFindings: [
+            "Pain articulated: compliance asked for a signed audit trail before LLM ships to production.",
+            "Urgency: HIGH — regulatory deadline within 90 days.",
+            "Buyer role: VP Engineering (real authority, budget owner).",
+            "Next step: send one-page demo by Friday.",
+            "Product implication: 'compliance-asked-for-it' is the strongest pull signal we've seen.",
+          ],
+          openQuestions: [
+            "What does compliance specifically require in the audit trail?",
+            "Is there a real budget authority above the VP Eng?",
+          ],
+        },
+        patent_counsel_packet: {
+          tldr: `Patent-counsel-packet synthesis for "${query}". Summarized invention family, core claim, evidence, trade-secret candidates, and timeline anchors.`,
+          keyFindings: [
+            "Family name: Event Token + Coordinator (ORVL-016/017).",
+            "Core claim: selective-activation orchestrator emitting per-layer + composition-integrity signatures.",
+            "Implementation evidence: axiom_event_token/, modular delegate runtime, 76 passing tests.",
+            "Trade-secret candidates: prompt-budget tuning heuristics, router intent map, AXM packing format.",
+            "Timeline anchors: provisional filed 2026-02; continuation candidate (modular SLM delegate runtime) ready.",
+          ],
+          openQuestions: [
+            "Which continuations should be filed before publishing the open-source mirror?",
+            "Is the prompt-budget heuristic a trade secret or a future claim?",
+          ],
+        },
+      };
+      const report = reports[workflow] || reports.general_research;
+
+      return {
+        query,
+        workflow,
+        workflowLabel: wfLabel,
+        domain,
+        domainLabel: domLabel,
+        report,
+        probabilityBand: 0.74,
+        constitutionalDistance: 0.31,
+        branchHealth: "3 / 4 passed",
+        sources: [
+          {
+            title: "AXIOM event-token primary spec",
+            uri: "docs/training/event-token-spec.md",
+            kind: "internal-doc",
+            score: 0.92,
+            snippet: "Selective activation runs ONLY the agents a query needs; null layers are first-class.",
+          },
+          {
+            title: "ORVL-016 Provisional Patent",
+            uri: "patents/ORVL016_AXM.pdf",
+            kind: "patent-pdf",
+            score: 0.88,
+            snippet: "Per-layer + coordinator + outer HMAC signatures provide composition integrity end-to-end.",
+          },
+          {
+            title: "EU AI Act compliance briefing (2026)",
+            uri: "external/eu-ai-act-2026.html",
+            kind: "external-web",
+            score: 0.71,
+            snippet: "Enforcement of Article 13 (transparency) phases in 2026; signed audit trails are explicitly named.",
+          },
+          {
+            title: "Public LLM-firewall comparison",
+            uri: "external/llm-firewall-comparison-2025.html",
+            kind: "external-web",
+            score: 0.58,
+            snippet: "Most listed products are text-only; none ship a multi-modal audit signature.",
+          },
+        ],
+        branches: [
+          { id: "Branch 01", title: "Primary Synthesis Path", probability: 0.74, status: "passed", distance: 0.28, citations: 3,
+            summary: "Strongest path. Synthesizes the answer while staying inside confidence + constitutional limits.",
+            detail: "Status: PASSED\nGate: monotonic confidence held\nConstitutional distance: 0.28\nCitations: 3\nSignature: demo_hmac_branch_01\n\nUsed as the main synthesized answer." },
+          { id: "Branch 02", title: "Rival Hypothesis", probability: 0.61, status: "rival", distance: 0.39, citations: 2,
+            summary: "Competing interpretation. Kept visible so the report shows uncertainty rather than false certainty.",
+            detail: "Status: RIVAL\nGate: allowed as alternate path\nConstitutional distance: 0.39\nCitations: 2\nSignature: demo_hmac_branch_02\n\nVisible as a competing explanation." },
+          { id: "Branch 03", title: "Enterprise Risk View", probability: 0.58, status: "passed", distance: 0.42, citations: 2,
+            summary: "Frames the result through enterprise adoption, compliance, auditability, and data governance.",
+            detail: "Status: PASSED\nGate: domain framing accepted\nConstitutional distance: 0.42\nCitations: 2\nSignature: demo_hmac_branch_03\n\nUseful for business-facing summaries." },
+          { id: "Branch 04", title: "Overclaim Path", probability: 0.18, status: "killed", distance: 0.91, citations: 0,
+            summary: "Rejected because it overstates certainty and lacks evidence support.",
+            detail: "Status: KILLED\nGate: overclaim risk\nConstitutional distance: 0.91\nCitations: 0\nKill record: signed_demo_kill_04\n\nPreserved for audit; excluded from the report." },
+        ],
+        receipt: {
+          token_id: "exo_" + Math.random().toString(16).slice(2, 14),
+          workflow: wfLabel,
+          backend:  "local · llama3.2:3b",
+          signed_at: isoNow,
+          verified: true,
+          ledger:   "~/.axiom/exoskeleton-ledger.jsonl  (+1 entry)",
+        },
+        cost: { input_tokens: 412, output_tokens: 187, latency_ms: 1820 },
+      };
+    }
+
+    function renderResult(result) {
+      const passed = result.branches.filter((b) => b.status !== "killed").length;
+
+      els.reportBadge.textContent = "Signed result";
+      els.workflowMetric.textContent = result.workflowLabel;
+      els.domainMetric.textContent   = result.domainLabel;
+      els.probMetric.textContent     = Math.round(result.probabilityBand * 100) + "%";
+      els.distanceMetric.textContent = result.constitutionalDistance.toFixed(2);
+      els.healthMetric.textContent   = `${passed} / ${result.branches.length} passed`;
+
+      const r = result.report;
+      els.reportBody.innerHTML = `
+        <div class="report-section">
+          <h3>TL;DR</h3>
+          <p>${escapeHtml(r.tldr)}</p>
+        </div>
+        <div class="report-section">
+          <h3>Key Findings</h3>
+          <ul>${r.keyFindings.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>
+        </div>
+        <div class="report-section">
+          <h3>Open Questions</h3>
+          <ul>${r.openQuestions.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>
+        </div>
+      `;
+
+      els.sourcesCountBadge.textContent = `${result.sources.length} sources`;
+      els.citationsList.innerHTML = result.sources.map((s) => `
+        <li class="citation">
+          <div class="src-head">
+            <span class="src-title">${escapeHtml(s.title)}</span>
+            <span class="src-meta">${escapeHtml(s.kind)} · score ${(s.score).toFixed(2)}</span>
+          </div>
+          <div class="src-snippet">${escapeHtml(s.snippet)}</div>
+          <div class="src-meta" style="margin-top:6px;">${escapeHtml(s.uri)}</div>
+          <div class="score-bar"><i style="width:${Math.round(s.score * 100)}%"></i></div>
+        </li>`).join("");
+
+      els.branchResults.innerHTML = result.branches.map((branch, index) => {
+        const killed = branch.status === "killed";
+        const prob   = killed ? "Killed" : `${Math.round(branch.probability * 100)}%`;
+        return `
+          <article class="branch-card ${killed ? "killed" : ""}">
+            <div class="branch-top">
+              <div class="branch-title">
+                <strong>${escapeHtml(branch.id)} · ${escapeHtml(branch.title)}</strong>
+                <small>${escapeHtml(branch.status.toUpperCase())}</small>
+              </div>
+              <div class="prob ${killed ? "killed-text" : ""}">${prob}</div>
+            </div>
+            <p class="branch-summary">${escapeHtml(branch.summary)}</p>
+            <div class="branch-meta">
+              <span>distance ${branch.distance}</span>
+              <span>citations ${branch.citations}</span>
+              <span>status ${escapeHtml(branch.status)}</span>
+            </div>
+            <button class="branch-action" onclick="openBranchDetail(${index})">Open Branch</button>
+          </article>`;
+      }).join("");
+
+      const rec = result.receipt;
+      els.receiptBadge.textContent = rec.verified ? "verified" : "FAILED";
+      els.receipt.innerHTML = `
+        <div class="row"><strong>token_id</strong>  <span class="key">${escapeHtml(rec.token_id)}</span></div>
+        <div class="row"><strong>workflow</strong>  <span>${escapeHtml(rec.workflow)}</span></div>
+        <div class="row"><strong>backend</strong>   <span>${escapeHtml(rec.backend)}</span></div>
+        <div class="row"><strong>signed_at</strong> <span>${escapeHtml(rec.signed_at)}</span></div>
+        <div class="row"><strong>verified</strong>  <span class="${rec.verified ? "ok" : ""}">${rec.verified ? "true ✓" : "false"}</span></div>
+        <div class="row"><strong>ledger</strong>    <span>${escapeHtml(rec.ledger)}</span></div>
+      `;
+      els.inTokMetric.textContent   = result.cost.input_tokens;
+      els.outTokMetric.textContent  = result.cost.output_tokens;
+      els.latencyMetric.textContent = result.cost.latency_ms + " ms";
+
+      window.__branches = result.branches;
+    }
+
+    function openBranchDetail(index) {
+      const branch = window.__branches[index];
+      if (!branch) return;
+      els.detailTitle.textContent = `${branch.id} · ${branch.title}`;
+      els.detailBody.textContent  = branch.detail;
+      els.detailPanel.classList.add("open");
+      els.detailPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    // Seed demo on first load.
+    els.input.value = "How does AXIOM reduce enterprise LLM risk for regulated industries?";
+    runResearchOnUi();
+  </script>
+</body>
+</html>
