@@ -39,7 +39,7 @@ from typing import Any, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 
@@ -49,6 +49,16 @@ logging.basicConfig(level=logging.INFO,
 
 REPO_ROOT  = Path(__file__).resolve().parent
 HTML_PATH  = REPO_ROOT / "web" / "research_console.html"
+LEDGER_HTML_PATH = REPO_ROOT / "web" / "ledger_viewer.html"
+
+# UI domain → QRFEngine domain. QRF supports five; "general" stays stubbed.
+_DOMAIN_TO_QRF = {
+    "medical":      "medical",
+    "finance":      "financial",
+    "security":     "security",
+    "hr":           "hr",
+    "supply_chain": "supply_chain",
+}
 
 # Workflow names not in the exoskeleton pack — these get a default
 # "general research" path that uses the customer_discovery delegate
@@ -88,6 +98,8 @@ class _ServerState:
         self.ledger_path    = None      # Path
         self.backend_label  = "unknown"
         self.pack_origin    = "(unbuilt)"
+        self.retriever      = None      # LocalRetriever
+        self._qrf_cache     = {}        # domain → QRFEngine
 
     def ensure(self) -> None:
         if self.exo is not None:
@@ -95,6 +107,7 @@ class _ServerState:
         from axiom_event_token.backends import default_backend
         from axiom_exoskeleton import ExoskeletonAgent
         from axiom_exoskeleton_ledger import LedgerWriter, default_ledger_path
+        from axiom_research_retriever import default_retriever
 
         ledger_path = Path(os.environ.get(
             "AXIOM_EXOSKELETON_LEDGER",
@@ -109,8 +122,23 @@ class _ServerState:
         self.ledger_path    = ledger_path
         self.backend_label  = f"{backend.name} · {backend.model}"
         self.pack_origin    = "default-pack (built in tempdir on first request)"
+        self.retriever      = default_retriever()
         LOG.info("research server ready: backend=%s ledger=%s",
                  self.backend_label, ledger_path)
+
+    def qrf_for(self, domain: str):
+        """Return a cached QRFEngine for `domain`, or None if unsupported."""
+        qrf_domain = _DOMAIN_TO_QRF.get(domain)
+        if qrf_domain is None:
+            return None
+        if qrf_domain not in self._qrf_cache:
+            from axiom_qrf import QRFEngine
+            from axiom_signing import derive_key
+            self._qrf_cache[qrf_domain] = QRFEngine(
+                domain=qrf_domain,
+                hmac_key=derive_key(b"axiom-research-qrf-v1"),
+            )
+        return self._qrf_cache[qrf_domain]
 
 
 _state = _ServerState()
@@ -220,45 +248,111 @@ def _short_tldr(text: str, *, max_chars: int = 320) -> str:
     return first[:max_chars]
 
 
-def _stub_sources(query: str, domain: str) -> List[dict]:
-    """Deterministic source stubs derived from the query, so the page is
-    populated without a real retriever. CLEARLY labeled as stubs in the
-    response so callers don't mistake them for live retrieval."""
-    base = [
+def _retrieve_sources(query: str, domain: str, *, k: int = 5) -> tuple[list[dict], bool]:
+    """Run the live LocalRetriever. Returns (sources, is_real).
+
+    Falls back to a single STUB entry only if the retriever is missing
+    or returns no hits — keeping the UI populated so the user can see
+    what happened.
+    """
+    if _state.retriever is None:
+        return _fallback_source_stubs(query, domain), False
+    try:
+        hits = _state.retriever.retrieve(query, k=k)
+    except Exception as e:
+        LOG.warning("retriever raised: %s", e)
+        hits = []
+    if not hits:
+        return _fallback_source_stubs(query, domain), False
+    return [h.to_dict() for h in hits], True
+
+
+def _fallback_source_stubs(query: str, domain: str) -> list[dict]:
+    return [
         {
-            "title":   "AXIOM event-token primary spec",
-            "uri":     "docs/training/event-token-spec.md",
-            "kind":    "internal-doc · STUB",
-            "score":   0.92,
-            "snippet": "Selective activation runs ONLY the agents a query "
-                       "needs; null layers are first-class.",
-        },
-        {
-            "title":   "ORVL-016 Provisional Patent",
-            "uri":     "patents/ORVL016_AXM.pdf",
-            "kind":    "patent-pdf · STUB",
-            "score":   0.88,
-            "snippet": "Per-layer + coordinator + outer HMAC signatures "
-                       "provide composition integrity end-to-end.",
-        },
-        {
-            "title":   f"Domain reference: {_DOMAIN_LABELS.get(domain, domain)}",
-            "uri":     f"external/{domain}-reference-2026.html",
-            "kind":    "external-web · STUB",
-            "score":   0.71,
-            "snippet": f"Reference material for the {domain} domain. "
-                       f"Retrieval is stubbed in this build — wire a real "
-                       f"retriever to replace this entry.",
-        },
-        {
-            "title":   "Query echo (debug)",
-            "uri":     "internal/debug-echo",
-            "kind":    "debug · STUB",
-            "score":   0.42,
-            "snippet": f'You asked: "{query[:140]}"',
+            "title":   f"No local matches · {_DOMAIN_LABELS.get(domain, domain)}",
+            "uri":     "internal/no-retrieval-hit",
+            "kind":    "stub · no-hit",
+            "score":   0.0,
+            "snippet": f'Retriever found no matches for "{query[:140]}". '
+                        f"Add more docs under ./docs or wire a remote "
+                        f"retriever to populate this column.",
         },
     ]
-    return base
+
+
+def _qrf_branches(query: str, domain: str, *, workflow_label: str) -> tuple[dict, bool]:
+    """Real QRF for supported domains; stub for unsupported ('general')."""
+    engine = _state.qrf_for(domain)
+    if engine is None:
+        return _stub_branches(query, domain, top_conf=0.74), False
+    prompt = f"[{workflow_label}] {query}"
+    try:
+        result = engine.forecast(prompt)
+    except Exception as e:
+        LOG.warning("QRF.forecast raised: %s", e)
+        return _stub_branches(query, domain, top_conf=0.55), False
+
+    live = [b for b in result.branches if b.get("score", 0.0) > 0.0]
+    branches: list[dict] = []
+    for idx, b in enumerate(result.branches):
+        score = float(b.get("score", 0.0))
+        prob  = float(b.get("probability_weight", 0.0))
+        metrics = b.get("metrics") or {}
+        # Constitutional distance proxy: 1 - safety (clipped).
+        safety = float(metrics.get("safety", 1.0))
+        distance = round(max(0.0, min(1.0, 1.0 - safety)), 2)
+        is_killed = score == 0.0
+        if is_killed:
+            status = "killed"
+        elif idx == 0:
+            status = "passed"
+        elif idx == 1 and len(live) > 1:
+            status = "rival"
+        else:
+            status = "passed"
+        response_text = (b.get("response") or "").strip()
+        summary = (response_text[:240] + "…") if len(response_text) > 240 else response_text
+        detail_lines = [
+            f"Status: {status.upper()}",
+            f"QRF branch: {b.get('branch', '?')}",
+            f"Score: {score}",
+            f"Probability weight: {prob}",
+            f"Metrics: {metrics}",
+            f"Constitutional distance (1 - safety): {distance}",
+            f"Signature: {result.hmac_signature[:16]}…",
+            "",
+            response_text,
+        ]
+        branches.append({
+            "id":           f"Branch {idx + 1:02d}",
+            "title":        b.get("branch", f"Branch {idx + 1}"),
+            "probability":  round(prob, 4),
+            "status":       status,
+            "distance":     distance,
+            "citations":    0,
+            "summary":      summary or "(no response)",
+            "detail":       "\n".join(detail_lines),
+        })
+    passed = sum(1 for b in branches if b["status"] != "killed")
+    return {
+        "probability_band":       _band_to_float(result.probability_band, live),
+        "constitutional_distance": round(
+            sum(b["distance"] for b in branches) / max(1, len(branches)), 2),
+        "branch_health":           f"{passed} / {len(branches)} passed",
+        "branches":                branches,
+        "_qrf_signature":          result.hmac_signature,
+        "_qrf_top_branch":         result.top_branch,
+        "_qrf_band":               result.probability_band,
+    }, True
+
+
+def _band_to_float(band: str, live: list) -> float:
+    """Convert QRF's symbolic band into a 0..1 float for the UI metric."""
+    if live:
+        return round(float(live[0].get("probability_weight", 0.0)), 4)
+    return {"HIGH": 0.55, "MODERATE": 0.40,
+            "LOW":  0.20, "UNCERTAIN": 0.10}.get(band, 0.0)
 
 
 def _stub_branches(query: str, domain: str, top_conf: float) -> dict:
@@ -365,6 +459,24 @@ async def research(req: ResearchRequest):
                    f"{sorted(exo.use_cases())}",
         )
 
+    return _run_research(req, delegate_name)
+
+
+def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
+    """Shared research pipeline used by both /api/research and the
+    SSE endpoint. Always synchronous; SSE just emits stage events
+    around the same call."""
+    exo = _state.exo
+
+    # Stage 1: retrieve
+    sources, retrieval_real = _retrieve_sources(req.query, req.domain)
+
+    # Stage 2: QRF branch reasoning (real for supported domains)
+    workflow_label = _WORKFLOW_LABELS.get(req.workflow, req.workflow)
+    qrf, qrf_real = _qrf_branches(req.query, req.domain,
+                                   workflow_label=workflow_label)
+
+    # Stage 3: synthesize via the exoskeleton delegate
     t0 = time.monotonic()
     try:
         token = exo.invoke(delegate_name, req.query)
@@ -383,13 +495,10 @@ async def research(req: ResearchRequest):
     findings = _split_into_findings(output_text)
     tldr = _short_tldr(output_text)
 
-    qrf = _stub_branches(req.query, req.domain,
-                          top_conf=0.74 if p.get("output_tokens", 0) > 0 else 0.55)
-
     return {
         "query":          req.query,
         "workflow":       req.workflow,
-        "workflowLabel":  _WORKFLOW_LABELS.get(req.workflow, req.workflow),
+        "workflowLabel":  workflow_label,
         "domain":         req.domain,
         "domainLabel":    _DOMAIN_LABELS.get(req.domain, req.domain),
 
@@ -400,7 +509,7 @@ async def research(req: ResearchRequest):
             ],
             "openQuestions": [
                 "Is the chosen workflow the right one for this query?",
-                "Should retrieval be wired to real sources (currently stubbed)?",
+                "Is your retrieval corpus broad enough to support this question?",
             ],
             "raw_output":    output_text,
         },
@@ -409,18 +518,19 @@ async def research(req: ResearchRequest):
         "constitutionalDistance":  qrf["constitutional_distance"],
         "branchHealth":            qrf["branch_health"],
 
-        "sources":  _stub_sources(req.query, req.domain),
+        "sources":  sources,
         "branches": qrf["branches"],
 
         "receipt": {
             "token_id":  token.id,
-            "workflow":  _WORKFLOW_LABELS.get(req.workflow, req.workflow),
+            "workflow":  workflow_label,
             "backend":   f"{p.get('backend', '?')} · {p.get('model', '?')}",
             "signed_at": (token.created_at or "").rstrip("Z") + "Z"
                           if token.created_at else "",
             "verified":  bool(token.verify()),
             "ledger":    str(_state.ledger_path) + "  (+1 entry)"
                           if _state.ledger_path else "(none)",
+            "qrf_signature": qrf.get("_qrf_signature", "")[:24] if qrf_real else "",
         },
         "cost": {
             "input_tokens":  int(p.get("input_tokens", 0)),
@@ -430,12 +540,66 @@ async def research(req: ResearchRequest):
         "_meta": {
             "wall_clock_ms":           wall_ms,
             "delegate_invoked":        delegate_name,
-            "sources_are_stubbed":     True,
-            "branches_are_stubbed":    True,
+            "sources_are_stubbed":     not retrieval_real,
+            "branches_are_stubbed":    not qrf_real,
             "synthesis_is_real":       True,
+            "retriever_indexed_files": (_state.retriever.stats()["indexed_files"]
+                                          if _state.retriever else 0),
             "ledger_write":            "appended",
         },
     }
+
+
+@app.post("/api/research/stream")
+async def research_stream(req: ResearchRequest):
+    """Server-sent events variant of /api/research.
+
+    Emits per-stage `event:` lines so the UI can show real progress
+    (retrieve → branch → synthesize → done). The final `result` event
+    carries the same payload as the synchronous endpoint."""
+    _state.ensure()
+    exo = _state.exo
+    delegate_name = _WORKFLOW_ALIASES.get(req.workflow, req.workflow)
+    if delegate_name not in exo.use_cases():
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown workflow: {req.workflow}.",
+        )
+
+    def _sse(event: str, data: Any) -> bytes:
+        return (f"event: {event}\n"
+                f"data: {json.dumps(data, ensure_ascii=False)}\n\n").encode("utf-8")
+
+    def _generator():
+        try:
+            yield _sse("stage", {"name": "retrieve", "message": "Searching local index…"})
+            sources, retrieval_real = _retrieve_sources(req.query, req.domain)
+            yield _sse("partial", {"sources_count": len(sources),
+                                    "retrieval_real": retrieval_real})
+
+            yield _sse("stage", {"name": "branch", "message": "Running QRF branches…"})
+            workflow_label = _WORKFLOW_LABELS.get(req.workflow, req.workflow)
+            qrf, qrf_real = _qrf_branches(req.query, req.domain,
+                                           workflow_label=workflow_label)
+            yield _sse("partial", {"branch_count": len(qrf["branches"]),
+                                    "branches_real": qrf_real,
+                                    "probability_band": qrf["probability_band"]})
+
+            yield _sse("stage", {"name": "synthesize",
+                                  "message": f"Invoking {delegate_name}…"})
+            result = _run_research(req, delegate_name)
+            yield _sse("result", result)
+            yield _sse("done", {"ok": True})
+        except HTTPException as e:
+            yield _sse("error", {"status": e.status_code, "detail": e.detail})
+        except Exception as e:
+            LOG.exception("stream pipeline failed")
+            yield _sse("error", {"status": 500, "detail": str(e)})
+
+    return StreamingResponse(_generator(),
+                              media_type="text/event-stream",
+                              headers={"Cache-Control": "no-cache",
+                                        "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/ledger")
@@ -448,6 +612,14 @@ async def ledger(limit: int = 20):
         "count":       len(entries),
         "entries":     [e.to_dict() for e in entries],
     }
+
+
+@app.get("/ledger")
+async def ledger_viewer():
+    if not LEDGER_HTML_PATH.exists():
+        raise HTTPException(status_code=500,
+                             detail=f"missing {LEDGER_HTML_PATH}")
+    return FileResponse(LEDGER_HTML_PATH, media_type="text/html")
 
 
 # ── Entry point ─────────────────────────────────────────────────────────

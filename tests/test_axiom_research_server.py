@@ -117,12 +117,13 @@ def test_research_returns_full_shape(server_env, monkeypatch):
     # Cost surfaces the canned token counts from the stub backend.
     assert d["cost"]["input_tokens"]  == 88
     assert d["cost"]["output_tokens"] == 42
-    # Sources + branches arrive as lists (stubs).
-    assert len(d["sources"])  >= 3
+    # Sources + branches arrive as lists.
+    assert len(d["sources"])  >= 1
     assert len(d["branches"]) == 4
     # Meta confirms what's real vs stubbed.
-    assert d["_meta"]["synthesis_is_real"]    is True
-    assert d["_meta"]["sources_are_stubbed"]  is True
+    assert d["_meta"]["synthesis_is_real"] is True
+    # Retriever is wired live — real for a query that hits any repo doc,
+    # stub only when nothing matches. Branches stay stubbed for "general".
     assert d["_meta"]["branches_are_stubbed"] is True
 
 
@@ -238,3 +239,140 @@ def test_use_cases_endpoint_lists_workflows(server_env, monkeypatch):
     assert "customer_discovery" in d["real_delegates"]
     assert "general_research" in d["aliases"]
     assert "general_research" in d["all_workflows"]
+
+
+# ─── Real retriever wiring ──────────────────────────────────────────────
+
+
+def test_research_uses_real_retriever(server_env, monkeypatch):
+    """Real retriever should return non-stub sources from the repo's docs."""
+    client, _ = _client(monkeypatch)
+    r = client.post("/api/research", json={
+        "query":    "event token coordinator signing layer",
+        "domain":   "general",
+        "workflow": "general_research",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["_meta"]["sources_are_stubbed"] is False
+    assert d["_meta"]["retriever_indexed_files"] > 0
+    # No source should have "STUB" in its kind once the retriever fired.
+    assert not any("STUB" in s["kind"] for s in d["sources"])
+    # Top source should reference something in docs / README.
+    assert d["sources"]
+    assert d["sources"][0]["score"] == 1.0
+
+
+def test_research_retriever_no_hit_falls_back_to_stub(server_env, monkeypatch,
+                                                       tmp_path, monkeypatch_retriever=None):
+    """Nonsense query against an empty retriever index → no-hit stub."""
+    client, rs = _client(monkeypatch)
+    # Force the server to use a retriever pointed at an empty tmpdir so
+    # nothing matches regardless of what nonsense we pass in.
+    rs._state.ensure()
+    from axiom_research_retriever import LocalRetriever
+    empty = tmp_path / "empty-corpus"
+    empty.mkdir()
+    rs._state.retriever = LocalRetriever(roots=[empty])
+
+    r = client.post("/api/research", json={
+        "query":    "any query at all",
+        "domain":   "general",
+        "workflow": "general_research",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["_meta"]["sources_are_stubbed"] is True
+    assert any("no-hit" in s["kind"].lower() or "stub" in s["kind"].lower()
+               for s in d["sources"])
+
+
+# ─── Real QRF wiring ────────────────────────────────────────────────────
+
+
+def test_research_real_qrf_for_supported_domain(server_env, monkeypatch):
+    """A supported domain (finance) fires real QRF, not the stub."""
+    client, _ = _client(monkeypatch)
+    r = client.post("/api/research", json={
+        "query":    "How does AXIOM reduce LLM risk for banks?",
+        "domain":   "finance",        # → "financial" in QRF
+        "workflow": "competitive_analysis",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["_meta"]["branches_are_stubbed"] is False
+    # Real QRF returns 6 branches for the financial domain.
+    assert len(d["branches"]) == 6
+    # The receipt should carry a non-empty QRF signature prefix.
+    assert d["receipt"]["qrf_signature"]
+    # Every branch should have a probability + status.
+    for b in d["branches"]:
+        assert "probability" in b
+        assert b["status"] in ("passed", "rival", "killed")
+
+
+def test_research_general_domain_keeps_qrf_stub(server_env, monkeypatch):
+    """`general` domain is unsupported by QRF → stub branches remain."""
+    client, _ = _client(monkeypatch)
+    r = client.post("/api/research", json={
+        "query":    "anything",
+        "domain":   "general",
+        "workflow": "general_research",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["_meta"]["branches_are_stubbed"] is True
+    # Stub QRF receipt has empty qrf_signature.
+    assert d["receipt"]["qrf_signature"] == ""
+
+
+# ─── SSE streaming ──────────────────────────────────────────────────────
+
+
+def test_research_stream_emits_stages_then_result(server_env, monkeypatch):
+    client, _ = _client(monkeypatch)
+    with client.stream("POST", "/api/research/stream", json={
+        "query":    "Compare AXIOM against Guardrails AI",
+        "domain":   "general",
+        "workflow": "competitive_analysis",
+    }) as resp:
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        body = resp.read().decode("utf-8")
+
+    # Should contain at least one of each named event.
+    assert "event: stage" in body
+    assert "event: partial" in body
+    assert "event: result" in body
+    assert "event: done" in body
+
+    # Pull out the result event's data line.
+    blocks = [blk for blk in body.split("\n\n")
+              if "event: result" in blk]
+    assert blocks, "no result event found in stream"
+    data_line = [l for l in blocks[0].splitlines()
+                 if l.startswith("data:")][0]
+    payload = json.loads(data_line[5:].strip())
+    assert payload["receipt"]["verified"] is True
+    assert payload["_meta"]["synthesis_is_real"] is True
+
+
+def test_research_stream_unknown_workflow_returns_400(server_env, monkeypatch):
+    client, _ = _client(monkeypatch)
+    r = client.post("/api/research/stream", json={
+        "query": "x", "domain": "general", "workflow": "no_such_workflow",
+    })
+    assert r.status_code == 400
+
+
+# ─── Ledger viewer route ────────────────────────────────────────────────
+
+
+def test_ledger_viewer_html_served(server_env, monkeypatch):
+    client, _ = _client(monkeypatch)
+    r = client.get("/ledger")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "AXIOM Exoskeleton Ledger" in r.text
+    # And the viewer must reference the JSON API it consumes.
+    assert "/api/ledger" in r.text

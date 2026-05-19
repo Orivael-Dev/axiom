@@ -453,7 +453,24 @@ NIM smoke test (`scripts/exoskeleton_nim_smoketest.py`): one-shot runner that fi
 
 Web prototype (`web/research_console.html`): single-file HTML for the AXIOM Re:Search Engine — a retrieve → QRF → synthesize → sign workspace. Switch synthesizer via the **Workflow** picker (maps to exoskeleton delegates) and bound retrieval via the **Domain** picker. Page detects whether it's served live or opened as `file://` and falls back to mock data with a clear banner when no API is reachable.
 
-Live HTTP server (`axiom_research_server`): wires the HTML to a real ExoskeletonAgent + signed ledger. Routes: `GET /` (HTML), `GET /api/health`, `GET /api/use-cases`, `POST /api/research` (real delegate invocation, real signed EventToken, real ledger write), `GET /api/ledger?limit=N`. Start with `bash scripts/serve_research_console.sh` (or `python3 -m axiom_research_server`) — defaults to `127.0.0.1:8765`, picks `LocalNanoBackend` against Ollama unless `AXIOM_BACKEND=nim` + `NVIDIA_NIM_API_KEY` are set. Bearer auth activates when `AXIOM_RESEARCH_TOKEN` is set; CORS off by default. Retrieval + QRF branches are stubbed for now (marked `STUB` in the response) so the page is responsive without a retriever or live LatentEngine — the synthesis call IS real.
+Live HTTP server (`axiom_research_server`): wires the HTML to a real ExoskeletonAgent + signed ledger. Routes: `GET /` (research HTML), `GET /ledger` (ledger viewer HTML), `GET /api/health`, `GET /api/use-cases`, `POST /api/research` (synchronous), `POST /api/research/stream` (Server-Sent Events with per-stage progress), `GET /api/ledger?limit=N`. Start with `bash scripts/serve_research_console.sh` (or `python3 -m axiom_research_server`) — defaults to `127.0.0.1:8765`, picks `LocalNanoBackend` against Ollama unless `AXIOM_BACKEND=nim` + `NVIDIA_NIM_API_KEY` are set. Bearer auth activates when `AXIOM_RESEARCH_TOKEN` is set; CORS off by default.
+
+Live pipeline status (what's real vs stubbed in `/api/research`):
+
+| Surface | Status | Notes |
+|---|---|---|
+| Delegate synthesis | **Live** | Real `ExoskeletonAgent.invoke()`; tokens, latency, output all from the configured backend. |
+| EventToken signing + verification | **Live** | HMAC-SHA256 under `axiom-event-token-*` namespaces. |
+| Ledger append | **Live** | JSONL line signed under `axiom-exoskeleton-ledger-v1` per request. |
+| Retrieved sources | **Live** | `axiom_research_retriever.LocalRetriever` — pure-Python BM25 over `docs/`, `README.md`, `patents/` (markdown only). Falls back to a no-hit stub only when nothing matches. |
+| QRF reasoning branches | **Live for `medical / finance / security / hr / supply_chain`** | Wires `QRFEngine.forecast()` (offline; uses `LatentEngine` heuristics, signed under `axiom-research-qrf-v1`). The `general` domain still uses a stub since QRF doesn't define it. |
+| `_meta` field on the response | — | Lists `sources_are_stubbed`, `branches_are_stubbed`, `synthesis_is_real`, `retriever_indexed_files`, `ledger_write` so callers always know what was real on a given run. |
+
+Local retriever (`axiom_research_retriever`): pure-Python BM25 over `.md`, `.txt`, `.py`, `.rst` files under chosen roots. Module-level `default_retriever()` indexes the repo's `docs/`, `README.md`, and `patents/` directories. Returns `RetrievedSource` records with `title`, `uri`, `kind`, `score` (normalized to top hit = 1.0), and a `snippet` centred on the first strong term hit. Skips `__pycache__`, `.git`, `build`, `dist`, etc.
+
+Ledger viewer (`web/ledger_viewer.html`): sortable + filterable table over `GET /api/ledger`. Live banner reports if any entry failed verification — that's the tamper-detection surface for the JSONL ledger. Available at `GET /ledger` when the research server is running.
+
+Streaming endpoint (`POST /api/research/stream`): Server-Sent Events. Emits `event: stage` for retrieve / branch / synthesize, `event: partial` with intermediate stats (source count, branch count, real-vs-stub flags), `event: result` with the full JSON payload, and `event: done` at the end. The research console HTML uses this by default for visible stage progression, falling back to `/api/research` if streaming fails.
 
 Live demo (pure Python + PIL, no numpy / cv2 / GPU):
 

@@ -669,7 +669,7 @@
         <span class="nav-pill active">Research</span>
         <span class="nav-pill">Reasoning Paths</span>
         <span class="nav-pill">Sources</span>
-        <span class="nav-pill">Ledger</span>
+        <a class="nav-pill" href="/ledger" style="text-decoration:none;">Ledger →</a>
       </nav>
     </header>
 
@@ -932,14 +932,21 @@
           '<p class="answer-text" style="color: var(--warning);">Enter a research question first. The engine needs a target before it can retrieve + branch.</p>';
         return;
       }
-      els.reportBody.innerHTML = '<p class="answer-text" style="color: var(--muted);">Retrieving sources · running QRF branches · synthesizing report…</p>';
+      els.reportBody.innerHTML = '<p class="answer-text" style="color: var(--muted);">Preparing pipeline…</p>';
       els.citationsList.innerHTML = "";
       els.branchResults.innerHTML = "";
       els.detailPanel.classList.remove("open");
 
-      let result;
-      let mode = "mock";
       if (API_BASE) {
+        // Streaming path — best for visible progress + better troubleshooting.
+        try {
+          await streamResearch(query);
+          return;
+        } catch (err) {
+          // Fall through to sync below.
+          els.reportBody.innerHTML =
+            `<p class="answer-text" style="color: var(--warning);">Stream call failed (${escapeHtml(String(err.message || err))}). Retrying via synchronous endpoint.</p>`;
+        }
         try {
           const resp = await fetch(API_BASE + "/api/research", {
             method:  "POST",
@@ -950,19 +957,82 @@
             const detail = await resp.text();
             throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 200)}`);
           }
-          result = await resp.json();
-          mode = "live";
+          renderResult(await resp.json(), "live");
+          return;
         } catch (err) {
           els.reportBody.innerHTML =
             `<p class="answer-text" style="color: var(--warning);">Live API call failed (${escapeHtml(String(err.message || err))}). Falling back to demo mock data.</p>`;
-          await new Promise(r => setTimeout(r, 600));
-          result = runResearch(query, activeDomain, activeWorkflow);
-          mode = "mock-fallback";
+          await new Promise(r => setTimeout(r, 500));
         }
-      } else {
-        result = runResearch(query, activeDomain, activeWorkflow);
       }
-      renderResult(result, mode);
+      renderResult(runResearch(query, activeDomain, activeWorkflow), "mock");
+    }
+
+    async function streamResearch(query) {
+      const resp = await fetch(API_BASE + "/api/research/stream", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+        body:    JSON.stringify({ query, domain: activeDomain, workflow: activeWorkflow }),
+      });
+      if (!resp.ok || !resp.body) {
+        const txt = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${txt.slice(0, 200)}`);
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const stageBox = document.createElement("p");
+      stageBox.className = "answer-text";
+      stageBox.style.color = "var(--muted)";
+      stageBox.innerHTML = '<span style="color: var(--accent);">●</span> initializing…';
+      els.reportBody.innerHTML = "";
+      els.reportBody.appendChild(stageBox);
+      let finalResult = null;
+      let lastError = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+        for (const block of events) {
+          const lines = block.split("\n");
+          let evt = "message", data = "";
+          for (const line of lines) {
+            if (line.startsWith("event:")) evt = line.slice(6).trim();
+            else if (line.startsWith("data:")) data = line.slice(5).trim();
+          }
+          let payload = {};
+          try { payload = data ? JSON.parse(data) : {}; } catch (e) { /* ignore */ }
+          if (evt === "stage") {
+            stageBox.innerHTML = `<span style="color: var(--accent);">●</span> ${escapeHtml(payload.message || payload.name)}`;
+          } else if (evt === "partial") {
+            const summary = [];
+            if (payload.sources_count !== undefined)
+              summary.push(`${payload.sources_count} sources (${payload.retrieval_real ? "real" : "stub"})`);
+            if (payload.branch_count !== undefined)
+              summary.push(`${payload.branch_count} branches (${payload.branches_real ? "real QRF" : "stub"})`);
+            if (summary.length) {
+              const note = document.createElement("div");
+              note.style.color = "var(--muted)";
+              note.style.fontSize = "12px";
+              note.style.marginTop = "4px";
+              note.innerHTML = "↳ " + escapeHtml(summary.join(" · "));
+              stageBox.appendChild(note);
+            }
+          } else if (evt === "result") {
+            finalResult = payload;
+          } else if (evt === "error") {
+            lastError = `${payload.status || "ERR"}: ${payload.detail || "unknown"}`;
+          } else if (evt === "done") {
+            // pipeline complete
+          }
+        }
+      }
+      if (lastError) throw new Error(lastError);
+      if (!finalResult) throw new Error("stream ended with no result event");
+      renderResult(finalResult, "live");
     }
 
     function runResearch(query, domain, workflow) {
