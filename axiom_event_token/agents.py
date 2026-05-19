@@ -148,8 +148,8 @@ class VideoAgent(Agent):
         # Real-detector mode
         try:
             from axiom_video import (
-                ImpactDetector, MotionClassifier, ObjectTracker,
-                TemporalChainExtractor,
+                ColorWatcher, ImpactDetector, MotionClassifier,
+                ObjectTracker, TemporalChainExtractor, TimeKeeper,
             )
         except ImportError:
             return LayerReport.signed(
@@ -164,6 +164,8 @@ class VideoAgent(Agent):
             motions = MotionClassifier().classify(tracks)
             impacts = ImpactDetector().detect(tracks, motions)
             chain = TemporalChainExtractor().extract(tracks, motions, impacts)
+            timing = TimeKeeper().analyze(chain)
+            colors = ColorWatcher().watch(scene_graph)
         except Exception as e:
             return LayerReport.signed(
                 agent=self.agent_name,
@@ -172,7 +174,7 @@ class VideoAgent(Agent):
                 confidence=0.0,
             )
 
-        # Surface a compact summary alongside the four sub-reports
+        # Surface a compact summary alongside the six sub-reports
         # so downstream consumers can read the headline without
         # walking the full payload.
         payload = {
@@ -183,15 +185,23 @@ class VideoAgent(Agent):
                                                           "none"),
                 "n_impacts":        impacts.payload["n_events"],
                 "n_chain_events":   chain.payload["n_events"],
+                "rhythm_class":     timing.payload.get("rhythm_class",
+                                                        "insufficient"),
+                "scene_color":      colors.payload.get("scene_dominant_color",
+                                                        "none"),
+                "n_color_events":   colors.payload.get("n_color_events", 0),
             },
             "object_track_report":   tracks.to_dict(),
             "motion_report":         motions.to_dict(),
             "impact_report":         impacts.to_dict(),
             "temporal_chain_report": chain.to_dict(),
+            "time_keeper_report":    timing.to_dict(),
+            "color_report":          colors.to_dict(),
         }
-        # Roll up confidence — mean of the four sub-reports
+        # Roll up confidence — mean of the six sub-reports
         sub_confs = [tracks.confidence, motions.confidence,
-                     impacts.confidence, chain.confidence]
+                     impacts.confidence, chain.confidence,
+                     timing.confidence, colors.confidence]
         conf = sum(sub_confs) / len(sub_confs)
         return LayerReport.signed(
             agent=self.agent_name, payload=payload,

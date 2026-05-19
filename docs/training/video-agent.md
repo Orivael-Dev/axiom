@@ -10,7 +10,7 @@
 ## What it is
 
 ```
-scene_graph (objects, bboxes, frame_index)
+scene_graph (objects, bboxes, frame_index, [extras.color])
          │
          ▼
   [1] ObjectTracker          axiom-video-objects-v1
@@ -29,6 +29,20 @@ scene_graph (objects, bboxes, frame_index)
   [4] TemporalChainExtractor axiom-video-temporal-v1
                               appear → motion_start → contact →
                               motion_change → disappear
+
+  ─── parallel sensory layers (do not require [3]/[4] output) ───
+
+  [5] TimeKeeper             axiom-video-timekeeper-v1
+                              consumes [4]'s event stream;
+                              rhythm score, silence detection,
+                              burst detection — parallels
+                              axiom_audio.tempo but over events
+         │
+  [6] ColorWatcher           axiom-video-color-v1
+                              consumes scene_graph directly via
+                              Object.extras['color']; HSV
+                              partitioning → 18 color labels +
+                              shift events
 ```
 
 Each agent emits a signed `*Report` that the EventToken
@@ -41,13 +55,16 @@ Same architecture as audio Phase A (material / voice / VAD / tempo).
 
 | Piece | Phase A | Deferred |
 |---|:---:|:---:|
-| 4 detector agents, each signed | ✅ | |
+| 4 core detector agents, each signed | ✅ | |
+| **TimeKeeper** — rhythm + silence + burst over event stream | ✅ | |
+| **ColorWatcher** — HSV partitioning + shift events | ✅ | |
 | 14 synthetic reference scenes | ✅ | |
 | Acceptance gates (motion / impact / signatures) | ✅ 100/100/100 | |
-| EventToken integration (`VideoAgent` real mode) | ✅ | |
+| EventToken integration (`VideoAgent` 6 sub-reports + summary) | ✅ | |
 | Back-compat with legacy stub-shape inputs | ✅ | |
-| 25 hermetic tests | ✅ | |
+| 51 hermetic tests (25 detector + 26 time/color) | ✅ | |
 | Raw-frame ingestion (frames → scene graph) | | Phase B |
+| Pixel-sampling color ingester (frames → extras['color']) | | Phase B |
 | Object-class fine-tuning / vision model | | n/a — customer brings |
 | Fracture-pattern classifier (`radial_scatter` etc.) | | Phase B |
 | Live-camera streaming demo | | Phase B |
@@ -188,21 +205,88 @@ detector carries stable IDs (e.g. `"cup-A"`), AXIOM passes them
 through. If IDs are placeholder numerics (`"0"`, `"1"`), AXIOM
 re-matches by IoU + label equality.
 
-### Signing chain — 4 namespaces
+### Signing chain — 6 namespaces
 
 Each detector signs under its own namespace, derived from
 `AXIOM_MASTER_KEY`:
 
 ```
 AXIOM_MASTER_KEY
-       ├── derive_key("axiom-video-objects-v1")  → ObjectTrackReport
-       ├── derive_key("axiom-video-motion-v1")   → MotionReport
-       ├── derive_key("axiom-video-impact-v1")   → ImpactReport
-       └── derive_key("axiom-video-temporal-v1") → TemporalChainReport
+       ├── derive_key("axiom-video-objects-v1")     → ObjectTrackReport
+       ├── derive_key("axiom-video-motion-v1")      → MotionReport
+       ├── derive_key("axiom-video-impact-v1")      → ImpactReport
+       ├── derive_key("axiom-video-temporal-v1")    → TemporalChainReport
+       ├── derive_key("axiom-video-timekeeper-v1")  → TimeKeeperReport
+       └── derive_key("axiom-video-color-v1")       → ColorReport
 ```
 
 Tamper to any one report breaks only its own signature — the others
 still verify. Granular failure surface, granular trust.
+
+### TimeKeeper — rhythm analysis over the event stream
+
+Conceptually parallel to `axiom_audio.tempo` (which finds BPM in
+waveform envelopes), but applied to event streams. Algorithm is
+tiny + pure-Python:
+
+1. Sort events by time.
+2. Compute inter-event intervals overall + per event-type.
+3. **Rhythm score** = `1 - (std / mean)` clamped to [0, 1]. Perfectly
+   periodic → 1.0; random → near 0.
+4. **Silence**: any interval > `silence_threshold_s` (default 1.0s).
+5. **Burst**: sliding window of `burst_window_s` (default 0.5s)
+   containing ≥ `burst_min_events` (default 3).
+
+Discretized into a `rhythm_class` field for downstream readability:
+
+| Score | Class |
+|---|---|
+| ≥ 0.85 | `regular` |
+| ≥ 0.60 | `semi_regular` |
+| ≥ 0.30 | `irregular` |
+| < 0.30 | `chaotic` |
+| `n_events < 2` | `insufficient` |
+
+Use cases:
+- **Kid-AI:** does the toy's interaction cadence look natural or
+  is the model spamming? `rhythm_class == "regular"` on contact
+  events is fine; `"chaotic"` may indicate a bug.
+- **Dashcam:** are deceleration events clustered or evenly spread?
+  Burst detection flags potential crash sequences.
+- **Smart-home:** doorbell-press events with refractory period —
+  anything inside the burst window is spoof.
+- **Sports:** regular foot-strike rhythm at 180 bpm = healthy gait.
+
+### ColorWatcher — color as a point in HSV space
+
+Per your framing: colors ARE just numbers in space. We partition
+the HSV cylinder:
+
+- **Hue** (angular, 0-360°) → 6 named regions:
+  red (330-30°), orange (30-90°), green (90-150°), cyan (150-210°),
+  blue (210-270°), magenta (270-330°)
+- **Saturation + Value** layered for modifiers:
+  - `S < 0.15` → `gray` / `black` / `white` (override hue)
+  - `V < 0.20` → `dark_<hue>` prefix
+  - `V > 0.80` + `S < 0.50` → `pale_<hue>` prefix
+
+Total ≈ 18 distinct labels — enough to be useful, few enough to be
+deterministic across test fixtures.
+
+Input contract: scene-graph-agnostic. Customer's upstream object
+detector populates `Object.extras["color"]` with a `(r, g, b)`
+tuple in 0-255. AXIOM consumes that tuple. Pixel-sampling
+ingester is Phase B.
+
+**Color-shift events** fire whenever consecutive per-frame labels
+for the same track differ. Useful for:
+- Traffic-light transitions (green → orange → red)
+- Brake-light state changes
+- Blush detection (face track shifts pale_red → red)
+- Bruise/wound detection (pale → dark_red)
+
+Stable tracks (no shifts) have `stable=True` in the per-track
+record — surface this to skip noise events in downstream UIs.
 
 ### Confidence rolls up — VideoAgent's payload
 
