@@ -445,6 +445,8 @@ Each output is combined into a multimodal evidence graph through the `axiom_even
 
 **Modular SLM delegates (per-event token thrift):** `Coordinator.compose_from_delegates(...)` adds an LLM-backed path. The non-LLM `IntentClassifier` routes each event to a small set of AXM `SkillDelegate`s (each with its own scoped `system_prompt.txt` and `prompt_budget`), and only the matching delegates fire. Backends are pluggable — `LocalNanoBackend` (Ollama on a Jetson Orin Nano or any host) and `NIMBackend` (NVIDIA NIM API, OpenAI-compatible) ship today, with a `ChainedBackend` for local-first / NIM-fallback. The result is a signed `EventToken` carrying per-delegate token counts so cost is dashboardable. End-to-end demo: `examples/event_token_modular_demo.py`. Benchmark: `benchmarks/token_savings_modular_vs_monolith.py` (target: ≥5× fewer tokens per event vs a monolithic kitchen-sink agent).
 
+**Company exoskeleton agent (`axiom_exoskeleton`):** explicit-invocation orchestrator built on top of the modular delegate runtime. Nine founder-workflow delegates ship today — `investor_research`, `enterprise_targeting`, `outreach_personalization`, `demo_scripts`, `sales_objection_handling`, `competitive_analysis`, `grant_application`, `patent_counsel_packet`, `customer_discovery` — each with a scoped system prompt and a tight prompt/output budget. Every run returns a signed `EventToken` so the founder gets an audit trail. CLI: `python3 -m axiom_exoskeleton <use_case> --input "..." [--backend local|nim] [--save-token path.json]`. List use cases with `--list`. Pack defined in `examples/exoskeleton_pack.py`.
+
 Live demo (pure Python + PIL, no numpy / cv2 / GPU):
 
 ```bash
