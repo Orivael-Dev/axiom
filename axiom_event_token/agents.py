@@ -148,8 +148,9 @@ class VideoAgent(Agent):
         # Real-detector mode
         try:
             from axiom_video import (
-                ColorWatcher, ImpactDetector, MotionClassifier,
-                ObjectTracker, TemporalChainExtractor, TimeKeeper,
+                ColorWatcher, DepthClassifier, ImpactDetector,
+                MotionClassifier, ObjectTracker, SurfaceClassifier,
+                TemporalChainExtractor, TimeKeeper,
             )
         except ImportError:
             return LayerReport.signed(
@@ -166,6 +167,8 @@ class VideoAgent(Agent):
             chain = TemporalChainExtractor().extract(tracks, motions, impacts)
             timing = TimeKeeper().analyze(chain)
             colors = ColorWatcher().watch(scene_graph)
+            depths = DepthClassifier().classify(scene_graph, tracks)
+            surfaces = SurfaceClassifier().classify(scene_graph, tracks)
         except Exception as e:
             return LayerReport.signed(
                 agent=self.agent_name,
@@ -174,7 +177,7 @@ class VideoAgent(Agent):
                 confidence=0.0,
             )
 
-        # Surface a compact summary alongside the six sub-reports
+        # Surface a compact summary alongside the eight sub-reports
         # so downstream consumers can read the headline without
         # walking the full payload.
         payload = {
@@ -190,6 +193,11 @@ class VideoAgent(Agent):
                 "scene_color":      colors.payload.get("scene_dominant_color",
                                                         "none"),
                 "n_color_events":   colors.payload.get("n_color_events", 0),
+                "depth_source":     depths.payload.get("source", "none"),
+                "n_depth_events":   depths.payload.get("n_events", 0),
+                "scene_unstable":   surfaces.payload.get("scene_unstable",
+                                                          False),
+                "n_tip_events":     surfaces.payload.get("n_events", 0),
             },
             "object_track_report":   tracks.to_dict(),
             "motion_report":         motions.to_dict(),
@@ -197,11 +205,14 @@ class VideoAgent(Agent):
             "temporal_chain_report": chain.to_dict(),
             "time_keeper_report":    timing.to_dict(),
             "color_report":          colors.to_dict(),
+            "depth_report":          depths.to_dict(),
+            "surface_report":        surfaces.to_dict(),
         }
-        # Roll up confidence — mean of the six sub-reports
+        # Roll up confidence — mean of the eight sub-reports
         sub_confs = [tracks.confidence, motions.confidence,
                      impacts.confidence, chain.confidence,
-                     timing.confidence, colors.confidence]
+                     timing.confidence, colors.confidence,
+                     depths.confidence, surfaces.confidence]
         conf = sum(sub_confs) / len(sub_confs)
         return LayerReport.signed(
             agent=self.agent_name, payload=payload,

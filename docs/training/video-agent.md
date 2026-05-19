@@ -43,6 +43,18 @@ scene_graph (objects, bboxes, frame_index, [extras.color])
                               Object.extras['color']; HSV
                               partitioning → 18 color labels +
                               shift events
+         │
+  [7] DepthClassifier        axiom-video-depth-v1
+                              extras['depth'] OR bbox-area
+                              fallback; near/mid/far + approach/
+                              recede/occlusion events + frame
+                              ordering
+         │
+  [8] SurfaceClassifier      axiom-video-surface-v1
+                              extras['orientation'] OR aspect-
+                              ratio fallback; upright/tilted/
+                              inverted/flat + tip events +
+                              stability score
 ```
 
 Each agent emits a signed `*Report` that the EventToken
@@ -53,21 +65,24 @@ Same architecture as audio Phase A (material / voice / VAD / tempo).
 
 ## Phase A scope — what we shipped vs deferred
 
-| Piece | Phase A | Phase B | Deferred |
-|---|:---:|:---:|:---:|
-| 4 core detector agents, each signed | ✅ | | |
-| **TimeKeeper** — rhythm + silence + burst over event stream | ✅ | | |
-| **ColorWatcher** — HSV partitioning + shift events | ✅ | | |
-| 14 synthetic reference scenes | ✅ | | |
-| Acceptance gates (motion / impact / signatures) | ✅ 100/100/100 | | |
-| EventToken integration (`VideoAgent` 6 sub-reports + summary) | ✅ | | |
-| Back-compat with legacy stub-shape inputs | ✅ | | |
-| 68 hermetic tests (25 detector + 26 time/color + 17 ingest) | ✅ | | |
-| **Raw-frame ingestion** (frames → SceneGraph + color sampling) | | ✅ | |
-| **Live demo** (frames → ingester → 6 detectors → signed token) | | ✅ | |
-| Fracture-pattern classifier (`radial_scatter` etc.) | | | Phase C |
-| Live-camera streaming windowed pipeline | | | Phase C |
-| Object-class fine-tuning / vision model | | | n/a — customer brings |
+| Piece | Phase A | Phase B | Phase C | Deferred |
+|---|:---:|:---:|:---:|:---:|
+| 4 core detector agents, each signed | ✅ | | | |
+| **TimeKeeper** — rhythm + silence + burst over event stream | ✅ | | | |
+| **ColorWatcher** — HSV partitioning + shift events | ✅ | | | |
+| 14 synthetic reference scenes | ✅ | | | |
+| Acceptance gates (motion / impact / signatures) | ✅ 100/100/100 | | | |
+| EventToken integration (`VideoAgent` 8 sub-reports + summary) | ✅ | ✅ | ✅ | |
+| Back-compat with legacy stub-shape inputs | ✅ | | | |
+| 93 hermetic tests (25 detector + 26 time/color + 17 ingest + 25 depth/surface) | ✅ | ✅ | ✅ | |
+| **Raw-frame ingestion** (frames → SceneGraph + color sampling) | | ✅ | | |
+| **Live demo** (frames → ingester → 8 detectors → signed token) | | ✅ | ✅ | |
+| **DepthClassifier** — near/mid/far + approach/recede + occlusion | | | ✅ | |
+| **SurfaceClassifier** — upright/tilted/inverted/flat + tip events | | | ✅ | |
+| Fracture-pattern classifier (`radial_scatter` etc.) | | | | Phase D |
+| Live-camera streaming windowed pipeline | | | | Phase D |
+| PhysicsAgent / Causality — wires depth + surface + impact through plausibility rules | | | | Phase D |
+| Object-class fine-tuning / vision model | | | | n/a — customer brings |
 
 ## Who it's for
 
@@ -257,7 +272,7 @@ detector carries stable IDs (e.g. `"cup-A"`), AXIOM passes them
 through. If IDs are placeholder numerics (`"0"`, `"1"`), AXIOM
 re-matches by IoU + label equality.
 
-### Signing chain — 6 namespaces
+### Signing chain — 8 namespaces
 
 Each detector signs under its own namespace, derived from
 `AXIOM_MASTER_KEY`:
@@ -269,7 +284,9 @@ AXIOM_MASTER_KEY
        ├── derive_key("axiom-video-impact-v1")      → ImpactReport
        ├── derive_key("axiom-video-temporal-v1")    → TemporalChainReport
        ├── derive_key("axiom-video-timekeeper-v1")  → TimeKeeperReport
-       └── derive_key("axiom-video-color-v1")       → ColorReport
+       ├── derive_key("axiom-video-color-v1")       → ColorReport
+       ├── derive_key("axiom-video-depth-v1")       → DepthReport
+       └── derive_key("axiom-video-surface-v1")     → SurfaceReport
 ```
 
 Tamper to any one report breaks only its own signature — the others
@@ -339,6 +356,103 @@ for the same track differ. Useful for:
 
 Stable tracks (no shifts) have `stable=True` in the per-track
 record — surface this to skip noise events in downstream UIs.
+
+### DepthClassifier — front-to-back ordering
+
+Once depth is a number per object, classification is partitioning the
+depth axis. We use a 3-bucket partition:
+
+- `near`: depth ≥ 0.66
+- `mid`:  0.33 ≤ depth < 0.66
+- `far`:  depth < 0.33
+
+Where `depth` is normalized to [0, 1] with **1 = closest to camera,
+0 = infinity**. Customers with absolute depth (RGBD camera, LIDAR,
+stereo) divide by their max-range to normalize.
+
+Input contract (same scene-graph-agnostic philosophy): customer's
+upstream detector populates `Object.extras["depth"]` with a float.
+If missing, AXIOM falls back to **bbox-area as depth proxy** —
+relative within the clip, with a `source="bbox_area"` flag in the
+report and confidence pinned to 0.5 to flag the estimate.
+
+Three event types fire:
+
+| Event | Trigger |
+|---|---|
+| **approach** | per-frame Δdepth > +0.10 |
+| **recede**   | per-frame Δdepth < -0.10 |
+| **occlusion** | two tracks' bboxes overlap (IoU ≥ 0.10) AND depth gap ≥ 0.15 — the deeper track gets the event with `occluded_by` pointing at the front one |
+
+Plus a per-frame `frame_ordering` list of track IDs sorted
+front-to-back. Useful for "who's in front" queries without
+walking the raw depth values.
+
+Use cases:
+- **Kid-toy:** "child reaches toward toy" — toy depth fixed, hand
+  depth increases (approach events fire on hand)
+- **Dashcam:** collision warning — vehicle approach events
+  clustered in a burst → imminent collision
+- **Smart-home:** visitor-at-door vs visitor-distant via the
+  depth_class field
+- **Sports analytics:** per-frame ordering = line of defense
+
+### SurfaceClassifier — orientation + tip events + stability
+
+Pairs with DepthClassifier and feeds the eventual PhysicsAgent.
+Where DepthClassifier asks "where in z is this object?", Surface
+asks "how is this object oriented in space, and how stable is
+that orientation?"
+
+Four orientation classes:
+
+| Class | Angle from upright |
+|---|---|
+| `upright`  | abs(angle) < 20° |
+| `tilted`   | 20° ≤ abs(angle) < 60° or 90° < abs(angle) ≤ 120° |
+| `flat`     | 60° ≤ abs(angle) ≤ 90° |
+| `inverted` | abs(angle) > 120° |
+
+Input contract:
+
+- Scalar form: `extras["orientation"] = 45.0` (degrees from upright,
+  signed)
+- Tuple form: `extras["orientation"] = (pitch, roll, yaw)` —
+  Phase A uses only roll (in-plane tilt); pitch/yaw feed downstream
+  into the future Causality / Physics agent
+- **Aspect-ratio fallback** when no orientation is supplied: the
+  track's first observation defines an aspect-ratio baseline; later
+  frames whose ratio diverges by ≥ 40% emit tip events. Honest
+  fallback — `source="aspect_ratio"` + confidence 0.5.
+
+Tip events fire whenever the orientation class transitions:
+
+| Transition | Event name |
+|---|---|
+| upright → tilted | `tip_to_tilted` |
+| any → inverted   | `tip_to_inverted` |
+| any → flat       | `tip_to_flat` |
+| any → upright    | `right_self` |
+
+Plus a per-track **stability_score** in [0, 1] — fraction of
+non-transitions across the track's lifetime. A cup that stays
+upright the whole clip has score 1.0; one that wobbles between
+upright and tilted every frame trends toward 0.
+
+Scene-level `scene_unstable` flag fires when ≥ 2 tracks land in
+`tilted` / `flat` / `inverted` simultaneously — a heuristic for
+"something interesting is happening" that downstream Causality
+can use as an attention signal.
+
+Use cases:
+- **Kid-toy:** "cup tilt → pour" — the concept doc's flagship
+  sequence. Surface watches for the tip event; Causality chains
+  tilt + downward-motion + impact = "spill"
+- **Dashcam:** vehicle rollover detection (sustained orientation
+  > 90°)
+- **Smart-home:** glass dropping (rapid tilt + downward motion)
+- **Healthcare:** patient posture monitoring (upright → leaning →
+  flat = fall)
 
 ### Confidence rolls up — VideoAgent's payload
 

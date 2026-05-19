@@ -77,14 +77,30 @@ def build_demo_clip(n_frames: int = 30, w: int = 120, h: int = 120):
                 img.putpixel((x, y), (215, 35, 35))
 
         frames.append(img)
+        # Staged depth so DepthClassifier emits visible approach events:
+        # cup is "held" at far-depth for the first chunk, accelerates
+        # toward the camera mid-fall (3 frames of big jumps), then
+        # parks near the camera once on the floor. Tips ~45° after the
+        # impact frame so SurfaceClassifier gets a tip event to chain
+        # through Causality.
+        if i < 10:
+            cup_depth = 0.20
+        elif i < 16:
+            cup_depth = 0.20 + (i - 10) * 0.13      # 0.20 → 0.98
+        else:
+            cup_depth = 0.90
+        cup_tilt = 0 if cup_y < (85 - cup_h) else 45
         script.append([
             DetectedObject(label="cup", id="cup",
                            bbox=(cup_x1 / w, cup_y / h,
                                   cup_x2 / w, cup_y2 / h),
-                           confidence=0.95),
+                           confidence=0.95,
+                           extras={"depth": cup_depth,
+                                   "orientation": cup_tilt}),
             DetectedObject(label="floor", id="floor",
                            bbox=(0.0, floor_y_start_norm, 1.0, 1.0),
-                           confidence=0.99),
+                           confidence=0.99,
+                           extras={"depth": 0.10, "orientation": 0}),
         ])
 
     return frames, script
@@ -144,6 +160,10 @@ def main(argv: list[str]) -> int:
     print(f"  rhythm class:      {s['rhythm_class']}")
     print(f"  scene color:       {s['scene_color']}")
     print(f"  color events:      {s['n_color_events']}")
+    print(f"  depth source:      {s.get('depth_source', '-')}")
+    print(f"  depth events:      {s.get('n_depth_events', 0)}")
+    print(f"  scene unstable:    {s.get('scene_unstable', False)}")
+    print(f"  tip events:        {s.get('n_tip_events', 0)}")
 
     print()
     print("── Per-track motion ────────────────────────────────")
@@ -179,7 +199,33 @@ def main(argv: list[str]) -> int:
         print(f"  t={e['t']:>5.2f}s  {e['type']:<14} [{subs}]{mot}")
 
     print()
-    print("── HMAC signatures (6 namespaces) ──────────────────")
+    print("── Depth ───────────────────────────────────────────")
+    for t in p_video["depth_report"]["payload"]["tracks"]:
+        print(f"  {t['id']:<10} {t['label']:<10} {t['depth_class']:<6} "
+              f"mean={t['depth_mean']:.2f}  range={t['depth_range']:.2f}  "
+              f"source={t['source']}")
+    depth_events = p_video["depth_report"]["payload"].get("events", [])
+    if not depth_events:
+        print("  (no depth events — all motion within change threshold)")
+    for e in depth_events[:8]:
+        extra = f" by {e['occluded_by']}" if e.get("occluded_by") else ""
+        print(f"  frame {e['frame_index']:3d}  "
+              f"{e['event_type']:<12} {e['track_id']:<8} "
+              f"mag={e['magnitude']:.2f}{extra}")
+
+    print()
+    print("── Surface (orientation) ───────────────────────────")
+    for t in p_video["surface_report"]["payload"]["tracks"]:
+        print(f"  {t['id']:<10} {t['label']:<10} {t['orientation_class']:<10} "
+              f"stability={t['stability_score']:.2f}  "
+              f"source={t['source']}")
+    tip_events = p_video["surface_report"]["payload"].get("events", [])
+    for e in tip_events:
+        print(f"  frame {e['frame_index']:3d}  {e['event_type']:<16}  "
+              f"{e['from']} -> {e['to']}  (angle={e['angle']}°)")
+
+    print()
+    print("── HMAC signatures (8 namespaces) ──────────────────")
     for key, ns in [
         ("object_track_report",   "axiom-video-objects-v1"),
         ("motion_report",         "axiom-video-motion-v1"),
@@ -187,6 +233,8 @@ def main(argv: list[str]) -> int:
         ("temporal_chain_report", "axiom-video-temporal-v1"),
         ("time_keeper_report",    "axiom-video-timekeeper-v1"),
         ("color_report",          "axiom-video-color-v1"),
+        ("depth_report",          "axiom-video-depth-v1"),
+        ("surface_report",        "axiom-video-surface-v1"),
     ]:
         sig = p_video[key]["signature"]
         print(f"  {ns:<32}  {sig[:16]}...{sig[-16:]}")

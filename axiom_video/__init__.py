@@ -41,6 +41,7 @@ detector; AXIOM provides the audit + composition layer.
 from __future__ import annotations
 
 from .color_watcher import ColorReport, ColorWatcher, classify_color
+from .depth import DepthClassifier, DepthReport
 from .impact import ImpactDetector, ImpactReport
 from .ingest import (
     DetectedObject, FrameIngester, ObjectDetectorProtocol,
@@ -49,12 +50,15 @@ from .ingest import (
 from .motion import MotionClassifier, MotionReport
 from .object_tracker import ObjectTracker, ObjectTrackReport
 from .scene import Object, Scene, SceneGraph
+from .surface import SurfaceClassifier, SurfaceReport
 from .temporal_chain import TemporalChainExtractor, TemporalChainReport
 from .time_keeper import TimeKeeper, TimeKeeperReport
 
 __all__ = [
     "ColorReport",
     "ColorWatcher",
+    "DepthClassifier",
+    "DepthReport",
     "DetectedObject",
     "FrameIngester",
     "ImpactDetector",
@@ -68,6 +72,8 @@ __all__ = [
     "Scene",
     "SceneGraph",
     "ScriptedObjectDetector",
+    "SurfaceClassifier",
+    "SurfaceReport",
     "TemporalChainExtractor",
     "TemporalChainReport",
     "TimeKeeper",

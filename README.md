@@ -427,7 +427,7 @@ ORVL-024. Extends AXIOM beyond text, agents, memory, and physical intelligence i
 
 **Audio becomes groove geometry** — depth, width, curve, texture, rhythm, pitch motion, spatial spread. Shipping under `axiom_audio/`: material/event classifier, voice fingerprint, voice-activity detection, tempo + cadence. Each agent signs under its own HMAC namespace (`axiom-audio-v1`, `axiom-voice-v1`, `axiom-vad-v1`, `axiom-tempo-v1`).
 
-**Video becomes temporal topology** — tracked objects, motion paths, contact + deceleration events, event chains, color regions, event-stream rhythm. Shipping under `axiom_video/`: ObjectTracker, MotionClassifier, ImpactDetector, TemporalChainExtractor, TimeKeeper, ColorWatcher. Six dedicated HMAC namespaces (`axiom-video-objects-v1`, `axiom-video-motion-v1`, `axiom-video-impact-v1`, `axiom-video-temporal-v1`, `axiom-video-timekeeper-v1`, `axiom-video-color-v1`). Phase B `FrameIngester` adapter accepts any frame source (PIL Image, numpy ndarray, nested-list pixels) + any upstream detector via `ObjectDetectorProtocol` — customer plugs in YOLOv8 / Detectron / OpenCV in ~10 lines.
+**Video becomes temporal topology** — tracked objects, motion paths, contact + deceleration events, event chains, color regions, event-stream rhythm, front-to-back depth ordering, orientation + tip events. Shipping under `axiom_video/`: ObjectTracker, MotionClassifier, ImpactDetector, TemporalChainExtractor, TimeKeeper, ColorWatcher, DepthClassifier, SurfaceClassifier. Eight dedicated HMAC namespaces (`axiom-video-objects-v1`, `axiom-video-motion-v1`, `axiom-video-impact-v1`, `axiom-video-temporal-v1`, `axiom-video-timekeeper-v1`, `axiom-video-color-v1`, `axiom-video-depth-v1`, `axiom-video-surface-v1`). Phase B `FrameIngester` adapter accepts any frame source (PIL Image, numpy ndarray, nested-list pixels) + any upstream detector via `ObjectDetectorProtocol` — customer plugs in YOLOv8 / Detectron / OpenCV in ~10 lines.
 
 **Specialist micro-agents** named in the concept and their current mapping:
 
@@ -437,9 +437,9 @@ ORVL-024. Extends AXIOM beyond text, agents, memory, and physical intelligence i
 | Object Agent | `axiom_video.ObjectTracker` |
 | Motion Agent | `axiom_video.MotionClassifier` |
 | Event Agent | `axiom_video.TemporalChainExtractor` |
-| Causality Agent | `axiom_event_token.PhysicsAgent` (stub today; Phase C wires the impact + motion outputs through `_PHYSICS_RULES` for plausibility) |
-| Depth Agent | runway (Phase C) |
-| Surface Agent | runway (Phase C — feeds into Causality) |
+| Depth Agent | `axiom_video.DepthClassifier` (near/mid/far + approach/recede + occlusion + frame ordering; extras['depth'] or bbox-area fallback) |
+| Surface Agent | `axiom_video.SurfaceClassifier` (upright/tilted/inverted/flat + tip events + stability; extras['orientation'] or aspect-ratio fallback) |
+| Causality Agent | `axiom_event_token.PhysicsAgent` (stub today; Phase C wires depth + surface + impact + motion outputs through `_PHYSICS_RULES` for plausibility) |
 
 Each output is combined into a multimodal evidence graph through the `axiom_event_token.Coordinator`, which selectively activates only the agents a given query needs — text + audio + video + physics + governance compose into one signed `EventToken`. Same selective-activation patent claim applied to sensory inputs.
 
@@ -452,7 +452,7 @@ python3 scripts/video_live_demo.py
 
 Output: a procedurally-rendered "red cup falls on blue floor" clip → `FrameIngester` → all 6 video agents → signed `EventToken` with summary, motion classifications, impact event at frame 20 (cup decelerates at floor), sampled colors (`red` for the cup, `blue` for the floor), and 6 HMAC signatures.
 
-**Test coverage:** 121 sensory tests (53 audio + 68 video). All gates pass: motion accuracy 14/14, impact detection 14/14, signature verification 14/14 on the synthetic harness. See `docs/training/video-agent.md` + `docs/training/audio-agent-vs-llm.md` for the differentiator framing (composition with VLM/Whisper, not substitution).
+**Test coverage:** 146 sensory tests (53 audio + 93 video). All gates pass: motion accuracy 14/14, impact detection 14/14, signature verification 14/14 on the synthetic harness; the 8-namespace HMAC chain verifies on the live demo's PIL→detectors path. See `docs/training/video-agent.md` + `docs/training/audio-agent-vs-llm.md` for the differentiator framing (composition with VLM/Whisper, not substitution).
 
 ---
 
@@ -602,7 +602,7 @@ python axiom_retrospect.py \
 | ORVL-021 | Constitutional Zero-Day Discovery | ✓ Implemented |
 | ORVL-022 | Constitutional Physical Intelligence | ◐ Emulated v2.0 (`axiom_cpi.py` + `axiom_developmental_curriculum.py` + `axiom_motion_examiner.py` — four-layer developmental: toddler reflex / dad supervisor / mom curriculum / teacher examiner) |
 | ORVL-023 | Axiom eXchange Model (.AXM) | ◐ Emulated (`axiom_axm.py` + `axiom_training_to_axm.py` — modular execution-graph container, hybrid trust model, signed corpus compiler) |
-| ORVL-024 | Axiom Sensory Maps | ○ Concept / Prototype Candidate (`axiom_audio/` Phase A/B shipping — material / voice / VAD / tempo; `axiom_video/` Phase A+B shipping — object tracker / motion / impact / temporal chain / time keeper / color watcher; ingestion adapter for live frames; **121 sensory tests passing**) |
+| ORVL-024 | Axiom Sensory Maps | ◐ Emulated (`axiom_audio/` shipping — material / voice / VAD / tempo; `axiom_video/` shipping — object tracker / motion / impact / temporal chain / time keeper / color watcher / **depth classifier / surface classifier**; live frame ingester; **146 sensory tests passing**) |
 
 ---
 
@@ -639,11 +639,12 @@ The following components are visible in this repository but are covered by provi
 - Constitutional Zero-Day Discovery (VulnGuard) — ORVL-021
 - Axiom Sensory Maps — ORVL-024
   - Audio Groove Blocks (`axiom_audio/` — material / voice / VAD / tempo with namespaced HMAC chain)
-  - Video Topology Blocks (`axiom_video/` — object tracker / motion / impact / temporal chain / time keeper / color watcher with six namespaced HMAC chains)
+  - Video Topology Blocks (`axiom_video/` — object tracker / motion / impact / temporal chain / time keeper / color watcher / depth classifier / surface classifier with eight namespaced HMAC chains)
   - Sensory micro-agent routing through the event-token Coordinator with selective activation
   - Multimodal evidence graph construction
   - Compact sensory learning profiles (scene-graph + groove-geometry inputs to specialist agents)
   - Frame-ingestion adapter for live demos (`axiom_video.ingest.FrameIngester`)
+  - Depth + Surface fallback estimation from bbox geometry when no pose / RGBD data is supplied
 
 **Proprietary — Not in This Repository:**
 - Fine-tuned axiom-dev models (GGUF)
