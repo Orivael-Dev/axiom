@@ -35,6 +35,14 @@
   <footer>
     <span>© 2026 Axiom · {{ brand_domain }}</span>
     <span><a href="/help">Docs</a></span>
+    {% if beta_feedback_url %}
+      <span class="beta-badge">
+        <strong>Beta</strong> ·
+        <a href="{{ beta_feedback_url }}" target="_blank" rel="noopener">
+          feedback welcome
+        </a>
+      </span>
+    {% endif %}
   </footer>
 </body>
 </html>

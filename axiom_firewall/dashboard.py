@@ -93,6 +93,13 @@ if _IS_PROD:
             "`python3 -c 'import secrets; print(secrets.token_hex(32))'`."
         )
 
+# Beta-tester touchpoints. Set AXIOM_FIREWALL_BETA_FEEDBACK to a
+# mailto: or URL when running a beta; renders a footer link + a
+# welcome banner pointing at it. Leave blank to suppress (post-beta).
+BETA_FEEDBACK_URL = os.environ.get(
+    "AXIOM_FIREWALL_BETA_FEEDBACK", "",
+).strip()
+
 # CORS — locked down by default. Set AXIOM_FIREWALL_CORS_ORIGINS to a
 # comma-separated list of origins (or "*" to allow all). The signup /
 # dashboard pages are served same-origin, so this only matters for
@@ -270,6 +277,7 @@ def _ctx(request: Request, **extra) -> dict:
         "api_host": API_HOST,
         "tier_limits": TIER_RATE_LIMITS,
         "tier_prices": TIER_PRICE_USD,
+        "beta_feedback_url": BETA_FEEDBACK_URL,
         **extra,
     }
 
