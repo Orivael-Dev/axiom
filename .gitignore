@@ -62,6 +62,8 @@ axiom_agent_memory.jsonl
 axiom_sim_log.jsonl
 axiom_redact_log.jsonl
 crl_reward_log.jsonl
+axiom_dev_training.jsonl
+dev_agent_improvements.jsonl
 
 # Models — too large for GitHub
 *.gguf
