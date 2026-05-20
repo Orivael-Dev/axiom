@@ -133,16 +133,20 @@ with tab_prompt:
  with col1:
     run_btn = st.button("▶  Run AXIOM", type="primary", width='stretch')
 
- # ── Validate API key ─────────────────────────────────────────────────────────
- api_key = os.environ.get("NVIDIA_API_KEY", "")
- if not api_key or api_key == "your_nvidia_api_key_here":
-    st.error("NVIDIA_API_KEY not set. Edit `.env` with your key from https://build.nvidia.com")
-    st.stop()
-
  # ── Run ──────────────────────────────────────────────────────────────────────
  if run_btn:
     if not task.strip():
         st.warning("Please enter a task.")
+        st.stop()
+
+    # ── Validate API key (only when the user actually runs) ─────────────────
+    api_key = os.environ.get("NVIDIA_API_KEY", "")
+    if not api_key or api_key == "your_nvidia_api_key_here":
+        st.error(
+            "NVIDIA_API_KEY not set. Edit `.env` with your key "
+            "from https://build.nvidia.com — or use the 🦾 Exoskeleton / "
+            "🎙️ Audio / 🛠️ Dev Agent tabs which work locally."
+        )
         st.stop()
 
     # Override model env var for this run
@@ -574,176 +578,179 @@ with tab_growth:
 
     if not log_files:
         st.info("No evolution runs yet. Run a task first.")
-        st.stop()
+    else:
+        # NOTE: previously called st.stop() in the empty-logs branch,
+        # which halted the entire script — the playground tabs below
+        # never rendered. The rest of the dashboard now lives inside
+        # this else branch instead.
+        # Parse all entries
+        all_entries = []
+        for lf in log_files:
+            with open(lf) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                        entry["log_file"] = lf.stem
+                        all_entries.append(entry)
+                    except:
+                        pass
 
-    # Parse all entries
-    all_entries = []
-    for lf in log_files:
-        with open(lf) as f:
-            for line in f:
-                try:
-                    entry = json.loads(line)
-                    entry["log_file"] = lf.stem
-                    all_entries.append(entry)
-                except:
-                    pass
+        df = pd.DataFrame(all_entries)
+        df = df[df["agent_role"] == "worker"].copy()
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df = df.sort_values("timestamp")
+        df["run_label"] = df["run_id"] + " i" + df["iteration"].astype(str)
 
-    df = pd.DataFrame(all_entries)
-    df = df[df["agent_role"] == "worker"].copy()
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df = df.sort_values("timestamp")
-    df["run_label"] = df["run_id"] + " i" + df["iteration"].astype(str)
+        # ── Top metrics ───────────────────────────────────────────────────────────
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Runs", df["run_id"].nunique())
+        col2.metric("Total Iterations", len(df))
+        col3.metric("Best Score Ever", f"{df['score'].max():.1f}/10")
+        col4.metric("Avg Score", f"{df['score'].mean():.2f}/10")
 
-    # ── Top metrics ───────────────────────────────────────────────────────────
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Runs", df["run_id"].nunique())
-    col2.metric("Total Iterations", len(df))
-    col3.metric("Best Score Ever", f"{df['score'].max():.1f}/10")
-    col4.metric("Avg Score", f"{df['score'].mean():.2f}/10")
+        st.divider()
 
-    st.divider()
+        # ── Score trajectory across all runs ─────────────────────────────────────
+        st.markdown("#### Score Trajectory — All Runs")
 
-    # ── Score trajectory across all runs ─────────────────────────────────────
-    st.markdown("#### Score Trajectory — All Runs")
+        fig = go.Figure()
+        for run_id, group in df.groupby("run_id"):
+            group = group.sort_values("iteration")
+            fig.add_trace(go.Scatter(
+                x=list(range(len(group))),
+                y=group["score"].tolist(),
+                mode="lines+markers",
+                name=run_id,
+                line=dict(width=2),
+                marker=dict(size=8),
+                hovertemplate=f"Run: {run_id}<br>Iter: %{{x}}<br>Score: %{{y:.1f}}<extra></extra>"
+            ))
 
-    fig = go.Figure()
-    for run_id, group in df.groupby("run_id"):
-        group = group.sort_values("iteration")
-        fig.add_trace(go.Scatter(
-            x=list(range(len(group))),
-            y=group["score"].tolist(),
-            mode="lines+markers",
-            name=run_id,
-            line=dict(width=2),
-            marker=dict(size=8),
-            hovertemplate=f"Run: {run_id}<br>Iter: %{{x}}<br>Score: %{{y:.1f}}<extra></extra>"
-        ))
-
-    fig.add_hline(
-        y=threshold, line_dash="dash",
-        line_color="#f0c040",
-        annotation_text=f"Threshold ({threshold})",
-        annotation_position="right"
-    )
-    fig.update_layout(
-        plot_bgcolor="#0d0d0d",
-        paper_bgcolor="#0d0d0d",
-        font_color="#e0e0e0",
-        xaxis=dict(title="Iteration", gridcolor="#222"),
-        yaxis=dict(title="Score", gridcolor="#222", range=[0, 10]),
-        legend=dict(bgcolor="#1a1a1a", bordercolor="#333"),
-        height=400,
-    )
-    st.plotly_chart(fig, width='stretch')
-
-    # ── Score distribution ────────────────────────────────────────────────────
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        st.markdown("#### Score Distribution")
-        fig2 = go.Figure()
-        fig2.add_trace(go.Histogram(
-            x=df["score"].tolist(),
-            nbinsx=20,
-            marker_color="#7ab648",
-            opacity=0.8,
-            name="Scores"
-        ))
-        fig2.update_layout(
+        fig.add_hline(
+            y=threshold, line_dash="dash",
+            line_color="#f0c040",
+            annotation_text=f"Threshold ({threshold})",
+            annotation_position="right"
+        )
+        fig.update_layout(
             plot_bgcolor="#0d0d0d",
             paper_bgcolor="#0d0d0d",
             font_color="#e0e0e0",
-            xaxis=dict(title="Score", gridcolor="#222"),
-            yaxis=dict(title="Count", gridcolor="#222"),
-            height=300,
-            showlegend=False,
+            xaxis=dict(title="Iteration", gridcolor="#222"),
+            yaxis=dict(title="Score", gridcolor="#222", range=[0, 10]),
+            legend=dict(bgcolor="#1a1a1a", bordercolor="#333"),
+            height=400,
         )
-        st.plotly_chart(fig2, width='stretch')
+        st.plotly_chart(fig, width='stretch')
 
-    with col_b:
-        st.markdown("#### Avg Score Per Run")
-        run_avgs = df.groupby("run_id")["score"].mean().reset_index()
-        run_avgs.columns = ["run_id", "avg_score"]
-        run_avgs = run_avgs.sort_values("avg_score")
+        # ── Score distribution ────────────────────────────────────────────────────
+        col_a, col_b = st.columns(2)
 
-        fig3 = go.Figure()
-        fig3.add_trace(go.Bar(
-            x=run_avgs["avg_score"].tolist(),
-            y=run_avgs["run_id"].tolist(),
-            orientation="h",
-            marker_color="#5ab4f0",
-        ))
-        fig3.update_layout(
-            plot_bgcolor="#0d0d0d",
-            paper_bgcolor="#0d0d0d",
-            font_color="#e0e0e0",
-            xaxis=dict(title="Avg Score", gridcolor="#222", range=[0, 10]),
-            yaxis=dict(gridcolor="#222"),
-            height=300,
-            showlegend=False,
-        )
-        st.plotly_chart(fig3, width='stretch')
+        with col_a:
+            st.markdown("#### Score Distribution")
+            fig2 = go.Figure()
+            fig2.add_trace(go.Histogram(
+                x=df["score"].tolist(),
+                nbinsx=20,
+                marker_color="#7ab648",
+                opacity=0.8,
+                name="Scores"
+            ))
+            fig2.update_layout(
+                plot_bgcolor="#0d0d0d",
+                paper_bgcolor="#0d0d0d",
+                font_color="#e0e0e0",
+                xaxis=dict(title="Score", gridcolor="#222"),
+                yaxis=dict(title="Count", gridcolor="#222"),
+                height=300,
+                showlegend=False,
+            )
+            st.plotly_chart(fig2, width='stretch')
 
-    # ── Score improvement within runs ─────────────────────────────────────────
-    st.markdown("#### Score Improvement Within Runs")
-    improvements = []
-    for run_id, group in df.groupby("run_id"):
-        group = group.sort_values("iteration")
-        scores = group["score"].tolist()
-        if len(scores) > 1:
-            improvements.append({
-                "run_id": run_id,
-                "start_score": scores[0],
-                "end_score": scores[-1],
-                "delta": scores[-1] - scores[0],
-                "iterations": len(scores)
-            })
+        with col_b:
+            st.markdown("#### Avg Score Per Run")
+            run_avgs = df.groupby("run_id")["score"].mean().reset_index()
+            run_avgs.columns = ["run_id", "avg_score"]
+            run_avgs = run_avgs.sort_values("avg_score")
 
-    if improvements:
-        imp_df = pd.DataFrame(improvements).sort_values("delta", ascending=False)
-        fig4 = go.Figure()
-        fig4.add_trace(go.Bar(
-            x=imp_df["run_id"].tolist(),
-            y=imp_df["delta"].tolist(),
-            marker_color=[
-                "#7ab648" if d >= 0 else "#e05050"
-                for d in imp_df["delta"].tolist()
-            ],
-            name="Score Delta"
-        ))
-        fig4.update_layout(
-            plot_bgcolor="#0d0d0d",
-            paper_bgcolor="#0d0d0d",
-            font_color="#e0e0e0",
-            xaxis=dict(title="Run", gridcolor="#222"),
-            yaxis=dict(title="Score Change", gridcolor="#222"),
-            height=300,
-            showlegend=False,
-        )
-        st.plotly_chart(fig4, width='stretch')
+            fig3 = go.Figure()
+            fig3.add_trace(go.Bar(
+                x=run_avgs["avg_score"].tolist(),
+                y=run_avgs["run_id"].tolist(),
+                orientation="h",
+                marker_color="#5ab4f0",
+            ))
+            fig3.update_layout(
+                plot_bgcolor="#0d0d0d",
+                paper_bgcolor="#0d0d0d",
+                font_color="#e0e0e0",
+                xaxis=dict(title="Avg Score", gridcolor="#222", range=[0, 10]),
+                yaxis=dict(gridcolor="#222"),
+                height=300,
+                showlegend=False,
+            )
+            st.plotly_chart(fig3, width='stretch')
 
-    # ── worker.axiom version history ──────────────────────────────────────────
-    st.markdown("#### worker.axiom Version History")
-    axiom_path = Path("axiom_files/worker.axiom")
-    if axiom_path.exists():
-        with open(axiom_path) as f:
-            content = f.read()
-        st.code(content, language=None)
-        lines = content.split("\n")
-        constraints = [l for l in lines if l.startswith("CONSTRAINT")]
-        rules = [l for l in lines if l.startswith("-")]
-        col_x, col_y, col_z = st.columns(3)
-        col_x.metric("Current Version",
-            next((l.split()[-1] for l in lines if l.startswith("VERSION")), "?"))
-        col_y.metric("Constraints", len(constraints))
-        col_z.metric("Rules", len(rules))
+        # ── Score improvement within runs ─────────────────────────────────────────
+        st.markdown("#### Score Improvement Within Runs")
+        improvements = []
+        for run_id, group in df.groupby("run_id"):
+            group = group.sort_values("iteration")
+            scores = group["score"].tolist()
+            if len(scores) > 1:
+                improvements.append({
+                    "run_id": run_id,
+                    "start_score": scores[0],
+                    "end_score": scores[-1],
+                    "delta": scores[-1] - scores[0],
+                    "iterations": len(scores)
+                })
 
-    # ── Raw run data ──────────────────────────────────────────────────────────
-    with st.expander("Raw Run Data"):
-        st.dataframe(
-            df[["run_id", "iteration", "score", "timestamp"]].sort_values("timestamp"),
-            width='stretch'
-        )
+        if improvements:
+            imp_df = pd.DataFrame(improvements).sort_values("delta", ascending=False)
+            fig4 = go.Figure()
+            fig4.add_trace(go.Bar(
+                x=imp_df["run_id"].tolist(),
+                y=imp_df["delta"].tolist(),
+                marker_color=[
+                    "#7ab648" if d >= 0 else "#e05050"
+                    for d in imp_df["delta"].tolist()
+                ],
+                name="Score Delta"
+            ))
+            fig4.update_layout(
+                plot_bgcolor="#0d0d0d",
+                paper_bgcolor="#0d0d0d",
+                font_color="#e0e0e0",
+                xaxis=dict(title="Run", gridcolor="#222"),
+                yaxis=dict(title="Score Change", gridcolor="#222"),
+                height=300,
+                showlegend=False,
+            )
+            st.plotly_chart(fig4, width='stretch')
+
+        # ── worker.axiom version history ──────────────────────────────────────────
+        st.markdown("#### worker.axiom Version History")
+        axiom_path = Path("axiom_files/worker.axiom")
+        if axiom_path.exists():
+            with open(axiom_path) as f:
+                content = f.read()
+            st.code(content, language=None)
+            lines = content.split("\n")
+            constraints = [l for l in lines if l.startswith("CONSTRAINT")]
+            rules = [l for l in lines if l.startswith("-")]
+            col_x, col_y, col_z = st.columns(3)
+            col_x.metric("Current Version",
+                next((l.split()[-1] for l in lines if l.startswith("VERSION")), "?"))
+            col_y.metric("Constraints", len(constraints))
+            col_z.metric("Rules", len(rules))
+
+        # ── Raw run data ──────────────────────────────────────────────────────────
+        with st.expander("Raw Run Data"):
+            st.dataframe(
+                df[["run_id", "iteration", "score", "timestamp"]].sort_values("timestamp"),
+                width='stretch'
+            )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -901,13 +908,33 @@ with tab_exo:
             )
             backend_label = st.selectbox(
                 "Backend",
-                ["(default / env)", "local", "nim"],
+                ["local,nim (auto-fallback)",
+                 "local",
+                 "nim",
+                 "(default / env)"],
+                index=0,
                 key="pg-exo-backend",
                 help=(
-                    "Defers to AXIOM_BACKEND env var when '(default / "
-                    "env)'. Forces the backend otherwise."
+                    "'local,nim' tries Ollama first, falls back to "
+                    "NVIDIA NIM if local isn't reachable — safest "
+                    "default. 'local' / 'nim' force one or the other. "
+                    "'(default / env)' defers to AXIOM_BACKEND."
                 ),
             )
+            # Quick preflight: which backends look reachable?
+            be_status_parts: list[str] = []
+            if os.environ.get("OLLAMA_URL") or _PgPath(
+                "/usr/local/bin/ollama").exists() or _PgPath(
+                "/usr/bin/ollama").exists():
+                be_status_parts.append("✓ local (Ollama)")
+            else:
+                be_status_parts.append("? local (set OLLAMA_URL)")
+            if os.environ.get("NVIDIA_NIM_API_KEY") or \
+                    os.environ.get("NVIDIA_API_KEY"):
+                be_status_parts.append("✓ NIM key set")
+            else:
+                be_status_parts.append("✗ NIM key not set")
+            st.caption("  ·  ".join(be_status_parts))
             write_ledger = st.checkbox(
                 "Append to ledger",
                 value=False,
@@ -944,9 +971,18 @@ with tab_exo:
             disabled=not exo_input.strip(),
         ):
             # Apply backend override per click (don't persist).
+            # axiom_event_token.backends.default_backend understands
+            # AXIOM_BACKEND="local,nim" as a ChainedBackend that tries
+            # local first then NIM — the safer playground default.
             previous_backend = os.environ.get("AXIOM_BACKEND")
-            if backend_label != "(default / env)":
-                os.environ["AXIOM_BACKEND"] = backend_label
+            backend_env_value = None
+            if backend_label.startswith("local,nim"):
+                backend_env_value = "local,nim"
+            elif backend_label in ("local", "nim"):
+                backend_env_value = backend_label
+            # else: "(default / env)" — leave whatever the env says
+            if backend_env_value is not None:
+                os.environ["AXIOM_BACKEND"] = backend_env_value
             try:
                 ledger = None
                 if write_ledger:
@@ -972,7 +1008,7 @@ with tab_exo:
                 st.error(f"Run failed: {type(e).__name__}: {e}")
                 token = None
             finally:
-                if backend_label != "(default / env)":
+                if backend_env_value is not None:
                     if previous_backend is None:
                         os.environ.pop("AXIOM_BACKEND", None)
                     else:
