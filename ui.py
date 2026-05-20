@@ -98,11 +98,153 @@ with st.sidebar:
     temperature = st.slider("Worker Temperature", 0.1, 1.0, 0.7, 0.05)
 
     st.divider()
-    st.markdown("### 🔑 Model")
-    model = st.text_input(
-        "NVIDIA NIM Model",
-        value=os.environ.get("AXIOM_MODEL", "meta/llama-3.3-70b-instruct"),
+    st.markdown("### 🤖 LLM / SLM Backend")
+    # One picker drives BOTH:
+    #   axiom_event_token.backends.default_backend (Exoskeleton tab)
+    #   axiom_constitutional.client                (Prompt Evolution + DSL)
+    # by setting AXIOM_BACKEND / OLLAMA_* / NIM_* / AXIOM_API_KEY /
+    # AXIOM_BASE_URL each rerender. Save-to-.env makes the choice
+    # persist across sessions.
+
+    _BACKEND_OPTIONS = [
+        "local,nim (auto-fallback)",   # local first, NIM fallback
+        "local",                        # Ollama only
+        "nim",                          # NVIDIA NIM only
+        "nim,local (NIM-first fallback)",
+    ]
+    _backend_default = os.environ.get("AXIOM_BACKEND", "local,nim")
+    # Normalise the env value into one of the dropdown labels.
+    if _backend_default == "local,nim":
+        _backend_default = "local,nim (auto-fallback)"
+    elif _backend_default == "nim,local":
+        _backend_default = "nim,local (NIM-first fallback)"
+    elif _backend_default not in ("local", "nim"):
+        _backend_default = "local,nim (auto-fallback)"
+
+    backend_choice = st.selectbox(
+        "Backend",
+        _BACKEND_OPTIONS,
+        index=_BACKEND_OPTIONS.index(_backend_default),
+        key="sb-backend",
+        help=(
+            "All tabs use this. 'local' = Ollama at OLLAMA_URL. "
+            "'nim' = NVIDIA NIM. 'local,nim' tries local first and "
+            "falls back to NIM (safest if you sometimes have Ollama "
+            "running and sometimes don't)."
+        ),
     )
+    # Map dropdown label → AXIOM_BACKEND env value.
+    _backend_env = {
+        "local,nim (auto-fallback)":       "local,nim",
+        "nim,local (NIM-first fallback)":  "nim,local",
+        "local":                            "local",
+        "nim":                              "nim",
+    }[backend_choice]
+
+    local_model = st.text_input(
+        "Local (Ollama) model",
+        value=os.environ.get("OLLAMA_MODEL", "llama3.2:3b"),
+        key="sb-local-model",
+        help="Set OLLAMA_URL too if Ollama isn't on localhost:11434.",
+    )
+    nim_model = st.text_input(
+        "NIM model",
+        value=os.environ.get(
+            "NIM_MODEL",
+            os.environ.get("AXIOM_MODEL", "meta/llama-3.3-70b-instruct"),
+        ),
+        key="sb-nim-model",
+        help="Free tier list at https://build.nvidia.com",
+    )
+    ollama_url = st.text_input(
+        "OLLAMA_URL",
+        value=os.environ.get("OLLAMA_URL", "http://localhost:11434"),
+        key="sb-ollama-url",
+        help="Where Ollama serves. Leave default for local install.",
+    )
+
+    # The Prompt Evolution / DSL tabs use the chosen model under the
+    # legacy AXIOM_MODEL name — keep it in sync.
+    if _backend_env.startswith("local"):
+        _legacy_model = local_model
+    else:
+        _legacy_model = nim_model
+    # Compute base URL for OpenAI-compatible client (axiom_constitutional).
+    _legacy_base_url = (
+        f"{ollama_url.rstrip('/')}/v1"
+        if _backend_env.startswith("local")
+        else os.environ.get(
+            "NVIDIA_BASE_URL",
+            "https://integrate.api.nvidia.com/v1",
+        )
+    )
+    # The OpenAI client needs SOME non-empty key even for Ollama;
+    # use "ollama" as a sentinel for local mode.
+    _legacy_api_key = (
+        "ollama" if _backend_env.startswith("local")
+        else (
+            os.environ.get("AXIOM_API_KEY")
+            or os.environ.get("NVIDIA_API_KEY", "")
+        )
+    )
+
+    # Apply on every rerun so downstream modules see the choice.
+    os.environ["AXIOM_BACKEND"] = _backend_env
+    os.environ["OLLAMA_MODEL"]  = local_model
+    os.environ["OLLAMA_URL"]    = ollama_url
+    os.environ["NIM_MODEL"]     = nim_model
+    os.environ["AXIOM_MODEL"]   = _legacy_model
+    os.environ["AXIOM_BASE_URL"] = _legacy_base_url
+    if _legacy_api_key:
+        os.environ["AXIOM_API_KEY"] = _legacy_api_key
+
+    # Preflight: which backends look reachable?
+    _be_status: list[str] = []
+    if _backend_env.startswith("local") or "local" in _backend_env:
+        _be_status.append("✓ local target set")
+    if "nim" in _backend_env:
+        if os.environ.get("NVIDIA_NIM_API_KEY") or \
+                os.environ.get("NVIDIA_API_KEY"):
+            _be_status.append("✓ NIM key set")
+        else:
+            _be_status.append("✗ NIM key missing")
+    st.caption("  ·  ".join(_be_status))
+
+    # Save the chosen values to .env (creates the file if missing,
+    # preserves any unrelated keys already there).
+    if st.button("💾 Save to .env", key="sb-save-env",
+                  width="stretch",
+                  help="Writes AXIOM_BACKEND, OLLAMA_MODEL, "
+                       "OLLAMA_URL, NIM_MODEL, AXIOM_MODEL, "
+                       "AXIOM_BASE_URL into .env so the choice "
+                       "persists across sessions. Other keys in "
+                       ".env are left untouched."):
+        _env_path = Path(".env")
+        _managed = {
+            "AXIOM_BACKEND":  _backend_env,
+            "OLLAMA_MODEL":   local_model,
+            "OLLAMA_URL":     ollama_url,
+            "NIM_MODEL":      nim_model,
+            "AXIOM_MODEL":    _legacy_model,
+            "AXIOM_BASE_URL": _legacy_base_url,
+        }
+        existing: list[str] = []
+        if _env_path.exists():
+            existing = _env_path.read_text(encoding="utf-8").splitlines()
+        # Drop existing lines for managed keys; keep everything else.
+        kept = [
+            line for line in existing
+            if not any(line.lstrip().startswith(f"{k}=")
+                       for k in _managed)
+        ]
+        new_lines = kept + [f"{k}={v}" for k, v in _managed.items()]
+        _env_path.write_text("\n".join(new_lines) + "\n",
+                              encoding="utf-8")
+        st.success(f"Saved {len(_managed)} keys to {_env_path.resolve()}")
+
+    # Legacy alias so the Prompt Evolution + DSL tabs (which read
+    # `model` from this sidebar) keep working without rewriting.
+    model = _legacy_model
 
     st.divider()
     st.markdown("### 💡 Example Tasks")
@@ -139,15 +281,27 @@ with tab_prompt:
         st.warning("Please enter a task.")
         st.stop()
 
-    # ── Validate API key (only when the user actually runs) ─────────────────
-    api_key = os.environ.get("NVIDIA_API_KEY", "")
-    if not api_key or api_key == "your_nvidia_api_key_here":
-        st.error(
-            "NVIDIA_API_KEY not set. Edit `.env` with your key "
-            "from https://build.nvidia.com — or use the 🦾 Exoskeleton / "
-            "🎙️ Audio / 🛠️ Dev Agent tabs which work locally."
+    # ── Validate the picked backend has what it needs ───────────────────────
+    _be = os.environ.get("AXIOM_BACKEND", "")
+    if _be.startswith("local"):
+        # Local target: Ollama must be reachable. We don't ping here —
+        # the constitutional client will raise a clear error if not.
+        pass
+    else:
+        # NIM-first chains still need a NIM key to function.
+        _nim_key = (
+            os.environ.get("NVIDIA_NIM_API_KEY")
+            or os.environ.get("NVIDIA_API_KEY")
+            or os.environ.get("AXIOM_API_KEY")
         )
-        st.stop()
+        if not _nim_key or _nim_key == "your_nvidia_api_key_here":
+            st.error(
+                "NIM backend selected but no API key found. Either "
+                "set NVIDIA_NIM_API_KEY in `.env` (get one at "
+                "https://build.nvidia.com) or switch the sidebar "
+                "Backend to 'local' / 'local,nim'."
+            )
+            st.stop()
 
     # Override model env var for this run
     os.environ["AXIOM_MODEL"] = model
@@ -906,35 +1060,24 @@ with tab_exo:
                     if "outreach_personalization" in use_cases else 0,
                 key="pg-exo-usecase",
             )
+            _sidebar_backend = os.environ.get(
+                "AXIOM_BACKEND", "local,nim",
+            )
             backend_label = st.selectbox(
-                "Backend",
-                ["local,nim (auto-fallback)",
+                "Backend (this tab)",
+                [f"use sidebar choice ({_sidebar_backend})",
                  "local",
                  "nim",
-                 "(default / env)"],
+                 "local,nim",
+                 "nim,local"],
                 index=0,
                 key="pg-exo-backend",
                 help=(
-                    "'local,nim' tries Ollama first, falls back to "
-                    "NVIDIA NIM if local isn't reachable — safest "
-                    "default. 'local' / 'nim' force one or the other. "
-                    "'(default / env)' defers to AXIOM_BACKEND."
+                    "Defaults to whatever the sidebar Backend "
+                    "is set to. Override per-run only if you want "
+                    "to A/B test something specific."
                 ),
             )
-            # Quick preflight: which backends look reachable?
-            be_status_parts: list[str] = []
-            if os.environ.get("OLLAMA_URL") or _PgPath(
-                "/usr/local/bin/ollama").exists() or _PgPath(
-                "/usr/bin/ollama").exists():
-                be_status_parts.append("✓ local (Ollama)")
-            else:
-                be_status_parts.append("? local (set OLLAMA_URL)")
-            if os.environ.get("NVIDIA_NIM_API_KEY") or \
-                    os.environ.get("NVIDIA_API_KEY"):
-                be_status_parts.append("✓ NIM key set")
-            else:
-                be_status_parts.append("✗ NIM key not set")
-            st.caption("  ·  ".join(be_status_parts))
             write_ledger = st.checkbox(
                 "Append to ledger",
                 value=False,
@@ -976,11 +1119,11 @@ with tab_exo:
             # local first then NIM — the safer playground default.
             previous_backend = os.environ.get("AXIOM_BACKEND")
             backend_env_value = None
-            if backend_label.startswith("local,nim"):
-                backend_env_value = "local,nim"
-            elif backend_label in ("local", "nim"):
+            if backend_label.startswith("use sidebar"):
+                # Inherit from the sidebar — already set in os.environ.
+                pass
+            elif backend_label in ("local", "nim", "local,nim", "nim,local"):
                 backend_env_value = backend_label
-            # else: "(default / env)" — leave whatever the env says
             if backend_env_value is not None:
                 os.environ["AXIOM_BACKEND"] = backend_env_value
             try:
