@@ -76,13 +76,14 @@ st.divider()
 
 # ── Mode tabs ─────────────────────────────────────────────────────────────────
 (tab_prompt, tab_dsl, tab_growth,
- tab_exo, tab_audio, tab_dev) = st.tabs([
+ tab_exo, tab_audio, tab_dev, tab_med) = st.tabs([
     "🔁 Prompt Evolution",
     "📄 AXIOM DSL (Language Test)",
     "📈 Growth Dashboard",
     "🦾 Exoskeleton",
     "🎙️ Audio",
     "🛠️ Dev Agent",
+    "🧬 Medical Research",
 ])
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
@@ -1735,3 +1736,235 @@ with tab_dev:
                             f"· rating={d.get('rating', '?')}",
                             unsafe_allow_html=True,
                         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Medical Research — AXM container + per-layer signed event tokens
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+with tab_med:
+    st.markdown("### 🧬 Medical research instrument")
+    st.markdown(
+        "Signed, replayable medical-research session. Each question "
+        "fans out across the layer delegates in the chosen profile "
+        "(`source` / `claim` / `data` / `bio` / **`physics`** / "
+        "`governance`); each layer is its own **signed EventToken**; "
+        "a **MedicalCoordinatorToken** binds them under "
+        "`axiom-medical-coord-v1`. The bracketed Token Descriptor "
+        "is what you'd paste into any plain LLM for synthesis."
+    )
+
+    key_ok = _pg_key_panel("med")
+    imports = _pg_check_imports()
+    # axiom_medical_agent isn't in _pg_check_imports yet; probe ad-hoc.
+    try:
+        import axiom_medical_agent as _med_mod  # noqa: F401
+        med_import_ok = True
+        med_import_err = ""
+    except Exception as e:  # noqa: BLE001
+        med_import_ok = False
+        med_import_err = f"{type(e).__name__}: {e}"
+
+    if not med_import_ok:
+        st.error(f"axiom_medical_agent import failed: {med_import_err}")
+
+    if key_ok and med_import_ok:
+        from axiom_medical_agent import (
+            LAYER_ACTIVATION_PROFILES,
+        )
+
+        col_l, col_r = st.columns([1, 2])
+        with col_l:
+            med_profile = st.selectbox(
+                "Activation profile",
+                sorted(LAYER_ACTIVATION_PROFILES),
+                index=sorted(LAYER_ACTIVATION_PROFILES).index(
+                    "mechanism"
+                    if "mechanism" in LAYER_ACTIVATION_PROFILES
+                    else sorted(LAYER_ACTIVATION_PROFILES)[0]
+                ),
+                key="pg-med-profile",
+                help=(
+                    "Picks which layer delegates fire. 'mechanism' "
+                    "is the one with the physics / world-model "
+                    "layer. 'patient_apply' is the most restrictive "
+                    "(governance-only)."
+                ),
+            )
+            st.caption(
+                "active layers: "
+                + ", ".join(LAYER_ACTIVATION_PROFILES[med_profile])
+            )
+            write_med_ledger = st.checkbox(
+                "Append to medical ledger",
+                value=False,
+                key="pg-med-ledger",
+                help=(
+                    "Off by default so the playground doesn't pollute "
+                    "~/.axiom/medical-ledger.jsonl. Flip on for "
+                    "audit-worthy runs."
+                ),
+            )
+
+        with col_r:
+            med_question = st.text_area(
+                "Research question",
+                value=(
+                    "What mechanisms link GLP-1 drugs to reduced "
+                    "inflammation?"
+                ),
+                height=100,
+                key="pg-med-question",
+            )
+            med_sources_text = st.text_area(
+                "Sources (optional, one JSON object per line)",
+                value="",
+                height=110,
+                key="pg-med-sources",
+                placeholder=(
+                    '{"name": "Cochrane 2023 systematic review", '
+                    '"source_type": "systematic_review", '
+                    '"text": "abstract here..."}'
+                ),
+                help=(
+                    "Each line is a JSON dict with at minimum "
+                    "`name` and `text`. Leave blank for a "
+                    "session-default placeholder source."
+                ),
+            )
+
+        if st.button(
+            "▶  Run medical session",
+            type="primary",
+            key="pg-med-run",
+            width="stretch",
+            disabled=not med_question.strip(),
+        ):
+            from axiom_medical_agent import (
+                MedicalResearchAgent, MedicalAgentError,
+            )
+            from axiom_medical_container import (
+                MedicalContainerSpec, MedicalContainerError,
+            )
+            from axiom_medical_ledger import (
+                LedgerWriter as _MedLedgerWriter,
+                default_ledger_path as _med_default_ledger_path,
+            )
+
+            # Parse sources lines into dicts.
+            sources: list = []
+            for line in (med_sources_text or "").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    sources.append(_pg_json.loads(line))
+                except _pg_json.JSONDecodeError as e:
+                    st.warning(f"skipping unparseable source line: {e}")
+
+            ledger_obj = (
+                _MedLedgerWriter(_med_default_ledger_path())
+                if write_med_ledger else None
+            )
+
+            try:
+                spec = MedicalContainerSpec(
+                    container_id="axm-med-pg-" + _pg_secrets.token_hex(4),
+                    research_question=med_question.strip(),
+                )
+                agent = MedicalResearchAgent.from_default_pack(
+                    ledger=ledger_obj, spec=spec,
+                    research_question=med_question.strip(),
+                )
+            except MedicalContainerError as e:
+                st.error(f"container spec rejected: {e}")
+                agent = None
+            except Exception as e:  # noqa: BLE001
+                st.error(f"setup failed: {type(e).__name__}: {e}")
+                agent = None
+
+            result = None
+            if agent is not None:
+                with st.spinner(f"Running medical profile '{med_profile}' …"):
+                    try:
+                        result = agent.research(
+                            med_question.strip(),
+                            sources=(sources or None),
+                            profile=med_profile,
+                        )
+                    except MedicalAgentError as e:
+                        st.error(f"research failed: {e}")
+                    except Exception as e:  # noqa: BLE001
+                        st.error(
+                            f"backend error: {type(e).__name__}: {e}"
+                        )
+
+            if result is not None:
+                # Header — verify badge + a 1-line summary.
+                all_verified = all(
+                    c.verify() for c in result.coordinator_tokens
+                ) and all(t.verify() for t in result.event_tokens)
+                st.markdown(_pg_signed_badge(all_verified),
+                            unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='iteration-box'>"
+                    f"<strong>container</strong>: "
+                    f"<code>{result.container_id}</code>  ·  "
+                    f"<strong>profile</strong>: "
+                    f"<code>{result.profile}</code>  ·  "
+                    f"event tokens: {len(result.event_tokens)}  ·  "
+                    f"coordinators: {len(result.coordinator_tokens)}<br>"
+                    f"<strong>manifest_root</strong>: "
+                    f"<code>{(result.manifest_root or '')[:80]}…</code>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Human-review banner.
+                if result.requires_human_review:
+                    st.warning(
+                        "⚠ **Human review required.** The governance "
+                        "layer flagged this session — review the "
+                        "descriptor before acting. (Tier-5 / PHI / "
+                        "clinical-advice / emergency triggers.)"
+                    )
+
+                # Tier distribution.
+                tiers = result.tier_distribution or {}
+                tcols = st.columns(5)
+                for i, tk in enumerate(("1", "2", "3", "4", "5")):
+                    tcols[i].metric(f"Tier {tk}", int(tiers.get(tk, 0)))
+
+                # Bracketed descriptor — the canonical handoff to a
+                # plain LLM. Show it expanded by default; this is the
+                # primary artifact users will copy.
+                st.markdown("**Bracketed Token Descriptor**")
+                st.markdown(
+                    "<small style='color: var(--muted)'>"
+                    "Copy this into any plain LLM with a "
+                    "medical-research-only system prompt."
+                    "</small>",
+                    unsafe_allow_html=True,
+                )
+                st.code(result.descriptor, language=None)
+
+                # Per-coordinator + per-event-token JSON expanders.
+                for i, coord in enumerate(result.coordinator_tokens):
+                    with st.expander(
+                        f"Coordinator token {i+1} — "
+                        f"links: {', '.join(sorted(coord.layer_links))}"
+                    ):
+                        st.code(coord.to_json(indent=2),
+                                 language="json")
+                with st.expander(
+                    f"Raw EventToken JSON ({len(result.event_tokens)})"
+                ):
+                    for t in result.event_tokens:
+                        st.code(t.to_json(indent=2), language="json")
+
+                if write_med_ledger:
+                    st.caption(
+                        f"appended to "
+                        f"{_med_default_ledger_path()}"
+                    )
