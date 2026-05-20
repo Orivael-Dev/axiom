@@ -172,6 +172,21 @@ class ExoskeletonAgent:
             token_id=f"exo_{uuid.uuid4().hex[:12]}",
             extra_context=extra_context,
         )
+        # Honesty post-scan: flag invented track-record / unearned
+        # results in the delegate's output. Findings are augmented
+        # into the text layer's payload AND the layer + token are
+        # re-signed end-to-end so token.verify() still passes. This
+        # keeps the cryptographic audit trail intact while making
+        # the honesty findings tamper-evident.
+        if token.text is not None and isinstance(
+                token.text.payload, dict):
+            try:
+                token = _annotate_honesty(token)
+            except Exception:
+                # Honesty scan is best-effort — must NEVER break
+                # the delegate invocation flow.
+                pass
+
         if self._ledger is not None:
             self._ledger.append(
                 token=token, use_case=use_case, input_text=input_text,
@@ -218,6 +233,53 @@ class ExoskeletonAgent:
         return {"sales_context": snippet}
 
 
+# ── Honesty annotation (post-scan + re-sign) ──────────────────────────────
+
+
+def _annotate_honesty(token):
+    """Scan the delegate output for overclaim patterns; if any fire,
+    augment `text.payload` with the findings and re-sign the layer +
+    coordinator + outer signatures so token.verify() still passes.
+
+    No-op (returns the same token) when there are no findings.
+    """
+    from axiom_exoskeleton_honesty import scan as _honesty_scan
+    from axiom_event_token.models import (
+        EventToken, LayerReport, COORD_KEY_NS, TOKEN_KEY_NS,
+        _canonical_coordinator, _canonical_token, _sign,
+    )
+    from axiom_event_token.coordinator import _token_kwargs
+
+    payload = dict(token.text.payload)
+    output_text = payload.get("output", "") or ""
+    if not output_text:
+        return token
+    result = _honesty_scan(output_text)
+    if not result.findings:
+        return token
+
+    payload["honesty_findings"] = [f.to_dict() for f in result.findings]
+    payload["honesty_block_count"] = int(result.block_count)
+    payload["honesty_flag_count"]  = int(result.flag_count)
+
+    new_text = LayerReport.signed(
+        agent=token.text.agent,
+        payload=payload,
+        confidence=token.text.confidence,
+    )
+    rebuilt = EventToken(**{**_token_kwargs(token),
+                            "text": new_text,
+                            "coordinator_sig": "",
+                            "signature":       ""})
+    coord_sig = _sign(_canonical_coordinator(rebuilt), COORD_KEY_NS)
+    rebuilt = EventToken(**{**_token_kwargs(rebuilt),
+                            "coordinator_sig": coord_sig})
+    outer_sig = _sign(_canonical_token(rebuilt), TOKEN_KEY_NS)
+    rebuilt = EventToken(**{**_token_kwargs(rebuilt),
+                            "signature": outer_sig})
+    return rebuilt
+
+
 # ── Output formatting helpers ─────────────────────────────────────────────
 
 
@@ -238,6 +300,23 @@ def render_human(token) -> str:
         lines.append(f"ERROR: {p['error']}")
     else:
         lines.append(p.get("output", "").rstrip())
+    findings = p.get("honesty_findings") or []
+    if findings:
+        lines.append("")
+        block = int(p.get("honesty_block_count", 0))
+        flag  = int(p.get("honesty_flag_count", 0))
+        lines.append(
+            f"⚠ HONESTY FINDINGS — {block} block, {flag} flag "
+            f"(AXIOM is pre-revenue; track-record claims forbidden)"
+        )
+        for f in findings[:8]:
+            lines.append(
+                f"  [{f.get('severity', '?').upper()}] "
+                f"{f.get('category', '?')}: "
+                f"{(f.get('matched') or '')!r}"
+            )
+        if len(findings) > 8:
+            lines.append(f"  …and {len(findings) - 8} more")
     return "\n".join(lines)
 
 

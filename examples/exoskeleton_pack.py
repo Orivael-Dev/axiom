@@ -26,6 +26,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from axiom_exoskeleton_honesty import HONESTY_PREAMBLE
+
+
+def _with_honesty(prompt: str) -> str:
+    """Prepend the truth-in-claims preamble so the delegate has the
+    rules at the top of context, not buried at the end."""
+    return HONESTY_PREAMBLE + "\n---\n\n" + prompt.lstrip()
+
 
 # ── 9 delegate specs ──────────────────────────────────────────────────────
 
@@ -146,90 +154,90 @@ EXOSKELETON_DELEGATES: tuple[dict, ...] = (
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/investor_research/weights.bin",
-        "prompt_budget":   600,
+        "prompt_budget":   800,
         "output_budget":   400,
         "backend_chain":   ["local"],
-        "system_prompt":   _INVESTOR_RESEARCH,
+        "system_prompt":   _with_honesty(_INVESTOR_RESEARCH),
     },
     {
         "name":            "enterprise_targeting",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/enterprise_targeting/weights.bin",
-        "prompt_budget":   600,
+        "prompt_budget":   800,
         "output_budget":   400,
         "backend_chain":   ["local"],
-        "system_prompt":   _ENTERPRISE_TARGETING,
+        "system_prompt":   _with_honesty(_ENTERPRISE_TARGETING),
     },
     {
         "name":            "outreach_personalization",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/outreach_personalization/weights.bin",
-        "prompt_budget":   600,
+        "prompt_budget":   800,
         "output_budget":   350,
         "backend_chain":   ["local"],
-        "system_prompt":   _OUTREACH_PERSONALIZATION,
+        "system_prompt":   _with_honesty(_OUTREACH_PERSONALIZATION),
     },
     {
         "name":            "demo_scripts",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/demo_scripts/weights.bin",
-        "prompt_budget":   500,
+        "prompt_budget":   700,
         "output_budget":   400,
         "backend_chain":   ["local"],
-        "system_prompt":   _DEMO_SCRIPTS,
+        "system_prompt":   _with_honesty(_DEMO_SCRIPTS),
     },
     {
         "name":            "sales_objection_handling",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM", "REFUSE"],
         "weight_manifest": "delegates/sales_objection_handling/weights.bin",
-        "prompt_budget":   500,
+        "prompt_budget":   700,
         "output_budget":   300,
         "backend_chain":   ["local"],
-        "system_prompt":   _SALES_OBJECTION,
+        "system_prompt":   _with_honesty(_SALES_OBJECTION),
     },
     {
         "name":            "competitive_analysis",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/competitive_analysis/weights.bin",
-        "prompt_budget":   700,
+        "prompt_budget":   900,
         "output_budget":   450,
         "backend_chain":   ["local"],
-        "system_prompt":   _COMPETITIVE_ANALYSIS,
+        "system_prompt":   _with_honesty(_COMPETITIVE_ANALYSIS),
     },
     {
         "name":            "grant_application",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/grant_application/weights.bin",
-        "prompt_budget":   700,
+        "prompt_budget":   900,
         "output_budget":   500,
         "backend_chain":   ["local"],
-        "system_prompt":   _GRANT_APPLICATION,
+        "system_prompt":   _with_honesty(_GRANT_APPLICATION),
     },
     {
         "name":            "patent_counsel_packet",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/patent_counsel_packet/weights.bin",
-        "prompt_budget":   600,
+        "prompt_budget":   800,
         "output_budget":   450,
         "backend_chain":   ["local"],
-        "system_prompt":   _PATENT_COUNSEL,
+        "system_prompt":   _with_honesty(_PATENT_COUNSEL),
     },
     {
         "name":            "customer_discovery",
         "when_condition":  "explicit_invocation",
         "intent_classes":  ["INFORM"],
         "weight_manifest": "delegates/customer_discovery/weights.bin",
-        "prompt_budget":   700,
+        "prompt_budget":   900,
         "output_budget":   500,
         "backend_chain":   ["local"],
-        "system_prompt":   _CUSTOMER_DISCOVERY,
+        "system_prompt":   _with_honesty(_CUSTOMER_DISCOVERY),
     },
 )
 

@@ -151,9 +151,12 @@ def test_exo_invoke_returns_signed_event_token(isolated, tmp_path):
     assert p["delegate"] == "outreach_personalization"
     assert p["backend"]  == "stub"
     assert "DELEGATE=outreach-personalization" in p["output"]
-    # The right system prompt actually reached the backend.
-    assert backend.calls[0]["system"].startswith(
+    # The right system prompt reached the backend. The honesty
+    # preamble now leads every delegate prompt, so just check the
+    # delegate's identity phrase appears somewhere in the system.
+    assert (
         "You are AXIOM's outreach-personalization delegate"
+        in backend.calls[0]["system"]
     )
 
 
