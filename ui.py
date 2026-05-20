@@ -75,7 +75,15 @@ st.markdown("**An AI-Native Language for Building Self-Evolving Intelligence** �
 st.divider()
 
 # ── Mode tabs ─────────────────────────────────────────────────────────────────
-tab_prompt, tab_dsl, tab_growth = st.tabs(["🔁 Prompt Evolution", "📄 AXIOM DSL (Language Test)", "📈 Growth Dashboard"])
+(tab_prompt, tab_dsl, tab_growth,
+ tab_exo, tab_audio, tab_dev) = st.tabs([
+    "🔁 Prompt Evolution",
+    "📄 AXIOM DSL (Language Test)",
+    "📈 Growth Dashboard",
+    "🦾 Exoskeleton",
+    "🎙️ Audio",
+    "🛠️ Dev Agent",
+])
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -736,3 +744,645 @@ with tab_growth:
             df[["run_id", "iteration", "score", "timestamp"]].sort_values("timestamp"),
             width='stretch'
         )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# INTERNAL AGENT PLAYGROUND — Exoskeleton / Audio / Dev Agent
+# ═════════════════════════════════════════════════════════════════════════════
+# Why these tabs exist: a safer alternative to the CLIs. Every action that
+# touches a signing key, writes to a ledger, or fires a real backend is
+# gated behind a confirmation, a preflight check, or an explicit toggle —
+# so mistakes that would silently corrupt a training corpus or pollute the
+# default ledger are hard to make.
+# ─────────────────────────────────────────────────────────────────────────────
+
+import json as _pg_json
+import secrets as _pg_secrets
+import subprocess as _pg_subprocess
+import tempfile as _pg_tempfile
+from pathlib import Path as _PgPath
+
+
+# ── Master-key bootstrap (shared across all playground tabs) ─────────────────
+
+
+def _pg_master_key_state() -> tuple[bool, str]:
+    """Return (set?, status-line) for the AXIOM_MASTER_KEY env var.
+
+    A 32-byte hex string is required by every signing-aware module
+    (event-token, AXM container, exoskeleton ledger, dev-cycle
+    recorder, audio report). Missing key = every signed-output call
+    will crash at first use.
+    """
+    raw = os.environ.get("AXIOM_MASTER_KEY", "")
+    if not raw:
+        return False, "✗ AXIOM_MASTER_KEY not set — generate one below."
+    if len(raw) < 64:
+        return False, (
+            f"⚠ AXIOM_MASTER_KEY present but only {len(raw)} chars "
+            f"(want 64 hex). Modules may reject it."
+        )
+    return True, f"✓ AXIOM_MASTER_KEY set ({len(raw)} chars)."
+
+
+def _pg_key_panel(tab_name: str) -> bool:
+    """Render the key status + ephemeral-key button. Returns True iff
+    a usable key is in place after rendering."""
+    ok, line = _pg_master_key_state()
+    cols = st.columns([3, 1])
+    with cols[0]:
+        (st.success if ok else st.warning)(line)
+    with cols[1]:
+        if st.button(
+            "🔑 Generate ephemeral key",
+            key=f"pg-genkey-{tab_name}",
+            help=(
+                "Sets AXIOM_MASTER_KEY in THIS process only. "
+                "Records signed under an ephemeral key cannot be "
+                "verified by anyone who doesn't have it. Fine for "
+                "local playground experiments — bad for shared "
+                "ledgers."
+            ),
+            width="stretch",
+        ):
+            os.environ["AXIOM_MASTER_KEY"] = _pg_secrets.token_hex(32)
+            st.rerun()
+    return ok
+
+
+def _pg_signed_badge(verified: bool) -> str:
+    if verified:
+        return (
+            "<span class='tag tag-converged'>SIGNED · VERIFIED</span>"
+        )
+    return "<span class='tag tag-rewriter'>SIGNATURE FAILED</span>"
+
+
+# ── Module-availability cache ─────────────────────────────────────────────────
+
+
+@st.cache_resource(show_spinner=False)
+def _pg_check_imports() -> dict:
+    """One-shot import probe so each tab can show a green/red light
+    without retrying on every rerender."""
+    status: dict[str, str] = {}
+    for label, modname in (
+        ("axiom_exoskeleton",        "axiom_exoskeleton"),
+        ("axiom_exoskeleton_ledger", "axiom_exoskeleton_ledger"),
+        ("examples.exoskeleton_pack", "examples.exoskeleton_pack"),
+        ("axiom_audio",              "axiom_audio"),
+        ("axiom_dev_loop",           "axiom_dev_loop"),
+    ):
+        try:
+            __import__(modname)
+            status[label] = "ok"
+        except Exception as e:  # noqa: BLE001
+            status[label] = f"err: {type(e).__name__}: {e}"
+    return status
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Exoskeleton (9 founder workflows)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+with tab_exo:
+    st.markdown("### 🦾 Exoskeleton playground")
+    st.markdown(
+        "Pick one of the 9 founder-workflow delegates, paste an "
+        "input, run it against the configured backend. Output is a "
+        "**signed EventToken** with a verify badge."
+    )
+
+    key_ok = _pg_key_panel("exo")
+    imports = _pg_check_imports()
+    exo_import_ok = (
+        imports["axiom_exoskeleton"] == "ok"
+        and imports["examples.exoskeleton_pack"] == "ok"
+    )
+    if not exo_import_ok:
+        st.error(
+            "Imports failed — cannot run the exoskeleton:\n"
+            f"- axiom_exoskeleton: {imports['axiom_exoskeleton']}\n"
+            f"- examples.exoskeleton_pack: "
+            f"{imports['examples.exoskeleton_pack']}"
+        )
+
+    USE_CASE_HINTS: dict = {
+        "investor_research":        "AI governance thesis; round size $3-8M",
+        "enterprise_targeting":     "AI Governance Lead role at fintechs >1000 staff",
+        "outreach_personalization": "Buyer: CISO at 1500-person fintech. Signal: posted job for AI Governance Lead three days ago.",
+        "demo_scripts":             "Feature: signed event token with QRF reasoning paths",
+        "sales_objection_handling": "Buyer says: 'Not in this year's budget.'",
+        "competitive_analysis":     "Lakera",
+        "grant_application":        "YC, AI safety + audit infra",
+        "patent_counsel_packet":    "Signed multimodal event-token with selectively-activated agent layers",
+        "customer_discovery":       "(paste call notes here)",
+    }
+
+    @st.cache_resource(show_spinner=False)
+    def _pg_exo_agent() -> object:
+        """One ExoskeletonAgent per process — building the pack does a
+        tempdir + delegate signing pass, so we cache it."""
+        from axiom_exoskeleton import ExoskeletonAgent
+        return ExoskeletonAgent.from_default_pack()
+
+    if key_ok and exo_import_ok:
+        agent = _pg_exo_agent()
+        use_cases = list(agent.use_cases())
+        col_l, col_r = st.columns([1, 2])
+        with col_l:
+            use_case = st.selectbox(
+                "Delegate",
+                use_cases,
+                index=use_cases.index("outreach_personalization")
+                    if "outreach_personalization" in use_cases else 0,
+                key="pg-exo-usecase",
+            )
+            backend_label = st.selectbox(
+                "Backend",
+                ["(default / env)", "local", "nim"],
+                key="pg-exo-backend",
+                help=(
+                    "Defers to AXIOM_BACKEND env var when '(default / "
+                    "env)'. Forces the backend otherwise."
+                ),
+            )
+            write_ledger = st.checkbox(
+                "Append to ledger",
+                value=False,
+                key="pg-exo-ledger",
+                help=(
+                    "Off by default — keeps the playground from "
+                    "polluting ~/.axiom/exoskeleton-ledger.jsonl. "
+                    "Flip on to record genuine training-worthy runs."
+                ),
+            )
+        with col_r:
+            try:
+                desc = agent.describe(use_case)
+                st.caption(
+                    f"intent={','.join(desc['intent_classes'])}  ·  "
+                    f"prompt_budget={desc['prompt_budget']}  ·  "
+                    f"output_budget={desc['output_budget']}"
+                )
+            except Exception:
+                pass
+            default_hint = USE_CASE_HINTS.get(use_case, "")
+            exo_input = st.text_area(
+                "Input",
+                value=default_hint,
+                height=140,
+                key=f"pg-exo-input-{use_case}",
+            )
+
+        if st.button(
+            "▶  Run delegate",
+            type="primary",
+            key="pg-exo-run",
+            width="stretch",
+            disabled=not exo_input.strip(),
+        ):
+            # Apply backend override per click (don't persist).
+            previous_backend = os.environ.get("AXIOM_BACKEND")
+            if backend_label != "(default / env)":
+                os.environ["AXIOM_BACKEND"] = backend_label
+            try:
+                ledger = None
+                if write_ledger:
+                    from axiom_exoskeleton_ledger import (
+                        LedgerWriter, default_ledger_path,
+                    )
+                    ledger = LedgerWriter(default_ledger_path())
+                # ExoskeletonAgent is cached without a ledger; build a
+                # one-shot copy that holds the ledger if requested.
+                if ledger is not None:
+                    from axiom_exoskeleton import ExoskeletonAgent
+                    runner = ExoskeletonAgent(
+                        agent._container, backend=agent._backend,
+                        ledger=ledger,
+                    )
+                else:
+                    runner = agent
+                with st.spinner(
+                    f"Running {use_case} …",
+                ):
+                    token = runner.invoke(use_case, exo_input)
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Run failed: {type(e).__name__}: {e}")
+                token = None
+            finally:
+                if backend_label != "(default / env)":
+                    if previous_backend is None:
+                        os.environ.pop("AXIOM_BACKEND", None)
+                    else:
+                        os.environ["AXIOM_BACKEND"] = previous_backend
+
+            if token is not None:
+                payload = token.text.payload if token.text else {}
+                verified = bool(token.verify())
+                st.markdown(_pg_signed_badge(verified),
+                            unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='iteration-box'>"
+                    f"<strong>{payload.get('delegate', use_case)}</strong>  "
+                    f"backend={payload.get('backend', '?')}  ·  "
+                    f"model={payload.get('model', '?')}  ·  "
+                    f"in/out tokens={payload.get('input_tokens', '?')}/"
+                    f"{payload.get('output_tokens', '?')}  ·  "
+                    f"latency={payload.get('latency_ms', '?')}ms<br>"
+                    f"signed_event_id={token.id}"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                if payload.get("error"):
+                    st.error(f"Delegate error: {payload['error']}")
+                else:
+                    st.markdown("**Output**")
+                    st.markdown(
+                        f"<div class='output-box'>"
+                        f"{(payload.get('output', '') or '').strip()}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with st.expander("Raw EventToken JSON"):
+                    st.code(token.to_json(indent=2), language="json")
+                if write_ledger:
+                    from axiom_exoskeleton_ledger import default_ledger_path
+                    st.caption(
+                        f"appended to {default_ledger_path()}"
+                    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Audio (Ambient classifier)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+with tab_audio:
+    st.markdown("### 🎙️ Audio playground")
+    st.markdown(
+        "Upload a short mono WAV. The `AmbientAudioAgent` returns a "
+        "**signed AudioReport** with six fields the 3D-event-token "
+        "Audio layer adopts: impact_profile, material_signature, "
+        "decay_pattern, depth, width, rhythm."
+    )
+
+    key_ok = _pg_key_panel("audio")
+    imports = _pg_check_imports()
+    audio_ok = imports["axiom_audio"] == "ok"
+    if not audio_ok:
+        st.error(f"axiom_audio import failed: {imports['axiom_audio']}")
+
+    if key_ok and audio_ok:
+        from axiom_audio import AmbientAudioAgent
+        from axiom_audio.features import load_wav
+
+        wav_upload = st.file_uploader(
+            "WAV file (mono PCM, 8-48 kHz, ≤30s recommended)",
+            type=["wav"],
+            key="pg-audio-upload",
+            help="Saved to a tempdir; not persisted across reruns.",
+        )
+
+        if wav_upload is not None and st.button(
+            "▶  Classify clip",
+            type="primary",
+            key="pg-audio-run",
+            width="stretch",
+        ):
+            tmp = _PgPath(_pg_tempfile.mkdtemp(prefix="pg_audio_"))
+            wav_path = tmp / wav_upload.name
+            wav_path.write_bytes(wav_upload.getvalue())
+            try:
+                samples, sr = load_wav(str(wav_path))
+                with st.spinner("Classifying …"):
+                    report = AmbientAudioAgent().classify(samples, sr)
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Classification failed: "
+                         f"{type(e).__name__}: {e}")
+                report = None
+
+            if report is not None:
+                verified = bool(report.verify())
+                st.markdown(_pg_signed_badge(verified),
+                            unsafe_allow_html=True)
+                p = dict(report.payload or {})
+                debug = p.pop("debug", {}) if isinstance(p, dict) else {}
+                st.caption(f"confidence={report.confidence:.2f}")
+                cols = st.columns(3)
+                cols[0].metric("impact_profile",
+                               str(p.get("impact_profile", "?")))
+                cols[1].metric("material_signature",
+                               str(p.get("material_signature", "?")))
+                cols[2].metric("decay_pattern",
+                               str(p.get("decay_pattern", "?")))
+                cols = st.columns(3)
+                cols[0].metric("depth", f"{p.get('depth', 0):.3f}"
+                               if isinstance(p.get("depth"), (int, float))
+                               else "?")
+                cols[1].metric("width", f"{p.get('width', 0):.3f}"
+                               if isinstance(p.get("width"), (int, float))
+                               else "?")
+                cols[2].metric("rhythm", str(p.get("rhythm", "?")))
+                if debug:
+                    with st.expander("Trace / telemetry"):
+                        st.json(debug)
+                with st.expander("Raw AudioReport JSON"):
+                    st.code(report.to_json(indent=2), language="json")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Dev Agent (signed dev cycle records)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _pg_git_head_sha() -> str:
+    try:
+        out = _pg_subprocess.run(
+            ["git", "rev-parse", "--short=12", "HEAD"],
+            check=False, capture_output=True, text=True,
+        )
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except FileNotFoundError:
+        return ""
+
+
+def _pg_git_changed_files() -> list:
+    try:
+        out = _pg_subprocess.run(
+            ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+            check=False, capture_output=True, text=True,
+        )
+        if out.returncode != 0:
+            return []
+        return [l for l in out.stdout.splitlines() if l.strip()]
+    except FileNotFoundError:
+        return []
+
+
+with tab_dev:
+    st.markdown("### 🛠️ Dev Agent playground")
+    st.markdown(
+        "Record a **signed dev-cycle record** for what you just shipped. "
+        "Each record fans out to three JSONL sinks "
+        "(`axiom_dev_training.jsonl`, `dev_agent_improvements.jsonl`, "
+        "`axiom_crl_reward_log.jsonl`) so the training pipeline picks "
+        "it up automatically. Verify badge proves the HMAC checks out."
+    )
+
+    key_ok = _pg_key_panel("dev")
+    imports = _pg_check_imports()
+    dev_ok = imports["axiom_dev_loop"] == "ok"
+    if not dev_ok:
+        st.error(f"axiom_dev_loop import failed: "
+                 f"{imports['axiom_dev_loop']}")
+
+    if key_ok and dev_ok:
+        # Smart defaults pulled from the live git repo.
+        default_sha = _pg_git_head_sha()
+        default_files = _pg_git_changed_files()
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            dev_sha = st.text_input(
+                "commit_sha",
+                value=default_sha,
+                key="pg-dev-sha",
+                help="Defaults to current HEAD short SHA.",
+            )
+            dev_task = st.text_input(
+                "task (one-line)",
+                value="",
+                key="pg-dev-task",
+                placeholder="Add medical event-token instrument",
+            )
+            dev_pass = st.number_input(
+                "test_pass", min_value=0, value=0,
+                step=1, key="pg-dev-pass",
+            )
+            dev_fail = st.number_input(
+                "test_fail", min_value=0, value=0,
+                step=1, key="pg-dev-fail",
+            )
+            dev_signal = st.selectbox(
+                "retrospect_signal",
+                ["neutral", "positive", "negative"],
+                index=0, key="pg-dev-signal",
+            )
+        with col_b:
+            dev_files_text = st.text_area(
+                "changed_files (one per line)",
+                value="\n".join(default_files),
+                height=140,
+                key="pg-dev-files",
+                help="Auto-populated from `git diff HEAD~1 HEAD`.",
+            )
+            dev_diff = st.text_area(
+                "diff_summary",
+                value="",
+                height=140,
+                key="pg-dev-diff",
+                placeholder="One-paragraph summary of what changed.",
+            )
+
+        target_root = st.text_input(
+            "repo_root (where the 3 JSONL sinks live)",
+            value=str(_PgPath.cwd()),
+            key="pg-dev-root",
+        )
+
+        # Cap-on-rails: dry-run preview by default; second confirm
+        # writes the records.
+        dry_run = st.checkbox(
+            "Dry run (sign + show, do NOT write JSONL sinks)",
+            value=True,
+            key="pg-dev-dry",
+            help=(
+                "When checked, the record is signed and rendered but "
+                "the three JSONL files are not touched. Uncheck and "
+                "re-run to actually append."
+            ),
+        )
+        consent = False
+        if not dry_run:
+            consent = st.checkbox(
+                "I understand this appends to "
+                "axiom_dev_training.jsonl + dev_agent_improvements.jsonl + "
+                "axiom_crl_reward_log.jsonl.",
+                value=False,
+                key="pg-dev-consent",
+            )
+
+        run_disabled = (
+            not dev_sha or not dev_task.strip() or
+            (not dry_run and not consent)
+        )
+        if st.button(
+            "▶  Record dev cycle",
+            type="primary",
+            key="pg-dev-run",
+            width="stretch",
+            disabled=run_disabled,
+        ):
+            from axiom_dev_loop import (
+                DevCycleRecorder, _sign as _dev_sign,
+                _signing_key as _dev_signing_key,
+            )
+            changed = [
+                line.strip() for line in dev_files_text.splitlines()
+                if line.strip()
+            ]
+            if dry_run:
+                # Build + sign WITHOUT touching the sinks. Mirror the
+                # internal payload shape from DevCycleRecorder.record.
+                from datetime import datetime, timezone
+                timestamp = datetime.now(timezone.utc).isoformat()
+                rating = (
+                    "good" if (dev_fail == 0 and dev_pass > 0)
+                    else "bad"
+                )
+                payload = {
+                    "commit_sha":        dev_sha,
+                    "task":              dev_task.strip(),
+                    "changed_files":     changed,
+                    "diff_summary":      dev_diff,
+                    "test_pass":         int(dev_pass),
+                    "test_fail":         int(dev_fail),
+                    "retrospect_signal": dev_signal,
+                    "rating":            rating,
+                    "timestamp":         timestamp,
+                }
+                try:
+                    sig = _dev_sign(_dev_signing_key(), payload)
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Signing failed: "
+                             f"{type(e).__name__}: {e}")
+                    sig = ""
+                if sig:
+                    record_d = {**payload, "signature": sig}
+                    st.markdown(
+                        _pg_signed_badge(True),
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        f"DRY RUN — no JSONL writes  ·  rating={rating}"
+                    )
+                    with st.expander("Signed record (preview)"):
+                        st.code(
+                            _pg_json.dumps(record_d, indent=2),
+                            language="json",
+                        )
+            else:
+                try:
+                    rec = DevCycleRecorder(
+                        repo_root=_PgPath(target_root),
+                    ).record(
+                        commit_sha=dev_sha,
+                        task=dev_task.strip(),
+                        changed_files=changed,
+                        diff_summary=dev_diff,
+                        test_pass=int(dev_pass),
+                        test_fail=int(dev_fail),
+                        retrospect_signal=dev_signal,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Record failed: "
+                             f"{type(e).__name__}: {e}")
+                    rec = None
+                if rec is not None:
+                    from axiom_dev_loop import verify as _dev_verify
+                    st.markdown(
+                        _pg_signed_badge(_dev_verify(rec)),
+                        unsafe_allow_html=True,
+                    )
+                    st.success(
+                        f"rating={rec.rating}  ·  "
+                        f"signature={rec.signature[:24]}…"
+                    )
+                    st.caption(
+                        "appended to: "
+                        "axiom_dev_training.jsonl, "
+                        "dev_agent_improvements.jsonl, "
+                        "axiom_crl_reward_log.jsonl"
+                    )
+                    with st.expander("Raw DevCycleRecord JSON"):
+                        st.code(
+                            _pg_json.dumps(
+                                {
+                                    "commit_sha":   rec.commit_sha,
+                                    "task":         rec.task,
+                                    "changed_files": list(
+                                        rec.changed_files),
+                                    "diff_summary": rec.diff_summary,
+                                    "test_pass":    rec.test_pass,
+                                    "test_fail":    rec.test_fail,
+                                    "retrospect_signal":
+                                        rec.retrospect_signal,
+                                    "rating":       rec.rating,
+                                    "timestamp":    rec.timestamp,
+                                    "signature":    rec.signature,
+                                },
+                                indent=2,
+                            ),
+                            language="json",
+                        )
+
+        # ── Verifier panel — load existing records and verify each ──
+        st.divider()
+        with st.expander("Verify previously-recorded dev cycles"):
+            training_path = _PgPath(target_root) / "axiom_dev_training.jsonl"
+            if not training_path.exists():
+                st.info(f"No record file at {training_path}")
+            else:
+                from axiom_dev_loop import (
+                    DevCycleRecord, verify as _dev_verify,
+                )
+                lines = training_path.read_text(
+                    encoding="utf-8",
+                ).splitlines()
+                if not lines:
+                    st.info("Record file is empty.")
+                else:
+                    st.caption(
+                        f"{len(lines)} record(s) in {training_path}"
+                    )
+                    show_n = st.slider(
+                        "Show last N",
+                        min_value=1, max_value=min(50, len(lines)),
+                        value=min(5, len(lines)),
+                        key="pg-dev-verify-n",
+                    )
+                    for line in lines[-show_n:]:
+                        try:
+                            d = _pg_json.loads(line)
+                        except _pg_json.JSONDecodeError:
+                            st.warning(f"unparseable: {line[:80]}")
+                            continue
+                        try:
+                            rec = DevCycleRecord(
+                                commit_sha=d.get("commit_sha", ""),
+                                task=d.get("task", ""),
+                                changed_files=tuple(
+                                    d.get("changed_files", ())),
+                                diff_summary=d.get("diff_summary", ""),
+                                test_pass=int(d.get("test_pass", 0)),
+                                test_fail=int(d.get("test_fail", 0)),
+                                retrospect_signal=d.get(
+                                    "retrospect_signal", "neutral"),
+                                rating=d.get("rating", "bad"),
+                                timestamp=d.get("timestamp", ""),
+                                signature=d.get("signature", ""),
+                            )
+                            ok = _dev_verify(rec)
+                        except Exception as e:  # noqa: BLE001
+                            ok = False
+                            st.warning(f"could not reconstruct: {e}")
+                            continue
+                        st.markdown(
+                            f"{_pg_signed_badge(ok)} "
+                            f"<code>{d.get('commit_sha', '')[:12]}</code> "
+                            f"· {d.get('task', '')[:60]} "
+                            f"· rating={d.get('rating', '?')}",
+                            unsafe_allow_html=True,
+                        )
