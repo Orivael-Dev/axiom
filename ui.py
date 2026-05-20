@@ -271,6 +271,53 @@ with tab_prompt:
     key="task_input",
  )
 
+ # ── Initial prompts: show + (optionally) override what each agent starts with
+ with st.expander(
+    "🔍 Initial prompts (Worker / Evaluator / Rewriter)",
+    expanded=False,
+ ):
+    st.caption(
+        "The TASK above is automatically shared with all three agents. "
+        "Each agent has its own SYSTEM PROMPT (auto-loaded from "
+        "prompt_store for this task; falls back to the seed). Override "
+        "below to prime evolution from a specific starting prompt."
+    )
+    try:
+        from axiom_constitutional.agents.worker import WorkerAgent as _W
+        from axiom_constitutional.agents.evaluator import EvaluatorAgent as _E
+        from axiom_constitutional.agents.rewriter import RewriterAgent as _R
+        _task_for_preview = (task or "(no task entered yet)").strip()[:120]
+        _wp = _W(_task_for_preview).system_prompt
+        _ep = _E(_task_for_preview).system_prompt
+        _rp = _R(_task_for_preview).system_prompt
+    except Exception as e:  # noqa: BLE001
+        _wp = _ep = _rp = f"(could not load: {e})"
+
+    st.markdown("**Worker system prompt** (evolves every iteration)")
+    worker_prompt_override = st.text_area(
+        "Override Worker prompt (leave blank = auto-load)",
+        value="",
+        height=120,
+        key="worker-prompt-override",
+        placeholder=_wp[:400] + ("…" if len(_wp) > 400 else ""),
+        help="Pasted text becomes the Worker's STARTING system prompt. "
+             "Subsequent iterations evolve from there.",
+    )
+
+    st.markdown("**Evaluator system prompt** (seed; evolves only with Meta-Evolution toggle)")
+    st.code(_ep[:600] + ("…" if len(_ep) > 600 else ""), language=None)
+
+    st.markdown("**Rewriter system prompt** (seed; evolves only with Meta-Evolution toggle)")
+    st.code(_rp[:600] + ("…" if len(_rp) > 600 else ""), language=None)
+
+    st.caption(
+        "Cross-agent threading: the Evaluator sees the TASK + the "
+        "Worker's OUTPUT each iteration (its user message is "
+        "`TASK GIVEN TO WORKER: …` + `WORKER OUTPUT: …`). "
+        "The Rewriter sees the TASK + the Worker's CURRENT prompt "
+        "+ the Evaluator's score/reasoning/improvements."
+    )
+
  col1, col2 = st.columns([1, 5])
  with col1:
     run_btn = st.button("▶  Run AXIOM", type="primary", width='stretch')
@@ -344,6 +391,15 @@ with tab_prompt:
     worker = WorkerAgent(task)
     if detected:
         worker.system_prompt = get_prompt_with_overlays("worker", detected)
+    # Honour the "Initial prompts" expander's override — pasted text
+    # becomes the Worker's STARTING system prompt for this run.
+    _override = (st.session_state.get("worker-prompt-override") or "").strip()
+    if _override:
+        worker.system_prompt = _override
+        st.caption(
+            f"Using overridden Worker prompt "
+            f"({len(_override)} chars) from the Initial Prompts expander."
+        )
 
     # Apply UI temperature override
     def _execute_with_temp(t):
