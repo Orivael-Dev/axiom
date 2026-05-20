@@ -979,6 +979,31 @@
       els.branchResults.innerHTML = "";
       els.detailPanel.classList.remove("open");
 
+      // Medical domain has its own AXM-medical pipeline — bracketed
+      // Token Descriptors + a Coordinator Token + the human-review
+      // flag. Skip the generic /api/research path.
+      if (API_BASE && activeDomain === "medical") {
+        try {
+          const resp = await fetch(API_BASE + "/api/medical/research", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ question: query, profile: "summarize" }),
+          });
+          if (!resp.ok) {
+            const detail = await resp.text();
+            throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 200)}`);
+          }
+          renderMedicalResult(await resp.json());
+          return;
+        } catch (err) {
+          els.reportBody.innerHTML =
+            `<p class="answer-text" style="color: var(--warning);">Medical endpoint failed (${escapeHtml(String(err.message || err))}). Falling back to generic mock.</p>`;
+          await new Promise(r => setTimeout(r, 500));
+          renderResult(runResearch(query, activeDomain, activeWorkflow), "mock");
+          return;
+        }
+      }
+
       if (API_BASE) {
         // Streaming path — best for visible progress + better troubleshooting.
         try {
@@ -1243,6 +1268,42 @@
         },
         cost: { input_tokens: 412, output_tokens: 187, latency_ms: 1820 },
       };
+    }
+
+    function renderMedicalResult(d) {
+      // Minimal renderer for the AXM Medical Research instrument.
+      // The report area gets a human-review banner + the
+      // bracketed Token Descriptor in a <pre> block. The
+      // citations + branches panels stay empty (a medical
+      // session isn't structured the same way).
+      const tiers = d.tier_distribution || {};
+      const tierStr = ["1","2","3","4","5"].map((k) =>
+        `T${k}: ${tiers[k] || 0}`).join(" · ");
+      const banner = d.requires_human_review
+        ? `<p class="answer-text" style="color: var(--warning); border: 1px solid var(--warning); padding: 10px; border-radius: 6px;">
+             <strong>Human review required.</strong> The governance layer flagged this session — review the descriptor before acting.
+           </p>`
+        : "";
+      const desc = escapeHtml(d.descriptor || "(no descriptor)");
+      els.reportBody.innerHTML = `
+        ${banner}
+        <p class="answer-text" style="color: var(--muted);">
+          Medical AXM container <code>${escapeHtml(d.container_id)}</code> · profile <code>${escapeHtml(d.profile)}</code> ·
+          ${(d.event_tokens || []).length} signed event tokens ·
+          ${(d.coordinator_tokens || []).length} coordinator tokens ·
+          ${tierStr}
+        </p>
+        <p class="answer-text" style="color: var(--muted);">
+          manifest_root: <code>${escapeHtml((d.manifest_root || "").slice(0, 80))}</code>
+        </p>
+        <details open style="margin-top: 12px;">
+          <summary style="cursor: pointer; color: var(--accent);">Bracketed Token Descriptor (copy into any LLM)</summary>
+          <pre style="background: var(--bg-2); border: 1px solid var(--border); padding: 12px; border-radius: 6px; overflow: auto; max-height: 480px; font-size: 12px;">${desc}</pre>
+        </details>`;
+      els.citationsList.innerHTML =
+        '<p class="answer-text" style="color: var(--muted);">Medical sessions render evidence as bracketed Token Descriptors above. Source provenance + DOI/PMID is inside each [EVENT_TOKEN] block.</p>';
+      els.branchResults.innerHTML = "";
+      if (els.domainMetric) els.domainMetric.textContent = "Medical";
     }
 
     function renderResult(result, mode) {

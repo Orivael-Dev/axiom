@@ -622,6 +622,98 @@ async def ledger_viewer():
     return FileResponse(LEDGER_HTML_PATH, media_type="text/html")
 
 
+# ── Medical research instrument routes ───────────────────────────────
+
+
+class MedicalResearchRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    profile:  str = Field(default="summarize")
+    sources:  Optional[list[dict]] = None
+
+
+@app.post("/api/medical/research")
+async def medical_research(req: MedicalResearchRequest):
+    """Run the AXM medical research instrument.
+
+    Returns the per-layer signed EventTokens, the
+    MedicalCoordinatorToken, the bracketed Token Descriptor, and
+    the human-review flag — the shape consumed by the medical
+    workflow tab in web/research_console.html.
+    """
+    from axiom_medical_agent import (
+        MedicalResearchAgent, MedicalAgentError,
+        LAYER_ACTIVATION_PROFILES,
+    )
+    from axiom_medical_ledger import LedgerWriter, default_ledger_path
+    if req.profile not in LAYER_ACTIVATION_PROFILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown profile: {req.profile}. Try "
+                   f"{sorted(LAYER_ACTIVATION_PROFILES)}",
+        )
+    _state.ensure()
+    from axiom_event_token.backends import default_backend
+    ledger = LedgerWriter(default_ledger_path())
+    try:
+        agent = MedicalResearchAgent.from_default_pack(
+            backend=default_backend(),
+            ledger=ledger,
+            research_question=req.question,
+        )
+        result = agent.research(
+            req.question,
+            sources=req.sources,
+            profile=req.profile,
+        )
+    except MedicalAgentError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        LOG.exception("medical research failed")
+        raise HTTPException(
+            status_code=502,
+            detail=f"medical research failed: {e}",
+        )
+    return {
+        "question":              req.question,
+        "profile":               result.profile,
+        "container_id":          result.container_id,
+        "event_tokens":          [t.to_dict() for t in result.event_tokens],
+        "coordinator_tokens":    [c.to_dict()
+                                   for c in result.coordinator_tokens],
+        "descriptor":            result.descriptor,
+        "manifest_root":         result.manifest_root,
+        "requires_human_review": result.requires_human_review,
+        "tier_distribution":     dict(result.tier_distribution),
+    }
+
+
+@app.get("/api/medical/profiles")
+async def medical_profiles():
+    """List the 5 activation profiles + which layers they fire."""
+    from axiom_medical_agent import LAYER_ACTIVATION_PROFILES
+    return {
+        "profiles": {
+            name: list(layers)
+            for name, layers in sorted(LAYER_ACTIVATION_PROFILES.items())
+        }
+    }
+
+
+@app.get("/api/medical/ledger")
+async def medical_ledger(limit: int = 20):
+    """Recent medical-research ledger entries (signed audit trail)."""
+    from axiom_medical_ledger import (
+        query_ledger, default_ledger_path,
+    )
+    path = default_ledger_path()
+    entries = query_ledger(path=path, limit=max(1, min(1000, limit)))
+    return {
+        "ledger_path": str(path),
+        "count":       len(entries),
+        "entries":     [e.to_dict() for e in entries],
+    }
+
+
 # ── Entry point ─────────────────────────────────────────────────────────
 
 
