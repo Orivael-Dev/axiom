@@ -531,3 +531,340 @@ def test_cli_gate_refusal_exits_3(isolated, tmp_path, capsys):
     ])
     assert rc == 3
     assert "GATE REFUSED" in capsys.readouterr().err
+
+
+# ─── Relevance scoring + gate ────────────────────────────────────────
+
+
+def test_relevance_score_high_on_matching_diff(isolated):
+    from axiom_patch_agent import compute_relevance_score
+    score = compute_relevance_score(
+        bug_description="High latency in the request handler — "
+                        "needs caching",
+        agent_reasoning="add request-cache lookup before db query",
+        diff=(
+            "diff --git a/handler.py b/handler.py\n"
+            "@@ -1 +1,3 @@\n"
+            "+def handler(request):\n"
+            "+    cached = request_cache.get(request)\n"
+            "+    return cached or fetch_from_db(request)\n"
+        ),
+    )
+    # Words like request, cache, handler are present in both.
+    assert score > 0.10
+
+
+def test_relevance_score_low_on_off_topic_diff(isolated):
+    from axiom_patch_agent import compute_relevance_score
+    score = compute_relevance_score(
+        bug_description="High latency in the request handler — "
+                        "needs caching",
+        agent_reasoning="fix typo in unrelated docs",
+        diff=(
+            "diff --git a/README.md b/README.md\n"
+            "@@ -1 +1 @@\n"
+            "-welcom to the project\n"
+            "+welcome to the project\n"
+        ),
+    )
+    assert score < 0.10
+
+
+def test_draft_without_bug_description_skips_relevance_gate(
+    isolated, tmp_path,
+):
+    """No bug_description = no ground truth to score against. The
+    relevance gate must NOT block in that case."""
+    from axiom_patch_agent import PatchAgent, PatchDraft
+    agent = PatchAgent(drafts_dir=tmp_path / "drafts")
+    d = PatchDraft.new(
+        bug_id="x", target_file="x.py",
+        diff="diff --git a/x b/x\n@@\n+typo fix\n",
+        agent_reasoning="fix typo",
+        # no bug_description supplied → gate disabled
+        tests_passed=1, tests_failed=0,
+    )
+    agent.draft(d)
+    token = agent.approve(d.patch_id, reviewer_principal="alice",
+                           apply_with="none")
+    assert token.verify()
+
+
+def test_approve_refuses_when_relevance_below_floor(isolated, tmp_path):
+    from axiom_patch_agent import (
+        PatchAgent, PatchDraft, RelevanceRefusal,
+    )
+    agent = PatchAgent(drafts_dir=tmp_path / "drafts")
+    # Ask: about latency. Reasoning + diff: about README typo.
+    # Zero word overlap on content words.
+    d = PatchDraft.new(
+        bug_id="LAT-1",
+        target_file="docs/README.md",
+        diff=(
+            "diff --git a/docs/README.md b/docs/README.md\n"
+            "@@\n"
+            "-welcom paragraph header\n"
+            "+welcome paragraph header\n"
+        ),
+        agent_reasoning="correct spelling mistake",
+        bug_description="High latency in the request handler — "
+                        "needs caching",
+        tests_passed=3, tests_failed=0,
+    )
+    agent.draft(d)
+    assert d.relevance_score < 0.05, \
+        f"expected score < 0.05, got {d.relevance_score}"
+    with pytest.raises(RelevanceRefusal, match="below floor"):
+        agent.approve(d.patch_id, reviewer_principal="alice",
+                       apply_with="none")
+
+
+def test_force_irrelevant_bypass_records_override(isolated, tmp_path):
+    """Reviewer can deliberately override the relevance gate. The
+    override MUST appear in the signed token's governance payload."""
+    from axiom_patch_agent import PatchAgent, PatchDraft
+    agent = PatchAgent(drafts_dir=tmp_path / "drafts")
+    d = PatchDraft.new(
+        bug_id="LAT-1",
+        target_file="docs/README.md",
+        diff=(
+            "diff --git a/docs/README.md b/docs/README.md\n"
+            "@@\n"
+            "-welcom paragraph header\n"
+            "+welcome paragraph header\n"
+        ),
+        agent_reasoning="correct spelling mistake",
+        bug_description="Latency in request handler caching",
+        tests_passed=2, tests_failed=0,
+    )
+    agent.draft(d)
+    assert d.relevance_score < 0.05
+    token = agent.approve(
+        d.patch_id, reviewer_principal="alice",
+        apply_with="none", force_irrelevant=True,
+    )
+    assert token.verify()
+    assert token.governance.payload["relevance_override"] is True
+    assert token.governance.payload["relevance_score"] < 0.05
+
+
+def test_approve_allows_high_relevance(isolated, tmp_path):
+    from axiom_patch_agent import PatchAgent, PatchDraft
+    agent = PatchAgent(drafts_dir=tmp_path / "drafts")
+    d = PatchDraft.new(
+        bug_id="LAT-1",
+        target_file="handler.py",
+        diff=(
+            "diff --git a/handler.py b/handler.py\n"
+            "@@\n"
+            "+def handler(request):\n"
+            "+    cached = request_cache.get(request)\n"
+            "+    return cached or fetch_from_db(request)\n"
+        ),
+        agent_reasoning="add request-cache lookup before db query",
+        bug_description="High latency in request handler — needs cache",
+        tests_passed=5, tests_failed=0,
+    )
+    agent.draft(d)
+    assert d.relevance_score >= 0.10
+    token = agent.approve(
+        d.patch_id, reviewer_principal="alice", apply_with="none",
+    )
+    assert token.verify()
+    assert token.governance.payload["relevance_override"] is False
+
+
+# ─── Revocation ──────────────────────────────────────────────────────
+
+
+def test_revoke_signs_and_appends_improvement(isolated, tmp_path):
+    from axiom_patch_agent import PatchAgent, PatchDraft
+    agent = PatchAgent(
+        drafts_dir=tmp_path / "drafts",
+        improvements_path=tmp_path / "imp.jsonl",
+    )
+    d = PatchDraft.new(
+        bug_id="LAT-1", target_file="x.py", diff="d",
+        agent_reasoning="off-topic fix", tests_passed=1,
+        tests_failed=0,
+    )
+    agent.draft(d)
+    agent.approve(d.patch_id, reviewer_principal="alice",
+                   apply_with="none")
+    rev = agent.revoke(
+        d.patch_id, revoker_principal="alice",
+        reason="approved the wrong thing — was supposed to fix latency",
+    )
+    assert rev.verify()
+    gp = rev.governance.payload
+    assert gp["decision"] == "revoke"
+    assert "revokes_token_id" in gp
+    assert "wrong thing" in gp["revoke_reason"]
+    # Status flipped.
+    assert agent.get(d.patch_id).status == "revoked"
+    # Improvement record appended with REVOKED verdict + negative signal.
+    lines = (tmp_path / "imp.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    rec = json.loads(lines[0])
+    assert rec["current_verdict"] == "REVOKED"
+    assert rec["former_self_verdict"] == "APPROVED"
+    assert rec["training_signal"] == "negative"
+
+
+def test_revoke_requires_approved_status(isolated, tmp_path):
+    from axiom_patch_agent import (
+        PatchAgent, PatchDraft, PatchAgentError,
+    )
+    agent = PatchAgent(drafts_dir=tmp_path / "drafts")
+    d = PatchDraft.new(
+        bug_id="x", target_file="x.py", diff="d",
+        agent_reasoning="r", tests_passed=1, tests_failed=0,
+    )
+    agent.draft(d)
+    # Not approved yet.
+    with pytest.raises(PatchAgentError, match="not approved"):
+        agent.revoke(d.patch_id, revoker_principal="alice",
+                      reason="changed my mind")
+
+
+def test_revoke_with_rollback_undoes_diff(isolated, tmp_path):
+    from axiom_patch_agent import PatchAgent, PatchDraft
+    repo = tmp_path / "repo"
+    _git_init(repo, "foo.py", "def f():\n    return 1\n")
+    diff = _git_diff_for_change(
+        repo, "foo.py", "def f():\n    return 2\n",
+    )
+    agent = PatchAgent(
+        drafts_dir=tmp_path / "drafts",
+        improvements_path=tmp_path / "imp.jsonl",
+    )
+    d = PatchDraft.new(
+        bug_id="x", target_file="foo.py",
+        diff=diff, agent_reasoning="bump",
+        tests_passed=1, tests_failed=0,
+    )
+    agent.draft(d)
+    agent.approve(d.patch_id, reviewer_principal="alice",
+                   apply_with="git", target_repo=repo)
+    assert (repo / "foo.py").read_text() == "def f():\n    return 2\n"
+    agent.revoke(
+        d.patch_id, revoker_principal="alice",
+        reason="wrong", rollback=True, target_repo=repo,
+    )
+    # File restored.
+    assert (repo / "foo.py").read_text() == "def f():\n    return 1\n"
+
+
+def test_verify_after_revoke_shows_both_tokens(isolated, tmp_path):
+    from axiom_patch_agent import PatchAgent, PatchDraft
+    agent = PatchAgent(
+        drafts_dir=tmp_path / "drafts",
+        improvements_path=tmp_path / "imp.jsonl",
+    )
+    d = PatchDraft.new(
+        bug_id="x", target_file="x.py", diff="d",
+        agent_reasoning="r", tests_passed=1, tests_failed=0,
+    )
+    agent.draft(d)
+    agent.approve(d.patch_id, reviewer_principal="alice",
+                   apply_with="none")
+    agent.revoke(d.patch_id, revoker_principal="alice",
+                  reason="wrong")
+    r = agent.verify(d.patch_id)
+    assert r["status"] == "revoked"
+    assert r["event_token_verified"] is True
+    assert r["revocation_token_verified"] is True
+    assert r["revokes_token_id"] is not None
+
+
+# ─── CLI smoke for new commands ──────────────────────────────────────
+
+
+def test_cli_relevance_refusal_exits_4(isolated, tmp_path, capsys):
+    from axiom_patch_agent import main
+    diff_path = tmp_path / "p.diff"
+    diff_path.write_text(
+        "diff --git a/docs/README.md b/docs/README.md\n@@\n"
+        "-welcom paragraph header\n"
+        "+welcome paragraph header\n",
+        encoding="utf-8",
+    )
+    rc = main([
+        "--drafts-dir", str(tmp_path / "drafts"), "--no-ledger",
+        "draft", "--bug-id", "LAT-1",
+        "--target-file", "docs/README.md",
+        "--diff", str(diff_path),
+        "--reasoning", "correct spelling mistake",
+        "--bug-description", "High latency in request handler caching",
+        "--tests-passed", "1",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    patch_id = next(
+        tok.strip() for tok in out.split() if tok.startswith("patch_")
+    )
+    rc = main([
+        "--drafts-dir", str(tmp_path / "drafts"), "--no-ledger",
+        "approve", patch_id, "--reviewer", "alice", "--apply", "none",
+    ])
+    assert rc == 4
+    assert "RELEVANCE REFUSED" in capsys.readouterr().err
+
+
+def test_cli_force_irrelevant_approves(isolated, tmp_path, capsys):
+    from axiom_patch_agent import main
+    diff_path = tmp_path / "p.diff"
+    diff_path.write_text("diff --git a/x b/x\n@@\n+typo fix\n",
+                          encoding="utf-8")
+    rc = main([
+        "--drafts-dir", str(tmp_path / "drafts"), "--no-ledger",
+        "draft", "--bug-id", "LAT-1",
+        "--target-file", "x", "--diff", str(diff_path),
+        "--reasoning", "fix typo",
+        "--bug-description", "Latency in handler",
+        "--tests-passed", "1",
+    ])
+    out = capsys.readouterr().out
+    patch_id = next(
+        tok.strip() for tok in out.split() if tok.startswith("patch_")
+    )
+    rc = main([
+        "--drafts-dir", str(tmp_path / "drafts"), "--no-ledger",
+        "approve", patch_id, "--reviewer", "alice",
+        "--apply", "none", "--force-irrelevant",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "relevance override recorded" in out
+
+
+def test_cli_revoke_smoke(isolated, tmp_path, capsys):
+    from axiom_patch_agent import main
+    diff_path = tmp_path / "p.diff"
+    diff_path.write_text("d\n", encoding="utf-8")
+    main([
+        "--drafts-dir", str(tmp_path / "drafts"), "--no-ledger",
+        "draft", "--bug-id", "x", "--target-file", "x.py",
+        "--diff", str(diff_path), "--reasoning", "r",
+        "--tests-passed", "1",
+    ])
+    out = capsys.readouterr().out
+    patch_id = next(
+        tok.strip() for tok in out.split() if tok.startswith("patch_")
+    )
+    main([
+        "--drafts-dir", str(tmp_path / "drafts"), "--no-ledger",
+        "approve", patch_id, "--reviewer", "alice", "--apply", "none",
+    ])
+    capsys.readouterr()
+    rc = main([
+        "--drafts-dir", str(tmp_path / "drafts"), "--no-ledger",
+        "revoke", patch_id,
+        "--reviewer", "alice",
+        "--reason", "approved the wrong thing",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "revoked" in out
+    assert "verified=True" in out
