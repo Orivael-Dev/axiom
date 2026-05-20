@@ -212,6 +212,49 @@ class LocalNanoBackend:
 # ── Chained fallback ──────────────────────────────────────────────────────
 
 
+# ── DeepSeek API (hosted, OpenAI-compatible) ────────────────────────────
+
+
+class DeepSeekBackend(NIMBackend):
+    """DeepSeek's hosted chat-completions API — OpenAI-compatible.
+
+    Default model `deepseek-chat` (DeepSeek-V3). Use `deepseek-reasoner`
+    for R1. Get a key at platform.deepseek.com; pricing is roughly
+    $0.14/M input + $0.28/M output at time of writing — usually
+    cheaper than running the distilled models locally for low-volume
+    use, while still keeping the per-call latency low because the
+    endpoint is hosted.
+
+    Reads from env:
+      DEEPSEEK_API_KEY    — required (sk-...)
+      DEEPSEEK_MODEL      — default "deepseek-chat"
+      DEEPSEEK_BASE_URL   — default "https://api.deepseek.com/v1"
+    """
+    name: str = "deepseek"
+
+    def __init__(
+        self,
+        *,
+        api_key:  Optional[str] = None,
+        model:    Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> None:
+        key = api_key or os.environ.get("DEEPSEEK_API_KEY")
+        if not key:
+            raise BackendError(
+                "DeepSeekBackend requires DEEPSEEK_API_KEY (or api_key=)"
+            )
+        # Skip parent __init__ (NIMBackend mandates NVIDIA key) — set
+        # fields directly with DeepSeek defaults.
+        self._api_key = key
+        self.model = model or os.environ.get(
+            "DEEPSEEK_MODEL", "deepseek-chat"
+        )
+        self._base_url = (base_url or os.environ.get(
+            "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"
+        )).rstrip("/")
+
+
 class ChainedBackend:
     """Try each backend in order; first success wins.
 
@@ -255,8 +298,9 @@ class ChainedBackend:
 
 
 _BACKEND_FACTORIES = {
-    "nim":   lambda: NIMBackend(),
-    "local": lambda: LocalNanoBackend(),
+    "nim":      lambda: NIMBackend(),
+    "local":    lambda: LocalNanoBackend(),
+    "deepseek": lambda: DeepSeekBackend(),
 }
 
 
@@ -281,15 +325,26 @@ def make_backend(chain: Iterable[str]) -> SLMBackend:
 def default_backend() -> SLMBackend:
     """Resolve the default backend from environment.
 
-    AXIOM_BACKEND="nim"          → NIMBackend
-    AXIOM_BACKEND="local"        → LocalNanoBackend
-    AXIOM_BACKEND="local,nim"    → ChainedBackend([local, nim])
-    unset                        → "local" if OLLAMA_URL appears
-                                   reachable in env, else "nim"
+    AXIOM_BACKEND="nim"           → NIMBackend
+    AXIOM_BACKEND="local"         → LocalNanoBackend
+    AXIOM_BACKEND="deepseek"      → DeepSeekBackend
+    AXIOM_BACKEND="local,deepseek"→ ChainedBackend (try local first,
+                                                    fall back to DeepSeek)
+    AXIOM_BACKEND="local,nim"     → ChainedBackend([local, nim])
+    unset                         → "local" if OLLAMA_URL appears
+                                    reachable in env;
+                                    else "deepseek" if DEEPSEEK_API_KEY
+                                    is set;
+                                    else "nim"
     """
     spec = os.environ.get("AXIOM_BACKEND")
     if spec:
         return make_backend(spec.split(","))
-    if os.environ.get("OLLAMA_URL") or not os.environ.get("NVIDIA_NIM_API_KEY"):
+    if os.environ.get("OLLAMA_URL") or not (
+        os.environ.get("NVIDIA_NIM_API_KEY")
+        or os.environ.get("DEEPSEEK_API_KEY")
+    ):
         return LocalNanoBackend()
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        return DeepSeekBackend()
     return NIMBackend()

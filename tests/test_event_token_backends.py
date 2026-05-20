@@ -211,3 +211,88 @@ def test_default_backend_picks_local_when_no_nim_key(isolated, monkeypatch):
     monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
     from axiom_event_token.backends import default_backend, LocalNanoBackend
     assert isinstance(default_backend(), LocalNanoBackend)
+
+
+# ─── DeepSeekBackend ─────────────────────────────────────────────────
+
+
+def test_deepseek_requires_api_key(isolated, monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    from axiom_event_token.backends import DeepSeekBackend, BackendError
+    with pytest.raises(BackendError, match="DEEPSEEK_API_KEY"):
+        DeepSeekBackend()
+
+
+def test_deepseek_defaults(isolated, monkeypatch):
+    """Defaults: model=deepseek-chat, base_url=api.deepseek.com/v1."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+    monkeypatch.delenv("DEEPSEEK_BASE_URL", raising=False)
+    from axiom_event_token.backends import DeepSeekBackend
+    b = DeepSeekBackend()
+    assert b.name == "deepseek"
+    assert b.model == "deepseek-chat"
+    assert b._base_url == "https://api.deepseek.com/v1"
+
+
+def test_deepseek_explicit_overrides_env(isolated, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-env")
+    from axiom_event_token.backends import DeepSeekBackend
+    b = DeepSeekBackend(
+        api_key="sk-explicit",
+        model="deepseek-reasoner",
+        base_url="https://example.test/v1",
+    )
+    assert b._api_key == "sk-explicit"
+    assert b.model == "deepseek-reasoner"
+    assert b._base_url == "https://example.test/v1"
+
+
+def test_make_backend_recognises_deepseek(isolated, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    from axiom_event_token.backends import (
+        make_backend, DeepSeekBackend,
+    )
+    b = make_backend(["deepseek"])
+    assert isinstance(b, DeepSeekBackend)
+
+
+def test_make_backend_chains_local_deepseek(isolated, monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    from axiom_event_token.backends import (
+        make_backend, ChainedBackend,
+        LocalNanoBackend, DeepSeekBackend,
+    )
+    b = make_backend(["local", "deepseek"])
+    assert isinstance(b, ChainedBackend)
+    assert isinstance(b._backends[0], LocalNanoBackend)
+    assert isinstance(b._backends[1], DeepSeekBackend)
+
+
+def test_default_backend_picks_deepseek_when_key_set_no_local(
+    isolated, monkeypatch,
+):
+    """Unset AXIOM_BACKEND + OLLAMA_URL + NVIDIA_NIM_API_KEY,
+    but DEEPSEEK_API_KEY set → DeepSeekBackend."""
+    monkeypatch.delenv("AXIOM_BACKEND", raising=False)
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    from axiom_event_token.backends import (
+        default_backend, DeepSeekBackend,
+    )
+    assert isinstance(default_backend(), DeepSeekBackend)
+
+
+def test_default_backend_local_still_wins_when_ollama_url_set(
+    isolated, monkeypatch,
+):
+    """Local always wins when OLLAMA_URL is set, even if DeepSeek
+    key is also configured — the user has signaled local intent."""
+    monkeypatch.delenv("AXIOM_BACKEND", raising=False)
+    monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    from axiom_event_token.backends import (
+        default_backend, LocalNanoBackend,
+    )
+    assert isinstance(default_backend(), LocalNanoBackend)

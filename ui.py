@@ -108,19 +108,28 @@ with st.sidebar:
     # persist across sessions.
 
     _BACKEND_OPTIONS = [
-        "local,nim (auto-fallback)",   # local first, NIM fallback
-        "local",                        # Ollama only
-        "nim",                          # NVIDIA NIM only
+        "local,nim (auto-fallback)",      # local first, NIM fallback
+        "local,deepseek (auto-fallback)", # local first, DeepSeek fallback
+        "deepseek",                       # DeepSeek API only
+        "local",                          # Ollama only
+        "nim",                            # NVIDIA NIM only
         "nim,local (NIM-first fallback)",
     ]
-    _backend_default = os.environ.get("AXIOM_BACKEND", "local,nim")
-    # Normalise the env value into one of the dropdown labels.
-    if _backend_default == "local,nim":
-        _backend_default = "local,nim (auto-fallback)"
-    elif _backend_default == "nim,local":
-        _backend_default = "nim,local (NIM-first fallback)"
-    elif _backend_default not in ("local", "nim"):
-        _backend_default = "local,nim (auto-fallback)"
+    _BACKEND_LABEL_TO_ENV = {
+        "local,nim (auto-fallback)":       "local,nim",
+        "local,deepseek (auto-fallback)":  "local,deepseek",
+        "nim,local (NIM-first fallback)":  "nim,local",
+        "deepseek":                         "deepseek",
+        "local":                            "local",
+        "nim":                              "nim",
+    }
+    _BACKEND_ENV_TO_LABEL = {
+        v: k for k, v in _BACKEND_LABEL_TO_ENV.items()
+    }
+    _backend_default = _BACKEND_ENV_TO_LABEL.get(
+        os.environ.get("AXIOM_BACKEND", "local,nim"),
+        "local,nim (auto-fallback)",
+    )
 
     backend_choice = st.selectbox(
         "Backend",
@@ -135,12 +144,7 @@ with st.sidebar:
         ),
     )
     # Map dropdown label → AXIOM_BACKEND env value.
-    _backend_env = {
-        "local,nim (auto-fallback)":       "local,nim",
-        "nim,local (NIM-first fallback)":  "nim,local",
-        "local":                            "local",
-        "nim":                              "nim",
-    }[backend_choice]
+    _backend_env = _BACKEND_LABEL_TO_ENV[backend_choice]
 
     local_model = st.text_input(
         "Local (Ollama) model",
@@ -163,47 +167,86 @@ with st.sidebar:
         key="sb-ollama-url",
         help="Where Ollama serves. Leave default for local install.",
     )
+    deepseek_model = st.text_input(
+        "DeepSeek model",
+        value=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
+        key="sb-deepseek-model",
+        help=(
+            "'deepseek-chat' = DeepSeek-V3 (general). "
+            "'deepseek-reasoner' = DeepSeek-R1 (slower, deeper "
+            "reasoning). Used only by Prompt Evolution / "
+            "Exoskeleton / Medical Research when 'deepseek' is in "
+            "the backend chain."
+        ),
+    )
+    deepseek_key = st.text_input(
+        "DeepSeek API key",
+        value=os.environ.get("DEEPSEEK_API_KEY", ""),
+        type="password",
+        key="sb-deepseek-key",
+        help=(
+            "Get one at platform.deepseek.com. "
+            "Pricing ~$0.14/M input + $0.28/M output for V3 — "
+            "usually cheaper than running distilled models locally "
+            "for solo-founder volume."
+        ),
+    )
 
     # The Prompt Evolution / DSL tabs use the chosen model under the
-    # legacy AXIOM_MODEL name — keep it in sync.
-    if _backend_env.startswith("local"):
-        _legacy_model = local_model
-    else:
-        _legacy_model = nim_model
-    # Compute base URL for OpenAI-compatible client (axiom_constitutional).
-    _legacy_base_url = (
-        f"{ollama_url.rstrip('/')}/v1"
-        if _backend_env.startswith("local")
-        else os.environ.get(
+    # legacy AXIOM_MODEL / AXIOM_BASE_URL / AXIOM_API_KEY names —
+    # axiom_constitutional.client._build_client reads those. Route
+    # them to whatever the sidebar Backend points at, with the
+    # FIRST element of a chain winning (consistent with how
+    # ChainedBackend picks its target).
+    _primary = _backend_env.split(",")[0].strip()
+    if _primary == "local":
+        _legacy_model    = local_model
+        _legacy_base_url = f"{ollama_url.rstrip('/')}/v1"
+        _legacy_api_key  = "ollama"
+    elif _primary == "deepseek":
+        _legacy_model    = deepseek_model
+        _legacy_base_url = os.environ.get(
+            "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1",
+        )
+        _legacy_api_key  = deepseek_key.strip()
+    else:   # 'nim' (or any unrecognised value falls back to NIM)
+        _legacy_model    = nim_model
+        _legacy_base_url = os.environ.get(
             "NVIDIA_BASE_URL",
             "https://integrate.api.nvidia.com/v1",
         )
-    )
-    # The OpenAI client needs SOME non-empty key even for Ollama;
-    # use "ollama" as a sentinel for local mode.
-    _legacy_api_key = (
-        "ollama" if _backend_env.startswith("local")
-        else (
+        _legacy_api_key  = (
             os.environ.get("AXIOM_API_KEY")
             or os.environ.get("NVIDIA_API_KEY", "")
         )
-    )
 
     # Apply on every rerun so downstream modules see the choice.
-    os.environ["AXIOM_BACKEND"] = _backend_env
-    os.environ["OLLAMA_MODEL"]  = local_model
-    os.environ["OLLAMA_URL"]    = ollama_url
-    os.environ["NIM_MODEL"]     = nim_model
-    os.environ["AXIOM_MODEL"]   = _legacy_model
+    os.environ["AXIOM_BACKEND"]  = _backend_env
+    os.environ["OLLAMA_MODEL"]   = local_model
+    os.environ["OLLAMA_URL"]     = ollama_url
+    os.environ["NIM_MODEL"]      = nim_model
+    os.environ["DEEPSEEK_MODEL"] = deepseek_model
+    if deepseek_key.strip():
+        os.environ["DEEPSEEK_API_KEY"] = deepseek_key.strip()
+    os.environ["AXIOM_MODEL"]    = _legacy_model
     os.environ["AXIOM_BASE_URL"] = _legacy_base_url
     if _legacy_api_key:
         os.environ["AXIOM_API_KEY"] = _legacy_api_key
 
     # Preflight: which backends look reachable?
     _be_status: list[str] = []
-    if _backend_env.startswith("local") or "local" in _backend_env:
+    if "local" in _backend_env:
         _be_status.append("✓ local target set")
-    if "nim" in _backend_env:
+    if "deepseek" in _backend_env:
+        if deepseek_key.strip() or os.environ.get("DEEPSEEK_API_KEY"):
+            _be_status.append("✓ DeepSeek key set")
+        else:
+            _be_status.append("✗ DeepSeek key missing")
+    # Match 'nim' but not 'nim' inside 'deepseek'-only strings.
+    _has_nim = any(
+        tok.strip() == "nim" for tok in _backend_env.split(",")
+    )
+    if _has_nim:
         if os.environ.get("NVIDIA_NIM_API_KEY") or \
                 os.environ.get("NVIDIA_API_KEY"):
             _be_status.append("✓ NIM key set")
@@ -226,9 +269,14 @@ with st.sidebar:
             "OLLAMA_MODEL":   local_model,
             "OLLAMA_URL":     ollama_url,
             "NIM_MODEL":      nim_model,
+            "DEEPSEEK_MODEL": deepseek_model,
             "AXIOM_MODEL":    _legacy_model,
             "AXIOM_BASE_URL": _legacy_base_url,
         }
+        # Persist the DeepSeek key only when explicitly set in the
+        # sidebar (don't blow away an existing .env entry).
+        if deepseek_key.strip():
+            _managed["DEEPSEEK_API_KEY"] = deepseek_key.strip()
         existing: list[str] = []
         if _env_path.exists():
             existing = _env_path.read_text(encoding="utf-8").splitlines()
@@ -1239,7 +1287,9 @@ with tab_exo:
                 [f"use sidebar choice ({_sidebar_backend})",
                  "local",
                  "nim",
+                 "deepseek",
                  "local,nim",
+                 "local,deepseek",
                  "nim,local"],
                 index=0,
                 key="pg-exo-backend",
@@ -1293,7 +1343,10 @@ with tab_exo:
             if backend_label.startswith("use sidebar"):
                 # Inherit from the sidebar — already set in os.environ.
                 pass
-            elif backend_label in ("local", "nim", "local,nim", "nim,local"):
+            elif backend_label in (
+                "local", "nim", "deepseek",
+                "local,nim", "local,deepseek", "nim,local",
+            ):
                 backend_env_value = backend_label
             if backend_env_value is not None:
                 os.environ["AXIOM_BACKEND"] = backend_env_value
