@@ -1275,6 +1275,12 @@ def billing_upgrade(request: Request, tier: str):
         url = billing.create_checkout_session(t, tier)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(400, str(e))
+    except Exception:
+        log.exception(
+            "Stripe checkout failed for tenant=%s tier=%s",
+            t.tenant_id, tier,
+        )
+        raise HTTPException(502, "Billing provider error — please try again")
     return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1289,6 +1295,9 @@ def billing_portal(request: Request):
         url = billing.create_portal_session(t)
     except RuntimeError as e:
         raise HTTPException(400, str(e))
+    except Exception:
+        log.exception("Stripe portal failed for tenant=%s", t.tenant_id)
+        raise HTTPException(502, "Billing provider error — please try again")
     return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
