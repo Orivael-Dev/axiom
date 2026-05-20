@@ -282,6 +282,120 @@ with tab_prompt:
         "prompt_store for this task; falls back to the seed). Override "
         "below to prime evolution from a specific starting prompt."
     )
+
+    # ── Seed-from-prior-run picker ────────────────────────────────────
+    # Lower the chance of restarting evolution from scratch when a
+    # prior run already produced a strong Worker prompt for this task
+    # (or a similar one). Pick the run from the dropdown, hit Load,
+    # the override field below auto-populates.
+    st.markdown("**📚 Seed from a prior run** *(lower mistake risk while re-evolving)*")
+    import json as _seed_json
+    _seed_runs: list = []
+    try:
+        _prompts_root = Path(
+            os.environ.get("AXIOM_PROMPTS_DIR", "prompts")
+        )
+        if _prompts_root.is_dir():
+            for _d in sorted(_prompts_root.iterdir()):
+                _wf = _d / "worker.json"
+                if not _wf.is_file():
+                    continue
+                try:
+                    _data = _seed_json.loads(_wf.read_text(encoding="utf-8"))
+                except Exception:  # noqa: BLE001
+                    continue
+                _iters = _data.get("iterations", []) or []
+                if not _iters:
+                    continue
+                _best_idx = int(_data.get("best_version", 0) or 0)
+                _best_score = float(_data.get("best_score", 0.0) or 0.0)
+                _preview = (
+                    (_data.get("task_description") or "")
+                    .replace("\n", " ")
+                    .strip()[:60]
+                )
+                _seed_runs.append({
+                    "task_id":         _d.name,
+                    "best_score":      _best_score,
+                    "iters":           len(_iters),
+                    "best_prompt":     _iters[_best_idx]["prompt"],
+                    "task_description": _data.get("task_description", ""),
+                    "label": (
+                        f"{_d.name}  ·  best={_best_score:.1f}  ·  "
+                        f"iters={len(_iters)}  ·  "
+                        f"{(_preview or '(no task)')!r}"
+                    ),
+                })
+            # Sort by best_score desc so the strongest seeds are first.
+            _seed_runs.sort(key=lambda r: r["best_score"], reverse=True)
+    except Exception as e:  # noqa: BLE001
+        st.caption(f"(could not scan prompts dir: {e})")
+
+    if _seed_runs:
+        _options = ["(don't seed from a prior run)"] + [r["label"] for r in _seed_runs]
+        _seed_choice = st.selectbox(
+            f"Pick a prior run ({len(_seed_runs)} available, sorted by best score)",
+            _options,
+            index=0,
+            key="seed-from-run",
+        )
+        if _seed_choice != _options[0]:
+            _chosen = next(r for r in _seed_runs if r["label"] == _seed_choice)
+            _c1, _c2 = st.columns([1, 3])
+            with _c1:
+                if st.button("Load this seed →", key="load-seed",
+                             width="stretch"):
+                    st.session_state["worker-prompt-override"] = \
+                        _chosen["best_prompt"]
+                    st.success(
+                        f"Loaded best prompt from {_chosen['task_id']} "
+                        f"(score={_chosen['best_score']:.1f}) into the "
+                        f"override field below."
+                    )
+                    st.rerun()
+            with _c2:
+                st.caption(
+                    f"task: {_chosen['task_description'][:120]!r}"
+                )
+    else:
+        st.caption(
+            "(no prior runs in `prompts/` yet — run a Prompt Evolution "
+            "session first and the best Worker prompt will land here)"
+        )
+
+    # Escape hatch: paste a task_id directly.
+    _seed_id_paste = st.text_input(
+        "...or paste a task_id (16 hex chars)",
+        value="",
+        key="seed-id-paste",
+        help=(
+            "task_id is the 16-char SHA-256 prefix of the task "
+            "description. Find it in the directory names under "
+            "prompts/ or in the 'Run ID' line printed after a run."
+        ),
+    )
+    if _seed_id_paste.strip() and st.button(
+        "Load by task_id →", key="load-seed-id",
+    ):
+        _tid = _seed_id_paste.strip()
+        _match = next(
+            (r for r in _seed_runs if r["task_id"] == _tid),
+            None,
+        )
+        if _match:
+            st.session_state["worker-prompt-override"] = _match["best_prompt"]
+            st.success(
+                f"Loaded best prompt from {_tid} "
+                f"(score={_match['best_score']:.1f})."
+            )
+            st.rerun()
+        else:
+            st.warning(
+                f"No task_id {_tid!r} found in {_prompts_root}. "
+                f"Available: {[r['task_id'] for r in _seed_runs[:5]]}…"
+            )
+
+    st.divider()
     try:
         from axiom_constitutional.agents.worker import WorkerAgent as _W
         from axiom_constitutional.agents.evaluator import EvaluatorAgent as _E
