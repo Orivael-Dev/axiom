@@ -5,6 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Signed Multi-Layer Event Tokens for AI Governance | Governance Under Question</title>
   <meta name="description" content="Working paper — Per-layer HMAC + coordinator signature + outer signature: composition integrity for multimodal AI events." />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Governance Under Question" />
+  <meta property="og:title" content="Signed Multi-Layer Event Tokens for AI Governance" />
+  <meta property="og:description" content="Working paper — Per-layer HMAC + coordinator signature + outer signature: composition integrity for multimodal AI events." />
+  <meta property="og:url" content="https://governance.orivael.dev/papers/2026-event-tokens.html" />
+  <meta property="og:image" content="https://governance.orivael.dev/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="article:published_time" content="2026-05-21T12:00:00Z" />
+  <meta property="article:author" content="Antonio Roberts" />
+  <meta property="article:tag" content="Working paper" />
+  <meta property="article:tag" content="Event tokens" />
+  <meta property="article:tag" content="AI governance" />
+
+  <!-- Twitter card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Working paper: Signed Multi-Layer Event Tokens for AI Governance" />
+  <meta name="twitter:description" content="Three-layer signature construction making multimodal AI events tamper-evident in O(1) verification. v0.1 — PDF + arXiv targeted Q3 2026." />
+  <meta name="twitter:image" content="https://governance.orivael.dev/og.png" />
+
+  <!-- Citation meta (Google Scholar / Zotero / academic crawlers) -->
+  <meta name="citation_title" content="Signed Multi-Layer Event Tokens for AI Governance" />
+  <meta name="citation_author" content="Roberts, Antonio" />
+  <meta name="citation_publication_date" content="2026/05/21" />
+  <meta name="citation_online_date" content="2026/05/21" />
+  <meta name="citation_pdf_url" content="https://governance.orivael.dev/papers/2026-event-tokens.pdf" />
+  <meta name="citation_keywords" content="AI governance; event tokens; HMAC; tamper-evidence; multimodal AI; selective activation" />
+
+  <!-- RSS / Atom feed discovery -->
+  <link rel="alternate" type="application/rss+xml" title="Governance Under Question — RSS" href="../feed.xml" />
+
   <link rel="stylesheet" href="../styles.css" />
 </head>
 <body>
@@ -239,7 +272,7 @@ AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))') \
   <footer>
     <div class="container footer-grid">
       <p>© 2026 Governance Under Question. Built for GitHub Pages.</p>
-      <p>Independent notes on AI governance, security, and accountability.</p>
+      <p>Independent notes on AI governance, security, and accountability. · <a href="../feed.xml" style="color: var(--accent);">RSS</a></p>
     </div>
   </footer>
 </body>
