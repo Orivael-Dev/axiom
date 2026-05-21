@@ -18,6 +18,25 @@
     </image>
 
     <item>
+      <title>Issue 004: RFC — We're Designing a Fairness Agent. Tell Us Why It's Wrong.</title>
+      <link>https://governance.orivael.dev/issues/004-rfc-equality-agent.html</link>
+      <guid isPermaLink="true">https://governance.orivael.dev/issues/004-rfc-equality-agent.html</guid>
+      <pubDate>Thu, 22 May 2026 12:00:00 GMT</pubDate>
+      <category>Equality</category>
+      <category>RFC</category>
+      <category>Bias</category>
+      <description><![CDATA[
+        The Equality Agent RFC is open. Five questions the community
+        should answer before code lands: what baseline, what
+        categories, when to suspend, multi-agent voting threshold,
+        and what the kill record looks like. Measurement first
+        (Phase 1 publishes a reproducible baseline before any
+        intervention ships). Comment via GitHub issue tagged
+        rfc-equality.
+      ]]></description>
+    </item>
+
+    <item>
       <title>Working Paper: Signed Multi-Layer Event Tokens for AI Governance</title>
       <link>https://governance.orivael.dev/papers/2026-event-tokens.html</link>
       <guid isPermaLink="true">https://governance.orivael.dev/papers/2026-event-tokens.html</guid>

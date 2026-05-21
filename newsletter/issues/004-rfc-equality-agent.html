@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Issue 004 — RFC: We're Designing a Fairness Agent. Tell Us Why It's Wrong. | Governance Under Question</title>
+  <meta name="description" content="The Equality Agent RFC is open. Five questions where the answer isn't technical — taxonomy, suspend list, multi-agent voting, kill-record granularity, and the baseline to balance against. Comment before code lands." />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Governance Under Question" />
+  <meta property="og:title" content="RFC: Designing a Fairness Agent — comment before code lands" />
+  <meta property="og:description" content="Measure before intervening. Five open questions the community should answer first." />
+  <meta property="og:url" content="https://governance.orivael.dev/issues/004-rfc-equality-agent.html" />
+  <meta property="og:image" content="https://governance.orivael.dev/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="article:published_time" content="2026-05-22T12:00:00Z" />
+  <meta property="article:author" content="Antonio Roberts" />
+  <meta property="article:tag" content="Equality" />
+  <meta property="article:tag" content="RFC" />
+  <meta property="article:tag" content="Bias" />
+
+  <!-- Twitter card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Issue 004 — RFC: Designing a Fairness Agent" />
+  <meta name="twitter:description" content="Measure before intervening. Five questions where the answer isn't technical." />
+  <meta name="twitter:image" content="https://governance.orivael.dev/og.png" />
+
+  <!-- RSS / Atom feed discovery -->
+  <link rel="alternate" type="application/rss+xml" title="Governance Under Question — RSS" href="../feed.xml" />
+
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <a href="../index.html" class="logo" aria-label="Governance Under Question Home">
+        <span class="logo-mark">GQ</span>
+        <span>Governance Under Question</span>
+      </a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="../index.html#mission">Mission</a>
+        <a href="../index.html#topics">Topics</a>
+        <a href="../index.html#issues">Issues</a>
+        <a href="../index.html#papers">Papers</a>
+        <a href="../index.html#subscribe">Subscribe</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <article class="container article">
+      <a href="../index.html#issues" class="back-link">← All issues</a>
+
+      <div class="article-meta">
+        <span class="issue-date">Issue 004</span>
+        <span>·</span>
+        <span>May 2026</span>
+        <span class="tag">Equality</span>
+        <span class="tag">RFC</span>
+      </div>
+
+      <h1>RFC: We're designing a fairness agent. Tell us why it's wrong.</h1>
+
+      <p class="dek">
+        AXIOM is uniquely positioned to ship a deterministic, signed,
+        branch-killing fairness layer that can refuse to return "9 out
+        of 10 white doctors" when no demographic was specified. But
+        the architecture is the easy half. The hard half is choosing
+        a baseline, a taxonomy, and a suspend list — and those are
+        not technical decisions. This issue opens the RFC.
+      </p>
+
+      <h2>The pattern most fairness systems get wrong</h2>
+
+      <p>
+        Most production "fairness" interventions are one of three
+        things: a refusal layer that blocks specific words, a forced
+        rewrite that swaps demographics in the output, or a vibes-
+        based reranker that nobody can audit. All three share a
+        failure: <strong>they ship before measuring</strong>.
+      </p>
+
+      <p>
+        Without a public, reproducible measurement of how the
+        underlying model actually distributes demographics across a
+        canonical prompt set, you can't tell whether your
+        intervention helped, hurt, or did nothing. Publishing the
+        intervention before the measurement is the exact kind of
+        governance theatre this newsletter exists to question.
+      </p>
+
+      <h2>The architecture fit</h2>
+
+      <p>
+        AXIOM already has the primitives a real fairness layer needs:
+      </p>
+
+      <ul>
+        <li>
+          <strong>QRF branches with killed-with-reason semantics.</strong>
+          A skew-overrepresenting branch can be killed the same way a
+          constitutional-violation branch is — same signing path, same
+          audit trail.
+        </li>
+        <li>
+          <strong>Multi-agent coordinator binding</strong>
+          (<code>MedicalCoordinatorToken.cross_layer_consistency</code>).
+          The "fan out to N agents and vote on balance" pattern is
+          already there for medical evidence consistency. Replace the
+          domain and the semantics carry over.
+        </li>
+        <li>
+          <strong>Honest post-scan</strong>
+          (<code>axiom_exoskeleton_honesty.scan</code>). The
+          deterministic skew detector is the same shape as the
+          existing overclaim scanner that catches invented
+          track-record.
+        </li>
+      </ul>
+
+      <h2>Five questions the community should answer before code lands</h2>
+
+      <ol>
+        <li>
+          <strong>"Balanced to what?"</strong> Population
+          demographics (Census), profession-specific (BLS / AAMC),
+          or equal-across-categories? Each has different failure
+          modes.
+        </li>
+        <li>
+          <strong>Which categories count?</strong> Race + gender
+          only for v1, with explicit hooks for extension? Or
+          broader from day one?
+        </li>
+        <li>
+          <strong>When should balance be SUSPENDED?</strong>
+          User-specified demographic, historical accuracy, clinical
+          relevance, cultural context, statistical questions. What
+          else? The suspend list matters more than the rebalancing.
+        </li>
+        <li>
+          <strong>Multi-agent voting threshold.</strong> N=3
+          majority? When consensus drops below 0.6, escalate to
+          human review?
+        </li>
+        <li>
+          <strong>What does the kill record look like?</strong>
+          Aggregate histogram (privacy-respecting) or per-generation
+          labels (more auditable)? They trade off against each other.
+        </li>
+      </ol>
+
+      <h2>The phased plan, on purpose</h2>
+
+      <p>
+        The RFC commits to <strong>measurement first</strong>. Before
+        any rebalancing code ships, Phase 1 publishes a reproducible
+        baseline of how 5–10 popular open models distribute
+        demographics across a canonical prompt set. The measurement
+        becomes the calibration source for the intervention. The
+        threshold isn't "more diverse"; it's "matches the published
+        baseline within X percent."
+      </p>
+
+      <p>
+        Phase 0 is this RFC, open for ~2 weeks. Phase 1 is the
+        measurement + a working paper. Phase 2+ is the intervention,
+        calibrated to the numbers. Phase 4 is a quarterly re-run as
+        models update.
+      </p>
+
+      <h2>How to comment</h2>
+
+      <p>
+        The full RFC lives in the AXIOM repo at
+        <a href="https://github.com/Orivael-Dev/axiom/blob/main/docs/equality_agent_rfc.md"><code>docs/equality_agent_rfc.md</code></a>.
+        File a GitHub issue tagged
+        <code>rfc-equality</code> with your answer to any of Q1–Q5.
+      </p>
+
+      <p>
+        Organizations with a stake (civil-rights orgs, AI fairness
+        researchers, professional associations whose member
+        demographics are in scope) carry more weight than anonymous
+        votes. If you've published peer-reviewed work on algorithmic
+        fairness, please link it in your comment so others can
+        weigh the signal.
+      </p>
+
+      <blockquote>
+        We don't ship a fairness agent until the comment period
+        closes and the answers to Q1–Q5 are locked. Telling us
+        we're wrong now is cheap. Telling us after we ship is
+        expensive.
+      </blockquote>
+
+      <hr />
+
+      <p>
+        Next issue (Issue 005) will be the Phase 1 measurement
+        results — once the RFC closes and the canonical prompt set
+        is finalized, we run it against the candidate model set and
+        publish the histograms with the underlying CSV. If you have
+        a model you want included, drop it in the RFC comments.
+      </p>
+
+      <footer class="article-footer">
+        <div class="prev-next">
+          <a href="003-bias-failure-stack.html">← Issue 003: Bias Is a Governance Failure Stack</a>
+          <span>Next: Issue 005 — Phase 1 measurement →</span>
+        </div>
+        <div>
+          <a class="btn btn-primary" href="../index.html#subscribe">Subscribe to the newsletter</a>
+        </div>
+      </footer>
+    </article>
+  </main>
+
+  <footer>
+    <div class="container footer-grid">
+      <p>© 2026 Governance Under Question. Built for GitHub Pages.</p>
+      <p>Independent notes on AI governance, security, and accountability. · <a href="../feed.xml" style="color: var(--accent);">RSS</a></p>
+    </div>
+  </footer>
+</body>
+</html>
