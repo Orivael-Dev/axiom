@@ -223,6 +223,11 @@ BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+# Live-docs source. Read from the repo's docs/firewall/ tree so a
+# single Markdown edit updates both the public docs site and the
+# in-dashboard /help page.
+FIREWALL_DOCS_DIR = BASE_DIR.parent / "docs" / "firewall"
+
 init_registry()
 _classifier = IntentClassifier(derive_key(b"axiom-firewall-v1"))
 
@@ -595,6 +600,168 @@ _VERDICT_FOR_CLASS = {
     "HARM":       "block",
     "DECEIVE":    "block",
 }
+
+
+# ── /help — live docs served from docs/firewall/*.md ──────────────────
+
+
+_HELP_HTML_TEMPLATE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title} — Axiom Firewall</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .help-wrap {{ max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }}
+    .help-topbar {{
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; flex-wrap: wrap;
+      margin-bottom: 32px; padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-size: 14px;
+    }}
+    .help-topbar a {{ color: inherit; text-decoration: none; }}
+    .help-topbar a:hover {{ text-decoration: underline; }}
+    .help-doc-nav {{ display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; opacity: 0.85; }}
+    .help-doc-nav a {{ padding: 2px 0; }}
+    .help-doc-nav a.current {{ font-weight: 700; opacity: 1; }}
+    .help-wrap h1 {{ font-size: 32px; margin: 0 0 18px; letter-spacing: -0.02em; }}
+    .help-wrap h2 {{ font-size: 20px; margin: 36px 0 12px; }}
+    .help-wrap h3 {{ font-size: 16px; margin: 26px 0 10px; }}
+    .help-wrap p, .help-wrap li {{ line-height: 1.65; }}
+    .help-wrap code {{ font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 6px;
+      border-radius: 4px; }}
+    .help-wrap pre {{ background: rgba(0,0,0,0.35); border: 1px solid
+      rgba(255,255,255,0.08); border-radius: 8px; padding: 14px 16px;
+      overflow-x: auto; font-size: 13px; line-height: 1.5; }}
+    .help-wrap pre code {{ background: transparent; padding: 0; }}
+    .help-wrap blockquote {{ border-left: 3px solid var(--accent, #72f7d4);
+      margin: 18px 0; padding: 8px 16px;
+      background: rgba(114, 247, 212, 0.07); border-radius: 0 8px 8px 0;
+      font-style: italic; }}
+    .help-wrap table {{ border-collapse: collapse; margin: 18px 0; }}
+    .help-wrap th, .help-wrap td {{ border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 12px; }}
+  </style>
+</head>
+<body>
+  <div class="help-wrap">
+    <div class="help-topbar">
+      <a href="/dashboard">← Dashboard</a>
+      <nav class="help-doc-nav" aria-label="Firewall docs">{nav}</nav>
+    </div>
+    {body}
+  </div>
+</body>
+</html>
+"""
+
+
+def _help_doc_listing() -> list[tuple[str, str, str]]:
+    """Return [(slug, title, path), …] for every .md under docs/firewall/.
+
+    Title is taken from the first `# heading` in the file; falls back
+    to the slug if not found. Sorted with index.md first, then
+    quickstart.md, then the rest alphabetically.
+    """
+    if not FIREWALL_DOCS_DIR.is_dir():
+        return []
+    pref_order = ["index", "quickstart"]
+    out: list[tuple[str, str, str]] = []
+    for p in FIREWALL_DOCS_DIR.glob("*.md"):
+        slug = p.stem
+        title = slug.replace("-", " ").title()
+        try:
+            for line in p.read_text(encoding="utf-8").splitlines()[:8]:
+                if line.startswith("# "):
+                    title = line[2:].strip() or title
+                    break
+        except OSError:
+            continue
+        out.append((slug, title, str(p)))
+    out.sort(key=lambda r: (
+        pref_order.index(r[0]) if r[0] in pref_order else 999,
+        r[1].lower(),
+    ))
+    return out
+
+
+def _help_render_nav(current: str) -> str:
+    """HTML for the per-doc nav row at the top of /help pages."""
+    items = []
+    for slug, title, _path in _help_doc_listing():
+        klass = "current" if slug == current else ""
+        items.append(
+            f'<a class="{klass}" href="/help/{slug}">{title}</a>'
+        )
+    return "".join(items)
+
+
+def _help_render_markdown(md_text: str) -> str:
+    try:
+        import markdown as _md
+        return _md.markdown(
+            md_text,
+            extensions=["fenced_code", "tables", "toc", "sane_lists"],
+            output_format="html5",
+        )
+    except ImportError:
+        import html as _html
+        return (
+            '<p style="color:#ffd166;">⚠ <code>markdown</code> '
+            'package not installed — serving raw text.</p>'
+            f'<pre>{_html.escape(md_text)}</pre>'
+        )
+
+
+@app.get("/help", response_class=HTMLResponse)
+def help_index(request: Request):
+    """Render docs/firewall/index.md (or quickstart.md as a fallback)
+    and list every other available doc in the top nav."""
+    listing = _help_doc_listing()
+    if not listing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"no firewall docs at {FIREWALL_DOCS_DIR}",
+        )
+    # Pick the first listed slug as the landing page.
+    slug, title, path = listing[0]
+    md_text = Path(path).read_text(encoding="utf-8")
+    html = _HELP_HTML_TEMPLATE.format(
+        title=title,
+        nav=_help_render_nav(slug),
+        body=_help_render_markdown(md_text),
+    )
+    return HTMLResponse(content=html)
+
+
+@app.get("/help/{slug}", response_class=HTMLResponse)
+def help_page(request: Request, slug: str):
+    """Render docs/firewall/<slug>.md with the per-doc nav row."""
+    # Defensive: only allow simple slugs — no traversal.
+    if not slug.replace("-", "").replace("_", "").isalnum():
+        raise HTTPException(status_code=400, detail="invalid slug")
+    target = FIREWALL_DOCS_DIR / f"{slug}.md"
+    if not target.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"no doc named {slug!r}",
+        )
+    md_text = target.read_text(encoding="utf-8")
+    # Pull the title from the first H1, fall back to a titlecased slug.
+    title = slug.replace("-", " ").title()
+    for line in md_text.splitlines()[:8]:
+        if line.startswith("# "):
+            title = line[2:].strip() or title
+            break
+    html = _HELP_HTML_TEMPLATE.format(
+        title=title,
+        nav=_help_render_nav(slug),
+        body=_help_render_markdown(md_text),
+    )
+    return HTMLResponse(content=html)
 
 
 @app.post("/v1/guard/check")
