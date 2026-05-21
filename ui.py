@@ -76,7 +76,8 @@ st.divider()
 
 # ── Mode tabs ─────────────────────────────────────────────────────────────────
 (tab_prompt, tab_dsl, tab_growth,
- tab_exo, tab_audio, tab_dev, tab_med) = st.tabs([
+ tab_exo, tab_audio, tab_dev, tab_med,
+ tab_twitter) = st.tabs([
     "🔁 Prompt Evolution",
     "📄 AXIOM DSL (Language Test)",
     "📈 Growth Dashboard",
@@ -84,6 +85,7 @@ st.divider()
     "🎙️ Audio",
     "🛠️ Dev Agent",
     "🧬 Medical Research",
+    "🐦 Twitter Reply",
 ])
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
@@ -2121,3 +2123,245 @@ with tab_med:
                         f"appended to "
                         f"{_med_default_ledger_path()}"
                     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Twitter Reply — halt-at-gate, paste-for-send (no API posting)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+with tab_twitter:
+    st.markdown("### 🐦 Twitter reply drafter")
+    st.markdown(
+        "Paste a tweet you'd like to engage with. The agent drafts "
+        "**N=3 candidate replies** under three framings "
+        "(acknowledge · counter · artifact), each scanned by the "
+        "same honesty post-scan that gates the exoskeleton. Pick "
+        "one, approve, **copy the text, paste into Twitter**. "
+        "Nothing in this module posts to the X API — approval just "
+        "signs the chosen draft into the ledger so the audit trail "
+        "shows which candidate you ran with."
+    )
+
+    tw_key_ok = _pg_key_panel("twitter")
+    try:
+        import axiom_twitter_agent as _tw_mod  # noqa: F401
+        import axiom_twitter_agent_ledger as _tw_ledger  # noqa: F401
+        tw_import_ok = True
+        tw_import_err = ""
+    except Exception as e:  # noqa: BLE001
+        tw_import_ok = False
+        tw_import_err = f"{type(e).__name__}: {e}"
+
+    if not tw_import_ok:
+        st.error(f"axiom_twitter_agent import failed: {tw_import_err}")
+
+    if tw_key_ok and tw_import_ok:
+        from axiom_twitter_agent import (
+            TwitterAgent, TweetInput, MAX_REPLY_CHARS,
+            HonestyRefusal, TwitterAgentError,
+        )
+        from axiom_twitter_agent_ledger import (
+            LedgerWriter as _TwLedger,
+            default_ledger_path as _tw_default_ledger,
+        )
+
+        def _twitter_agent() -> TwitterAgent:
+            return TwitterAgent(ledger=_TwLedger(_tw_default_ledger()))
+
+        st.markdown("#### 1. Ingest a tweet")
+        with st.form("twitter-ingest-form", clear_on_submit=False):
+            c1, c2 = st.columns([1, 1])
+            with c1:
+                tw_tweet_id = st.text_input(
+                    "tweet_id (the trailing number in the URL)",
+                    key="pg-tw-tweet-id",
+                )
+                tw_author = st.text_input(
+                    "author handle (@ optional)",
+                    key="pg-tw-author",
+                )
+            with c2:
+                tw_url = st.text_input(
+                    "full tweet URL",
+                    key="pg-tw-url",
+                )
+            tw_text = st.text_area(
+                "tweet body text",
+                height=80,
+                key="pg-tw-text",
+                help=(
+                    "Paste the exact body of the tweet you want to "
+                    "reply to. The text is hashed at ingest so the "
+                    "EventToken pins what was scraped."
+                ),
+            )
+            ingest_btn = st.form_submit_button("Ingest + draft (N=3)")
+
+        if ingest_btn:
+            try:
+                tw = TweetInput.new(
+                    tweet_id=tw_tweet_id, author_handle=tw_author,
+                    url=tw_url, text=tw_text,
+                )
+            except TwitterAgentError as e:
+                st.error(str(e))
+            else:
+                agent = _twitter_agent()
+                agent.ingest(tw)
+                with st.spinner("Drafting 3 candidates…"):
+                    drafts = agent.draft(tw.input_id, candidates=3)
+                st.success(
+                    f"Ingested {tw.input_id} + drafted "
+                    f"{len(drafts)} candidate(s). Scroll down to "
+                    f"the pending list."
+                )
+
+        st.divider()
+        st.markdown("#### 2. Pending drafts — pick one, approve, copy")
+
+        agent = _twitter_agent()
+        pending = agent.list_pending()
+        if not pending:
+            st.caption(
+                "No pending drafts. Ingest a tweet above to draft "
+                "three candidates."
+            )
+        for d in pending:
+            blocked = d.honesty_block_count > 0
+            over    = d.over_limit
+            badge = (
+                ":red[BLOCKED — honesty]" if blocked
+                else (":orange[OVER LIMIT]" if over
+                      else ":green[ready]")
+            )
+            with st.container(border=True):
+                st.markdown(
+                    f"**{d.draft_id}**  ·  framing=`{d.framing}`  ·  "
+                    f"chars={d.char_count}/{MAX_REPLY_CHARS}  ·  "
+                    f"backend={d.backend}/{d.model}  ·  {badge}"
+                )
+                st.markdown(f"> reply to **@{d.parent_author_handle}** — "
+                            f"<{d.parent_url}>")
+                st.code(d.reply_text, language=None)
+                if d.honesty_findings:
+                    with st.expander(
+                        f"Honesty findings "
+                        f"({d.honesty_block_count} block / "
+                        f"{d.honesty_flag_count} flag)"
+                    ):
+                        for f in d.honesty_findings:
+                            sev = f.get("severity", "?").upper()
+                            st.write(
+                                f"- **[{sev}]** "
+                                f"{f.get('category', '?')}: "
+                                f"`{f.get('matched', '')}`"
+                            )
+                cols = st.columns([1, 1, 2])
+                with cols[0]:
+                    reviewer = st.text_input(
+                        "reviewer email",
+                        key=f"pg-tw-rev-{d.draft_id}",
+                    )
+                with cols[1]:
+                    if st.button(
+                        "✓ Approve",
+                        key=f"pg-tw-app-{d.draft_id}",
+                        disabled=(blocked or over),
+                        type="primary",
+                    ):
+                        if not reviewer.strip():
+                            st.error("reviewer email required")
+                        else:
+                            try:
+                                token = agent.approve(
+                                    d.draft_id,
+                                    reviewer_principal=reviewer.strip(),
+                                )
+                                st.success(
+                                    f"approved — signed event "
+                                    f"`{token.id}` "
+                                    f"(verified={token.verify()})"
+                                )
+                                st.rerun()
+                            except HonestyRefusal as he:
+                                st.error(f"HONESTY REFUSED: {he}")
+                            except TwitterAgentError as te:
+                                st.error(str(te))
+                with cols[2]:
+                    reject_reason = st.text_input(
+                        "reject reason",
+                        key=f"pg-tw-rej-reason-{d.draft_id}",
+                    )
+                    if st.button(
+                        "✗ Reject",
+                        key=f"pg-tw-rej-{d.draft_id}",
+                    ):
+                        if not reviewer.strip():
+                            st.error("reviewer email required")
+                        elif not reject_reason.strip():
+                            st.error("reason required")
+                        else:
+                            agent.reject(
+                                d.draft_id,
+                                reviewer_principal=reviewer.strip(),
+                                reason=reject_reason.strip(),
+                            )
+                            st.success(
+                                "rejected + improvement record "
+                                "appended to "
+                                "dev_agent_improvements.jsonl"
+                            )
+                            st.rerun()
+
+        st.divider()
+        st.markdown("#### 3. Approved drafts — copy + mark sent")
+
+        # Walk the drafts directory for approved-but-not-yet-sent items.
+        from pathlib import Path as _TwPath
+        drafts_root = (
+            _TwPath(os.environ.get("AXIOM_TWITTER_DRAFTS")
+                    or (_TwPath.home() / ".axiom" / "twitter"))
+            / "drafts"
+        )
+        approved = []
+        if drafts_root.is_dir():
+            for entry in sorted(drafts_root.iterdir()):
+                if not entry.is_dir():
+                    continue
+                try:
+                    di = agent.get_draft(entry.name)
+                except Exception:  # noqa: BLE001
+                    continue
+                if di.status == "approved":
+                    approved.append(di)
+        if not approved:
+            st.caption(
+                "No approved-but-unsent drafts. Approve one above "
+                "first."
+            )
+        for d in approved:
+            with st.container(border=True):
+                st.markdown(
+                    f"**{d.draft_id}** — reply to "
+                    f"**@{d.parent_author_handle}** at "
+                    f"<{d.parent_url}>"
+                )
+                st.markdown("**Copy this and paste into Twitter:**")
+                st.code(d.reply_text, language=None)
+                if st.button(
+                    "I pasted it — mark sent",
+                    key=f"pg-tw-sent-{d.draft_id}",
+                ):
+                    agent.mark_sent(d.draft_id)
+                    st.success(
+                        f"marked sent — signed into ledger "
+                        f"({_tw_default_ledger()})"
+                    )
+                    st.rerun()
+
+        st.caption(
+            f"Ledger: `{_tw_default_ledger()}`  ·  "
+            f"namespace `axiom-twitter-ledger-v1`  ·  "
+            f"no API posting — paste-for-send only."
+        )
