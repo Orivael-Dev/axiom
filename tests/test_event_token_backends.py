@@ -296,3 +296,68 @@ def test_default_backend_local_still_wins_when_ollama_url_set(
         default_backend, LocalNanoBackend,
     )
     assert isinstance(default_backend(), LocalNanoBackend)
+
+
+# ─── CustomBackend (BYO OpenAI-compatible endpoint) ──────────────────
+
+
+def test_custom_requires_api_key(isolated, monkeypatch):
+    monkeypatch.delenv("AXIOM_API_KEY", raising=False)
+    monkeypatch.delenv("AXIOM_BASE_URL", raising=False)
+    monkeypatch.delenv("AXIOM_MODEL", raising=False)
+    from axiom_event_token.backends import CustomBackend, BackendError
+    with pytest.raises(BackendError, match="AXIOM_API_KEY"):
+        CustomBackend()
+
+
+def test_custom_requires_base_url(isolated, monkeypatch):
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-test")
+    monkeypatch.delenv("AXIOM_BASE_URL", raising=False)
+    monkeypatch.delenv("AXIOM_MODEL", raising=False)
+    from axiom_event_token.backends import CustomBackend, BackendError
+    with pytest.raises(BackendError, match="AXIOM_BASE_URL"):
+        CustomBackend()
+
+
+def test_custom_requires_model(isolated, monkeypatch):
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-test")
+    monkeypatch.setenv("AXIOM_BASE_URL", "https://example.test/v1")
+    monkeypatch.delenv("AXIOM_MODEL", raising=False)
+    from axiom_event_token.backends import CustomBackend, BackendError
+    with pytest.raises(BackendError, match="AXIOM_MODEL"):
+        CustomBackend()
+
+
+def test_custom_three_env_vars_succeed(isolated, monkeypatch):
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-test")
+    monkeypatch.setenv("AXIOM_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("AXIOM_MODEL", "anthropic/claude-3.5-sonnet")
+    from axiom_event_token.backends import CustomBackend
+    b = CustomBackend()
+    assert b.name == "custom"
+    assert b.model == "anthropic/claude-3.5-sonnet"
+    assert b._base_url == "https://openrouter.ai/api/v1"
+
+
+def test_custom_explicit_overrides_env(isolated, monkeypatch):
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-env")
+    monkeypatch.setenv("AXIOM_BASE_URL", "https://env.test/v1")
+    monkeypatch.setenv("AXIOM_MODEL", "env-model")
+    from axiom_event_token.backends import CustomBackend
+    b = CustomBackend(
+        api_key="sk-explicit",
+        model="explicit-model",
+        base_url="https://explicit.test/v1",
+    )
+    assert b._api_key == "sk-explicit"
+    assert b.model == "explicit-model"
+    assert b._base_url == "https://explicit.test/v1"
+
+
+def test_make_backend_recognises_custom(isolated, monkeypatch):
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-test")
+    monkeypatch.setenv("AXIOM_BASE_URL", "https://example.test/v1")
+    monkeypatch.setenv("AXIOM_MODEL", "test-model")
+    from axiom_event_token.backends import make_backend, CustomBackend
+    b = make_backend(["custom"])
+    assert isinstance(b, CustomBackend)

@@ -39,7 +39,9 @@ from typing import Any, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, StreamingResponse,
+)
 from pydantic import BaseModel, Field
 
 
@@ -50,6 +52,7 @@ logging.basicConfig(level=logging.INFO,
 REPO_ROOT  = Path(__file__).resolve().parent
 HTML_PATH  = REPO_ROOT / "web" / "research_console.html"
 LEDGER_HTML_PATH = REPO_ROOT / "web" / "ledger_viewer.html"
+HELP_MD_PATH = REPO_ROOT / "docs" / "research_engine.md"
 
 # UI domain → QRFEngine domain. QRF supports five; "general" stays stubbed.
 _DOMAIN_TO_QRF = {
@@ -620,6 +623,139 @@ async def ledger_viewer():
         raise HTTPException(status_code=500,
                              detail=f"missing {LEDGER_HTML_PATH}")
     return FileResponse(LEDGER_HTML_PATH, media_type="text/html")
+
+
+# ── /help — renders docs/research_engine.md as a styled HTML page ─────
+
+
+_HELP_HTML_TEMPLATE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Re:Search Engine — Instructions</title>
+  <style>
+    :root {{
+      --bg: #0a0e1c;
+      --bg-2: #11172b;
+      --text: #e6edf6;
+      --muted: #9aa6c4;
+      --accent: #72f7d4;
+      --accent-2: #8ea7ff;
+      --warning: #ffd166;
+      --success: #63e6be;
+      --border: rgba(255,255,255,0.08);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI",
+            Roboto, Helvetica, Arial, sans-serif;
+    }}
+    .wrap {{ max-width: 820px; margin: 0 auto; padding: 60px 24px 100px; }}
+    .topbar {{
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 40px; padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }}
+    .topbar a {{ color: var(--accent); text-decoration: none; }}
+    .topbar a:hover {{ text-decoration: underline; }}
+    h1 {{ font-size: 36px; line-height: 1.15; margin: 0 0 18px;
+          letter-spacing: -0.02em; }}
+    h2 {{ font-size: 22px; margin: 42px 0 14px;
+          letter-spacing: -0.015em; }}
+    h3 {{ font-size: 17px; margin: 30px 0 10px; color: var(--accent); }}
+    p, li {{ color: #d4dbed; }}
+    ul, ol {{ padding-left: 22px; }}
+    li {{ margin-bottom: 6px; }}
+    a {{ color: var(--accent); border-bottom: 1px solid
+                              rgba(114, 247, 212, 0.3); text-decoration: none; }}
+    a:hover {{ color: var(--accent-2); border-bottom-color: var(--accent-2); }}
+    code {{
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.9em;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 6px;
+      border-radius: 4px;
+    }}
+    pre {{
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }}
+    pre code {{ background: transparent; padding: 0; }}
+    hr {{ border: none; border-top: 1px solid var(--border);
+          margin: 40px 0; }}
+    blockquote {{
+      border-left: 3px solid var(--accent);
+      margin: 20px 0; padding: 8px 16px;
+      background: rgba(114, 247, 212, 0.06);
+      border-radius: 0 8px 8px 0;
+      color: var(--text); font-style: italic;
+    }}
+    table {{ border-collapse: collapse; margin: 18px 0; }}
+    th, td {{ border: 1px solid var(--border); padding: 8px 12px; }}
+    th {{ background: var(--bg-2); }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <a href="/">← Re:Search console</a>
+      <span>Re:Search Engine — Instructions</span>
+    </div>
+    {body}
+  </div>
+</body>
+</html>
+"""
+
+
+_HELP_PLAIN_TEMPLATE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Instructions</title></head>
+<body style="font:14px/1.5 monospace; padding:32px; background:#0a0e1c; color:#e6edf6;">
+  <p style="color:#ffd166;">⚠ <code>markdown</code> Python package not
+  installed; serving raw text. Install with <code>pip install
+  markdown</code> + restart for the styled view.</p>
+  <pre>{body}</pre>
+</body></html>
+"""
+
+
+@app.get("/help")
+async def help_page():
+    """Serve docs/research_engine.md rendered as styled HTML.
+
+    Single source of truth: the same Markdown file is what readers
+    see on GitHub and what the live server renders here. Edit one
+    place, both surfaces update.
+    """
+    if not HELP_MD_PATH.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"missing {HELP_MD_PATH}",
+        )
+    md_text = HELP_MD_PATH.read_text(encoding="utf-8")
+    try:
+        import markdown as _md
+        body_html = _md.markdown(
+            md_text,
+            extensions=["fenced_code", "tables", "toc", "sane_lists"],
+            output_format="html5",
+        )
+        html = _HELP_HTML_TEMPLATE.format(body=body_html)
+    except ImportError:
+        # Graceful fallback when the markdown lib isn't installed.
+        import html as _html
+        html = _HELP_PLAIN_TEMPLATE.format(body=_html.escape(md_text))
+    return HTMLResponse(content=html)
 
 
 # ── Medical research instrument routes ───────────────────────────────

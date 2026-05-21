@@ -255,6 +255,61 @@ class DeepSeekBackend(NIMBackend):
         )).rstrip("/")
 
 
+# ── Bring-your-own OpenAI-compatible endpoint ───────────────────────────
+
+
+class CustomBackend(NIMBackend):
+    """Any OpenAI-compatible chat-completions endpoint.
+
+    Pointed by three env vars (or constructor kwargs) — the SAME shape
+    `axiom_constitutional.client` already understands, so the
+    Exoskeleton + Medical Research tabs and the Prompt Evolution +
+    DSL tabs end up reading the SAME LLM:
+
+      AXIOM_BASE_URL   — required (e.g. https://openrouter.ai/api/v1)
+      AXIOM_API_KEY    — required (anything non-empty for vLLM /
+                         LM Studio)
+      AXIOM_MODEL      — required (model identifier the endpoint
+                         understands)
+
+    The wire format must match OpenAI's standard chat-completions
+    shape — `{choices: [{message: {content: ...}}], usage: {...}}`.
+    99% of providers do; if yours doesn't, write a dedicated SLMBackend
+    subclass instead.
+    """
+    name: str = "custom"
+
+    def __init__(
+        self,
+        *,
+        api_key:  Optional[str] = None,
+        model:    Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> None:
+        key = api_key or os.environ.get("AXIOM_API_KEY")
+        if not key:
+            raise BackendError(
+                "CustomBackend requires AXIOM_API_KEY (or api_key=). "
+                "Use any non-empty string for endpoints that don't "
+                "validate the key (e.g. LM Studio, vLLM)."
+            )
+        url = base_url or os.environ.get("AXIOM_BASE_URL")
+        if not url:
+            raise BackendError(
+                "CustomBackend requires AXIOM_BASE_URL (or base_url=). "
+                "Example: https://openrouter.ai/api/v1"
+            )
+        mdl = model or os.environ.get("AXIOM_MODEL")
+        if not mdl:
+            raise BackendError(
+                "CustomBackend requires AXIOM_MODEL (or model=). "
+                "Use the model identifier your endpoint expects."
+            )
+        self._api_key  = key
+        self._base_url = url.rstrip("/")
+        self.model     = mdl
+
+
 class ChainedBackend:
     """Try each backend in order; first success wins.
 
@@ -301,6 +356,7 @@ _BACKEND_FACTORIES = {
     "nim":      lambda: NIMBackend(),
     "local":    lambda: LocalNanoBackend(),
     "deepseek": lambda: DeepSeekBackend(),
+    "custom":   lambda: CustomBackend(),
 }
 
 

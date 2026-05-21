@@ -114,6 +114,7 @@ with st.sidebar:
         "local",                          # Ollama only
         "nim",                            # NVIDIA NIM only
         "nim,local (NIM-first fallback)",
+        "custom (OpenAI-compatible)",     # Bring-your-own endpoint
     ]
     _BACKEND_LABEL_TO_ENV = {
         "local,nim (auto-fallback)":       "local,nim",
@@ -122,6 +123,7 @@ with st.sidebar:
         "deepseek":                         "deepseek",
         "local":                            "local",
         "nim":                              "nim",
+        "custom (OpenAI-compatible)":      "custom",
     }
     _BACKEND_ENV_TO_LABEL = {
         v: k for k, v in _BACKEND_LABEL_TO_ENV.items()
@@ -227,6 +229,41 @@ with st.sidebar:
         ),
     )
 
+    # Bring-your-own OpenAI-compatible endpoint. Shown unconditionally
+    # so the env vars stay visible even when not in use; only matters
+    # when AXIOM_BACKEND='custom' is in the chain.
+    custom_base_url = st.text_input(
+        "Custom BASE_URL (OpenAI-compatible)",
+        value=os.environ.get("AXIOM_BASE_URL", ""),
+        key="sb-custom-base-url",
+        help=(
+            "Endpoint that speaks OpenAI's /v1/chat/completions shape. "
+            "Examples: https://openrouter.ai/api/v1 · "
+            "https://api.together.xyz/v1 · http://localhost:1234/v1 "
+            "(LM Studio) · your own vLLM. Only used when the Backend "
+            "dropdown is set to 'custom (OpenAI-compatible)' or a "
+            "chain containing 'custom'."
+        ),
+    )
+    custom_model = st.text_input(
+        "Custom model name",
+        value=os.environ.get(
+            "AXIOM_MODEL_CUSTOM",
+            os.environ.get("AXIOM_MODEL", ""),
+        ),
+        key="sb-custom-model",
+        help="Model identifier your endpoint expects "
+             "(e.g. 'anthropic/claude-3.5-sonnet' on OpenRouter).",
+    )
+    custom_api_key = st.text_input(
+        "Custom API key",
+        value=os.environ.get("AXIOM_API_KEY_CUSTOM", ""),
+        type="password",
+        key="sb-custom-api-key",
+        help="Use any non-empty string for endpoints that don't "
+             "validate the key (LM Studio, vLLM).",
+    )
+
     # The Prompt Evolution / DSL tabs use the chosen model under the
     # legacy AXIOM_MODEL / AXIOM_BASE_URL / AXIOM_API_KEY names —
     # axiom_constitutional.client._build_client reads those. Route
@@ -244,6 +281,14 @@ with st.sidebar:
             "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1",
         )
         _legacy_api_key  = deepseek_key.strip()
+    elif _primary == "custom":
+        _legacy_model    = custom_model.strip() or "model"
+        _legacy_base_url = custom_base_url.strip() or os.environ.get(
+            "AXIOM_BASE_URL", ""
+        )
+        _legacy_api_key  = custom_api_key.strip() or os.environ.get(
+            "AXIOM_API_KEY", ""
+        )
     else:   # 'nim' (or any unrecognised value falls back to NIM)
         _legacy_model    = nim_model
         _legacy_base_url = os.environ.get(
@@ -263,6 +308,15 @@ with st.sidebar:
     os.environ["DEEPSEEK_MODEL"] = deepseek_model
     if deepseek_key.strip():
         os.environ["DEEPSEEK_API_KEY"] = deepseek_key.strip()
+    # Stash the custom-endpoint trio separately so the user's
+    # explicit picks don't get clobbered by the legacy-routing
+    # block when a NIM/DeepSeek/local backend is active.
+    if custom_base_url.strip():
+        os.environ["AXIOM_BASE_URL_CUSTOM"] = custom_base_url.strip()
+    if custom_model.strip():
+        os.environ["AXIOM_MODEL_CUSTOM"]    = custom_model.strip()
+    if custom_api_key.strip():
+        os.environ["AXIOM_API_KEY_CUSTOM"]  = custom_api_key.strip()
     os.environ["AXIOM_MODEL"]    = _legacy_model
     os.environ["AXIOM_BASE_URL"] = _legacy_base_url
     if _legacy_api_key:
@@ -277,6 +331,17 @@ with st.sidebar:
             _be_status.append("✓ DeepSeek key set")
         else:
             _be_status.append("✗ DeepSeek key missing")
+    if "custom" in _backend_env:
+        has_url = bool(custom_base_url.strip()
+                       or os.environ.get("AXIOM_BASE_URL_CUSTOM"))
+        has_key = bool(custom_api_key.strip()
+                       or os.environ.get("AXIOM_API_KEY_CUSTOM"))
+        if has_url and has_key:
+            _be_status.append("✓ custom endpoint set")
+        else:
+            _be_status.append(
+                "✗ custom needs BASE_URL + API_KEY"
+            )
     # Match 'nim' but not 'nim' inside 'deepseek'-only strings.
     _has_nim = any(
         tok.strip() == "nim" for tok in _backend_env.split(",")
