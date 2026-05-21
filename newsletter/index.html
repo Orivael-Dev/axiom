@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Governance Under Question | AI Governance &amp; Security Newsletter</title>
-  <meta name="description" content="A non-biased newsletter questioning current and future AI governance, security, bias, and accountability." />
+  <meta name="description" content="Independent updates on AI governance, security, bias, and reports / benchmarks. Companion publication for original research papers." />
   <style>
     :root {
       --bg: #0b1020;
@@ -185,7 +185,7 @@
 
     .cards {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 18px;
     }
     .card {
@@ -303,6 +303,9 @@
       border: 0;
     }
 
+    @media (max-width: 1100px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+    }
     @media (max-width: 850px) {
       .hero-grid,
       .subscribe-grid { grid-template-columns: 1fr; }
@@ -325,6 +328,7 @@
         <a href="#mission">Mission</a>
         <a href="#topics">Topics</a>
         <a href="#issues">Issues</a>
+        <a href="#papers">Papers</a>
         <a href="#subscribe">Subscribe</a>
       </nav>
     </div>
@@ -334,15 +338,16 @@
     <section class="hero">
       <div class="container hero-grid">
         <div>
-          <div class="eyebrow"><span class="dot"></span> Independent AI governance and security notes</div>
-          <h1>Questioning AI governance before the future <span class="gradient-text">governs us.</span></h1>
+          <div class="eyebrow"><span class="dot"></span> Updates · Reports · Benchmarks · Research papers</div>
+          <h1>Independent updates on AI governance, security, and the <span class="gradient-text">numbers behind them.</span></h1>
           <p>
-            A non-biased newsletter exploring AI bias, agent security, data access,
-            audit trails, model accountability, and the systems deciding what gets trusted.
+            Regular notes on AI governance, agent security, and bias —
+            backed by published reports, reproducible benchmarks, and a
+            companion stream of original research papers.
           </p>
           <div class="hero-actions">
             <a class="btn btn-primary" href="#subscribe">Join the Newsletter</a>
-            <a class="btn btn-secondary" href="#issues">Read Latest Issues</a>
+            <a class="btn btn-secondary" href="#papers">Read the Research</a>
           </div>
         </div>
         <aside class="hero-card" aria-label="Open questions">
@@ -351,7 +356,7 @@
             <li>Who audits AI agents when they act across email, files, code, and money?</li>
             <li>Can bias be measured without hiding the tradeoffs?</li>
             <li>Should governance live inside the model, outside the model, or both?</li>
-            <li>What does security look like when software can reason, delegate, and remember?</li>
+            <li>Which published benchmarks actually predict real-world safety, and which are theatre?</li>
           </ul>
         </aside>
       </div>
@@ -362,9 +367,12 @@
         <div class="section-head">
           <h2>Not pro-AI. Not anti-AI. Evidence-first.</h2>
           <p>
-            This project asks whether AI systems are measurable, governable, secure,
-            and honest enough to trust. Every issue is designed to question assumptions
-            without becoming a megaphone for fear, hype, politics, or corporate fog machines.
+            Every issue is built around something verifiable — a fresh
+            benchmark run, a public report, a reproducible experiment, or
+            a working paper queued for submission. We cite primary
+            sources, link to the data, and publish methodology alongside
+            results. The goal is signal that holds up when the corporate
+            press releases age out.
           </p>
         </div>
       </div>
@@ -373,27 +381,33 @@
     <section id="topics">
       <div class="container">
         <div class="section-head">
-          <h2>Core Topics</h2>
-          <p>Each topic is treated like a live wire: useful, powerful, and worth handling carefully.</p>
+          <h2>What We Cover</h2>
+          <p>Four standing beats. Each issue picks one and reports against current evidence.</p>
         </div>
 
         <div class="cards">
           <article class="card">
             <div class="icon">⚖️</div>
             <h3>Bias &amp; Accountability</h3>
-            <p>Exploring fairness, hidden assumptions, dataset gaps, scoring systems, and whether bias is being reduced or simply renamed.</p>
+            <p>Fairness audits, hidden assumptions, dataset gaps, scoring systems, and whether bias is being reduced or simply renamed.</p>
           </article>
 
           <article class="card">
             <div class="icon">🛡️</div>
             <h3>Agent Security</h3>
-            <p>Tracking the risks that appear when AI agents can access tools, accounts, files, browsers, infrastructure, and private workflows.</p>
+            <p>What changes when AI agents access tools, accounts, files, browsers, infrastructure, and private workflows.</p>
           </article>
 
           <article class="card">
             <div class="icon">🧾</div>
             <h3>Governance Logs</h3>
-            <p>Questioning whether future systems need verifiable decision trails, audit layers, rollback records, and policy-aware reasoning.</p>
+            <p>Verifiable decision trails, audit layers, rollback records, signed event tokens, and policy-aware reasoning.</p>
+          </article>
+
+          <article class="card">
+            <div class="icon">📊</div>
+            <h3>Reports &amp; Benchmarks</h3>
+            <p>Reproducible benchmark runs with the data + methodology published alongside the results. No "trust us, it scored 9.4."</p>
           </article>
         </div>
       </div>
@@ -403,7 +417,7 @@
       <div class="container">
         <div class="section-head">
           <h2>Latest Issues</h2>
-          <p>Replace these examples with your published newsletter posts or Markdown-generated pages.</p>
+          <p>Each issue links to its underlying report, benchmark dataset, or working paper.</p>
         </div>
 
         <div class="issue-list">
@@ -411,7 +425,7 @@
             <div class="issue-date">Issue 001</div>
             <div>
               <h3>Why AI Governance Needs Evidence, Not Vibes</h3>
-              <p>A starting point for measuring trust, risk, and accountability in AI systems.</p>
+              <p>Opening report — measuring trust, risk, and accountability in production AI systems.</p>
             </div>
             <span class="tag">Governance</span>
           </article>
@@ -420,7 +434,7 @@
             <div class="issue-date">Issue 002</div>
             <div>
               <h3>The Coming Security Problem: Agents With Access</h3>
-              <p>What changes when AI can read, write, move, trigger, and decide across connected tools?</p>
+              <p>Benchmark — what changes when AI can read, write, move, trigger, and decide across connected tools.</p>
             </div>
             <span class="tag">Security</span>
           </article>
@@ -429,9 +443,50 @@
             <div class="issue-date">Issue 003</div>
             <div>
               <h3>Bias Is a Governance Failure Stack</h3>
-              <p>Bias is not only a model problem. It can emerge from data, incentives, policies, and feedback loops.</p>
+              <p>Field report — bias emerging from data, incentives, policies, and feedback loops (not just the model).</p>
             </div>
             <span class="tag">Bias</span>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="papers">
+      <div class="container">
+        <div class="section-head">
+          <h2>Research Papers</h2>
+          <p>
+            Original work supporting the newsletter — published, in review, or queued
+            for submission. Citation-ready BibTeX is included alongside each PDF.
+          </p>
+        </div>
+
+        <div class="issue-list">
+          <article class="issue">
+            <div class="issue-date">2026 · Working</div>
+            <div>
+              <h3>Signed Multi-Layer Event Tokens for AI Governance</h3>
+              <p>Per-layer HMAC + coordinator signature + outer signature: composition integrity for multimodal AI events. PDF + reproducible eval pending.</p>
+            </div>
+            <span class="tag">Working paper</span>
+          </article>
+
+          <article class="issue">
+            <div class="issue-date">2026 · In review</div>
+            <div>
+              <h3>Constitutional Multi-Agent Architectures: A Fleet Model</h3>
+              <p>Trust-level isolation, intent-gate routing, and per-container constitutional rules. Submitted; results dataset open-source.</p>
+            </div>
+            <span class="tag">In review</span>
+          </article>
+
+          <article class="issue">
+            <div class="issue-date">2026 · Drafting</div>
+            <div>
+              <h3>The Overclaim Problem: Detecting Invented Track Record in LLM Output</h3>
+              <p>Deterministic post-scan for fabricated customer counts, success metrics, and industry-position claims in agent-generated text. Eval set in progress.</p>
+            </div>
+            <span class="tag">Drafting</span>
           </article>
         </div>
       </div>
@@ -443,8 +498,10 @@
           <div>
             <h2>Subscribe to the signal.</h2>
             <p>
-              Get clear, non-biased notes on AI governance, security, bias, and future accountability.
-              Connect this form to Buttondown, Beehiiv, Substack, MailerLite, or your own backend.
+              Each issue lands with its underlying report, benchmark
+              data, or paper PDF attached — and subscribers see new
+              working papers before they're submitted publicly. No
+              tracking pixels, no sponsor placements.
             </p>
           </div>
 
