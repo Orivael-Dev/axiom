@@ -176,6 +176,62 @@
     .stage strong { color: var(--text); font-weight: 700; }
     .arrow { color: var(--accent-2); }
 
+    /* ── Pre-flight backend banner ──────────────────────────────────
+       Shown on page load if /api/health reports the backend isn't
+       ready. Yellow so it nags but doesn't look like a real error. */
+    .preflight-banner {
+      margin: 12px 0 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--warning);
+      background: rgba(255, 209, 102, 0.06);
+      color: var(--warning);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .preflight-banner code {
+      background: rgba(255, 209, 102, 0.12);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ── Signed-verification ribbon ─────────────────────────────────
+       Pinned to the top of the report area after a successful run,
+       in front of TL;DR. Green border + monospaced token_id so the
+       "this is a real signed event" claim has a visible anchor. */
+    .signed-ribbon {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border-left: 3px solid var(--success);
+      background: rgba(99, 230, 190, 0.08);
+      font-size: 13px;
+      color: #cfe;
+    }
+    .signed-ribbon.failed {
+      border-left-color: #e05050;
+      background: rgba(224, 80, 80, 0.08);
+      color: #fdd;
+    }
+    .signed-ribbon .label {
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: var(--success);
+    }
+    .signed-ribbon.failed .label { color: #ff8a8a; }
+    .signed-ribbon code {
+      font-family: ui-monospace, Menlo, monospace;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: #fff;
+    }
+    .signed-ribbon .sep { opacity: 0.5; }
+
     .search-panel {
       margin: 26px auto 0;
       max-width: 1060px;
@@ -759,6 +815,14 @@
       </div>
     </section>
 
+    <!--
+      Pre-flight backend health banner. Hidden by default; revealed
+      on page load when /api/health says the backend isn't built yet
+      or AXIOM_MASTER_KEY isn't visible. Quietly stays hidden when
+      the backend looks healthy.
+    -->
+    <div id="preflightBanner" class="preflight-banner" hidden></div>
+
     <section class="grid">
       <div class="col-stack">
         <article class="card">
@@ -966,6 +1030,53 @@
     const API_BASE = (location.protocol === "http:" || location.protocol === "https:")
                        ? location.origin
                        : null;
+
+    // ── Pre-flight backend health check ──────────────────────────────
+    // Fires once on page load. If /api/health reports the backend
+    // isn't built yet (no master key, no exoskeleton pack), surface
+    // a small yellow banner so a demo failure isn't a surprise mid-
+    // pitch. Hidden when the server looks healthy AND when the page
+    // is served from file:// (mock-only mode — banner would be
+    // misleading there).
+    (async function preflightHealth() {
+      if (!API_BASE) return;
+      const banner = document.getElementById("preflightBanner");
+      if (!banner) return;
+      try {
+        const resp = await fetch(API_BASE + "/api/health",
+                                  { cache: "no-store" });
+        if (!resp.ok) {
+          banner.innerHTML =
+            `Backend pre-flight: <code>/api/health</code> returned ` +
+            `<code>${resp.status}</code>. Live runs may fail — ` +
+            `check that the research server is running and that ` +
+            `<code>AXIOM_MASTER_KEY</code> is set.`;
+          banner.hidden = false;
+          return;
+        }
+        const d = await resp.json();
+        const looksUnbuilt =
+          (d.backend && String(d.backend).includes("not yet built")) ||
+          d.state_built === false;
+        if (looksUnbuilt) {
+          banner.innerHTML =
+            `Backend not built yet — first live run will warm it up. ` +
+            `Verify <code>AXIOM_MASTER_KEY</code> is set ` +
+            `before demoing.`;
+          banner.hidden = false;
+        }
+      } catch (err) {
+        const banner = document.getElementById("preflightBanner");
+        if (banner) {
+          banner.innerHTML =
+            `Backend pre-flight failed: ` +
+            `<code>${String(err.message || err).slice(0, 140)}</code>. ` +
+            `Live runs unavailable — check the research server is ` +
+            `serving on this origin.`;
+          banner.hidden = false;
+        }
+      }
+    })();
 
     async function runResearchOnUi() {
       const query = els.input.value.trim();
@@ -1320,7 +1431,38 @@
       els.healthMetric.textContent   = `${passed} / ${result.branches.length} passed`;
 
       const r = result.report;
+      // Signed-verification ribbon — sits above TL;DR so every
+      // rendered report visibly carries its signing fingerprint.
+      // On a live signed run, shows the token_id + latency + ledger.
+      // On a mock-fallback render, the ribbon downgrades to a
+      // "demo" variant so investors don't mistake mock data for
+      // real signing.
+      const rec = result.receipt || {};
+      const isLive = mode === "live";
+      const ribbonClass = isLive && rec.verified ? "signed-ribbon"
+                        : "signed-ribbon failed";
+      const ribbonLabel = isLive && rec.verified
+        ? "✓ SIGNED · VERIFIED"
+        : (mode === "live" ? "✗ SIGNATURE FAILED" : "DEMO · UNSIGNED");
+      const tokenIdShort = rec.token_id
+        ? escapeHtml(rec.token_id)
+        : "—";
+      const ledgerShort = rec.ledger
+        ? escapeHtml(String(rec.ledger).replace(/^.*\/(\.[^/]+\/[^/]+)$/, "$1"))
+        : "—";
+      const ribbonHtml = `
+        <div class="${ribbonClass}">
+          <span class="label">${ribbonLabel}</span>
+          <code>${tokenIdShort}</code>
+          <span class="sep">·</span>
+          <span>${result.cost && result.cost.latency_ms ? result.cost.latency_ms + "ms" : ""}</span>
+          <span class="sep">·</span>
+          <span>${escapeHtml(rec.backend || "")}</span>
+          <span class="sep">·</span>
+          <span>ledger: ${ledgerShort}</span>
+        </div>`;
       els.reportBody.innerHTML = `
+        ${ribbonHtml}
         <div class="report-section">
           <h3>TL;DR</h3>
           <p>${escapeHtml(r.tldr)}</p>
@@ -1369,7 +1511,9 @@
           </article>`;
       }).join("");
 
-      const rec = result.receipt;
+      // `rec` was already declared at the top of renderResult for
+      // the signed-verification ribbon. Reuse it here for the
+      // receipt card so we don't double-declare.
       els.receiptBadge.textContent = rec.verified ? "verified" : "FAILED";
       els.receipt.innerHTML = `
         <div class="row"><strong>token_id</strong>  <span class="key">${escapeHtml(rec.token_id)}</span></div>
