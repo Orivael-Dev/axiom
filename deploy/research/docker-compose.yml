@@ -1,0 +1,109 @@
+# AXIOM Re:Search Engine — beta-tester deploy stack.
+#
+# Two services:
+#   research  — the FastAPI research server (port 8765, internal-only)
+#   caddy     — TLS terminator + basic-auth gate on the public URL
+#
+# Beta-tester flow:
+#   1. Each tester gets a username + password (Caddy basic_auth — see
+#      Caddyfile and BETA_AUTH_HASHES in .env).
+#   2. They visit https://${RESEARCH_HOST} and clear the basic-auth
+#      challenge — the page loads.
+#   3. Their browser hits /api/research with the bearer
+#      AXIOM_RESEARCH_TOKEN set in the page's localStorage (or via the
+#      sidebar's "API key" field if you wire it). When AXIOM_RESEARCH_TOKEN
+#      is empty, only basic-auth gates.
+#
+# Quickstart on the Hetzner box:
+#   cd /opt/axiom/deploy/research
+#   cp .env.example .env
+#   # Edit .env — set AXIOM_MASTER_KEY, AXIOM_RESEARCH_TOKEN,
+#   #             DEEPSEEK_API_KEY (or NVIDIA_NIM_API_KEY),
+#   #             RESEARCH_HOST, and BETA_AUTH_HASHES.
+#   docker compose --profile tls up -d --build
+#
+# Tear down for a "beta paused" window:
+#   docker compose down
+#
+# Pure-local dev (no TLS, no auth gate):
+#   docker compose up research
+
+services:
+
+  research:
+    build:
+      context: ../..
+      dockerfile: deploy/research/Dockerfile
+    image: orivael/axiom-research:local
+    container_name: axiom-research
+    restart: unless-stopped
+    environment:
+      # Required — sign event tokens. Stable across restarts.
+      AXIOM_MASTER_KEY:           ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY (openssl rand -hex 32)}
+
+      # Optional — bearer-token defense-in-depth on /api/*.
+      # When set, /api/research and friends require:
+      #   Authorization: Bearer <this value>
+      # Leave blank to rely solely on Caddy basic-auth at the edge.
+      AXIOM_RESEARCH_TOKEN:       ${AXIOM_RESEARCH_TOKEN:-}
+
+      # Backend selection. Most economical beta combo is
+      # 'local,deepseek' if you also run Ollama on this host, or pure
+      # 'deepseek' for a CPU-only Hetzner box.
+      AXIOM_BACKEND:              ${AXIOM_BACKEND:-deepseek}
+      DEEPSEEK_API_KEY:           ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL:             ${DEEPSEEK_MODEL:-deepseek-chat}
+      NVIDIA_NIM_API_KEY:         ${NVIDIA_NIM_API_KEY:-}
+      NIM_MODEL:                  ${NIM_MODEL:-}
+      OLLAMA_URL:                 ${OLLAMA_URL:-}
+      OLLAMA_MODEL:               ${OLLAMA_MODEL:-}
+
+      # Legacy OpenAI-compatible client (used by Prompt Evolution + DSL).
+      AXIOM_API_KEY:              ${AXIOM_API_KEY:-${DEEPSEEK_API_KEY:-}}
+      AXIOM_BASE_URL:             ${AXIOM_BASE_URL:-https://api.deepseek.com/v1}
+      AXIOM_MODEL:                ${AXIOM_MODEL:-${DEEPSEEK_MODEL:-deepseek-chat}}
+
+      # Ledger lands inside the container at $HOME/.axiom — mounted to
+      # the named volume below so it survives restarts.
+      HOME: /data
+    volumes:
+      - research-data:/data
+    expose:
+      # NOT mapped to a host port by default — Caddy fronts it.
+      # Uncomment 'ports' below to expose directly for pure-local dev.
+      - "8765"
+    # ports:
+    #   - "8765:8765"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/api/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: axiom-research-caddy
+    restart: unless-stopped
+    profiles: ["tls"]   # opt-in: docker compose --profile tls up
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RESEARCH_HOST:     ${RESEARCH_HOST:?set RESEARCH_HOST (e.g. research.orivael.dev)}
+      # Caddy basic_auth needs bcrypt hashes — one per beta tester.
+      # Generate with: docker run --rm caddy:2-alpine caddy hash-password
+      # Then paste as:
+      #   BETA_AUTH_HASHES="user1 $2a$14$.... user2 $2a$14$...."
+      BETA_AUTH_HASHES:  ${BETA_AUTH_HASHES:?set BETA_AUTH_HASHES (Caddy basic_auth pairs)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - research
+
+volumes:
+  research-data:
+  caddy-data:
+  caddy-config:
