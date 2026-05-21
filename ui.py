@@ -146,11 +146,46 @@ with st.sidebar:
     # Map dropdown label → AXIOM_BACKEND env value.
     _backend_env = _BACKEND_LABEL_TO_ENV[backend_choice]
 
+    # Known-good local models for the GTX 1660 Ti / 6 GB VRAM tier
+    # (Q4_K_M quantization). Picking one writes it to the
+    # local_model text field. "(custom)" leaves the field editable.
+    _LOCAL_MODEL_PRESETS = [
+        "(custom — type below)",
+        "qwen2.5:7b           — best all-rounder, Apache 2.0",
+        "qwen2.5-coder:7b     — code patches, dev-agent flows",
+        "deepseek-r1:7b       — reasoning-tuned distill",
+        "deepseek-r1:8b       — slightly larger distill",
+        "mistral:7b-instruct  — sales / outreach delegates",
+        "phi3.5               — 3.8B, fast Evaluator + light tasks",
+        "gemma2:9b            — tight VRAM fit (Q4_K_S), best quality",
+        "llama3.2:3b          — tiny + fast for smoke tests",
+    ]
+    _local_preset = st.selectbox(
+        "Local model preset",
+        _LOCAL_MODEL_PRESETS,
+        index=0,
+        key="sb-local-preset",
+        help=(
+            "Picks fit into 6 GB VRAM at Q4_K_M (except gemma2:9b "
+            "which needs Q4_K_S). Choosing one populates the text "
+            "field below. Stays on '(custom)' if you're typing your "
+            "own model name."
+        ),
+    )
+    # If the user picked a preset, prefill the text field with just
+    # the model name (strip the "— description" trailer).
+    _preset_default = None
+    if not _local_preset.startswith("(custom"):
+        _preset_default = _local_preset.split("—")[0].strip()
     local_model = st.text_input(
         "Local (Ollama) model",
-        value=os.environ.get("OLLAMA_MODEL", "llama3.2:3b"),
+        value=(_preset_default
+               or os.environ.get("OLLAMA_MODEL", "llama3.2:3b")),
         key="sb-local-model",
-        help="Set OLLAMA_URL too if Ollama isn't on localhost:11434.",
+        help=(
+            "Pull first with `ollama pull <model>`. "
+            "Set OLLAMA_URL too if Ollama isn't on localhost:11434."
+        ),
     )
     nim_model = st.text_input(
         "NIM model",
