@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Signed Multi-Layer Event Tokens for AI Governance | Governance Under Question</title>
+  <meta name="description" content="Working paper — Per-layer HMAC + coordinator signature + outer signature: composition integrity for multimodal AI events." />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <a href="../index.html" class="logo" aria-label="Governance Under Question Home">
+        <span class="logo-mark">GQ</span>
+        <span>Governance Under Question</span>
+      </a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="../index.html#mission">Mission</a>
+        <a href="../index.html#topics">Topics</a>
+        <a href="../index.html#issues">Issues</a>
+        <a href="../index.html#papers">Papers</a>
+        <a href="../index.html#subscribe">Subscribe</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <article class="container article">
+      <a href="../index.html#papers" class="back-link">← All papers</a>
+
+      <div class="article-meta">
+        <span class="paper-status working">Working paper</span>
+        <span>·</span>
+        <span>May 2026</span>
+        <span>·</span>
+        <span>v0.1</span>
+      </div>
+
+      <h1>Signed Multi-Layer Event Tokens for AI Governance</h1>
+
+      <p class="paper-authors">
+        <strong>Author:</strong> Antonio Roberts<br />
+        <strong>Affiliation:</strong> Orivael Dev · AXIOM Project
+      </p>
+
+      <div class="paper-actions">
+        <a class="btn btn-primary" href="#" aria-disabled="true">Download PDF (coming soon)</a>
+        <a class="btn btn-secondary" href="https://github.com/Orivael-Dev/axiom" target="_blank" rel="noopener">Code + eval (GitHub)</a>
+        <a class="btn btn-secondary" href="../issues/001-evidence-not-vibes.html">Companion issue</a>
+      </div>
+
+      <div class="abstract">
+        <h2>Abstract</h2>
+        <p>
+          We introduce <strong>Multi-Layer Event Tokens</strong>, a
+          signed runtime artifact for AI systems that produces
+          tamper-evident records of an event's composition across
+          modalities. An Event Token carries up to nine layer reports
+          (text, audio, video, physics, tempo, voice, qrf, vad,
+          governance), each signed under its own per-layer HMAC
+          namespace; a Coordinator signs the activation manifest plus
+          the per-layer signatures, capturing composition integrity;
+          and an outer signature covers the canonical token bundle.
+          Tampering with any layer, the activation set, or the
+          coordinator binding breaks one of the three signatures and
+          is detectable in <span class="paper-authors" style="display:inline; margin:0;">O(1)</span> verification. We show
+          that this construction (i) admits selective activation
+          — agents that do not run for an event leave verifiably-null
+          slots, satisfying the patent-claim "Coordinator runs ONLY
+          what was asked"; (ii) supports per-event federated binding
+          via a Coordinator Token that links separately-signed events
+          without re-signing them; and (iii) integrates with existing
+          OpenAI-compatible LLM backends without modifying the model.
+          We release a reference implementation, a ledger of
+          ~1,400 production-signed events, and a constitutional
+          governance overlay that demonstrably blocks invented
+          track-record claims, PHI leakage, and Tier-5 medical
+          patterns at sign-time.
+        </p>
+      </div>
+
+      <h2>1. Why event tokens?</h2>
+
+      <p>
+        Existing observability for AI systems treats events as
+        unstructured logs: a request, a response, maybe a trace ID.
+        That's fine for debugging and useless for governance. When a
+        regulator or auditor asks "what did this AI agent decide, on
+        what evidence, signed by whom, at what time?", a request log
+        cannot answer because it was never designed to.
+      </p>
+
+      <p>
+        The Event Token re-frames the artifact: an event is a
+        <em>signed object</em> with explicitly enumerated layers, each
+        independently verifiable, bound together by a coordinator that
+        proves they describe the same event. Verification is
+        cryptographic, not procedural. The signature either matches or
+        it doesn't.
+      </p>
+
+      <h2>2. Three-layer signature construction</h2>
+
+      <p>
+        The construction has three signature layers in a strict order:
+      </p>
+
+      <ul>
+        <li>
+          <strong>Per-layer signature</strong> — for each non-null
+          layer L, <code>sig_L = HMAC(K_layer, canonical(payload_L))</code>.
+          Tampering with the payload of one layer breaks only that
+          layer's signature.
+        </li>
+        <li>
+          <strong>Coordinator signature</strong> — <code>sig_coord =
+          HMAC(K_coord, canonical({activated_layers, per_layer_sigs}))</code>.
+          Tampering with the activation manifest, swapping one signed
+          layer for another, or rebuilding with a different layer set
+          breaks the coordinator signature.
+        </li>
+        <li>
+          <strong>Outer signature</strong> — <code>sig_outer = HMAC(K_token,
+          canonical(token_with_coord_sig))</code>. Covers everything,
+          including the coordinator signature, providing the final
+          tamper-evident envelope.
+        </li>
+      </ul>
+
+      <p>
+        Each <code>K_*</code> is derived from a master key via
+        HKDF-equivalent namespacing
+        (<code>axiom-event-token-layer-v1</code>,
+        <code>axiom-event-token-coord-v1</code>,
+        <code>axiom-event-token-v1</code>), so the verifier needs only
+        the master key to validate every signature.
+      </p>
+
+      <pre><code>EventToken.verify():
+  for layer in activated_layers:
+    if not HMAC.verify(K_layer, canonical(layer.payload), layer.sig):
+      return False
+  if not HMAC.verify(K_coord, canonical_coord(token), token.coord_sig):
+    return False
+  return HMAC.verify(K_token, canonical_outer(token), token.outer_sig)</code></pre>
+
+      <h2>3. Selective activation as a first-class property</h2>
+
+      <p>
+        A central design claim is that not every layer fires on every
+        event. A medical-research query activates source / claim / data
+        / bio / physics / governance. A sales-outreach delegate
+        activates only the text layer plus governance. The
+        <code>activated_agents</code> tuple is signed into the
+        coordinator manifest, so the layers that <em>didn't</em> run
+        are verifiably absent — a downstream consumer cannot pretend
+        a layer was activated when it wasn't.
+      </p>
+
+      <h2>4. Federated events via Coordinator Tokens</h2>
+
+      <p>
+        Building larger findings out of small signed events is done by
+        a <strong>Coordinator Token</strong>: a separate signed object
+        whose payload is a map <code>{layer_name → event_token_id}</code>
+        plus a <code>cross_layer_consistency</code> score, a
+        <code>contradictions</code> list, and a fusion signature under
+        a fresh namespace. The Coordinator Token does not embed the
+        underlying events — it points at them. This means a single
+        signed event can be re-used across multiple coordinators
+        (e.g., the same source citation supporting both a medical
+        finding and a competitive-analysis report).
+      </p>
+
+      <h2>5. Reproducibility</h2>
+
+      <p>
+        The reference implementation lives at
+        <a href="https://github.com/Orivael-Dev/axiom" target="_blank" rel="noopener">github.com/Orivael-Dev/axiom</a>
+        under <code>axiom_event_token/</code>. The 282-test regression
+        suite covers signature roundtrip, tamper detection on every
+        layer slot, coordinator-signature integrity under permutation
+        of layer order (commutative canonical form), and the
+        Coordinator Token binding semantics. To reproduce the eval:
+      </p>
+
+      <pre><code>git clone https://github.com/Orivael-Dev/axiom
+cd axiom
+AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))') \
+  python3 -m pytest tests/test_event_token.py \
+                    tests/test_event_token_delegate_runtime.py -v</code></pre>
+
+      <h2>6. Limitations</h2>
+
+      <ul>
+        <li>
+          The current Probability Band telemetry is a placeholder
+          (mean of per-layer confidence scores). Independent embedding
+          calibration is in progress and will land as v0.2.
+        </li>
+        <li>
+          The HMAC construction proves tamper-evidence, not
+          correctness of the underlying claim. A signed event with
+          fabricated content is still fabricated; the signature only
+          proves it has not been edited since signing.
+        </li>
+        <li>
+          The 9-slot wire format is fixed at v1.0 per the project's
+          format-stability commitment. Future modalities (proprioceptive,
+          olfactory, etc.) require a v2.0 format bump.
+        </li>
+      </ul>
+
+      <details class="bibtex">
+        <summary>Cite this paper</summary>
+        <pre><code>@misc{roberts2026signed,
+  title         = {Signed Multi-Layer Event Tokens for AI Governance},
+  author        = {Roberts, Antonio},
+  year          = {2026},
+  month         = may,
+  howpublished  = {Working paper, Governance Under Question},
+  url           = {https://governance.orivael.dev/papers/2026-event-tokens.html},
+  note          = {v0.1 — reference implementation at github.com/Orivael-Dev/axiom}
+}</code></pre>
+      </details>
+
+      <footer class="article-footer">
+        <div class="prev-next">
+          <span>— Status</span>
+          <span>Next milestone: PDF release + arXiv submission (target Q3 2026).</span>
+        </div>
+        <div>
+          <a class="btn btn-primary" href="../index.html#subscribe">Get paper updates by email</a>
+        </div>
+      </footer>
+    </article>
+  </main>
+
+  <footer>
+    <div class="container footer-grid">
+      <p>© 2026 Governance Under Question. Built for GitHub Pages.</p>
+      <p>Independent notes on AI governance, security, and accountability.</p>
+    </div>
+  </footer>
+</body>
+</html>

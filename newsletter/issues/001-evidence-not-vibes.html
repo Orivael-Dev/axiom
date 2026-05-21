@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Issue 001 — Why AI Governance Needs Evidence, Not Vibes | Governance Under Question</title>
+  <meta name="description" content="Opening report — measuring trust, risk, and accountability in production AI systems. The case for evidence-first governance over corporate vibes." />
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <a href="../index.html" class="logo" aria-label="Governance Under Question Home">
+        <span class="logo-mark">GQ</span>
+        <span>Governance Under Question</span>
+      </a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="../index.html#mission">Mission</a>
+        <a href="../index.html#topics">Topics</a>
+        <a href="../index.html#issues">Issues</a>
+        <a href="../index.html#papers">Papers</a>
+        <a href="../index.html#subscribe">Subscribe</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <article class="container article">
+      <a href="../index.html#issues" class="back-link">← All issues</a>
+
+      <div class="article-meta">
+        <span class="issue-date">Issue 001</span>
+        <span>·</span>
+        <span>May 2026</span>
+        <span class="tag">Governance</span>
+      </div>
+
+      <h1>Why AI Governance Needs Evidence, Not Vibes</h1>
+
+      <p class="dek">
+        Most AI governance claims you'll read this year live somewhere
+        between a marketing deck and a press release. This is the
+        opening report for a publication that refuses to do that —
+        starting with what "evidence-first" actually means when applied
+        to a production AI system.
+      </p>
+
+      <h2>The vibes problem</h2>
+
+      <p>
+        Roughly speaking, three things tend to be called "AI governance"
+        in 2026:
+      </p>
+
+      <ol>
+        <li>A blog post asserting that the model is "aligned" without defining what was measured.</li>
+        <li>A compliance checklist whose questions can be answered by any sufficiently confident PR team.</li>
+        <li>A framework PDF that mentions "humans in the loop" twelve times and never specifies which humans.</li>
+      </ol>
+
+      <p>
+        None of these are governance. They are <em>positioning</em>.
+        Governance only exists when an external party can independently
+        verify a claim — and right now, almost no AI-governance claim
+        can be independently verified.
+      </p>
+
+      <blockquote>
+        If a governance claim cannot be reproduced from public artifacts,
+        it is a marketing claim. It may still be true; it is not yet
+        evidence.
+      </blockquote>
+
+      <h2>What evidence-first governance looks like</h2>
+
+      <p>
+        For the rest of this publication, we'll use a working
+        definition: a governance claim is evidence-first when an outside
+        party can verify the claim using artifacts the claimant
+        published. That requires at least four things:
+      </p>
+
+      <ul>
+        <li>
+          <strong>A specific measurable claim.</strong> Not "the model is
+          safe." Something like: "Across the 412 prompts in
+          <code>eval-set-v2</code>, the model declined the harm class
+          with a recall of 0.94 (95% CI: 0.91–0.96)."
+        </li>
+        <li>
+          <strong>A reproducible eval.</strong> The prompts, the rubric,
+          the random seed, and the model version, posted to a public
+          URL.
+        </li>
+        <li>
+          <strong>A tamper-evident artifact.</strong> A signed record
+          (HMAC, hash chain, content-addressed storage) so the claim
+          cannot be silently edited after the fact.
+        </li>
+        <li>
+          <strong>Stated limits.</strong> What this evidence does
+          <em>not</em> cover, in plain language. Eval-set-v2 measured
+          single-turn prompts; nothing in it speaks to multi-turn agent
+          jailbreaks.
+        </li>
+      </ul>
+
+      <p>
+        Any one of those four can be cheap to fake on its own. All four
+        together are very hard to fake without a reproducible artifact
+        someone could check.
+      </p>
+
+      <h2>What the newsletter will do with this</h2>
+
+      <p>
+        Every issue from here on will pick one specific governance,
+        security, bias, or benchmark claim and audit it against those
+        four criteria. Sometimes the claim is one we tested; sometimes
+        it's a claim a public vendor is making and we ran the eval
+        ourselves to check. Either way, the underlying report or
+        benchmark dataset ships alongside the issue — there's no
+        "trust us, we ran the numbers."
+      </p>
+
+      <p>
+        When a claim is also load-bearing in a research paper we're
+        submitting, the paper appears on the
+        <a href="../index.html#papers">Research Papers</a> page with a
+        status tag (working / in review / drafting), the PDF, and a
+        BibTeX citation. The newsletter and the papers reference each
+        other — readers should be able to walk from a headline claim
+        to the data to the paper in two clicks.
+      </p>
+
+      <h2>What we won't do</h2>
+
+      <p>
+        We won't do:
+      </p>
+
+      <ul>
+        <li><strong>Hot takes</strong> on the latest model release without an eval to back them.</li>
+        <li><strong>Vendor scoring</strong> based on policy documents alone — only on tests we can re-run.</li>
+        <li><strong>Editorial framing</strong> dressed up as analysis. If we have an opinion we'll mark it as one.</li>
+        <li><strong>Sponsored deep dives.</strong> No paid placements. Ever.</li>
+      </ul>
+
+      <hr />
+
+      <p>
+        If that's the kind of thing you want delivered to your inbox a
+        couple of times a month — alongside the underlying data,
+        methodology, and citation-ready papers — the
+        <a href="../index.html#subscribe">subscribe box</a> on the home
+        page is the way in. The first benchmark report drops next
+        week.
+      </p>
+
+      <footer class="article-footer">
+        <div class="prev-next">
+          <span>— Previously</span>
+          <a href="002-agents-with-access.html">Issue 002: Agents With Access →</a>
+        </div>
+        <div>
+          <a class="btn btn-primary" href="../index.html#subscribe">Subscribe to the newsletter</a>
+        </div>
+      </footer>
+    </article>
+  </main>
+
+  <footer>
+    <div class="container footer-grid">
+      <p>© 2026 Governance Under Question. Built for GitHub Pages.</p>
+      <p>Independent notes on AI governance, security, and accountability.</p>
+    </div>
+  </footer>
+</body>
+</html>
