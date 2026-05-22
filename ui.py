@@ -157,6 +157,7 @@ with st.sidebar:
         "(custom — type below)",
         "qwen2.5:7b           — best all-rounder, Apache 2.0",
         "qwen2.5-coder:7b     — code patches, dev-agent flows",
+        "qwen2.5-coder:3b     — fast code-gen for low-VRAM / laptop dev",
         "deepseek-r1:7b       — reasoning-tuned distill",
         "deepseek-r1:8b       — slightly larger distill",
         "mistral:7b-instruct  — sales / outreach delegates",
