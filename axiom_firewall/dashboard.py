@@ -56,10 +56,39 @@ DASHBOARD_HOST = f"firewall.{BRAND_DOMAIN}"
 DOCS_HOST = f"docs.{BRAND_DOMAIN}"
 API_HOST = f"api.{BRAND_DOMAIN}"
 
+# Deployment environment — "development" (default) or "production". In
+# production we refuse to boot with the dev session secret and force
+# Secure cookies. Set this in the prod compose file / k8s manifest.
+AXIOM_ENV = os.environ.get("AXIOM_ENV", "development").strip().lower()
+_IS_PROD = AXIOM_ENV == "production"
+
+_DEV_SESSION_SECRET = "dev-only-replace-before-deploy"
 SESSION_SECRET = os.environ.get(
     "AXIOM_FIREWALL_SESSION_SECRET",
-    "dev-only-replace-before-deploy",
+    _DEV_SESSION_SECRET,
 )
+
+# Hard-fail at import time when AXIOM_ENV=production but the session
+# secret is still the dev default (or too short to be unguessable).
+# A boot-time RuntimeError surfaces in `docker compose up` and
+# orchestrator dashboards immediately; a runtime warning is too easy
+# to miss in busy log streams.
+if _IS_PROD:
+    if SESSION_SECRET == _DEV_SESSION_SECRET:
+        raise RuntimeError(
+            "AXIOM_ENV=production but AXIOM_FIREWALL_SESSION_SECRET is the "
+            "dev default. Set it to a 32+ byte random string "
+            "(`python3 -c 'import secrets; print(secrets.token_hex(32))'`) "
+            "before booting. Refusing to start — session cookies would be "
+            "forgeable by anyone with the source."
+        )
+    if len(SESSION_SECRET) < 32:
+        raise RuntimeError(
+            "AXIOM_ENV=production requires AXIOM_FIREWALL_SESSION_SECRET "
+            f"to be at least 32 characters; got {len(SESSION_SECRET)}. "
+            "Generate one with "
+            "`python3 -c 'import secrets; print(secrets.token_hex(32))'`."
+        )
 
 # CORS — locked down by default. Set AXIOM_FIREWALL_CORS_ORIGINS to a
 # comma-separated list of origins (or "*" to allow all). The signup /
@@ -86,16 +115,18 @@ if not log.handlers:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     log.info("axiom-firewall starting")
+    log.info("  env:             %s", AXIOM_ENV)
     log.info("  brand:           %s", BRAND_DOMAIN)
     log.info("  tenant dir:      %s",
              os.environ.get("AXIOM_FIREWALL_TENANT_DIR", "tenants"))
     log.info("  billing enabled: %s", billing.is_enabled())
     log.info("  cors origins:    %s", CORS_ORIGINS or "(none)")
-    if SESSION_SECRET == "dev-only-replace-before-deploy":
+    if not _IS_PROD and SESSION_SECRET == _DEV_SESSION_SECRET:
         log.warning(
             "AXIOM_FIREWALL_SESSION_SECRET is using the dev default. "
             "Set it to a 32+ byte random string before exposing the "
-            "dashboard publicly — otherwise anyone can forge session cookies."
+            "dashboard publicly — otherwise anyone can forge session cookies. "
+            "Set AXIOM_ENV=production to make this a hard error."
         )
     yield
     log.info("axiom-firewall shutting down")
@@ -116,7 +147,20 @@ if CORS_ORIGINS:
         max_age=3600,
     )
 
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+# Session cookie hardening. Starlette's SessionMiddleware sets
+# HttpOnly=True by default; we additionally pin SameSite=lax (blocks
+# cross-site cookie sends on CSRF-shaped POSTs while still allowing
+# top-level navigations from email/docs links) and force Secure=True
+# in production so the browser refuses to send the cookie over plain
+# HTTP. `max_age=14*86400` rolls sessions every 2 weeks instead of
+# letting them live forever.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    same_site="lax",
+    https_only=_IS_PROD,
+    max_age=14 * 86400,
+)
 
 
 class _RequestIdMiddleware(BaseHTTPMiddleware):
@@ -130,7 +174,50 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# Hard caps on request body size. Caddy/ALB will usually enforce this
+# upstream, but a defence-in-depth check inside the app means a direct
+# uvicorn deployment (or a misconfigured reverse proxy) can't be DoS'd
+# by a 1 GB form post. The `/v1/guard/check` API is intentionally lower
+# than dashboard forms — guard requests are small JSON, no file upload.
+MAX_REQUEST_BODY_BYTES         = 1 * 1024 * 1024    # 1 MiB — dashboard forms
+MAX_GUARD_API_BODY_BYTES       = 256 * 1024         # 256 KiB — /v1/guard/check
+_GUARD_API_PREFIXES = ("/v1/guard",)
+
+
+class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject requests whose Content-Length exceeds the configured cap.
+
+    We check Content-Length pre-read so a malicious 1 GB body never
+    lands in memory. For chunked uploads (no Content-Length) we let
+    the request through; FastAPI/Starlette enforces its own per-read
+    limits on form parsing.
+    """
+
+    async def dispatch(self, request, call_next):
+        cl = request.headers.get("content-length")
+        if cl is not None:
+            try:
+                size = int(cl)
+            except ValueError:
+                return JSONResponse(
+                    {"error": "invalid Content-Length"},
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            limit = (
+                MAX_GUARD_API_BODY_BYTES
+                if any(request.url.path.startswith(p) for p in _GUARD_API_PREFIXES)
+                else MAX_REQUEST_BODY_BYTES
+            )
+            if size > limit:
+                return JSONResponse(
+                    {"error": "request body too large", "limit_bytes": limit},
+                    status_code=413,
+                )
+        return await call_next(request)
+
+
 app.add_middleware(_RequestIdMiddleware)
+app.add_middleware(_BodySizeLimitMiddleware)
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))

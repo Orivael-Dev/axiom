@@ -1,6 +1,14 @@
 {$FIREWALL_HOST} {
     encode gzip
 
+    # Hard cap on request body size — defence in depth before the
+    # FastAPI _BodySizeLimitMiddleware. Caddy drops connections past
+    # this cap before any bytes reach the app, so a malicious large
+    # POST can't exhaust uvicorn worker memory.
+    request_body {
+        max_size 2MB
+    }
+
     # Reverse proxy to the Firewall app on port 8004.
     reverse_proxy firewall:8004 {
         header_up X-Forwarded-Proto https
