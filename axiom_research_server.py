@@ -617,6 +617,52 @@ async def ledger(limit: int = 20):
     }
 
 
+@app.get("/api/runs")
+async def runs(limit: int = 15):
+    """Unified recent-runs list for the resume picker.
+
+    Merges exoskeleton + medical ledgers, sorted by timestamp desc.
+    Neither ledger needs the state to be built — they're readable at
+    any time as long as the files exist on disk.
+    """
+    from axiom_exoskeleton_ledger import query_ledger as exo_q
+    from axiom_medical_ledger import (
+        query_ledger as med_q,
+        default_ledger_path as med_default,
+    )
+    cap = max(1, min(50, limit))
+    out: list[dict] = []
+    try:
+        exo_path = _state.ledger_path  # may be None if state not yet built
+        for e in exo_q(path=exo_path, limit=cap):
+            out.append({
+                "kind":          "exoskeleton",
+                "token_id":      e.token_id,
+                "question":      e.input_excerpt,
+                "timestamp_utc": e.timestamp_utc,
+                "backend":       e.backend,
+                "model":         e.model,
+                "verified":      bool(e.verified),
+            })
+    except Exception:
+        pass
+    try:
+        for e in med_q(limit=cap):
+            out.append({
+                "kind":          "medical",
+                "token_id":      e.coordinator_token_id,
+                "question":      e.research_question,
+                "timestamp_utc": e.timestamp_utc,
+                "backend":       "medical-research",
+                "model":         e.profile,
+                "verified":      bool(e.verified),
+            })
+    except Exception:
+        pass
+    out.sort(key=lambda r: r["timestamp_utc"], reverse=True)
+    return {"runs": out[:cap]}
+
+
 @app.get("/ledger")
 async def ledger_viewer():
     if not LEDGER_HTML_PATH.exists():

@@ -232,6 +232,59 @@
     }
     .signed-ribbon .sep { opacity: 0.5; }
 
+    .alert-error {
+      margin: 8px 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--danger);
+      background: rgba(224, 80, 80, 0.08);
+      color: #fdd;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .alert-error button {
+      background: rgba(224, 80, 80, 0.18);
+      border: 1px solid var(--danger);
+      color: #fdd;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .alert-error button:hover { background: rgba(224, 80, 80, 0.3); }
+
+    .resume-picker {
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      padding: 0 14px;
+    }
+    .resume-picker summary {
+      cursor: pointer;
+      padding: 10px 0;
+      color: var(--muted);
+      font-size: 13px;
+      user-select: none;
+    }
+    .resume-picker[open] summary { color: var(--text); }
+    .picker-row {
+      display: flex;
+      gap: 8px;
+      padding: 4px 0 12px;
+      align-items: center;
+    }
+    .picker-row select {
+      flex: 1;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
     .search-panel {
       margin: 26px auto 0;
       max-width: 1060px;
@@ -757,6 +810,19 @@
       </div>
 
       <section class="search-panel" aria-label="Research query" id="section-research">
+        <details class="resume-picker" id="resumePicker">
+          <summary>📚 Resume from a prior signed run</summary>
+          <p style="font-size: 12px; margin: 4px 0 8px; color: var(--muted);">
+            Pick a prior question to re-run live. The replay produces a fresh signed token —
+            both the original and the replay will appear in the ledger.
+          </p>
+          <div class="picker-row">
+            <select id="resumeSelect">
+              <option value="">— pick a prior run —</option>
+            </select>
+            <button id="resumeBtn" disabled>Load + Run</button>
+          </div>
+        </details>
         <div class="search-row">
           <input
             id="researchInput"
@@ -829,14 +895,12 @@
         <article class="card">
           <div class="card-head">
             <h2>Synthesized Report</h2>
-            <span class="badge" id="reportBadge">Demo mode</span>
+            <span class="badge" id="reportBadge">awaiting run</span>
           </div>
           <div class="card-body" id="reportBody">
             <p class="answer-text" style="color: var(--muted);">
-              Submit a question above to generate a signed research report.
-              This demo page uses local mock data and can be opened directly
-              in your browser — wire the <code>runResearch()</code> function
-              to your API endpoint when you're ready.
+              Submit a question to see a signed research report.
+              Every Run produces a fresh EventToken with a new HMAC signature.
             </p>
           </div>
         </article>
@@ -848,12 +912,7 @@
           </div>
           <div class="card-body">
             <ul class="citations-list" id="citationsList">
-              <li class="citation">
-                <div class="src-head">
-                  <span class="src-title">Sources will appear here after a run.</span>
-                </div>
-                <div class="src-snippet">Each retrieved document is ranked, scored, and feeds into the QRF reasoning step. Kept documents are cited inline in the report; lower-scored documents are still surfaced for review.</div>
-              </li>
+              <li style="color: var(--muted); font-size: 13px; list-style: none;">—</li>
             </ul>
           </div>
         </article>
@@ -905,8 +964,8 @@
 
     <section class="bottom-grid">
       <div class="mini-card">
-        <h3>Backend hook</h3>
-        <p>Replace <code>runResearch()</code> with a fetch to your own endpoint, e.g. <code>POST /api/research</code>. The expected response shape matches AXIOM's <code>EventToken</code> — see <code>axiom_event_token/models.py</code>.</p>
+        <h3>Live backend</h3>
+        <p>Every run calls <code>POST /api/research</code> (or the SSE stream). The response shape matches AXIOM's <code>EventToken</code> — see <code>axiom_event_token/models.py</code>. Start with <code>scripts/serve_research_console.sh</code>.</p>
       </div>
       <div class="mini-card">
         <h3>Workflow vs domain</h3>
@@ -1026,8 +1085,7 @@
     els.input.addEventListener("keydown", (e) => { if (e.key === "Enter") runResearchOnUi(); });
 
     // When the page is served from the live FastAPI server, /api/research
-    // is real. When opened as file:// or hosted elsewhere, fall back to
-    // the deterministic mock and show a banner.
+    // is real. When opened as file://, no backend is available.
     const API_BASE = (location.protocol === "http:" || location.protocol === "https:")
                        ? location.origin
                        : null;
@@ -1035,10 +1093,8 @@
     // ── Pre-flight backend health check ──────────────────────────────
     // Fires once on page load. If /api/health reports the backend
     // isn't built yet (no master key, no exoskeleton pack), surface
-    // a small yellow banner so a demo failure isn't a surprise mid-
-    // pitch. Hidden when the server looks healthy AND when the page
-    // is served from file:// (mock-only mode — banner would be
-    // misleading there).
+    // a small yellow banner before the investor clicks anything.
+    // Hidden when the server looks healthy or when served from file://.
     (async function preflightHealth() {
       if (!API_BASE) return;
       const banner = document.getElementById("preflightBanner");
@@ -1061,9 +1117,8 @@
           d.state_built === false;
         if (looksUnbuilt) {
           banner.innerHTML =
-            `Backend not built yet — first live run will warm it up. ` +
-            `Verify <code>AXIOM_MASTER_KEY</code> is set ` +
-            `before demoing.`;
+            `Backend not configured — verify <code>AXIOM_BACKEND</code> ` +
+            `and <code>AXIOM_MASTER_KEY</code> are set before running.`;
           banner.hidden = false;
         }
       } catch (err) {
@@ -1109,42 +1164,50 @@
           return;
         } catch (err) {
           els.reportBody.innerHTML =
-            `<p class="answer-text" style="color: var(--warning);">Medical endpoint failed (${escapeHtml(String(err.message || err))}). Falling back to generic mock.</p>`;
-          await new Promise(r => setTimeout(r, 500));
-          renderResult(runResearch(query, activeDomain, activeWorkflow), "mock");
+            `<div class="alert-error">
+               Medical endpoint failed: <strong>${escapeHtml(String(err.message || err))}</strong>.
+               <button onclick="runResearchOnUi()" style="margin-left: 10px;">Retry</button>
+             </div>`;
           return;
         }
       }
 
-      if (API_BASE) {
-        // Streaming path — best for visible progress + better troubleshooting.
-        try {
-          await streamResearch(query);
-          return;
-        } catch (err) {
-          // Fall through to sync below.
-          els.reportBody.innerHTML =
-            `<p class="answer-text" style="color: var(--warning);">Stream call failed (${escapeHtml(String(err.message || err))}). Retrying via synchronous endpoint.</p>`;
-        }
-        try {
-          const resp = await fetch(API_BASE + "/api/research", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ query, domain: activeDomain, workflow: activeWorkflow }),
-          });
-          if (!resp.ok) {
-            const detail = await resp.text();
-            throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 200)}`);
-          }
-          renderResult(await resp.json(), "live");
-          return;
-        } catch (err) {
-          els.reportBody.innerHTML =
-            `<p class="answer-text" style="color: var(--warning);">Live API call failed (${escapeHtml(String(err.message || err))}). Falling back to demo mock data.</p>`;
-          await new Promise(r => setTimeout(r, 500));
-        }
+      if (!API_BASE) {
+        els.reportBody.innerHTML =
+          `<div class="alert-error">
+             No backend available. Start the research server and navigate to
+             <code>http://127.0.0.1:8765/</code>.
+           </div>`;
+        return;
       }
-      renderResult(runResearch(query, activeDomain, activeWorkflow), "mock");
+      // Streaming path — best for visible progress + better troubleshooting.
+      try {
+        await streamResearch(query);
+        return;
+      } catch (err) {
+        // SSE failed — try the synchronous endpoint before giving up.
+        els.reportBody.innerHTML =
+          `<p class="answer-text" style="color: var(--muted);">Stream failed (${escapeHtml(String(err.message || err))}). Retrying via sync endpoint…</p>`;
+      }
+      try {
+        const resp = await fetch(API_BASE + "/api/research", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ query, domain: activeDomain, workflow: activeWorkflow }),
+        });
+        if (!resp.ok) {
+          const detail = await resp.text();
+          throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 200)}`);
+        }
+        renderResult(await resp.json(), "live");
+        return;
+      } catch (err) {
+        els.reportBody.innerHTML =
+          `<div class="alert-error">
+             Live API call failed: <strong>${escapeHtml(String(err.message || err))}</strong>.
+             <button onclick="runResearchOnUi()" style="margin-left: 10px;">Retry</button>
+           </div>`;
+      }
     }
 
     async function streamResearch(query) {
@@ -1214,174 +1277,6 @@
       renderResult(finalResult, "live");
     }
 
-    function runResearch(query, domain, workflow) {
-      /*
-        BACKEND INTEGRATION POINT
-
-        Replace this mock with a real call to AXIOM's research endpoint.
-        The expected shape mirrors EventToken + retrieval metadata:
-
-          const response = await fetch("/api/research", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query, domain, workflow }),
-          });
-          return await response.json();
-      */
-      const wfLabel = workflowLabels[workflow] || "General Research";
-      const domLabel = domainLabels[domain] || "General";
-      const now = new Date();
-      const isoNow = now.toISOString();
-
-      // Per-workflow report shape — same structure, different framing.
-      const reports = {
-        general_research: {
-          tldr: `For "${query}", AXIOM's retrieve→reason→synthesize pipeline produced a governed answer in the ${domLabel} domain. The visible report separates the synthesized answer from rival reasoning paths and kept sources.`,
-          keyFindings: [
-            "Primary branch held inside the confidence gate (band 0.74) and produced the cleanest synthesis.",
-            "A rival branch remains visible because it has plausible supporting evidence at lower confidence.",
-            "One overclaim branch was killed; its rejection record is preserved in the audit trail.",
-          ],
-          openQuestions: [
-            "Which retrieval sources qualify for the production allowlist?",
-            "Should the killed branch threshold tighten in the medical domain?",
-          ],
-        },
-        investor_research: {
-          tldr: `Investor-research synthesis for "${query}". Identified fund archetypes, search criteria, and the AXIOM outreach angle for the ${domLabel} thesis.`,
-          keyFindings: [
-            "Fund archetypes: thesis-driven seed funds, AI-safety-aligned operators, regulated-vertical specialists.",
-            "Disqualifiers: ≥$3M check size, post-Series-B funds, US-only mandate (limits Canada/UK reach).",
-            "Outreach angle: AXIOM's signed audit trail directly addresses 2025 EU AI Act enforcement timeline.",
-          ],
-          openQuestions: [
-            "Which 5 funds match all qualifiers AND have led an AI-governance round in the last 12 months?",
-            "What's the warm-intro path to the top 3?",
-          ],
-        },
-        enterprise_targeting: {
-          tldr: `Enterprise-targeting synthesis for "${query}". Identified role signals, buyer personas, and pain hypotheses for the ${domLabel} segment.`,
-          keyFindings: [
-            "Role signals: 'AI Governance Lead', 'Head of Trust & Safety', 'Responsible AI Director', 'Model Risk Manager'.",
-            "Buyer personas: CISO, Chief Risk Officer, Head of Engineering Compliance.",
-            "Pain hypothesis: model-risk-management gap for in-production LLM agents under regulatory scrutiny.",
-          ],
-          openQuestions: [
-            "Are the top 10 prospects hiring for these roles right now?",
-            "What's the right discovery question to validate the pain in one 15-min call?",
-          ],
-        },
-        competitive_analysis: {
-          tldr: `Competitive-analysis synthesis for "${query}". Mapped category, strengths, gaps, AXIOM's wedge, and an honest concession.`,
-          keyFindings: [
-            "Category: LLM output validation library + paid cloud product.",
-            "Their strength: developer-first DX, large community, free open-source tier.",
-            "Their gap: no multi-modal coverage (text only); no signed audit trail; no patent moat.",
-            "AXIOM wedge: signed EventToken with text + audio + video + physics layers, enterprise-grade audit.",
-            "Honest concession: they have far better SDK polish and integration breadth today.",
-          ],
-          openQuestions: [
-            "Which deals are we actually contending against them on?",
-            "Is the patent moat real to a buyer's procurement team?",
-          ],
-        },
-        customer_discovery: {
-          tldr: `Customer-discovery synthesis for "${query}". Extracted pain, urgency, buyer role, agreed next step, and a product implication.`,
-          keyFindings: [
-            "Pain articulated: compliance asked for a signed audit trail before LLM ships to production.",
-            "Urgency: HIGH — regulatory deadline within 90 days.",
-            "Buyer role: VP Engineering (real authority, budget owner).",
-            "Next step: send one-page demo by Friday.",
-            "Product implication: 'compliance-asked-for-it' is the strongest pull signal we've seen.",
-          ],
-          openQuestions: [
-            "What does compliance specifically require in the audit trail?",
-            "Is there a real budget authority above the VP Eng?",
-          ],
-        },
-        patent_counsel_packet: {
-          tldr: `Patent-counsel-packet synthesis for "${query}". Summarized invention family, core claim, evidence, trade-secret candidates, and timeline anchors.`,
-          keyFindings: [
-            "Family name: Event Token + Coordinator (ORVL-016/017).",
-            "Core claim: selective-activation orchestrator emitting per-layer + composition-integrity signatures.",
-            "Implementation evidence: axiom_event_token/, modular delegate runtime, 76 passing tests.",
-            "Trade-secret candidates: prompt-budget tuning heuristics, router intent map, AXM packing format.",
-            "Timeline anchors: provisional filed 2026-02; continuation candidate (modular SLM delegate runtime) ready.",
-          ],
-          openQuestions: [
-            "Which continuations should be filed before publishing the open-source mirror?",
-            "Is the prompt-budget heuristic a trade secret or a future claim?",
-          ],
-        },
-      };
-      const report = reports[workflow] || reports.general_research;
-
-      return {
-        query,
-        workflow,
-        workflowLabel: wfLabel,
-        domain,
-        domainLabel: domLabel,
-        report,
-        probabilityBand: 0.74,
-        constitutionalDistance: 0.31,
-        branchHealth: "3 / 4 passed",
-        sources: [
-          {
-            title: "AXIOM event-token primary spec",
-            uri: "docs/training/event-token-spec.md",
-            kind: "internal-doc",
-            score: 0.92,
-            snippet: "Selective activation runs ONLY the agents a query needs; null layers are first-class.",
-          },
-          {
-            title: "ORVL-016 Provisional Patent",
-            uri: "patents/ORVL016_AXM.pdf",
-            kind: "patent-pdf",
-            score: 0.88,
-            snippet: "Per-layer + coordinator + outer HMAC signatures provide composition integrity end-to-end.",
-          },
-          {
-            title: "EU AI Act compliance briefing (2026)",
-            uri: "external/eu-ai-act-2026.html",
-            kind: "external-web",
-            score: 0.71,
-            snippet: "Enforcement of Article 13 (transparency) phases in 2026; signed audit trails are explicitly named.",
-          },
-          {
-            title: "Public LLM-firewall comparison",
-            uri: "external/llm-firewall-comparison-2025.html",
-            kind: "external-web",
-            score: 0.58,
-            snippet: "Most listed products are text-only; none ship a multi-modal audit signature.",
-          },
-        ],
-        branches: [
-          { id: "Branch 01", title: "Primary Synthesis Path", probability: 0.74, status: "passed", distance: 0.28, citations: 3,
-            summary: "Strongest path. Synthesizes the answer while staying inside confidence + constitutional limits.",
-            detail: "Status: PASSED\nGate: monotonic confidence held\nConstitutional distance: 0.28\nCitations: 3\nSignature: demo_hmac_branch_01\n\nUsed as the main synthesized answer." },
-          { id: "Branch 02", title: "Rival Hypothesis", probability: 0.61, status: "rival", distance: 0.39, citations: 2,
-            summary: "Competing interpretation. Kept visible so the report shows uncertainty rather than false certainty.",
-            detail: "Status: RIVAL\nGate: allowed as alternate path\nConstitutional distance: 0.39\nCitations: 2\nSignature: demo_hmac_branch_02\n\nVisible as a competing explanation." },
-          { id: "Branch 03", title: "Enterprise Risk View", probability: 0.58, status: "passed", distance: 0.42, citations: 2,
-            summary: "Frames the result through enterprise adoption, compliance, auditability, and data governance.",
-            detail: "Status: PASSED\nGate: domain framing accepted\nConstitutional distance: 0.42\nCitations: 2\nSignature: demo_hmac_branch_03\n\nUseful for business-facing summaries." },
-          { id: "Branch 04", title: "Overclaim Path", probability: 0.18, status: "killed", distance: 0.91, citations: 0,
-            summary: "Rejected because it overstates certainty and lacks evidence support.",
-            detail: "Status: KILLED\nGate: overclaim risk\nConstitutional distance: 0.91\nCitations: 0\nKill record: signed_demo_kill_04\n\nPreserved for audit; excluded from the report." },
-        ],
-        receipt: {
-          token_id: "exo_" + Math.random().toString(16).slice(2, 14),
-          workflow: wfLabel,
-          backend:  "local · llama3.2:3b",
-          signed_at: isoNow,
-          verified: true,
-          ledger:   "~/.axiom/exoskeleton-ledger.jsonl  (+1 entry)",
-        },
-        cost: { input_tokens: 412, output_tokens: 187, latency_ms: 1820 },
-      };
-    }
-
     function renderMedicalResult(d) {
       // Minimal renderer for the AXM Medical Research instrument.
       // The report area gets a human-review banner + the
@@ -1421,9 +1316,7 @@
     function renderResult(result, mode) {
       const passed = result.branches.filter((b) => b.status !== "killed").length;
 
-      const badgeLabel = mode === "live" ? "Live · signed"
-                        : mode === "mock-fallback" ? "Mock (API failed)"
-                        : "Demo · mock";
+      const badgeLabel = "Live · signed";
       els.reportBadge.textContent = badgeLabel;
       els.workflowMetric.textContent = result.workflowLabel;
       els.domainMetric.textContent   = result.domainLabel;
@@ -1434,17 +1327,11 @@
       const r = result.report;
       // Signed-verification ribbon — sits above TL;DR so every
       // rendered report visibly carries its signing fingerprint.
-      // On a live signed run, shows the token_id + latency + ledger.
-      // On a mock-fallback render, the ribbon downgrades to a
-      // "demo" variant so investors don't mistake mock data for
-      // real signing.
       const rec = result.receipt || {};
-      const isLive = mode === "live";
-      const ribbonClass = isLive && rec.verified ? "signed-ribbon"
-                        : "signed-ribbon failed";
-      const ribbonLabel = isLive && rec.verified
+      const ribbonClass = rec.verified ? "signed-ribbon" : "signed-ribbon failed";
+      const ribbonLabel = rec.verified
         ? "✓ SIGNED · VERIFIED"
-        : (mode === "live" ? "✗ SIGNATURE FAILED" : "DEMO · UNSIGNED");
+        : "✗ SIGNATURE FAILED";
       const tokenIdShort = rec.token_id
         ? escapeHtml(rec.token_id)
         : "—";
@@ -1549,9 +1436,59 @@
         .replaceAll("'", "&#039;");
     }
 
-    // Seed demo on first load.
-    els.input.value = "How does AXIOM reduce enterprise LLM risk for regulated industries?";
-    runResearchOnUi();
+    // Resume picker — populated lazily when the <details> opens.
+    (function setupResumePicker() {
+      const picker = document.getElementById("resumePicker");
+      const sel    = document.getElementById("resumeSelect");
+      const btn    = document.getElementById("resumeBtn");
+      if (!picker || !sel || !btn) return;
+
+      let loaded = false;
+
+      picker.addEventListener("toggle", async () => {
+        if (!picker.open || loaded || !API_BASE) return;
+        loaded = true;
+        sel.innerHTML = '<option value="">Loading prior runs…</option>';
+        try {
+          const resp = await fetch(API_BASE + "/api/runs?limit=15",
+                                    { cache: "no-store" });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const { runs } = await resp.json();
+          if (!runs || runs.length === 0) {
+            sel.innerHTML = '<option value="">— no prior runs found —</option>';
+            return;
+          }
+          sel.innerHTML = '<option value="">— pick a prior run —</option>';
+          for (const r of runs) {
+            const opt = document.createElement("option");
+            opt.value = r.question || "";
+            const ts = r.timestamp_utc
+              ? r.timestamp_utc.slice(0, 16).replace("T", " ") : "?";
+            const preview = (r.question || "").slice(0, 55) +
+              ((r.question || "").length > 55 ? "…" : "");
+            opt.textContent =
+              `${r.token_id.slice(0, 10)} · ${r.kind} · ${ts} · ${preview}`;
+            sel.appendChild(opt);
+          }
+        } catch (err) {
+          sel.innerHTML =
+            `<option value="">— load failed: ${escapeHtml(String(err.message || err))} —</option>`;
+        }
+      });
+
+      sel.addEventListener("change", () => {
+        btn.disabled = !sel.value;
+      });
+
+      btn.addEventListener("click", () => {
+        const q = sel.value;
+        if (!q) return;
+        els.input.value = q;
+        picker.open = false;
+        loaded = false; // force reload on next open so new run appears
+        runResearchOnUi();
+      });
+    })();
   </script>
 </body>
 </html>
