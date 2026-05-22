@@ -81,6 +81,22 @@ services:
       retries: 3
       start_period: 10s
 
+  packs:
+    build:
+      context: ../..
+      dockerfile: deploy/packs/Dockerfile
+    image: orivael/axiom-packs:local
+    container_name: axiom-packs
+    restart: unless-stopped
+    expose:
+      - "8005"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8005/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
   caddy:
     image: caddy:2-alpine
     container_name: axiom-research-caddy

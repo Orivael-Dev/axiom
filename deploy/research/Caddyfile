@@ -1,3 +1,27 @@
+packs.orivael.dev {
+    encode gzip
+
+    # Registry is public — no basic_auth. Anyone can browse packs
+    # (that's the point; axiom-packs CLI hits this without credentials).
+
+    reverse_proxy packs:8005 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For   {remote_host}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        Access-Control-Allow-Origin "*"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
+
 {$RESEARCH_HOST} {
     encode gzip
 
