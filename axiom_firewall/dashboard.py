@@ -70,6 +70,21 @@ BETA_FEEDBACK_URL = os.environ.get(
     "AXIOM_FIREWALL_BETA_FEEDBACK", "",
 ).strip()
 
+# Beta mode — disables self-serve upgrade buttons in /billing in favour
+# of "Contact sales" mailto links. Set AXIOM_FIREWALL_BETA_MODE=0 to
+# re-enable Stripe checkout once GA pricing is locked. Defaults to ON
+# during the beta period — Stripe checkout works (the routes are still
+# wired), but the UI funnels prospects to a human conversation first.
+BETA_MODE = os.environ.get(
+    "AXIOM_FIREWALL_BETA_MODE", "1",
+).strip().lower() in ("1", "true", "yes")
+
+# Sales contact email for the "Contact sales" CTA during beta + for the
+# Enterprise tier always.
+SALES_EMAIL = os.environ.get(
+    "AXIOM_FIREWALL_SALES_EMAIL", f"sales@{BRAND_DOMAIN}",
+).strip()
+
 # CORS — locked down by default. Set AXIOM_FIREWALL_CORS_ORIGINS to a
 # comma-separated list of origins (or "*" to allow all). The signup /
 # dashboard pages are served same-origin, so this only matters for
@@ -190,6 +205,8 @@ def _ctx(request: Request, **extra) -> dict:
         "tier_limits": TIER_RATE_LIMITS,
         "tier_prices": TIER_PRICE_USD,
         "beta_feedback_url": BETA_FEEDBACK_URL,
+        "beta_mode":         BETA_MODE,
+        "sales_email":       SALES_EMAIL,
         **extra,
     }
 
@@ -1049,6 +1066,12 @@ def billing_upgrade(request: Request, tier: str):
     t = _current_tenant(request)
     if not t:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if BETA_MODE:
+        raise HTTPException(
+            403,
+            f"Self-serve upgrades are disabled during the beta. "
+            f"Contact {SALES_EMAIL} for pricing.",
+        )
     if not billing.is_enabled():
         raise HTTPException(503, "Billing is not configured on this deployment")
     try:
