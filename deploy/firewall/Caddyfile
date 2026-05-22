@@ -25,3 +25,63 @@
         format json
     }
 }
+
+research.orivael.dev {
+    encode gzip
+
+    # Beta gate — same bcrypt pairs as before.
+    basic_auth {
+        import_args {$BETA_AUTH_HASHES}
+    }
+
+    @health path /api/health
+    handle @health {
+        reverse_proxy axiom-research:8765
+    }
+
+    reverse_proxy axiom-research:8765 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For   {remote_host}
+        transport http {
+            response_header_timeout 180s
+            read_timeout            180s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
+
+packs.orivael.dev {
+    encode gzip
+
+    # Registry is public — no basic_auth.
+    reverse_proxy axiom-packs:8005 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For   {remote_host}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        Access-Control-Allow-Origin "*"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
+
