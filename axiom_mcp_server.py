@@ -755,5 +755,16 @@ class AxiomMCPServer:
                 sys.stdout.flush()
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console-script entry point.
+
+    Wired into pyproject.toml as `axiom-mcp = "axiom_mcp_server:main"` so
+    `pipx install axiom-mcp` installs a runnable command in $PATH. The
+    server then speaks JSON-RPC 2.0 over stdio just like `python3 -m
+    axiom_mcp_server`.
+    """
     AxiomMCPServer().run()
+
+
+if __name__ == "__main__":
+    main()

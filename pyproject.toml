@@ -81,11 +81,19 @@ dev = [
 axiom          = "axiom_constitutional.cli:main"
 axiom-validate = "axiom_constitutional.cli:validate_cmd"
 axiom-certify  = "axiom_constitutional.cli:certify_cmd"
+axiom-mcp      = "axiom_mcp_server:main"
 
 [project.urls]
 Homepage   = "https://orivael.dev"
 Repository = "https://github.com/Orivael-Dev/axiom"
 PyPI       = "https://pypi.org/project/axiom-constitutional/"
+
+[tool.setuptools]
+# Top-level modules to ship in the wheel. axiom_mcp_server is exposed
+# as the `axiom-mcp` console script; axiom_signing is its only hard
+# dependency on the axiom codebase (other tool dependencies are
+# lazy-imported and degrade gracefully when absent).
+py-modules = ["axiom_mcp_server", "axiom_signing"]
 
 [tool.setuptools.packages.find]
 where = ["."]

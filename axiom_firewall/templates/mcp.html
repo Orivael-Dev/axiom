@@ -17,9 +17,15 @@
   </p>
 
   <h2>Quick install</h2>
-  <pre><code># From the axiom repo root
+  <p>Recommended — installs an <code>axiom-mcp</code> command into your <code>$PATH</code>:</p>
+  <pre><code>pipx install axiom-constitutional
 export AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
-python3 axiom_mcp_server.py    # speaks JSON-RPC on stdio</code></pre>
+axiom-mcp    # speaks JSON-RPC on stdio</code></pre>
+  <p>Or run directly from a checkout:</p>
+  <pre><code>git clone https://github.com/Orivael-Dev/axiom.git
+cd axiom
+export AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+python3 -m axiom_mcp_server</code></pre>
   <p class="muted">
     Keep <code>AXIOM_MASTER_KEY</code> stable across runs — signed
     artifacts produced under an ephemeral key won't verify in a later
@@ -34,14 +40,17 @@ python3 axiom_mcp_server.py    # speaks JSON-RPC on stdio</code></pre>
   <pre><code>{
   "mcpServers": {
     "axiom": {
-      "command": "python3",
-      "args": ["/absolute/path/to/axiom/axiom_mcp_server.py"],
+      "command": "axiom-mcp",
       "env": {
         "AXIOM_MASTER_KEY": "&lt;your-64-hex-master-key&gt;"
       }
     }
   }
 }</code></pre>
+  <p class="muted">
+    If you didn't use <code>pipx</code>, replace <code>"command": "axiom-mcp"</code>
+    with <code>"command": "python3"</code> and add <code>"args": ["/absolute/path/to/axiom/axiom_mcp_server.py"]</code>.
+  </p>
 
   <h2>Cursor / Continue / generic stdio</h2>
   <p>

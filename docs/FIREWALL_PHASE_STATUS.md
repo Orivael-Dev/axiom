@@ -40,7 +40,8 @@ another **123 tests** that pass alongside these. Combined sweep:
 | `test_axiom_mcp_server.py` | 2 (MCP) | 9 | ✅ |
 | `test_axiom_mcp_integration.py` | 2 (MCP) | 9 | ✅ |
 | `test_axiom_firewall_mcp.py` | 2 (MCP dashboard) | 4 | ✅ |
-| **Phase 2 subtotal** | | **47** | ✅ |
+| `test_axiom_mcp_pipx.py` | 2 (pipx entry-point) | 4 | ✅ |
+| **Phase 2 subtotal** | | **51** | ✅ |
 | `test_axiom_report.py` | 4 (Certify) | 9 | ✅ |
 | `test_axiom_kid_packs.py` | 4 (Certify lane, parameterized over packs) | 37 | ✅ |
 | `test_kid_audit_launch.py` | 4 (audit-launch) | 11 | ✅ |
@@ -128,7 +129,7 @@ them. Status from `docs/PRODUCTS.md` `### Gaps to ship`:
 | Skill Pack format + validation | `axiom_axm.py`, signed manifest layer | 17 (`test_axiom_firewall_skill_pack.py`) | — |
 | Registry client (load packs in firewall) | covered by `axiom_axm` import path | 8 (`test_axiom_firewall_registry_client.py`) | — |
 | MCP server (5 governance tools, JSON-RPC 2.0/stdio) | `axiom_mcp_server.py` (v1.8.7) | 18 (`test_axiom_mcp_*.py`) | — |
-| MCP installer (pipx / npx / Homebrew) | — | — | **Missing** |
+| MCP installer (pipx / npx / Homebrew) | `pyproject.toml` `[project.scripts]` `axiom-mcp = "axiom_mcp_server:main"`, `[tool.setuptools] py-modules` ships top-level files | 4 (`test_axiom_mcp_pipx.py`) | **pipx ✅ (2026-05-22)** — `pipx install axiom-constitutional` gets `axiom-mcp` on PATH. npx + Homebrew **still missing**. |
 | **Public registry — `packs.orivael.dev`** | `axiom_packs/server.py`, `deploy/packs/`, `deploy/research/docker-compose.yml` | covered by registry-client tests | **Closed 2026-05-22** — live on Hetzner, serving 14 signed packs |
 | 5–10 curated first-party packs | `packs/` directory: code-review-base, coppa, customer-support-base, fdcpa, gdpr-article-9, hipaa-intake, kid-ages-{3-5,6-8,9-12}, kid-bedtime-mode, kid-classroom-mode, kid-voice-output, pci-dss, prompt-injection-strict, sec-rule-10b-5 | 37 (`test_axiom_kid_packs.py`) covering 5 kid packs; remaining 9 packs lack regression tests | additional pack-specific regression tests **partial** |
 | MCP dashboard at `/dashboard/mcp` | `axiom_firewall/dashboard.py:mcp_index`, `templates/mcp.html` | 4 (`test_axiom_firewall_mcp.py`) | **Closed 2026-05-22** — login-gated page lists all 14 MCP tools + Claude Desktop / Cursor / generic config snippets |
