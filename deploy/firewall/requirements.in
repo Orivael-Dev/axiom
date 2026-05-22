@@ -1,0 +1,24 @@
+# Direct runtime dependencies for the Axiom Firewall container.
+#
+# This file is the source-of-truth for `pip-compile`; the resolved
+# transitive closure is locked in `requirements.txt` in this same
+# directory and consumed by deploy/firewall/Dockerfile.
+#
+# To refresh after bumping a pin or adding a dep:
+#   pip-compile --generate-hashes deploy/firewall/requirements.in \
+#               -o deploy/firewall/requirements.txt
+#
+# Dependabot watches both this file and the lock file (see
+# .github/dependabot.yml).
+#
+# Stripe is optional — only required when STRIPE_SECRET_KEY is set —
+# but pinned here so the prod image is identical regardless of who
+# enables billing.
+
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+jinja2==3.1.6
+python-multipart==0.0.28
+itsdangerous==2.2.0
+stripe==15.1.0
+python-dotenv==1.0.1

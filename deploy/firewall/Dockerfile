@@ -22,15 +22,14 @@ FROM python:3.11-slim AS builder
 WORKDIR /build
 RUN pip install --no-cache-dir --upgrade pip
 
-# Install only the runtime deps the dashboard actually needs.
-# Stripe is optional — only required when STRIPE_SECRET_KEY is set.
-RUN pip install --no-cache-dir --target=/install \
-    fastapi==0.136.* \
-    uvicorn[standard]==0.32.* \
-    jinja2==3.1.* \
-    python-multipart==0.0.* \
-    itsdangerous==2.2.* \
-    stripe==15.1.*
+# Install pinned runtime deps from the lockfile. Hashes are verified —
+# any swap mid-supply-chain fails the build. Refresh by running
+# `pip-compile --generate-hashes deploy/firewall/requirements.in
+# -o deploy/firewall/requirements.txt`. Dependabot will open a PR
+# when a pinned dep ships a new patch (see .github/dependabot.yml).
+COPY deploy/firewall/requirements.txt /build/requirements.txt
+RUN pip install --no-cache-dir --target=/install --require-hashes \
+    -r /build/requirements.txt
 
 # ── Runtime stage ───────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
@@ -47,6 +46,10 @@ COPY --from=builder /install /usr/local/lib/python3.11/site-packages
 COPY axiom_firewall/        ./axiom_firewall/
 COPY axiom_intent_classifier.py ./
 COPY axiom_signing.py            ./
+# Live docs source for the in-dashboard /help page. dashboard.py reads
+# from BASE_DIR.parent / "docs" / "firewall", so this must land at
+# /app/docs/firewall/*.md alongside the package.
+COPY docs/firewall/         ./docs/firewall/
 
 # Tenant DB volume mount point.
 RUN mkdir -p /data/tenants && chown -R axiom:axiom /data /app
