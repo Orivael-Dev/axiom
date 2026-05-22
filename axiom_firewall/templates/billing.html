@@ -6,73 +6,86 @@
   <h1>Billing</h1>
   <p class="tier-badge">Current plan: {{ tenant.tier|capitalize }}</p>
 
-  {% if not billing_enabled %}
+  {% if beta_mode %}
+    <div class="alert">
+      <p>
+        <strong>Beta period.</strong> Self-serve checkout is paused while we
+        validate pricing with the first cohort. Reach out and we'll get
+        you onto Indie or Team with a hand-set agreement — no waitlist,
+        no obligation.
+      </p>
+    </div>
+  {% elif not billing_enabled %}
     <div class="alert">
       <p>
         Billing is not configured on this deployment. Self-serve upgrades
-        are disabled. Contact <a href="mailto:sales@{{ brand_domain }}">sales@{{ brand_domain }}</a>
+        are disabled. Contact <a href="mailto:{{ sales_email }}">{{ sales_email }}</a>
         for enterprise pricing.
       </p>
     </div>
-  {% else %}
-    <h2>Upgrade your plan</h2>
-    <div class="tier-grid">
-      <div class="tier {% if tenant.tier == 'indie' %}featured{% endif %}">
-        <h3>Indie</h3>
-        <p class="price">${{ tier_prices.indie }}<span>/mo</span></p>
-        <ul>
-          <li>{{ "{:,}".format(tier_limits.indie) }} calls / month</li>
-          <li>Custom policies</li>
-          <li>Email support</li>
-        </ul>
-        {% if tenant.tier != 'indie' %}
-          <form method="post" action="/billing/upgrade/indie">
-            <button type="submit" class="cta-button">Upgrade to Indie</button>
-          </form>
-        {% else %}
-          <p class="empty">Current plan</p>
-        {% endif %}
-      </div>
-      <div class="tier {% if tenant.tier == 'team' %}featured{% endif %}">
-        <h3>Team</h3>
-        <p class="price">${{ tier_prices.team }}<span>/mo</span></p>
-        <ul>
-          <li>{{ "{:,}".format(tier_limits.team) }} calls / month</li>
-          <li>Multi-tenant policies</li>
-          <li>Dashboard analytics</li>
-        </ul>
-        {% if tenant.tier != 'team' %}
-          <form method="post" action="/billing/upgrade/team">
-            <button type="submit" class="cta-button">Upgrade to Team</button>
-          </form>
-        {% else %}
-          <p class="empty">Current plan</p>
-        {% endif %}
-      </div>
-      <div class="tier">
-        <h3>Enterprise</h3>
-        <p class="price">Custom</p>
-        <ul>
-          <li>SOC&nbsp;2, DPA, BAA</li>
-          <li>Dedicated tenant</li>
-          <li>SLA + support</li>
-        </ul>
-        <p class="empty">
-          <a href="mailto:sales@{{ brand_domain }}">Contact sales</a>
-        </p>
-      </div>
-    </div>
+  {% endif %}
 
-    {% if has_subscription %}
-      <h2>Manage your subscription</h2>
-      <form method="post" action="/billing/portal">
-        <button type="submit" class="cta-button">Open billing portal</button>
-      </form>
+  <h2>{% if beta_mode or not billing_enabled %}Plans{% else %}Upgrade your plan{% endif %}</h2>
+  <div class="tier-grid">
+    <div class="tier {% if tenant.tier == 'indie' %}featured{% endif %}">
+      <h3>Indie</h3>
+      <p class="price">${{ tier_prices.indie }}<span>/mo</span></p>
+      <ul>
+        <li>{{ "{:,}".format(tier_limits.indie) }} calls / month</li>
+        <li>Custom policies</li>
+        <li>Email support</li>
+      </ul>
+      {% if tenant.tier == 'indie' %}
+        <p class="empty">Current plan</p>
+      {% elif beta_mode or not billing_enabled %}
+        <a href="mailto:{{ sales_email }}?subject=Axiom%20Firewall%20%E2%80%94%20Indie%20plan%20enquiry&body=Hi%20%E2%80%94%20I'd%20like%20to%20get%20onto%20the%20Indie%20plan.%20My%20account%20email%3A%20{{ tenant.email }}" class="cta-button">Contact sales</a>
+      {% else %}
+        <form method="post" action="/billing/upgrade/indie">
+          <button type="submit" class="cta-button">Upgrade to Indie</button>
+        </form>
+      {% endif %}
+    </div>
+    <div class="tier {% if tenant.tier == 'team' %}featured{% endif %}">
+      <h3>Team</h3>
+      <p class="price">${{ tier_prices.team }}<span>/mo</span></p>
+      <ul>
+        <li>{{ "{:,}".format(tier_limits.team) }} calls / month</li>
+        <li>Multi-tenant policies</li>
+        <li>Dashboard analytics</li>
+      </ul>
+      {% if tenant.tier == 'team' %}
+        <p class="empty">Current plan</p>
+      {% elif beta_mode or not billing_enabled %}
+        <a href="mailto:{{ sales_email }}?subject=Axiom%20Firewall%20%E2%80%94%20Team%20plan%20enquiry&body=Hi%20%E2%80%94%20I'd%20like%20to%20get%20onto%20the%20Team%20plan.%20My%20account%20email%3A%20{{ tenant.email }}" class="cta-button">Contact sales</a>
+      {% else %}
+        <form method="post" action="/billing/upgrade/team">
+          <button type="submit" class="cta-button">Upgrade to Team</button>
+        </form>
+      {% endif %}
+    </div>
+    <div class="tier">
+      <h3>Enterprise</h3>
+      <p class="price">Custom</p>
+      <ul>
+        <li>SOC&nbsp;2, DPA, BAA</li>
+        <li>Dedicated tenant</li>
+        <li>SLA + support</li>
+      </ul>
       <p class="empty">
-        Update payment method, view invoices, or cancel via the secure
-        Stripe portal.
+        <a href="mailto:{{ sales_email }}?subject=Axiom%20Firewall%20%E2%80%94%20Enterprise%20enquiry">Contact sales</a>
       </p>
-    {% endif %}
+    </div>
+  </div>
+
+  {% if billing_enabled and not beta_mode and has_subscription %}
+    <h2>Manage your subscription</h2>
+    <form method="post" action="/billing/portal">
+      <button type="submit" class="cta-button">Open billing portal</button>
+    </form>
+    <p class="empty">
+      Update payment method, view invoices, or cancel via the secure
+      Stripe portal.
+    </p>
   {% endif %}
 </section>
 {% endblock %}
