@@ -67,6 +67,10 @@ def init_registry() -> None:
 
 def init_tenant_db(tenant_id: str) -> None:
     with _conn(_tenant_path(tenant_id)) as c:
+        # NOTE: `secret` column is legacy (kept to satisfy UNIQUE NOT NULL
+        # on existing files); plaintext is no longer stored there. New
+        # rows write a placeholder + the real digest into `secret_hash`.
+        # See _migrate_api_keys_to_hashed below for the back-fill path.
         c.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
                 key_id      TEXT PRIMARY KEY,
@@ -77,6 +81,13 @@ def init_tenant_db(tenant_id: str) -> None:
                 revoked_at  TEXT
             )
         """)
+        existing = {r[1] for r in c.execute("PRAGMA table_info(api_keys)").fetchall()}
+        if "secret_hash" not in existing:
+            c.execute("ALTER TABLE api_keys ADD COLUMN secret_hash TEXT")
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash "
+                "ON api_keys(secret_hash) WHERE secret_hash IS NOT NULL"
+            )
         c.execute("""
             CREATE TABLE IF NOT EXISTS usage_records (
                 record_id     TEXT PRIMARY KEY,
@@ -91,6 +102,36 @@ def init_tenant_db(tenant_id: str) -> None:
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_records(timestamp)")
+    _migrate_api_keys_to_hashed(tenant_id)
+
+
+def _migrate_api_keys_to_hashed(tenant_id: str) -> None:
+    """Back-fill secret_hash for any rows still holding plaintext.
+
+    Idempotent: runs once per row, then no-ops. Triggered from
+    init_tenant_db so every code path that opens a tenant DB also
+    migrates. Plaintext is overwritten with a sentinel (`hashed:<key_id>`)
+    that preserves the legacy UNIQUE constraint without leaking key
+    material.
+
+    We import auth.hash_api_secret lazily so this module stays
+    importable in tests that haven't set AXIOM_MASTER_KEY yet.
+    """
+    from .auth import hash_api_secret  # circular-import dance
+
+    with _conn(_tenant_path(tenant_id)) as c:
+        rows = c.execute(
+            "SELECT key_id, secret FROM api_keys "
+            "WHERE secret_hash IS NULL AND secret LIKE 'axfw_%'"
+        ).fetchall()
+        for r in rows:
+            digest = hash_api_secret(r["secret"])
+            sentinel = f"hashed:{r['key_id']}"
+            c.execute(
+                "UPDATE api_keys SET secret_hash = ?, secret = ? "
+                "WHERE key_id = ?",
+                (digest, sentinel, r["key_id"]),
+            )
 
 
 def insert_tenant(t: Tenant) -> None:
@@ -163,19 +204,38 @@ def find_tenant_by_id(tenant_id: str) -> Tenant | None:
 
 
 def insert_api_key(k: ApiKey) -> None:
+    """Persist a new API key. Plaintext secret is NEVER stored.
+
+    The `secret` column gets a sentinel placeholder (still UNIQUE to
+    satisfy the legacy constraint) and the peppered HMAC of the
+    plaintext lands in `secret_hash`. The caller is responsible for
+    showing the plaintext to the user exactly once (typically via a
+    one-shot flash message in the dashboard).
+    """
+    from .auth import hash_api_secret  # circular-import dance
+
     init_tenant_db(k.tenant_id)
+    digest = hash_api_secret(k.secret)
+    sentinel = f"hashed:{k.key_id}"
     with _conn(_tenant_path(k.tenant_id)) as c:
         c.execute(
-            "INSERT INTO api_keys VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO api_keys "
+            "(key_id, tenant_id, secret, name, created_at, revoked_at, secret_hash) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
-                k.key_id, k.tenant_id, k.secret, k.name,
+                k.key_id, k.tenant_id, sentinel, k.name,
                 k.created_at.isoformat(),
                 k.revoked_at.isoformat() if k.revoked_at else None,
+                digest,
             ),
         )
 
 
 def list_api_keys(tenant_id: str) -> list[ApiKey]:
+    """Return active keys for the tenant. `secret` is intentionally
+    blanked — the plaintext was shown once at creation and is not
+    recoverable from the DB. UI should only render `key_id`/`name`.
+    """
     init_tenant_db(tenant_id)
     with _conn(_tenant_path(tenant_id)) as c:
         rows = c.execute(
@@ -184,7 +244,8 @@ def list_api_keys(tenant_id: str) -> list[ApiKey]:
         return [
             ApiKey(
                 key_id=r["key_id"], tenant_id=r["tenant_id"],
-                secret=r["secret"], name=r["name"],
+                secret="",  # never round-trip a usable secret out of the DB
+                name=r["name"],
                 created_at=datetime.fromisoformat(r["created_at"]),
                 revoked_at=(
                     datetime.fromisoformat(r["revoked_at"]) if r["revoked_at"] else None
@@ -194,11 +255,13 @@ def list_api_keys(tenant_id: str) -> list[ApiKey]:
         ]
 
 
-def find_tenant_for_secret(secret: str) -> tuple[Tenant, ApiKey] | None:
-    """Look up tenant + key for a given API secret.
+def find_tenant_for_secret(secret_hash: str) -> tuple[Tenant, ApiKey] | None:
+    """Look up tenant + key by peppered API-secret HASH.
 
-    O(N tenants) full scan; acceptable for Phase 1's sub-1000-tenant target.
-    Postgres migration in Phase 3 collapses this to an indexed O(1) lookup.
+    Callers pass the digest from `auth.hash_api_secret()`, never the
+    raw bearer token. O(N tenants) full scan; acceptable for Phase 1's
+    sub-1000-tenant target. Postgres migration in Phase 3 collapses
+    this to an indexed O(1) lookup.
     """
     init_registry()
     with _conn(_registry_path()) as c:
@@ -209,15 +272,17 @@ def find_tenant_for_secret(secret: str) -> tuple[Tenant, ApiKey] | None:
             continue
         with _conn(tdb) as c:
             kr = c.execute(
-                "SELECT * FROM api_keys WHERE secret = ? AND revoked_at IS NULL",
-                (secret,),
+                "SELECT * FROM api_keys "
+                "WHERE secret_hash = ? AND revoked_at IS NULL",
+                (secret_hash,),
             ).fetchone()
             if kr:
                 return (
                     _row_to_tenant(trow),
                     ApiKey(
                         key_id=kr["key_id"], tenant_id=kr["tenant_id"],
-                        secret=kr["secret"], name=kr["name"],
+                        secret="",  # plaintext never re-emitted
+                        name=kr["name"],
                         created_at=datetime.fromisoformat(kr["created_at"]),
                     ),
                 )

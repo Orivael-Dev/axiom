@@ -295,7 +295,8 @@ def test_custom_pattern_blocks_through_api(isolated_tenants):
     """Upload a tenant policy that blocks a custom phrase; verify /v1/guard/check honors it."""
     from fastapi.testclient import TestClient
     from axiom_firewall.dashboard import app
-    from axiom_firewall.db import find_tenant_by_email, list_api_keys
+    from axiom_firewall.db import find_tenant_by_email, insert_api_key
+    from axiom_firewall.models import ApiKey
 
     client = TestClient(app)
     client.post(
@@ -310,10 +311,11 @@ def test_custom_pattern_blocks_through_api(isolated_tenants):
         ],
     })
     client.post("/dashboard/policy", data={"body": body})
-    client.post("/dashboard/keys", data={"name": "x"}, follow_redirects=False)
 
     tenant = find_tenant_by_email("e2e@example.com")
-    secret = list_api_keys(tenant.tenant_id)[0].secret
+    k = ApiKey.new(tenant_id=tenant.tenant_id, name="x")
+    insert_api_key(k)
+    secret = k.secret
 
     api = TestClient(app)
     # Default classifier sees no harm here, but tenant policy blocks the phrase.
