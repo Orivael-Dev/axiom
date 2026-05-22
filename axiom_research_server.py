@@ -90,6 +90,8 @@ _WORKFLOW_LABELS = {
     "grant_application":    "Grant Application",
     "patent_counsel_packet":"Patent Packet",
     "customer_discovery":   "Customer Discovery",
+    "code_generation":      "Code Generation",
+    "test_generation":      "Test Generation",
 }
 
 

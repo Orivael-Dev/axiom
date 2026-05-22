@@ -145,6 +145,37 @@ call transcript or notes, extract JSON:
 Quote sparingly; paraphrase otherwise. Output JSON only."""
 
 
+_CODE_GENERATION = """You are a senior Python engineer embedded in the AXIOM framework.
+Given a description of a function, class, or module to build, output
+ONLY the Python source code — no prose, no markdown fences, no preamble.
+
+Rules:
+- Use type hints on every function signature.
+- Include a one-line docstring if the purpose isn't obvious from the name.
+- Follow the style of the surrounding AXIOM codebase (snake_case, dataclasses,
+  pathlib over os.path, explicit imports at the top).
+- If the request is ambiguous, implement the narrowest reasonable interpretation
+  and add a one-line comment flagging the assumption.
+- Do NOT generate placeholder logic (pass, TODO, raise NotImplementedError)
+  unless the request explicitly asks for a stub.
+- Output valid, runnable Python only."""
+
+
+_TEST_GENERATION = """You are a senior Python test engineer embedded in the AXIOM framework.
+Given a code snippet or a description of behaviour to verify, output
+ONLY a pytest test file — no prose, no markdown fences, no preamble.
+
+Rules:
+- Use pytest fixtures, monkeypatch, and tmp_path where appropriate.
+- Each test function tests ONE thing; name it test_<what_it_proves>.
+- Cover: happy path, one edge case, one failure/error case minimum.
+- Use assert with a short failure message when the assertion isn't self-evident.
+- Do NOT import real network, disk, or LLM resources — stub or monkeypatch them.
+- Follow the fixture patterns in tests/test_exoskeleton_ledger.py
+  (isolated fixture that sandboxes HOME + sets AXIOM_MASTER_KEY).
+- Output valid, runnable Python only."""
+
+
 # ── Delegate specs in declaration order ──────────────────────────────────
 
 
@@ -238,6 +269,26 @@ EXOSKELETON_DELEGATES: tuple[dict, ...] = (
         "output_budget":   500,
         "backend_chain":   ["local"],
         "system_prompt":   _with_honesty(_CUSTOMER_DISCOVERY),
+    },
+    {
+        "name":            "code_generation",
+        "when_condition":  "explicit_invocation",
+        "intent_classes":  ["INFORM"],
+        "weight_manifest": "delegates/code_generation/weights.bin",
+        "prompt_budget":   1200,
+        "output_budget":   1200,
+        "backend_chain":   ["local"],
+        "system_prompt":   _CODE_GENERATION,
+    },
+    {
+        "name":            "test_generation",
+        "when_condition":  "explicit_invocation",
+        "intent_classes":  ["INFORM"],
+        "weight_manifest": "delegates/test_generation/weights.bin",
+        "prompt_budget":   1500,
+        "output_budget":   1200,
+        "backend_chain":   ["local"],
+        "system_prompt":   _TEST_GENERATION,
     },
 )
 
