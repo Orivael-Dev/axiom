@@ -88,6 +88,8 @@ services:
     image: orivael/axiom-packs:local
     container_name: axiom-packs
     restart: unless-stopped
+    environment:
+      AXIOM_MASTER_KEY: ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY in .env}
     expose:
       - "8005"
     healthcheck:
