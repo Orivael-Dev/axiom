@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}MCP — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="dashboard">
+  <h1>MCP Integration</h1>
+  <p class="tier-badge">
+    Axiom MCP Server v{{ mcp_version }} · trust level {{ mcp_trust_level }} · {{ mcp_tool_count }} tools
+  </p>
+
+  <p>
+    The Axiom MCP server exposes {{ mcp_tool_count }} constitutional-AI
+    governance tools over JSON-RPC 2.0 (stdio transport). Drop it into
+    Claude Desktop, Cursor, Continue, or any MCP-compatible client and
+    your assistant gets <code>axiom_guard_check</code>, <code>axiom_qrf</code>,
+    <code>axiom_trace</code>, and the rest of the suite.
+  </p>
+
+  <h2>Quick install</h2>
+  <pre><code># From the axiom repo root
+export AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+python3 axiom_mcp_server.py    # speaks JSON-RPC on stdio</code></pre>
+  <p class="muted">
+    Keep <code>AXIOM_MASTER_KEY</code> stable across runs — signed
+    artifacts produced under an ephemeral key won't verify in a later
+    session.
+  </p>
+
+  <h2>Claude Desktop config</h2>
+  <p>
+    Add this block to <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>
+    (macOS) or <code>%APPDATA%\Claude\claude_desktop_config.json</code> (Windows):
+  </p>
+  <pre><code>{
+  "mcpServers": {
+    "axiom": {
+      "command": "python3",
+      "args": ["/absolute/path/to/axiom/axiom_mcp_server.py"],
+      "env": {
+        "AXIOM_MASTER_KEY": "&lt;your-64-hex-master-key&gt;"
+      }
+    }
+  }
+}</code></pre>
+
+  <h2>Cursor / Continue / generic stdio</h2>
+  <p>
+    Any client that supports MCP stdio transport. Same shape as Claude
+    Desktop — point <code>command</code> at <code>python3</code> and
+    <code>args</code> at the absolute path to <code>axiom_mcp_server.py</code>.
+  </p>
+
+  <h2>Available tools</h2>
+  <p class="pack-source">
+    All tools sign their output under per-namespace HMAC keys derived from
+    your <code>AXIOM_MASTER_KEY</code>. Signed artifacts are verifiable
+    offline by anyone who holds the same key.
+  </p>
+  <div class="pack-grid">
+    {% for tool in mcp_tools %}
+      <div class="pack-card">
+        <h3><code>{{ tool.name }}</code></h3>
+        <p>{{ tool.description }}</p>
+        {% if tool.param_keys %}
+          <p class="pack-tags">
+            {% for k in tool.param_keys %}<span class="pack-tag">{{ k }}</span>{% endfor %}
+          </p>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <h2>Verify a connection</h2>
+  <p>
+    Test the server end-to-end without a client by piping a JSON-RPC
+    <code>initialize</code> request:
+  </p>
+  <pre><code>echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  | python3 axiom_mcp_server.py</code></pre>
+  <p>You should see a JSON response with <code>serverInfo.name = "axiom"</code> and the current version.</p>
+</section>
+{% endblock %}

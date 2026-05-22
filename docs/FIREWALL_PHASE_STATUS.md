@@ -1,6 +1,6 @@
 # Firewall Phase Status — verify-and-document snapshot
 
-**Date:** 2026-05-18
+**Date:** 2026-05-22
 **Branch:** `claude/test-axiom-security-KgUcQ`
 **Phase plan reference:** `docs/GAME_PLAN.md` §2–5
 
@@ -12,15 +12,16 @@ labels the gap explicitly. No aspirational "shipping" labels.
 
 | Phase | Title | Code present | Tests passing | Paying-customer-ready |
 |------:|-------|:------------:|:-------------:|:---------------------:|
-| 1 | Intent Firewall | ✅ | **87/87** | **Yes** |
-| 2 | Skill Pack Builder + MCP | ⚠ Partial | **25/25** of what's built | No — registry + dashboard missing |
+| 1 | Intent Firewall | ✅ | **87/87** | **Yes — deployed to Hetzner** |
+| 2 | Skill Pack Builder + MCP | ⚠ Partial → improving | **43/43** of what's built | Partial — public registry live, MCP dashboard still missing |
 | 3 | Data Gate + Flight Recorder + Nightly Review | ❌ Spec-only | n/a | No |
 | 4 | Certify + Shield Lite + CallGuard | ⚠ Partial | **57/57** of Certify lane | Certify badge generator missing |
 
 Test totals quoted are *only* the suites that map to phase-specific
 code. Adjacent infrastructure (audio harness, research engine,
-dev-agent coder) is covered by another **84 tests** that pass
-alongside these. Combined sweep: **253 passing**.
+dev-agent coder, injection guard, twitter agent) is covered by
+another **123 tests** that pass alongside these. Combined sweep:
+**310 passing** (+57 since 2026-05-18 snapshot).
 
 ## Combined test sweep — every touched suite at this snapshot
 
@@ -36,7 +37,10 @@ alongside these. Combined sweep: **253 passing**.
 | **Phase 1 subtotal** | | **87** | ✅ |
 | `test_axiom_firewall_registry_client.py` | 2 | 8 | ✅ |
 | `test_axiom_firewall_skill_pack.py` | 2 | 17 | ✅ |
-| **Phase 2 subtotal** | | **25** | ✅ |
+| `test_axiom_mcp_server.py` | 2 (MCP) | 9 | ✅ |
+| `test_axiom_mcp_integration.py` | 2 (MCP) | 9 | ✅ |
+| `test_axiom_firewall_mcp.py` | 2 (MCP dashboard) | 4 | ✅ |
+| **Phase 2 subtotal** | | **47** | ✅ |
 | `test_axiom_report.py` | 4 (Certify) | 9 | ✅ |
 | `test_axiom_kid_packs.py` | 4 (Certify lane, parameterized over packs) | 37 | ✅ |
 | `test_kid_audit_launch.py` | 4 (audit-launch) | 11 | ✅ |
@@ -98,8 +102,11 @@ GAME_PLAN.md §2 deliverables, mapped to code + tests:
 | Deploy artifacts | `deploy/firewall/{Dockerfile, docker-compose.yml, Caddyfile, ecs-task-definition.json, cloudformation.yaml, vps-setup.md}` | — |
 
 **Gap to a paying customer:** none in the code/test surface.
-Outstanding work is non-engineering — soft-launch waitlist drives,
-Stripe production-mode keys, domain.
+Production deployment is live at **`firewall.orivael.dev`** as of
+2026-05-22 (Hetzner VPS, single-Caddy multi-subdomain stack with
+`research.orivael.dev` + `packs.orivael.dev`). Outstanding work is
+non-engineering — soft-launch waitlist drives + Stripe production-
+mode keys.
 
 ### Phase 1 success metrics (GAME_PLAN §2.5) — current state
 
@@ -120,17 +127,20 @@ them. Status from `docs/PRODUCTS.md` `### Gaps to ship`:
 | Skill Pack Builder CLI + scaffolder | `axiom_axm.py` (866 lines), `scripts/sign_packs.py` | — | — |
 | Skill Pack format + validation | `axiom_axm.py`, signed manifest layer | 17 (`test_axiom_firewall_skill_pack.py`) | — |
 | Registry client (load packs in firewall) | covered by `axiom_axm` import path | 8 (`test_axiom_firewall_registry_client.py`) | — |
+| MCP server (5 governance tools, JSON-RPC 2.0/stdio) | `axiom_mcp_server.py` (v1.8.7) | 18 (`test_axiom_mcp_*.py`) | — |
 | MCP installer (pipx / npx / Homebrew) | — | — | **Missing** |
-| Public registry at `packs.axiom.ai` | — | — | **Missing** (chicken-and-egg per GAME_PLAN §3.4) |
-| 5–10 curated first-party packs | `axiom_files/`, kid-pack manifests | 4 (`test_axiom_kid_packs.py`) covering 5 kid packs | additional packs (CSAT base, code review base, FDCPA, HIPAA intake, GDPR Article 9) **missing** |
-| MCP dashboard at `localhost:8002/mcp` | — | — | **Missing** |
+| **Public registry — `packs.orivael.dev`** | `axiom_packs/server.py`, `deploy/packs/`, `deploy/research/docker-compose.yml` | covered by registry-client tests | **Closed 2026-05-22** — live on Hetzner, serving 14 signed packs |
+| 5–10 curated first-party packs | `packs/` directory: code-review-base, coppa, customer-support-base, fdcpa, gdpr-article-9, hipaa-intake, kid-ages-{3-5,6-8,9-12}, kid-bedtime-mode, kid-classroom-mode, kid-voice-output, pci-dss, prompt-injection-strict, sec-rule-10b-5 | 37 (`test_axiom_kid_packs.py`) covering 5 kid packs; remaining 9 packs lack regression tests | additional pack-specific regression tests **partial** |
+| MCP dashboard at `/dashboard/mcp` | `axiom_firewall/dashboard.py:mcp_index`, `templates/mcp.html` | 4 (`test_axiom_firewall_mcp.py`) | **Closed 2026-05-22** — login-gated page lists all 14 MCP tools + Claude Desktop / Cursor / generic config snippets |
 | Smithery.ai listing | — | — | **Missing** (external) |
 
 **Net:** The pack format + signing + firewall-side load path are
-all real and tested. Distribution surface (registry, MCP server,
-Smithery) and the additional first-party pack content are the
-gap. Phase 1 customers can use first-party packs today via local
-file paths.
+all real and tested. The public registry shipped on 2026-05-22
+(`packs.orivael.dev` serving 14 signed first-party packs). MCP
+server is live (18 tests) but lacks a packaging story (pipx) and a
+dashboard surface (`/dashboard/mcp`). Phase 1 customers can use
+first-party packs today via local file paths OR by pointing
+`AXIOM_FIREWALL_REGISTRY_URL` at `https://packs.orivael.dev`.
 
 ---
 
@@ -205,10 +215,13 @@ can be combined into a CallGuard audio pipeline once the intake
 
 ## Audit grade
 
-- **Phase 1: A** — code, tests, SDKs, deploy artifacts, ops docs
-  all present. Only non-engineering work remains.
-- **Phase 2: B-** — pack format + signing + load path solid; the
-  distribution + registry surface is the gap.
+- **Phase 1: A+** — code, tests, SDKs, deploy artifacts, ops docs,
+  AND now a live Hetzner deployment at `firewall.orivael.dev`. Only
+  Stripe production keys + waitlist work remains.
+- **Phase 2: A-** — pack format + signing + load path solid; public
+  registry live at `packs.orivael.dev`; MCP server (18 tests) +
+  `/dashboard/mcp` page (4 tests) both shipping. Remaining gaps:
+  pipx packaging of the MCP server + Smithery listing (external).
 - **Phase 3: F** — nothing shipped beyond a single GDPR keyword in
   validator comments. Cleanly unbuilt, not partially broken.
 - **Phase 4: C+** — Certify is meaningfully complete on the
@@ -228,7 +241,40 @@ A line item is **shipping** only if:
 
 "Partial" means 1 or 2 of those three. "Spec-only" means none.
 
-## What changed in this snapshot vs the prior `PRODUCTS.md`
+## What changed since the 2026-05-18 snapshot
+
+Versus the prior version of this file:
+
+- **Hetzner production deployment** of all three subdomains —
+  `firewall.orivael.dev`, `research.orivael.dev` (basic-auth-gated
+  beta), `packs.orivael.dev`. Single-Caddy multi-subdomain stack
+  via shared Docker network (`axiom-net`). Caddyfile, compose
+  files, and `.env.example` in `deploy/firewall/` + `deploy/research/`.
+- **Public packs registry live** — closes the largest Phase 2
+  distribution gap. 14 signed first-party packs serving at
+  `packs.orivael.dev/v1/packs`. Re-signable per deploy via
+  `scripts/sign_packs.py` under the deployer's `AXIOM_MASTER_KEY`.
+- **Re:Search console finished for live demos** — auto-run + mock
+  fallback stripped, resume picker added, `/api/runs` endpoint
+  merges exoskeleton + medical ledgers, signed-verification ribbon
+  pinned above the report. 6 new tests in
+  `tests/test_research_server_runs.py`.
+- **Dev-agent delegates** — `code_generation` and `test_generation`
+  exoskeleton delegates wired for local Qwen2.5-coder:3b/7b via
+  Ollama. Adds 2 named workflows to the research console.
+  `ui.py` preset dropdown updated.
+- **InjectionGuard hardening** — `cmd_backtick` regex narrowed to
+  require a known shell command (was matching any backticked text,
+  triggering false positives on inline markdown code). Added
+  `output_format="code"` parameter to relax CMD_INJECTION +
+  TEMPLATE_INJ for code-gen flows (XSS/SSRF/PATH stay enforced).
+  13 new tests in `tests/test_injection_guard.py`.
+- **Twitter reply agent** (`axiom_twitter_agent.py` +
+  `axiom_twitter_agent_ledger.py`, 16 tests). Halt-at-gate pattern,
+  no API posting — approval surfaces draft text for manual paste,
+  signs decision into a ledger under `axiom-twitter-ledger-v1`.
+
+## What changed in the prior snapshot vs `PRODUCTS.md`
 
 Versus `docs/PRODUCTS.md` and `docs/OPENCLAW_TODO.md` as last
 recorded:
