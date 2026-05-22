@@ -1,0 +1,64 @@
+# Dependabot config — keeps pinned runtime + CI deps current.
+#
+# Watches:
+#   - deploy/firewall/requirements.txt   (the pip-compile'd lockfile
+#     consumed by the Firewall Dockerfile; this is the file the prod
+#     image actually installs from, so security-relevant CVEs here
+#     matter most)
+#   - pyproject.toml                     (the SDK + library deps;
+#     looser pins, but worth tracking for major bumps)
+#   - .github/workflows/                 (pin actions to specific SHAs;
+#     Dependabot updates the SHA + leaves the version comment intact)
+#
+# All PRs are grouped to keep noise low. Weekly cadence — security
+# updates land out-of-band as soon as they're disclosed regardless of
+# the schedule (Dependabot default).
+
+version: 2
+updates:
+
+  # ── Firewall production image — pinned lockfile ──────────────────
+  - package-ecosystem: "pip"
+    directory: "/deploy/firewall"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "firewall"
+    groups:
+      firewall-runtime:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps(firewall)"
+
+  # ── Library / SDK side ───────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+    groups:
+      python-libs:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
+
+  # ── GitHub Actions used in CI / release workflows ────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "deps(ci)"
