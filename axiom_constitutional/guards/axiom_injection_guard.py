@@ -81,7 +81,10 @@ _INJECTION_PATTERNS: Tuple[Tuple[str, str, str, str], ...] = (
     # ── Command Injection ─────────────────────────────────────────────────────
     ("cmd_semicolon_cmd",  r";\s*(?:ls|cat|id|whoami|pwd|env|wget|curl)\b","CMD_INJECTION", "CRITICAL"),
     ("cmd_pipe_cmd",       r"\|\s*(?:cat|bash|sh|python|perl|ruby|nc)\b", "CMD_INJECTION", "CRITICAL"),
-    ("cmd_backtick",       r"`[^`]{1,80}`",                                "CMD_INJECTION", "HIGH"),
+    # Tightened: require a known shell command inside the backticks. Bare
+    # markdown-inline-code (e.g. `os.path.join()`) no longer trips the guard.
+    ("cmd_backtick",       r"`\s*(?:ls|cat|id|whoami|pwd|env|wget|curl|sh|bash|nc|rm|eval|chmod|chown|sudo|kill|ssh|python|perl|ruby)\b[^`]{0,80}`",
+                                                                            "CMD_INJECTION", "HIGH"),
     ("cmd_dollar_paren",   r"\$\([^)]{1,80}\)",                            "CMD_INJECTION", "HIGH"),
     ("cmd_ifs_bypass",     r"\$\{IFS\}",                                   "CMD_INJECTION", "HIGH"),
     ("cmd_and_cmd",        r"&&\s*(?:ls|cat|id|whoami|rm|wget|curl)\b",   "CMD_INJECTION", "CRITICAL"),
@@ -126,9 +129,19 @@ class OutputInjectionGuard:
     Pattern registry is module-level — CANNOT_MUTATE.
     """
 
-    def check(self, text: str, context: str = "") -> Dict:
+    def check(self, text: str, context: str = "",
+              output_format: str = "") -> Dict:
         """
         Scan text for injection payloads.
+
+        output_format:
+            ""      — default. All 32 patterns enforced.
+            "code"  — caller knows the output is source code or markdown
+                      with inline code. Skips CMD_INJECTION and TEMPLATE_INJ
+                      categories (legitimate code routinely contains
+                      backticks, `{{...}}`, `${...}`, etc.). XSS, SSRF,
+                      PATH_TRAVERSAL, NOSQL_INJ stay enforced — those are
+                      real risks even inside a code response.
 
         Returns:
             {
@@ -141,7 +154,7 @@ class OutputInjectionGuard:
                 "severity":      str,
             }
         """
-        match = self._match(text)
+        match = self._match(text, output_format=output_format)
         if match is None:
             return {
                 "blocked": False, "safe_response": "", "review_id": "",
@@ -169,9 +182,17 @@ class OutputInjectionGuard:
 
     # ── Pattern matching ──────────────────────────────────────────────────────
 
-    def _match(self, text: str) -> Optional[Tuple[str, str, str, str]]:
+    _SKIP_CATEGORIES_BY_FORMAT: Dict[str, frozenset] = {
+        "code": frozenset({"CMD_INJECTION", "TEMPLATE_INJ"}),
+    }
+
+    def _match(self, text: str,
+               output_format: str = "") -> Optional[Tuple[str, str, str, str]]:
         """Return (pattern_name, category, severity, snippet) or None."""
+        skip = self._SKIP_CATEGORIES_BY_FORMAT.get(output_format, frozenset())
         for name, compiled, category, severity in _COMPILED:
+            if category in skip:
+                continue
             m = compiled.search(text)
             if m:
                 start = max(0, m.start() - 15)
@@ -261,9 +282,9 @@ class OutputInjectionGuard:
 _guard = OutputInjectionGuard()
 
 
-def check(text: str, context: str = "") -> Dict:
+def check(text: str, context: str = "", output_format: str = "") -> Dict:
     """Module-level shortcut: axiom_injection_guard.check(text)."""
-    return _guard.check(text, context=context)
+    return _guard.check(text, context=context, output_format=output_format)
 
 
 # ── Standalone test runner (12 cases) ────────────────────────────────────────

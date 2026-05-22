@@ -70,11 +70,21 @@ _BLOCKED_RESPONSE = (
     "This interaction has been logged."
 )
 
-def validate_output(response: str, task: str, caller: str = "") -> tuple[str, bool]:
+def validate_output(response: str, task: str, caller: str = "",
+                    output_format: str = "") -> tuple[str, bool]:
     """
     Check response for signs of constraint bypass or destructive operations
     before returning to the caller.
     Returns (response, is_clean).
+
+    output_format:
+        ""      — default. All guard categories enforced.
+        "code"  — caller knows the response is source code or markdown
+                  with inline code. The injection guard relaxes
+                  CMD_INJECTION + TEMPLATE_INJ categories so legitimate
+                  backticks / `{{...}}` / `${...}` don't trip the guard.
+                  XSS, SSRF, path traversal, NoSQL injection, and the
+                  destructive-op + PII layers stay fully enforced.
 
     Layer 1 — DestructiveOperationGuard   (OWASP LLM08 Excessive Agency)
         SQL drops/truncates, rm -rf, shutil.rmtree, kubectl delete,
@@ -102,7 +112,8 @@ def validate_output(response: str, task: str, caller: str = "") -> tuple[str, bo
         return guard_result["safe_response"], False
 
     # ── Layer 2: Injection guard ──────────────────────────────
-    inj_result = _injection_guard.check(response, context=ctx)
+    inj_result = _injection_guard.check(response, context=ctx,
+                                         output_format=output_format)
     if inj_result["blocked"]:
         return inj_result["safe_response"], False
 
@@ -175,8 +186,15 @@ def chat(
     temperature: float = 0.7,
     _skip_validation: bool = False,
     caller: str = "client",
+    output_format: str = "",
 ) -> str:
-    """Single chat completion call. Returns the text content of the response."""
+    """Single chat completion call. Returns the text content of the response.
+
+    output_format="code" relaxes the injection guard's CMD_INJECTION +
+    TEMPLATE_INJ categories so legitimate inline code (backticks, Jinja,
+    template literals) doesn't trip it. XSS, SSRF, path traversal, NoSQL,
+    destructive-op, and PII layers stay fully enforced.
+    """
     # ── DoS gate ──────────────────────────────────────────────
     watcher = _get_watcher()
     dos_result = watcher.check(caller=caller, request_text=user_message)
@@ -198,7 +216,7 @@ def chat(
         watcher.record_success()
         if _skip_validation:
             return raw
-        clean, is_clean = validate_output(raw, user_message, caller=caller)
+        clean, is_clean = validate_output(raw, user_message, caller=caller, output_format=output_format)
         if not is_clean:
             return clean  # safe_response from guard already contains review_id
         clean, is_clean = content_sandbox_check(clean, user_message)
@@ -235,7 +253,7 @@ def chat(
             if _skip_validation:
                 return raw
                 
-            clean, is_clean = validate_output(raw, user_message, caller=caller)
+            clean, is_clean = validate_output(raw, user_message, caller=caller, output_format=output_format)
             if not is_clean:
                 try:
                     from axiom_constitutional.agents.sandbox import SandboxAgent
