@@ -29,9 +29,10 @@
 research.orivael.dev {
     encode gzip
 
-    # Beta gate — same bcrypt pairs as before.
+    # Beta gate — credentials injected via env vars.
+    # BETA_AUTH_USER=tony  BETA_AUTH_HASH=$$2a$$14$$...  (double every $ in .env)
     basic_auth {
-        import_args {$BETA_AUTH_HASHES}
+        {$BETA_AUTH_USER} {$BETA_AUTH_HASH}
     }
 
     @health path /api/health

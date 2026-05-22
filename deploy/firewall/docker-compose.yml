@@ -54,8 +54,9 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      FIREWALL_HOST:    ${FIREWALL_HOST:?set FIREWALL_HOST (e.g. firewall.example.com)}
-      BETA_AUTH_HASHES: ${BETA_AUTH_HASHES:-}
+      FIREWALL_HOST:  ${FIREWALL_HOST:?set FIREWALL_HOST (e.g. firewall.example.com)}
+      BETA_AUTH_USER: ${BETA_AUTH_USER:-}
+      BETA_AUTH_HASH: ${BETA_AUTH_HASH:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
