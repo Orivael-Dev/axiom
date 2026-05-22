@@ -62,13 +62,18 @@ def test_tenant_signup_and_key_lookup(isolated_tenants):
 
     keys = list_api_keys(t.tenant_id)
     assert len(keys) == 1
-    assert keys[0].secret == k.secret
+    assert keys[0].key_id == k.key_id
+    # Plaintext is intentionally NOT round-trippable from the DB —
+    # only the peppered HMAC is persisted. list_api_keys blanks it.
+    assert keys[0].secret == ""
 
     auth = authenticate(k.secret)
     assert auth is not None
     found_t, found_k = auth
     assert found_t.tenant_id == t.tenant_id
     assert found_k.key_id == k.key_id
+    # Authenticated lookup also returns no plaintext.
+    assert found_k.secret == ""
 
 
 def test_invalid_keys_rejected(isolated_tenants):
@@ -109,7 +114,8 @@ def test_dashboard_authenticated_guard_check_allow(isolated_tenants):
     """Issue a key, call /v1/guard/check, expect allow + usage recorded."""
     from fastapi.testclient import TestClient
     from axiom_firewall.dashboard import app
-    from axiom_firewall.db import list_api_keys, find_tenant_by_email, usage_summary
+    from axiom_firewall.db import insert_api_key, find_tenant_by_email, usage_summary
+    from axiom_firewall.models import ApiKey
 
     client = TestClient(app)
     client.post(
@@ -117,11 +123,13 @@ def test_dashboard_authenticated_guard_check_allow(isolated_tenants):
         data={"email": "carol@example.com", "password": "longenoughpw"},
         follow_redirects=False,
     )
-    client.post("/dashboard/keys", data={"name": "prod"}, follow_redirects=False)
 
+    # The dashboard flow shows the plaintext exactly once via a session
+    # flash; we mint a key directly so the test can keep the plaintext.
     tenant = find_tenant_by_email("carol@example.com")
-    keys = list_api_keys(tenant.tenant_id)
-    secret = keys[0].secret
+    k = ApiKey.new(tenant_id=tenant.tenant_id, name="prod")
+    insert_api_key(k)
+    secret = k.secret
 
     # Use a fresh client (no session cookie) — API auth is bearer-only
     api = TestClient(app)
@@ -145,7 +153,8 @@ def test_dashboard_authenticated_guard_check_block(isolated_tenants):
     """A HARM-pattern prompt should produce verdict=block."""
     from fastapi.testclient import TestClient
     from axiom_firewall.dashboard import app
-    from axiom_firewall.db import find_tenant_by_email, list_api_keys, usage_summary
+    from axiom_firewall.db import find_tenant_by_email, insert_api_key, usage_summary
+    from axiom_firewall.models import ApiKey
 
     client = TestClient(app)
     client.post(
@@ -153,9 +162,10 @@ def test_dashboard_authenticated_guard_check_block(isolated_tenants):
         data={"email": "dave@example.com", "password": "longenoughpw"},
         follow_redirects=False,
     )
-    client.post("/dashboard/keys", data={"name": "prod"}, follow_redirects=False)
     tenant = find_tenant_by_email("dave@example.com")
-    secret = list_api_keys(tenant.tenant_id)[0].secret
+    k = ApiKey.new(tenant_id=tenant.tenant_id, name="prod")
+    insert_api_key(k)
+    secret = k.secret
 
     api = TestClient(app)
     # Trigger the gift-card-pressure HARM pattern (matches buy/send + gift card)
@@ -193,7 +203,8 @@ def test_guard_check_rejects_missing_auth(isolated_tenants):
 def test_guard_check_rejects_bad_body(isolated_tenants):
     from fastapi.testclient import TestClient
     from axiom_firewall.dashboard import app
-    from axiom_firewall.db import find_tenant_by_email, list_api_keys
+    from axiom_firewall.db import find_tenant_by_email, insert_api_key
+    from axiom_firewall.models import ApiKey
 
     client = TestClient(app)
     client.post(
@@ -201,9 +212,10 @@ def test_guard_check_rejects_bad_body(isolated_tenants):
         data={"email": "eve@example.com", "password": "longenoughpw"},
         follow_redirects=False,
     )
-    client.post("/dashboard/keys", data={"name": "prod"}, follow_redirects=False)
     tenant = find_tenant_by_email("eve@example.com")
-    secret = list_api_keys(tenant.tenant_id)[0].secret
+    k = ApiKey.new(tenant_id=tenant.tenant_id, name="prod")
+    insert_api_key(k)
+    secret = k.secret
 
     api = TestClient(app)
     r = api.post(

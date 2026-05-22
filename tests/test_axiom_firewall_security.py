@@ -186,3 +186,134 @@ class TestBodySizeLimits:
         # httpx may strip an obviously-bad Content-Length, so we accept
         # either the middleware's 400 or a normal 200/302 — but never 500.
         assert r.status_code < 500
+
+
+# ─── #1 API key hashing — plaintext never persisted ─────────────────────
+
+class TestApiKeyHashing:
+    """The on-disk SQLite must contain only peppered HMAC digests of
+    API secrets. A leaked DB file should not let an attacker mint
+    working bearer tokens (without also stealing AXIOM_MASTER_KEY)."""
+
+    @pytest.fixture
+    def env(self, monkeypatch, tmp_path):
+        dash = _reload_dashboard(monkeypatch, env_overrides={
+            "AXIOM_FIREWALL_TENANT_DIR": str(tmp_path / "tenants"),
+            "AXIOM_FIREWALL_SESSION_SECRET": "k" * 64,
+        })
+        return dash, tmp_path
+
+    def test_plaintext_secret_not_in_sqlite(self, env):
+        dash, tmp_path = env
+        from axiom_firewall.db import insert_api_key, _conn, _tenant_path
+        from axiom_firewall.models import ApiKey, Tenant
+        from axiom_firewall.db import insert_tenant
+        from axiom_firewall.auth import hash_password
+
+        t = Tenant.new(
+            email="leakcheck@example.com",
+            pw_hash=hash_password("longenoughpw"),
+        )
+        insert_tenant(t)
+        k = ApiKey.new(tenant_id=t.tenant_id, name="prod")
+        insert_api_key(k)
+
+        # The plaintext secret must not appear ANYWHERE in the tenant DB.
+        db_bytes = _tenant_path(t.tenant_id).read_bytes()
+        assert k.secret.encode("ascii") not in db_bytes, \
+            "plaintext API secret was written to disk — peppered hash storage broken"
+        # The stored `secret` column should be the placeholder sentinel.
+        with _conn(_tenant_path(t.tenant_id)) as c:
+            row = c.execute(
+                "SELECT secret, secret_hash FROM api_keys WHERE key_id = ?",
+                (k.key_id,),
+            ).fetchone()
+        assert row["secret"] == f"hashed:{k.key_id}"
+        assert row["secret_hash"] and len(row["secret_hash"]) == 64  # sha256 hex
+
+    def test_authenticate_round_trips_via_hash(self, env):
+        dash, _ = env
+        from axiom_firewall.auth import authenticate, hash_password
+        from axiom_firewall.db import insert_api_key, insert_tenant
+        from axiom_firewall.models import ApiKey, Tenant
+
+        t = Tenant.new(
+            email="auth@example.com", pw_hash=hash_password("longenoughpw"),
+        )
+        insert_tenant(t)
+        k = ApiKey.new(tenant_id=t.tenant_id, name="prod")
+        insert_api_key(k)
+
+        result = authenticate(k.secret)
+        assert result is not None
+        found_t, found_k = result
+        assert found_t.tenant_id == t.tenant_id
+        assert found_k.key_id == k.key_id
+        # find_tenant_for_secret must NOT expose the plaintext.
+        assert found_k.secret == ""
+
+    def test_list_api_keys_blanks_plaintext(self, env):
+        dash, _ = env
+        from axiom_firewall.auth import hash_password
+        from axiom_firewall.db import insert_api_key, insert_tenant, list_api_keys
+        from axiom_firewall.models import ApiKey, Tenant
+
+        t = Tenant.new(
+            email="list@example.com", pw_hash=hash_password("longenoughpw"),
+        )
+        insert_tenant(t)
+        k = ApiKey.new(tenant_id=t.tenant_id, name="prod")
+        insert_api_key(k)
+
+        keys = list_api_keys(t.tenant_id)
+        assert len(keys) == 1
+        assert keys[0].key_id == k.key_id
+        assert keys[0].secret == ""
+
+    def test_legacy_plaintext_row_migrated_on_init(self, env, monkeypatch):
+        """A row written by the pre-hash code path (plaintext in `secret`,
+        NULL `secret_hash`) gets migrated on the next init_tenant_db
+        call. After migration: hash is populated, plaintext is gone,
+        authenticate() still works with the original token."""
+        dash, _ = env
+        from axiom_firewall.auth import authenticate, hash_password
+        from axiom_firewall.db import (
+            _conn, _tenant_path, init_tenant_db, insert_tenant,
+        )
+        from axiom_firewall.models import Tenant
+        import uuid
+
+        t = Tenant.new(
+            email="legacy@example.com", pw_hash=hash_password("longenoughpw"),
+        )
+        insert_tenant(t)
+        legacy_key_id = str(uuid.uuid4())
+        legacy_secret = "axfw_legacy_plaintext_token_xyz"
+
+        # Manually write a legacy-style row (plaintext in `secret`,
+        # NULL `secret_hash`) — the shape pre-this-patch's writers used.
+        with _conn(_tenant_path(t.tenant_id)) as c:
+            c.execute(
+                "INSERT INTO api_keys "
+                "(key_id, tenant_id, secret, name, created_at, revoked_at) "
+                "VALUES (?, ?, ?, ?, datetime('now'), NULL)",
+                (legacy_key_id, t.tenant_id, legacy_secret, "legacy"),
+            )
+
+        # Trigger migration.
+        init_tenant_db(t.tenant_id)
+
+        # Plaintext gone from DB; sentinel + hash now present.
+        with _conn(_tenant_path(t.tenant_id)) as c:
+            row = c.execute(
+                "SELECT secret, secret_hash FROM api_keys WHERE key_id = ?",
+                (legacy_key_id,),
+            ).fetchone()
+        assert row["secret"] == f"hashed:{legacy_key_id}"
+        assert row["secret_hash"] and len(row["secret_hash"]) == 64
+
+        # The original token must still authenticate post-migration.
+        result = authenticate(legacy_secret)
+        assert result is not None
+        _, k = result
+        assert k.key_id == legacy_key_id

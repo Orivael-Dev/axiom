@@ -34,10 +34,14 @@ def _signup_and_key(client):
         data={"email": "out@example.com", "password": "longenoughpw"},
         follow_redirects=False,
     )
-    client.post("/dashboard/keys", data={"name": "out"}, follow_redirects=False)
-    from axiom_firewall.db import find_tenant_by_email, list_api_keys
+    # Mint the key in-process — the dashboard flow shows the plaintext
+    # exactly once via flash, but the DB no longer stores it.
+    from axiom_firewall.db import find_tenant_by_email, insert_api_key
+    from axiom_firewall.models import ApiKey
     tenant = find_tenant_by_email("out@example.com")
-    return tenant, list_api_keys(tenant.tenant_id)[0].secret
+    k = ApiKey.new(tenant_id=tenant.tenant_id, name="out")
+    insert_api_key(k)
+    return tenant, k.secret
 
 
 # ─── Endpoint shape parity ──────────────────────────────────────────────
