@@ -26,6 +26,14 @@ services:
     image: orivael/axiom-research:local
     container_name: axiom-research
     restart: unless-stopped
+    # Lets the container reach a service on the docker host —
+    # specifically, Ollama running on the box itself (the most common
+    # "BYO local SLM" setup). With this line, OLLAMA_URL can be set
+    # to http://host.docker.internal:11434 in .env. Linux containers
+    # don't get this hostname for free; macOS / Windows Docker
+    # Desktop does, so this is a no-op on those.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # env_file passes EVERY key=value in .env through to the container.
     # That covers the per-domain routing vars (AXIOM_BACKEND_MEDICAL,
     # OLLAMA_MODEL_MEDICAL, AXIOM_RETRIEVAL_DIR_*, etc.) automatically
