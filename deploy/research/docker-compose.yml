@@ -26,6 +26,24 @@ services:
     image: orivael/axiom-research:local
     container_name: axiom-research
     restart: unless-stopped
+    # env_file passes EVERY key=value in .env through to the container.
+    # That covers the per-domain routing vars (AXIOM_BACKEND_MEDICAL,
+    # OLLAMA_MODEL_MEDICAL, AXIOM_RETRIEVAL_DIR_*, etc.) automatically
+    # — no need to add a passthrough line here every time a new domain
+    # is configured.
+    #
+    # required: false so a fresh clone doesn't refuse to start before
+    # `cp .env.example .env`. AXIOM_MASTER_KEY's ${VAR:?...} validator
+    # in the environment: block below still hard-fails on truly empty
+    # config.
+    env_file:
+      - path: .env
+        required: false
+    # The `environment:` block below still applies the
+    # ${VAR:?default} validators (AXIOM_MASTER_KEY required, sane
+    # defaults for the legacy single-backend vars). Docker merges the
+    # two: env_file is read first, then environment overrides on
+    # collision, which matches the "explicit beats implicit" rule.
     environment:
       AXIOM_MASTER_KEY:     ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY (openssl rand -hex 32)}
       AXIOM_RESEARCH_TOKEN: ${AXIOM_RESEARCH_TOKEN:-}
