@@ -214,6 +214,41 @@ to the bare `AXIOM_BASE_URL` / `AXIOM_API_KEY` / `AXIOM_MODEL` —
 handy when you only want to swap the model identifier and reuse the
 same upstream key.
 
+### Different corpus per domain
+
+Independent of the LLM-per-domain wiring above, the retrieval
+corpus is also routable per domain. By default the
+`LocalRetriever` indexes the repo's `docs/`, `README.md`, and
+`patents/` — fine for the demo, useless for production. Point
+each domain at its own corpus with `AXIOM_RETRIEVAL_DIR_<DOMAIN>`:
+
+```bash
+AXIOM_RETRIEVAL_DIR_MEDICAL=/data/corpora/pubmed,/data/corpora/guidelines
+AXIOM_RETRIEVAL_DIR_SECURITY=/data/corpora/cve,/data/corpora/owasp
+AXIOM_RETRIEVAL_DIR_FINANCE=/data/corpora/sec-edgar
+AXIOM_RETRIEVAL_DIR_HR=/data/corpora/employment-law
+AXIOM_RETRIEVAL_DIR_SUPPLY_CHAIN=/data/corpora/sap-logs
+```
+
+- Comma-separated paths become multi-root corpora for the same
+  domain.
+- Any path that doesn't exist is logged at boot and skipped (the
+  domain falls back to the default corpus). Operators can spot
+  typos in the warning line without taking the server down.
+- `LocalRetriever` indexes plain text (`.md`, `.txt`, `.py`,
+  `.js`, `.ts`, etc.) up to ~4000 files per corpus. Drop your
+  per-domain `.md` exports into the directory and restart.
+
+When any `AXIOM_RETRIEVAL_DIR_<DOMAIN>` is set, the default
+retriever auto-wraps in a `DomainRoutedRetriever` so the right
+corpus serves the right domain. Source citations in the
+`/api/research` response come from the per-domain corpus — easy
+to verify by clicking a citation URI in the console.
+
+You can mix and match: route only the LLM (keep the shared
+corpus), only the corpus (keep the shared LLM), or both. They
+read separate env vars and don't depend on each other.
+
 ### Examples
 
 **OpenRouter** (hosts dozens of models including open-weight):

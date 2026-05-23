@@ -198,7 +198,17 @@ class LocalRetriever:
 
     # ── querying ─────────────────────────────────────────────────────
 
-    def retrieve(self, query: str, *, k: int = 5) -> List[RetrievedSource]:
+    def retrieve(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        domain: Optional[str] = None,
+    ) -> List[RetrievedSource]:
+        # `domain` is accepted (and ignored) on the plain retriever so
+        # the call site in axiom_research_server can pass it
+        # unconditionally. DomainRoutedRetriever uses it to dispatch.
+        del domain
         if not query or not query.strip():
             return []
         self.build()
@@ -297,16 +307,129 @@ class LocalRetriever:
 _DEFAULT: Optional[LocalRetriever] = None
 
 
-def default_retriever(repo_root: Optional[Path] = None) -> LocalRetriever:
-    """Module-level default retriever, indexing the repo's docs + README."""
+class DomainRoutedRetriever:
+    """Dispatch retrieval to the right per-domain corpus.
+
+    Holds a `{domain: LocalRetriever}` map + a default fallback. The
+    research server calls `retrieve(query, domain=req.domain)` and
+    this class routes to the matching corpus. Unknown / missing
+    domain falls through to the default — same shape as
+    `DomainRoutedBackend` over in axiom_event_token/backends.py.
+
+    Configure via `AXIOM_RETRIEVAL_DIR_<DOMAIN>` env vars discovered
+    by `default_retriever()`:
+
+      AXIOM_RETRIEVAL_DIR_MEDICAL=/data/corpora/medical
+      AXIOM_RETRIEVAL_DIR_SECURITY=/data/corpora/security
+      AXIOM_RETRIEVAL_DIR_FINANCE=/data/corpora/finance
+
+    Comma-separated paths are allowed for multi-root corpora:
+
+      AXIOM_RETRIEVAL_DIR_MEDICAL=/data/pubmed,/data/clinical-guides
+    """
+
+    def __init__(
+        self,
+        default: "LocalRetriever",
+        per_domain: Optional[dict] = None,
+    ) -> None:
+        if default is None:
+            raise ValueError("DomainRoutedRetriever requires a default retriever")
+        self._default = default
+        self._per_domain: dict[str, LocalRetriever] = {
+            k.lower(): v for k, v in (per_domain or {}).items() if v is not None
+        }
+
+    @property
+    def primary_root(self) -> Path:
+        # Defer to the default — primary_root is used by stats / debug,
+        # not by routing logic.
+        return self._default.primary_root
+
+    def stats(self) -> dict:
+        return {
+            "kind":    "domain-routed",
+            "default": self._default.stats(),
+            "per_domain": {
+                d: r.stats() for d, r in sorted(self._per_domain.items())
+            },
+        }
+
+    def retrieve(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        domain: Optional[str] = None,
+    ) -> List[RetrievedSource]:
+        d = (domain or "").strip().lower()
+        target = self._per_domain.get(d, self._default) if d else self._default
+        return target.retrieve(query, k=k)
+
+
+# Domains the research console supports. Mirrors ROUTED_DOMAINS in
+# axiom_event_token/backends.py so backend + retriever per-domain
+# configs share the same vocabulary.
+ROUTED_DOMAINS = ("general", "medical", "finance", "security", "hr",
+                  "supply_chain")
+
+
+def _per_domain_dirs(domain: str) -> List[Path]:
+    """Return the configured corpus roots for `domain`, or [] if no
+    override is set. Comma-separated AXIOM_RETRIEVAL_DIR_<DOMAIN>
+    values map to multiple roots."""
+    raw = os.environ.get(f"AXIOM_RETRIEVAL_DIR_{domain.upper()}")
+    if not raw:
+        return []
+    paths: list[Path] = []
+    for chunk in raw.split(","):
+        s = chunk.strip()
+        if not s:
+            continue
+        p = Path(s).expanduser()
+        if not p.exists():
+            # Don't fail the boot — just log+skip. Stats will show the
+            # corpus didn't get indexed, so operators can spot the typo.
+            import logging
+            logging.getLogger("axiom.retriever").warning(
+                "AXIOM_RETRIEVAL_DIR_%s points at %s which doesn't exist; "
+                "skipping. Fix the path and restart.",
+                domain.upper(), p,
+            )
+            continue
+        paths.append(p)
+    return paths
+
+
+def default_retriever(repo_root: Optional[Path] = None) -> "LocalRetriever | DomainRoutedRetriever":
+    """Module-level default retriever.
+
+    Indexes the repo's `docs/`, `README.md`, and `patents/` (if
+    present) by default. When any `AXIOM_RETRIEVAL_DIR_<DOMAIN>` env
+    var is set, wraps the default in a DomainRoutedRetriever so a
+    Medical request retrieves from the medical corpus, a Security
+    request from the security corpus, etc. No change for deployments
+    without per-domain overrides.
+    """
     global _DEFAULT
     if _DEFAULT is not None:
         return _DEFAULT
     root = repo_root or Path(__file__).resolve().parent
-    roots = [
+    base_roots = [
         root / "docs",
         root / "README.md",
         root / "patents",     # patent PDFs are skipped; companion .md if any
     ]
-    _DEFAULT = LocalRetriever(roots=[r for r in roots if r.exists()])
+    base = LocalRetriever(roots=[r for r in base_roots if r.exists()])
+
+    per_domain: dict[str, LocalRetriever] = {}
+    for d in ROUTED_DOMAINS:
+        dirs = _per_domain_dirs(d)
+        if dirs:
+            per_domain[d] = LocalRetriever(roots=dirs)
+
+    if per_domain:
+        _DEFAULT = DomainRoutedRetriever(default=base, per_domain=per_domain)
+    else:
+        _DEFAULT = base
     return _DEFAULT

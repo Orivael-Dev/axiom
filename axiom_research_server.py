@@ -263,7 +263,10 @@ def _retrieve_sources(query: str, domain: str, *, k: int = 5) -> tuple[list[dict
     if _state.retriever is None:
         return _fallback_source_stubs(query, domain), False
     try:
-        hits = _state.retriever.retrieve(query, k=k)
+        # `domain` is honoured by DomainRoutedRetriever (per-corpus
+        # dispatch) and ignored by plain LocalRetriever — so the call
+        # site is uniform regardless of which retriever is wired.
+        hits = _state.retriever.retrieve(query, k=k, domain=domain)
     except Exception as e:
         LOG.warning("retriever raised: %s", e)
         hits = []
