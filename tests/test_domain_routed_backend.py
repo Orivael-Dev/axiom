@@ -276,3 +276,72 @@ class TestDefaultBackendAutoWrap:
         b = default_backend()
         assert isinstance(b, DomainRoutedBackend)
         assert "security=qwen-coder" in b.model
+
+    def test_local_ollama_per_domain_routes_to_different_models(
+        self, isolated, monkeypatch,
+    ):
+        """Local-Ollama use case: one Ollama server, multiple models
+        pulled (`ollama pull meditron`, `ollama pull qwen2.5-coder`),
+        different model per domain. Reads OLLAMA_MODEL_<DOMAIN>, not
+        AXIOM_MODEL_<DOMAIN>."""
+        self._clear_backend_env(monkeypatch)
+        monkeypatch.setenv("AXIOM_BACKEND", "local")
+        monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+        monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434")
+
+        monkeypatch.setenv("AXIOM_BACKEND_MEDICAL", "local")
+        monkeypatch.setenv("OLLAMA_MODEL_MEDICAL", "meditron:70b")
+
+        monkeypatch.setenv("AXIOM_BACKEND_SECURITY", "local")
+        monkeypatch.setenv("OLLAMA_MODEL_SECURITY", "qwen2.5-coder:32b")
+
+        from axiom_event_token.backends import (
+            default_backend, DomainRoutedBackend,
+        )
+        b = default_backend()
+        assert isinstance(b, DomainRoutedBackend)
+        assert "default=qwen2.5:7b" in b.model
+        assert "medical=meditron:70b" in b.model
+        assert "security=qwen2.5-coder:32b" in b.model
+
+    def test_local_ollama_per_domain_can_use_separate_hosts(
+        self, isolated, monkeypatch,
+    ):
+        """Some setups run a GPU-only Ollama for medical (heavy
+        70B model) and a CPU Ollama for everything else — different
+        OLLAMA_URL per domain handles that."""
+        self._clear_backend_env(monkeypatch)
+        monkeypatch.setenv("AXIOM_BACKEND", "local")
+        monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+        monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434")
+
+        monkeypatch.setenv("AXIOM_BACKEND_MEDICAL", "local")
+        monkeypatch.setenv("OLLAMA_MODEL_MEDICAL", "meditron:70b")
+        monkeypatch.setenv("OLLAMA_URL_MEDICAL", "http://gpu-box:11434")
+
+        from axiom_event_token.backends import default_backend
+        b = default_backend()
+        # Surface check via the routing summary — internal URL
+        # validation is the LocalNanoBackend's job.
+        assert "medical=meditron:70b" in b.model
+
+    def test_local_ollama_env_not_polluted_after_resolve(
+        self, isolated, monkeypatch,
+    ):
+        """Same guarantee as the custom-backend variant: OLLAMA_MODEL
+        and OLLAMA_URL must be exactly what they were before the
+        per-domain build, even after we shadowed them inside."""
+        self._clear_backend_env(monkeypatch)
+        monkeypatch.setenv("AXIOM_BACKEND", "local")
+        monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+        monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434")
+        monkeypatch.setenv("AXIOM_BACKEND_MEDICAL", "local")
+        monkeypatch.setenv("OLLAMA_MODEL_MEDICAL", "meditron:70b")
+        monkeypatch.setenv("OLLAMA_URL_MEDICAL", "http://gpu-box:11434")
+
+        from axiom_event_token.backends import default_backend
+        default_backend()
+
+        import os
+        assert os.environ["OLLAMA_MODEL"] == "qwen2.5:7b"
+        assert os.environ["OLLAMA_URL"]   == "http://localhost:11434"

@@ -214,6 +214,38 @@ to the bare `AXIOM_BASE_URL` / `AXIOM_API_KEY` / `AXIOM_MODEL` —
 handy when you only want to swap the model identifier and reuse the
 same upstream key.
 
+#### Local Ollama, different model per domain (most common BYO setup)
+
+If you're running Ollama locally with multiple models pulled
+(`ollama pull meditron:70b`, `ollama pull qwen2.5-coder:32b`, etc.),
+use `local` as the backend and `OLLAMA_MODEL_<DOMAIN>` /
+`OLLAMA_URL_<DOMAIN>` for the per-domain overrides — `local`
+reads those env names, not the `AXIOM_*` ones.
+
+```bash
+# Default — light model on the local box
+AXIOM_BACKEND=local
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+
+# Medical queries — bigger medically-tuned model on the same Ollama
+AXIOM_BACKEND_MEDICAL=local
+OLLAMA_MODEL_MEDICAL=meditron:70b
+
+# Security queries — coder-tuned model on the same Ollama
+AXIOM_BACKEND_SECURITY=local
+OLLAMA_MODEL_SECURITY=qwen2.5-coder:32b
+
+# Optional — if some domains run on a different Ollama host
+# (e.g. medical on a separate GPU box):
+# OLLAMA_URL_MEDICAL=http://gpu-box:11434
+```
+
+All four models must be `ollama pull`'d before the first request to
+that domain or the call fails. Switching the default model is just an
+`OLLAMA_MODEL=` edit + server restart; nothing per-domain has to
+change.
+
 ### Different corpus per domain
 
 Independent of the LLM-per-domain wiring above, the retrieval

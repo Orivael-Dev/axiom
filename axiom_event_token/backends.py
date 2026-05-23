@@ -519,8 +519,22 @@ def _build_domain_backend(domain: str) -> Optional[SLMBackend]:
     per-domain override is configured.
 
     Looks for AXIOM_BACKEND_<DOMAIN>; if set, builds that backend with
-    domain-suffixed API_KEY / BASE_URL / MODEL falling back to the
-    bare-named env vars if the domain-suffixed one is missing.
+    domain-suffixed config env vars falling back to the bare-named
+    ones when a suffix is missing.
+
+    Shadows these env vars so backend constructors (which read the
+    bare names) see the per-domain values:
+      OpenAI-shape (custom, deepseek, nim):
+        AXIOM_API_KEY / AXIOM_BASE_URL / AXIOM_MODEL
+      Ollama (local):
+        OLLAMA_MODEL / OLLAMA_URL
+      NIM (specifically NVIDIA NIM):
+        NIM_MODEL  (NVIDIA_NIM_API_KEY is auth — usually shared)
+
+    Use:
+      AXIOM_BACKEND_MEDICAL=local
+      OLLAMA_MODEL_MEDICAL=meditron:70b      # different local model
+      OLLAMA_URL_MEDICAL=http://gpu-box:11434   # or different Ollama host
     """
     suffix = domain.upper()
     spec = os.environ.get(f"AXIOM_BACKEND_{suffix}")
@@ -528,9 +542,12 @@ def _build_domain_backend(domain: str) -> Optional[SLMBackend]:
         return None
 
     # Temporarily shadow the bare env vars with the domain-suffixed
-    # ones so CustomBackend's __init__ reads the right values. Restore
-    # afterwards so we don't pollute the process env.
-    shadowed_keys = ("AXIOM_API_KEY", "AXIOM_BASE_URL", "AXIOM_MODEL")
+    # ones so each backend's __init__ reads the right values.
+    shadowed_keys = (
+        "AXIOM_API_KEY", "AXIOM_BASE_URL", "AXIOM_MODEL",
+        "OLLAMA_MODEL", "OLLAMA_URL",
+        "NIM_MODEL",
+    )
     original = {k: os.environ.get(k) for k in shadowed_keys}
     try:
         for k in shadowed_keys:
