@@ -69,7 +69,15 @@ def _validate(rubric: dict) -> None:
 
 
 def format_for_prompt(rubric: dict) -> str:
-    """Format a rubric dict as a readable string for injection into agent system prompts."""
+    """Format a rubric dict as a readable string for injection into agent system prompts.
+
+    The injected text intentionally restates the scoring bands the
+    Evaluator must enforce. The auto-generated `scoring_guide` from
+    `_SYSTEM` is whatever the model invents, which tends to be lenient
+    ("9-10 = excellent, 7-8 = good, ...") and produces score pegging.
+    Anchoring to explicit bands here means the Evaluator gets the
+    strict rules from BOTH its system prompt AND the rubric body.
+    """
     lines = [
         f"Task: {rubric['task_summary']}",
         "",
@@ -79,9 +87,15 @@ def format_for_prompt(rubric: dict) -> str:
         lines.append(f"  • {d['name']} (weight {d['weight']:.0%}): {d['description']}")
     lines += [
         "",
-        f"Scoring guide: {rubric['scoring_guide']}",
+        "Scoring bands (override anything looser in the generated guide):",
+        "  9.0–10.0 — exemplary; every dimension fully met with citable evidence",
+        "  7.0– 8.9 — solid but improvable; at least one dimension is generic",
+        "  5.0– 6.9 — partial; at least one dimension superficial or missing",
+        "  0.0– 4.9 — critical requirement missing, wrong, or anti-pattern hit",
         "",
-        "Anti-patterns (heavily penalise):",
+        f"Author's scoring guide (reference, not override): {rubric['scoring_guide']}",
+        "",
+        "Anti-patterns (any hit caps the score at 6.0):",
     ]
     for ap in rubric.get("anti_patterns", []):
         lines.append(f"  • {ap}")

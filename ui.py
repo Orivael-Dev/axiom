@@ -644,7 +644,9 @@ with tab_prompt:
     from axiom_constitutional.agents.worker import WorkerAgent
     from axiom_constitutional.agents.evaluator import EvaluatorAgent
     from axiom_constitutional.agents.rewriter import RewriterAgent
-    from axiom_constitutional.evolution import EvolutionResult, IterationResult, LOGS_DIR
+    from axiom_constitutional.evolution import (
+        EvolutionResult, IterationResult, LOGS_DIR, detect_score_pegging,
+    )
     from axiom_constitutional import store as prompt_store
     from axiom_files.parser import get_prompt_with_overlays, detect_overlays
     import uuid, json
@@ -758,6 +760,36 @@ with tab_prompt:
                         "output": worker_output,
                         "evaluation": evaluation,
                     }) + "\n")
+
+                # Anti-pegging check — bail out if the Evaluator emits
+                # the same score N iterations in a row (it isn't really
+                # evaluating). See evolution.detect_score_pegging.
+                peg = detect_score_pegging(
+                    [it.score for it in result.iterations]
+                )
+                if peg:
+                    iter_status.update(
+                        label=(
+                            f"⚠ Iteration {i+1} — Evaluator pegging at "
+                            f"{peg['pegged_at']:.1f} ({peg['window']} in a row)"
+                        ),
+                        state="error",
+                        expanded=True,
+                    )
+                    st.error(
+                        f"**Evaluator pegging detected.** The Evaluator "
+                        f"returned the same score ({peg['pegged_at']:.1f}) for "
+                        f"{peg['window']} iterations running — that means it's "
+                        f"defaulting rather than evaluating. Inspect the "
+                        f"Evaluator's reasoning above; common causes are a "
+                        f"too-vague rubric, an over-evolved Evaluator prompt "
+                        f"in `prompts/`, or a model that's too agreeable. "
+                        f"Run aborted to avoid promoting a falsely high-scoring "
+                        f"Worker prompt."
+                    )
+                    if "evaluation" in evaluation:
+                        pass  # marker for grep
+                    break
 
                 if score >= threshold:
                     converged = True

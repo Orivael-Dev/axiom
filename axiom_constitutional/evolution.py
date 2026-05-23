@@ -18,16 +18,37 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
+# rich is a CLI-only dep. Importing it at module load made
+# detect_score_pegging / EvolutionResult un-importable from test envs
+# (and from ui.py) where rich isn't installed. Lazy-load inside
+# EvolutionLoop.run() instead.
 
 from axiom_constitutional.agents.evaluator import EvaluatorAgent
 from axiom_constitutional.agents.rewriter import RewriterAgent
 from axiom_constitutional.agents.worker import WorkerAgent
 
 LOGS_DIR = Path(os.environ.get("AXIOM_LOGS_DIR", "logs"))
-console = Console()
+
+
+def _console():
+    """Lazy Console() so importing this module doesn't require `rich`."""
+    from rich.console import Console
+    return Console()
+
+
+# Module-level handle preserved for backward compatibility — code that
+# does `from axiom_constitutional.evolution import console` still works,
+# but the actual Console() isn't constructed until first attribute use.
+class _LazyConsole:
+    _real = None
+
+    def __getattr__(self, name):
+        if _LazyConsole._real is None:
+            _LazyConsole._real = _console()
+        return getattr(_LazyConsole._real, name)
+
+
+console = _LazyConsole()
 
 
 @dataclass
@@ -49,10 +70,65 @@ class EvolutionResult:
     best_iteration: int = 0
     best_score: float = 0.0
     converged: bool = False
+    pegging_warning: dict | None = None
 
     @property
     def best(self) -> IterationResult:
         return self.iterations[self.best_iteration]
+
+
+# ── Anti-pegging detector ──────────────────────────────────────────────
+#
+# Real evolution produces noisy scores: the Worker prompt mutates each
+# iteration, the Evaluator's confidence wobbles, the score drifts up
+# (or down) and around. When the Evaluator instead returns the same
+# value N times running, that's not evolution — it's the Evaluator
+# defaulting to "looks fine" regardless of Worker output. We saw this
+# in prompts/299885cde39a9bc4/worker.json: 13 iterations all scoring
+# exactly 9.0.
+#
+# `detect_score_pegging` returns a diagnostic dict when the last
+# `window` scores are within `epsilon` of each other. Both the CLI
+# EvolutionLoop and ui.py call this and either warn or abort.
+
+PEGGING_WINDOW  = int(os.environ.get("AXIOM_PEGGING_WINDOW", 3))
+# epsilon=0.1 catches both exact pegging (9.0, 9.0, 9.0) and the
+# token-wiggle pattern where models nudge the score slightly to look
+# 'evolving' (9.0, 9.05, 9.0). 0.05 wasn't quite enough due to float
+# arithmetic — `9.05 - 9.0` actually evaluates to 0.0500...044.
+PEGGING_EPSILON = float(os.environ.get("AXIOM_PEGGING_EPSILON", 0.1))
+
+
+def detect_score_pegging(
+    scores: list[float],
+    window: int = PEGGING_WINDOW,
+    epsilon: float = PEGGING_EPSILON,
+) -> dict | None:
+    """Detect Evaluator pegging — `window` consecutive scores within
+    `epsilon` of each other, signalling the Evaluator is returning a
+    constant regardless of input.
+
+    Returns a diagnostic dict (or None if no pegging detected):
+      {
+        "pegged_at":   float,           # mean of the pegged window
+        "window":      int,             # how many iterations
+        "tail_scores": list[float],     # the pegged values themselves
+      }
+
+    Defaults: window=3, epsilon=0.05 (catches both exact-match pegging
+    like 9.0/9.0/9.0 and near-match like 9.0/9.05/9.0). Tune via
+    AXIOM_PEGGING_WINDOW and AXIOM_PEGGING_EPSILON.
+    """
+    if len(scores) < window:
+        return None
+    tail = scores[-window:]
+    if max(tail) - min(tail) <= epsilon:
+        return {
+            "pegged_at": round(sum(tail) / len(tail), 2),
+            "window": window,
+            "tail_scores": tail,
+        }
+    return None
 
 
 class EvolutionLoop:
@@ -84,6 +160,12 @@ class EvolutionLoop:
         result = EvolutionResult(
             task_description=self.task_description,
             run_id=self.run_id,
+        )
+
+        # Lazy-import rich CLI deps only when the loop actually runs.
+        from rich.panel import Panel
+        from rich.progress import (
+            BarColumn, MofNCompleteColumn, Progress, TextColumn,
         )
 
         console.print(
@@ -171,6 +253,24 @@ class EvolutionLoop:
                 # Persist prompt + log
                 self.worker.record(self.worker.system_prompt, score)
                 self._log(i, "worker", self.worker.system_prompt, worker_output, score, evaluation)
+
+                # Anti-pegging check — bail out if the Evaluator emits
+                # the same score N iterations in a row (it isn't really
+                # evaluating). Threshold env-overridable via
+                # AXIOM_PEGGING_WINDOW / AXIOM_PEGGING_EPSILON.
+                peg = detect_score_pegging(
+                    [it.score for it in result.iterations]
+                )
+                if peg and result.pegging_warning is None:
+                    result.pegging_warning = peg
+                    console.print(
+                        f"  [bold red]⚠ Evaluator pegging detected:[/] "
+                        f"score {peg['pegged_at']} for {peg['window']} "
+                        f"iterations running. The Evaluator may be "
+                        f"defaulting rather than scoring. Aborting run."
+                    )
+                    progress.advance(task)
+                    break
 
                 console.print(
                     f"  [{'green' if score >= self.quality_threshold else 'yellow'}]"
