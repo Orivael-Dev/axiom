@@ -378,6 +378,174 @@ def make_backend(chain: Iterable[str]) -> SLMBackend:
     return ChainedBackend(built)
 
 
+# ── Per-domain routing ──────────────────────────────────────────────────
+#
+# The research console lets the user pick a domain (medical, finance,
+# security, hr, supply_chain, general). Until now those all hit the
+# same backend, which meant "Medical" picked the same off-the-shelf
+# model as "Security" — the domain only affected QRF reasoning, not
+# which LLM answered. DomainRoutedBackend fixes that: it holds a
+# {domain: backend} map + a default fallback and dispatches based on
+# a contextvar set by the request handler.
+#
+# Configure via env vars discovered by `default_backend()`:
+#
+#   AXIOM_BACKEND_MEDICAL=custom
+#   AXIOM_BASE_URL_MEDICAL=https://medical-llm/v1
+#   AXIOM_API_KEY_MEDICAL=...
+#   AXIOM_MODEL_MEDICAL=meditron-70b
+#
+#   AXIOM_BACKEND_SECURITY=custom
+#   AXIOM_BASE_URL_SECURITY=https://coder/v1
+#   AXIOM_API_KEY_SECURITY=...
+#   AXIOM_MODEL_SECURITY=qwen2.5-coder-32b
+#
+# Any domain without its own override falls through to the default
+# (AXIOM_BACKEND / AXIOM_BASE_URL / etc.). The exoskeleton's signed
+# token receipt still records which actual backend served the request
+# because BackendResult carries `backend` + `model` per call.
+
+import contextvars
+
+# Request-scoped domain. The research server's `_run_research` sets
+# this via `with domain_context(req.domain): exo.invoke(...)`. When
+# DomainRoutedBackend.generate() runs inside that context it picks
+# the right per-domain backend. Outside any context, falls through
+# to the default.
+_current_domain: "contextvars.ContextVar[Optional[str]]" = (
+    contextvars.ContextVar("axiom_current_domain", default=None)
+)
+
+
+class _DomainContext:
+    """Context manager that sets+restores the request-scoped domain.
+
+    Use as `with domain_context("medical"): ...`. The contextvar API
+    is also async-safe — fine inside FastAPI request handlers.
+    """
+    def __init__(self, domain: Optional[str]):
+        self._domain = (domain or "").strip().lower() or None
+        self._token: Optional[contextvars.Token] = None
+
+    def __enter__(self):
+        self._token = _current_domain.set(self._domain)
+        return self
+
+    def __exit__(self, *_exc):
+        if self._token is not None:
+            _current_domain.reset(self._token)
+
+
+def domain_context(domain: Optional[str]) -> _DomainContext:
+    """Set the request-scoped domain for the duration of a `with` block.
+
+    Idiomatic use:
+
+        with domain_context(req.domain):
+            token = exo.invoke(delegate_name, req.query)
+
+    Inside the block, any DomainRoutedBackend call will dispatch to
+    the per-domain backend (or fall through to the default).
+    """
+    return _DomainContext(domain)
+
+
+def current_domain() -> Optional[str]:
+    """Return the request-scoped domain (lowercased) or None."""
+    return _current_domain.get()
+
+
+class DomainRoutedBackend:
+    """Dispatch backend calls to the right per-domain LLM.
+
+    Holds a `{domain: backend}` map + a default fallback. Reads the
+    request-scoped domain from the `_current_domain` contextvar set
+    by `domain_context()`. A request without a matching per-domain
+    backend (or no contextvar set) goes to the default.
+    """
+    name: str = "domain-routed"
+
+    def __init__(
+        self,
+        default: SLMBackend,
+        per_domain: Optional[dict] = None,
+    ) -> None:
+        if default is None:
+            raise ValueError("DomainRoutedBackend requires a default backend")
+        self._default = default
+        # Normalise keys to lowercase so dispatch is case-insensitive.
+        self._per_domain = {
+            k.lower(): v for k, v in (per_domain or {}).items() if v is not None
+        }
+        # Surface the routing summary as the .model string so the
+        # /api/health endpoint can show what's wired without leaking
+        # the full backend map.
+        parts = [f"default={default.model}"]
+        for d, b in sorted(self._per_domain.items()):
+            parts.append(f"{d}={b.model}")
+        self.model = " · ".join(parts)
+
+    def _resolve(self) -> SLMBackend:
+        d = current_domain()
+        if d and d in self._per_domain:
+            return self._per_domain[d]
+        return self._default
+
+    def generate(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        max_output_tokens: int,
+        timeout_s: float = 60.0,
+    ) -> BackendResult:
+        return self._resolve().generate(
+            system=system, prompt=prompt,
+            max_output_tokens=max_output_tokens,
+            timeout_s=timeout_s,
+        )
+
+
+# Domains the research console supports. Used by default_backend() to
+# discover AXIOM_BACKEND_<DOMAIN> env vars without scanning the whole
+# environment. Keep in sync with _DOMAIN_LABELS in
+# axiom_research_server.py.
+ROUTED_DOMAINS = ("general", "medical", "finance", "security", "hr",
+                  "supply_chain")
+
+
+def _build_domain_backend(domain: str) -> Optional[SLMBackend]:
+    """Build a backend from AXIOM_*_<DOMAIN> env vars, or None if no
+    per-domain override is configured.
+
+    Looks for AXIOM_BACKEND_<DOMAIN>; if set, builds that backend with
+    domain-suffixed API_KEY / BASE_URL / MODEL falling back to the
+    bare-named env vars if the domain-suffixed one is missing.
+    """
+    suffix = domain.upper()
+    spec = os.environ.get(f"AXIOM_BACKEND_{suffix}")
+    if not spec:
+        return None
+
+    # Temporarily shadow the bare env vars with the domain-suffixed
+    # ones so CustomBackend's __init__ reads the right values. Restore
+    # afterwards so we don't pollute the process env.
+    shadowed_keys = ("AXIOM_API_KEY", "AXIOM_BASE_URL", "AXIOM_MODEL")
+    original = {k: os.environ.get(k) for k in shadowed_keys}
+    try:
+        for k in shadowed_keys:
+            v = os.environ.get(f"{k}_{suffix}")
+            if v is not None:
+                os.environ[k] = v
+        return make_backend(spec.split(","))
+    finally:
+        for k, v in original.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def default_backend() -> SLMBackend:
     """Resolve the default backend from environment.
 
@@ -392,15 +560,36 @@ def default_backend() -> SLMBackend:
                                     else "deepseek" if DEEPSEEK_API_KEY
                                     is set;
                                     else "nim"
+
+    Per-domain overrides (any subset of ROUTED_DOMAINS):
+      AXIOM_BACKEND_MEDICAL=custom + AXIOM_BASE_URL_MEDICAL=...
+      AXIOM_BACKEND_SECURITY=custom + AXIOM_BASE_URL_SECURITY=...
+      etc.
+
+    When ANY AXIOM_BACKEND_<DOMAIN> is set, the resolver wraps the
+    default in a DomainRoutedBackend so calls under `domain_context()`
+    dispatch to the per-domain backend.
     """
     spec = os.environ.get("AXIOM_BACKEND")
     if spec:
-        return make_backend(spec.split(","))
-    if os.environ.get("OLLAMA_URL") or not (
+        base = make_backend(spec.split(","))
+    elif os.environ.get("OLLAMA_URL") or not (
         os.environ.get("NVIDIA_NIM_API_KEY")
         or os.environ.get("DEEPSEEK_API_KEY")
     ):
-        return LocalNanoBackend()
-    if os.environ.get("DEEPSEEK_API_KEY"):
-        return DeepSeekBackend()
-    return NIMBackend()
+        base = LocalNanoBackend()
+    elif os.environ.get("DEEPSEEK_API_KEY"):
+        base = DeepSeekBackend()
+    else:
+        base = NIMBackend()
+
+    # Build any per-domain overrides; wrap in DomainRoutedBackend if
+    # at least one is set, otherwise return the plain default.
+    per_domain: dict = {}
+    for d in ROUTED_DOMAINS:
+        b = _build_domain_backend(d)
+        if b is not None:
+            per_domain[d] = b
+    if per_domain:
+        return DomainRoutedBackend(default=base, per_domain=per_domain)
+    return base

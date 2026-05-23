@@ -481,10 +481,17 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     qrf, qrf_real = _qrf_branches(req.query, req.domain,
                                    workflow_label=workflow_label)
 
-    # Stage 3: synthesize via the exoskeleton delegate
+    # Stage 3: synthesize via the exoskeleton delegate. The
+    # `domain_context` sets a request-scoped contextvar so any
+    # DomainRoutedBackend in the chain dispatches to the per-domain
+    # LLM (e.g. AXIOM_BACKEND_MEDICAL). No-op for the plain default
+    # backend — falls through harmlessly.
+    from axiom_event_token.backends import domain_context
+
     t0 = time.monotonic()
     try:
-        token = exo.invoke(delegate_name, req.query)
+        with domain_context(req.domain):
+            token = exo.invoke(delegate_name, req.query)
     except Exception as e:
         LOG.exception("exoskeleton invoke failed")
         raise HTTPException(status_code=502,

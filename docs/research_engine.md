@@ -123,18 +123,28 @@ system prompt and budget.
 
 ## Bring your own LLM
 
-The console works with any **OpenAI-compatible** endpoint. That
-means out of the box it speaks to:
+The Re:Search engine works with any **OpenAI-compatible** endpoint.
+That means out of the box it speaks to:
 
 - **NVIDIA NIM** (default if you set `NVIDIA_NIM_API_KEY`)
-- **DeepSeek** (set `DEEPSEEK_API_KEY` + the sidebar's DeepSeek option)
+- **DeepSeek** (set `DEEPSEEK_API_KEY`)
 - **Ollama** running locally (`OLLAMA_URL=http://localhost:11434`)
 - **vLLM** / **LM Studio** / **Text Generation WebUI** — anything
   serving an OpenAI-style `/v1/chat/completions` endpoint
 - **OpenRouter** / **Together** / **Fireworks** — hosted proxies
 - **Your own self-hosted endpoint**
 
-### Three env vars, one custom endpoint
+> **Where to configure:** BYOLLM is wired via **environment
+> variables on the research server**, not a client-side toggle.
+> `web/research_console.html` has no Backend dropdown — the
+> backend is chosen once when `axiom_research_server.py` starts
+> and serves every request. Change a var → restart the server.
+>
+> A separate Streamlit prompt-evolution UI (`ui.py`) exists for
+> the prompt-evolution workflow; it has its own sidebar. The
+> instructions here apply only to the research console.
+
+### Four env vars, one custom endpoint
 
 ```bash
 AXIOM_BACKEND=custom                       # picks the CustomBackend
@@ -143,9 +153,66 @@ AXIOM_API_KEY=sk-...                       # whatever your endpoint needs
 AXIOM_MODEL=your-model-name                # passed as the `model` field
 ```
 
-In the `ui.py` sidebar, pick **"custom (OpenAI-compatible)"**
-from the Backend dropdown — the three fields above appear and
-can be edited inline. Save to .env to persist.
+Put these in `.env` (or your container's env block), restart
+`axiom_research_server`, and `/api/health` will report the new
+backend label. Every signed token's receipt records which actual
+backend + model served the request — `receipt.backend` in the
+`/api/research` response.
+
+### Different LLM per domain
+
+The console's domain selector (Medical / Finance / Security / HR /
+Supply Chain / General) can route to a different backend per
+domain. Use a medically-tuned model for medical queries, a
+coding-tuned model for security queries, etc.
+
+Configure with `AXIOM_*_<DOMAIN>` env vars alongside the bare
+defaults. Anything not overridden falls through to the default
+backend.
+
+```bash
+# Default (any domain without its own override)
+AXIOM_BACKEND=custom
+AXIOM_BASE_URL=https://router/v1
+AXIOM_API_KEY=sk-or-v1-...
+AXIOM_MODEL=anthropic/claude-3.5-sonnet
+
+# Medical-tuned LLM for the Medical domain button
+AXIOM_BACKEND_MEDICAL=custom
+AXIOM_BASE_URL_MEDICAL=https://your-medical-llm/v1
+AXIOM_API_KEY_MEDICAL=...
+AXIOM_MODEL_MEDICAL=meditron-70b
+
+# Coding-tuned LLM for the Security domain button
+AXIOM_BACKEND_SECURITY=custom
+AXIOM_BASE_URL_SECURITY=https://your-coder-llm/v1
+AXIOM_API_KEY_SECURITY=...
+AXIOM_MODEL_SECURITY=qwen2.5-coder-32b
+```
+
+Supported domain suffixes: `GENERAL`, `MEDICAL`, `FINANCE`,
+`SECURITY`, `HR`, `SUPPLY_CHAIN` (uppercase the lowercase form
+the console sends).
+
+When any `AXIOM_BACKEND_<DOMAIN>` is set, the server auto-wraps
+everything in a `DomainRoutedBackend`. `/api/health` then reports
+the routing summary, e.g.:
+
+```
+"backend": "domain-routed · default=claude-3.5-sonnet ·
+            medical=meditron-70b · security=qwen2.5-coder-32b"
+```
+
+Each request still gets one signed token whose `receipt.backend`
+names the actual model that served it — so per-domain routing
+is fully auditable in the ledger.
+
+Each per-domain block needs its own backend (`AXIOM_BACKEND_<DOM>`)
+plus the corresponding `AXIOM_BASE_URL_<DOM>` / `AXIOM_API_KEY_<DOM>`
+/ `AXIOM_MODEL_<DOM>`. Any of those three that's missing falls back
+to the bare `AXIOM_BASE_URL` / `AXIOM_API_KEY` / `AXIOM_MODEL` —
+handy when you only want to swap the model identifier and reuse the
+same upstream key.
 
 ### Examples
 
@@ -321,7 +388,9 @@ completions, you can add it as a new `SLMBackend` subclass:
    `AXIOM_BACKEND=<your_name>` builds an instance.
 3. Add a test in `tests/test_event_token_backends.py` (mirror the
    existing `DeepSeekBackend` tests).
-4. Add a sidebar dropdown entry in `ui.py` so the UI exposes it.
-5. Document the env vars at the bottom of this file.
+4. Document the env vars at the bottom of this file. The research
+   server picks the backend at startup via `default_backend()`,
+   so no UI wiring is needed — operators set `AXIOM_BACKEND=<your_name>`
+   and restart.
 
 PRs welcome.
