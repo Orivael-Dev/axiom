@@ -115,6 +115,57 @@ def test_help_internal_docs_are_404(isolated, slug):
         f"/help/{slug} returned {r.status_code} — internal doc must be hidden"
 
 
+def test_help_index_rewrites_relative_md_links(isolated):
+    """Markdown source uses `[Quickstart](quickstart.md)`. Without
+    rewriting, that renders as `<a href="quickstart.md">`, which from
+    /help (no trailing slash) resolves to /quickstart.md — a 404. The
+    renderer must rewrite to an absolute /help/<slug> URL."""
+    client = _client()
+    r = client.get("/help")
+    assert r.status_code == 200
+    # The rewritten form is what we expect on every cross-doc link.
+    assert 'href="/help/quickstart"' in r.text
+    assert 'href="/help/custom-policies"' in r.text
+    # The raw .md href must not survive into the rendered HTML.
+    assert 'href="quickstart.md"' not in r.text
+    assert 'href="custom-policies.md"' not in r.text
+
+
+def test_help_renderer_neutralises_internal_md_links(isolated):
+    """A markdown link to an internal-only doc (billing.md, launch.md,
+    operations-runbook.md) must not render as a clickable /help/<slug>
+    URL — that would 404 thanks to the denylist. Rewrite to `#` so the
+    anchor text is preserved without leaking a broken link."""
+    # Import after the isolated fixture has reset the module — the
+    # render function reads the denylist as a module-level constant.
+    from axiom_firewall.dashboard import _help_render_markdown
+    rendered = _help_render_markdown(
+        "See [Billing](billing.md) and [Launch](launch.md) for details."
+    )
+    assert 'href="/help/billing"' not in rendered
+    assert 'href="/help/launch"' not in rendered
+    assert 'href="billing.md"' not in rendered
+    # Anchor text survives, URL is neutralised.
+    assert "Billing" in rendered
+    assert 'href="#"' in rendered
+
+
+def test_help_renderer_preserves_external_links(isolated):
+    """Absolute URLs, mailto:, fragments, and root-relative paths must
+    pass through unchanged — only `<slug>.md` cross-doc links rewrite."""
+    from axiom_firewall.dashboard import _help_render_markdown
+    rendered = _help_render_markdown(
+        "[Trust](https://orivael.dev/trust) "
+        "[Sales](mailto:sales@orivael.dev) "
+        "[Dash](/dashboard) "
+        "[Anchor](#section)"
+    )
+    assert 'href="https://orivael.dev/trust"' in rendered
+    assert 'href="mailto:sales@orivael.dev"' in rendered
+    assert 'href="/dashboard"' in rendered
+    assert 'href="#section"' in rendered
+
+
 def test_help_index_does_not_link_internal_docs(isolated):
     """The nav row built from docs/firewall/*.md should not surface
     the internal docs even if a future change moves them back to the

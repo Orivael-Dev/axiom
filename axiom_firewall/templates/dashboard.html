@@ -6,6 +6,9 @@
   <h1>{{ tenant.email }}</h1>
   <p class="tier-badge">
     {{ tenant.tier|capitalize }} tier · {{ "{:,}".format(tier_limit) }} calls / month
+    {% if free_tier %}
+      · <a href="/help/quickstart">what's included</a>
+    {% endif %}
   </p>
 
   <div class="quota">
@@ -76,6 +79,6 @@
   -H "Authorization: Bearer YOUR_KEY" \
   -d '{"text": "What is the weather today?"}'</code></pre>
 
-  <p>Full docs: <a href="https://{{ docs_host }}/firewall/quickstart">{{ docs_host }}/firewall/quickstart</a></p>
+  <p>Full docs: <a href="/help/quickstart">/help/quickstart</a></p>
 </section>
 {% endblock %}

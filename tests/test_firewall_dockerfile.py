@@ -31,25 +31,38 @@ def test_dockerfile_copies_firewall_docs():
     """Regression for the `/help` → 404 bug: dashboard.py reads
     `BASE_DIR.parent / "docs" / "firewall"`, which resolves to
     /app/docs/firewall inside the container. If the Dockerfile doesn't
-    COPY that tree in, /help returns
+    COPY the customer-facing markdown in, /help returns
     `{"detail":"no firewall docs at /app/docs/firewall"}`.
+
+    The preferred form is the explicit *.md glob, which intentionally
+    EXCLUDES docs/firewall/internal/ (operator-only runbooks: launch
+    playbook, billing internals, oncall procedures). Anything broader
+    (`COPY docs/firewall/ …` or `COPY docs/ …`) would ship those
+    operator docs inside a publicly-reachable image — that's the bug
+    fix this assertion is here to defend.
     """
     text = _dockerfile_text()
-    # Match either `COPY docs/firewall/ ./docs/firewall/` (preferred)
-    # or `COPY docs/ ./docs/` (also fine — broader copy).
-    has_targeted_copy = re.search(
+    has_md_glob_copy = re.search(
+        r"^COPY\s+docs/firewall/\*\.md\s+\./docs/firewall/?\b",
+        text,
+        re.MULTILINE,
+    ) is not None
+    assert has_md_glob_copy, (
+        "Dockerfile must COPY docs/firewall/*.md ./docs/firewall/ — "
+        "the *.md glob is what excludes docs/firewall/internal/ from "
+        "the runtime image."
+    )
+    # Belt-and-suspenders: refuse the broad copy forms that would also
+    # ship the operator-only internal/ subdirectory.
+    forbidden_broad = re.search(
         r"^COPY\s+docs/firewall/?\s+\./docs/firewall/?\b",
         text,
         re.MULTILINE,
-    ) is not None
-    has_broad_copy = re.search(
-        r"^COPY\s+docs/?\s+\./docs/?\b",
-        text,
-        re.MULTILINE,
-    ) is not None
-    assert has_targeted_copy or has_broad_copy, (
-        "Dockerfile must COPY docs/firewall/ into the image — "
-        "otherwise /help renders 'no firewall docs at /app/docs/firewall'."
+    )
+    assert forbidden_broad is None, (
+        "Dockerfile has a broad `COPY docs/firewall/ …` that would "
+        "ship docs/firewall/internal/ (operator runbooks) into the "
+        "image. Use the *.md glob instead."
     )
 
 
@@ -59,11 +72,28 @@ def test_help_doc_files_exist_in_repo():
     docs the in-dashboard /help page expects to render."""
     docs_dir = REPO_ROOT / "docs" / "firewall"
     assert docs_dir.is_dir(), f"missing {docs_dir}"
-    # Slugs the existing /help tests + nav rely on:
-    for slug in ("index", "quickstart", "billing", "skill-packs",
-                 "api-reference"):
+    # Customer-facing slugs the /help nav lists:
+    for slug in ("index", "quickstart", "skill-packs", "api-reference",
+                 "custom-policies", "python-sdk", "typescript-sdk",
+                 "self-hosting"):
         p = docs_dir / f"{slug}.md"
         assert p.exists(), f"missing required help doc: {p}"
+
+
+def test_internal_docs_live_under_internal_subdir():
+    """The operator-only docs (launch / billing / operations-runbook)
+    must live under docs/firewall/internal/ — the Dockerfile *.md glob
+    and the dashboard `*.md` listing both rely on this layout to keep
+    them out of customer view."""
+    docs_dir = REPO_ROOT / "docs" / "firewall"
+    internal = docs_dir / "internal"
+    for slug in ("launch", "billing", "operations-runbook"):
+        assert (internal / f"{slug}.md").is_file(), \
+            f"internal doc missing: {internal / f'{slug}.md'}"
+        assert not (docs_dir / f"{slug}.md").exists(), (
+            f"internal doc {slug}.md must NOT live at the top level — "
+            "moving it there re-exposes it on /help/<slug>."
+        )
 
 
 # ─── Lockfile-based install (issue #4) ─────────────────────────────

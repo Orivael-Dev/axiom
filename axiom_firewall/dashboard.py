@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -702,7 +703,7 @@ def _help_render_nav(current: str) -> str:
 def _help_render_markdown(md_text: str) -> str:
     try:
         import markdown as _md
-        return _md.markdown(
+        html = _md.markdown(
             md_text,
             extensions=["fenced_code", "tables", "toc", "sane_lists"],
             output_format="html5",
@@ -714,6 +715,28 @@ def _help_render_markdown(md_text: str) -> str:
             'package not installed — serving raw text.</p>'
             f'<pre>{_html.escape(md_text)}</pre>'
         )
+    return _HELP_REL_LINK_RE.sub(_help_rewrite_rel_link, html)
+
+
+# Rewrite relative cross-doc links of the form `href="<slug>.md"` (with an
+# optional fragment) to absolute `/help/<slug>` URLs. Without this the
+# rendered HTML carries the raw `.md` href: from /help/index, the browser
+# resolves it to /help/<slug>.md, which the /help/{slug} regex rejects
+# (no dots allowed) → 404. From /help (no trailing slash) the browser even
+# strips the parent segment and lands on /<slug>.md. Absolute URLs, scheme
+# URLs, anchor-only links, and root-relative paths are all left alone.
+_HELP_REL_LINK_RE = re.compile(
+    r'href="(?!https?:|mailto:|//|/|#)([A-Za-z0-9_-]+)\.md(#[^"]*)?"'
+)
+
+
+def _help_rewrite_rel_link(m: re.Match[str]) -> str:
+    slug, frag = m.group(1), m.group(2) or ""
+    if slug in _HELP_DENYLIST_SLUGS:
+        # Author-typed link to an internal doc — preserve the visible
+        # anchor text but neutralise the URL so we don't emit a 404.
+        return 'href="#"'
+    return f'href="/help/{slug}{frag}"'
 
 
 @app.get("/help", response_class=HTMLResponse)
