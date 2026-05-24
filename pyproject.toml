@@ -52,7 +52,11 @@ shield = [
 
 guard = [
     "anthropic>=1.0.0",
-    "fastapi>=0.100.0",
+    # >=0.106 required for the request-first Jinja2Templates.TemplateResponse
+    # signature used in axiom_firewall/dashboard.py (mcp_index, etc.).
+    # Older starlette bundled with fastapi<0.106 interprets the first arg
+    # as `name`, raising TypeError → opaque 500 on /dashboard/mcp.
+    "fastapi>=0.106.0",
     "uvicorn>=0.23.0",
 ]
 
@@ -71,7 +75,11 @@ games = [
 
 all = [
     "anthropic>=1.0.0",
-    "fastapi>=0.100.0",
+    # >=0.106 required for the request-first Jinja2Templates.TemplateResponse
+    # signature used in axiom_firewall/dashboard.py (mcp_index, etc.).
+    # Older starlette bundled with fastapi<0.106 interprets the first arg
+    # as `name`, raising TypeError → opaque 500 on /dashboard/mcp.
+    "fastapi>=0.106.0",
     "uvicorn>=0.23.0",
     "chess>=1.9.0",
     "pygame>=2.5.0",
