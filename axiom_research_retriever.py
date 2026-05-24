@@ -73,20 +73,32 @@ class IndexedDocument:
 
 @dataclass(frozen=True)
 class RetrievedSource:
-    title:    str
-    uri:      str
-    kind:     str
-    score:    float
-    snippet:  str
+    title:           str
+    uri:             str
+    kind:            str
+    score:           float
+    snippet:         str
+    # Which provider returned this hit. "local" is the in-repo BM25
+    # corpus; external providers ("pubmed", "clinicaltrials",
+    # "openfda") fan in via axiom_research_providers.MultiProviderRetriever.
+    provider:        str = "local"
+    # Evidence tier (1=primary literature/regulator, 5=blocked source),
+    # looked up against axiom_medical_safety.EVIDENCE_TIER_REGISTRY by
+    # URI host. None for local-corpus hits with no public domain.
+    evidence_tier:   Optional[int] = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "title":   self.title,
             "uri":     self.uri,
             "kind":    self.kind,
             "score":   round(self.score, 4),
             "snippet": self.snippet,
+            "provider": self.provider,
         }
+        if self.evidence_tier is not None:
+            d["evidence_tier"] = self.evidence_tier
+        return d
 
 
 class LocalRetriever:
@@ -429,7 +441,40 @@ def default_retriever(repo_root: Optional[Path] = None) -> "LocalRetriever | Dom
             per_domain[d] = LocalRetriever(roots=dirs)
 
     if per_domain:
-        _DEFAULT = DomainRoutedRetriever(default=base, per_domain=per_domain)
+        local_inner: "LocalRetriever | DomainRoutedRetriever" = \
+            DomainRoutedRetriever(default=base, per_domain=per_domain)
     else:
-        _DEFAULT = base
+        local_inner = base
+
+    # Wrap in MultiProviderRetriever so external APIs (PubMed,
+    # ClinicalTrials, openFDA) fan in alongside the local corpus.
+    # Off-switch for air-gapped deployments + the test fixture:
+    # AXIOM_EXTERNAL_RETRIEVAL=0 returns the local-only retriever.
+    if os.environ.get("AXIOM_EXTERNAL_RETRIEVAL", "1") == "0":
+        _DEFAULT = local_inner
+        return _DEFAULT
+
+    # Lazy import so axiom_research_retriever still works on its own
+    # when the providers package isn't on the path (e.g. minimal builds).
+    try:
+        from axiom_research_providers.local import LocalCorpusProvider
+        from axiom_research_providers.multi import MultiProviderRetriever
+        from axiom_research_providers.pubmed import PubMedProvider
+        from axiom_research_providers.clinicaltrials import ClinicalTrialsProvider
+        from axiom_research_providers.openfda import OpenFDAProvider
+    except ImportError as e:
+        import logging
+        logging.getLogger("axiom.retriever").warning(
+            "External retrieval requested but providers package "
+            "unavailable (%s); falling back to local-only.", e,
+        )
+        _DEFAULT = local_inner
+        return _DEFAULT
+
+    _DEFAULT = MultiProviderRetriever([
+        LocalCorpusProvider(local_inner),
+        PubMedProvider(),
+        ClinicalTrialsProvider(),
+        OpenFDAProvider(),
+    ])
     return _DEFAULT

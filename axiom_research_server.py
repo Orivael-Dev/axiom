@@ -558,7 +558,7 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
             "sources_are_stubbed":     not retrieval_real,
             "branches_are_stubbed":    not qrf_real,
             "synthesis_is_real":       True,
-            "retriever_indexed_files": (_state.retriever.stats()["indexed_files"]
+            "retriever_indexed_files": (_state.retriever.stats().get("indexed_files", 0)
                                           if _state.retriever else 0),
             "ledger_write":            "appended",
         },

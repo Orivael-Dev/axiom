@@ -20,6 +20,10 @@ import pytest
 @pytest.fixture
 def isolated(monkeypatch):
     monkeypatch.setenv("AXIOM_MASTER_KEY", "test" + "0" * 60)
+    # default_retriever() would otherwise wrap us in a MultiProvider
+    # retriever and hit PubMed / ClinicalTrials / openFDA over the
+    # network. Force local-only so this test stays hermetic.
+    monkeypatch.setenv("AXIOM_EXTERNAL_RETRIEVAL", "0")
     for mod in list(sys.modules):
         if mod.startswith(("axiom_research_retriever",)):
             sys.modules.pop(mod, None)

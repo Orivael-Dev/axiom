@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient
 def server_env(monkeypatch, tmp_path):
     monkeypatch.setenv("AXIOM_MASTER_KEY", "test" + "0" * 60)
     monkeypatch.setenv("HOME", str(tmp_path))           # sandbox default ledger
+    # Test suite must NEVER hit external research APIs. Local-only.
+    monkeypatch.setenv("AXIOM_EXTERNAL_RETRIEVAL", "0")
     monkeypatch.delenv("AXIOM_RESEARCH_TOKEN", raising=False)
     monkeypatch.delenv("AXIOM_RESEARCH_CORS_ORIGINS", raising=False)
     monkeypatch.delenv("AXIOM_EXOSKELETON_LEDGER", raising=False)
@@ -27,8 +29,15 @@ def server_env(monkeypatch, tmp_path):
     for mod in list(sys.modules):
         if mod.startswith((
             "axiom_event_token", "axiom_signing",
-            "axiom_intent_classifier", "axiom_exoskeleton",
-            "axiom_research_server",
+            # `axiom_intent_classifier` AND `axiom_intent_gate` must
+            # be popped together — IntentGate.__init__ does an
+            # isinstance(classifier, IntentClassifier) check using
+            # whichever class object it captured at import time, so
+            # reloading one without the other leaves a stale
+            # reference and causes spurious TypeError failures in
+            # later tests (e.g. test_axiom_server_integration).
+            "axiom_intent_classifier", "axiom_intent_gate",
+            "axiom_exoskeleton", "axiom_research_server",
         )):
             sys.modules.pop(mod, None)
     yield tmp_path
@@ -261,6 +270,47 @@ def test_research_uses_real_retriever(server_env, monkeypatch):
     # Top source should reference something in docs / README.
     assert d["sources"]
     assert d["sources"][0]["score"] == 1.0
+
+
+def test_research_sources_include_provider_and_tier(server_env, monkeypatch,
+                                                     tmp_path):
+    """When a MultiProviderRetriever is wired, provider + evidence_tier
+    fields propagate through the SSE/JSON shape to the UI consumer."""
+    client, rs = _client(monkeypatch)
+    rs._state.ensure()
+    from axiom_research_retriever import RetrievedSource
+    from axiom_research_providers.multi import MultiProviderRetriever
+
+    class _FakeExternal:
+        name    = "pubmed"
+        domains = ("*",)
+        def retrieve(self, q, *, k=5, domain=None):
+            return [RetrievedSource(
+                title="Mock PubMed paper",
+                uri="https://pubmed.ncbi.nlm.nih.gov/99/",
+                kind="pubmed · article",
+                score=1.0,
+                snippet="Fake abstract.",
+                provider="pubmed",
+                evidence_tier=1,
+            )]
+        def stats(self):
+            return {"name": self.name, "domains": list(self.domains)}
+
+    rs._state.retriever = MultiProviderRetriever([_FakeExternal()])
+
+    r = client.post("/api/research", json={
+        "query":    "anything",
+        "domain":   "general",
+        "workflow": "general_research",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["sources"], "should have at least one source"
+    src = d["sources"][0]
+    assert src["provider"] == "pubmed"
+    assert src["evidence_tier"] == 1
+    assert src["uri"].startswith("https://pubmed.ncbi.nlm.nih.gov/")
 
 
 def test_research_retriever_no_hit_falls_back_to_stub(server_env, monkeypatch,

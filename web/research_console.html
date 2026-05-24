@@ -1374,7 +1374,10 @@
         <li class="citation">
           <div class="src-head">
             <span class="src-title">${escapeHtml(s.title)}</span>
-            <span class="src-meta">${escapeHtml(s.kind)} · score ${(s.score).toFixed(2)}</span>
+            <span class="src-meta">
+              <span class="badge">${escapeHtml(s.provider || "local")}${s.evidence_tier ? ` · Tier ${s.evidence_tier}` : ""}</span>
+              ${escapeHtml(s.kind)} · score ${(s.score).toFixed(2)}
+            </span>
           </div>
           <div class="src-snippet">${escapeHtml(s.snippet)}</div>
           <div class="src-meta" style="margin-top:6px;">${escapeHtml(s.uri)}</div>
