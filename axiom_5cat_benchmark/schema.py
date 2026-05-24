@@ -30,6 +30,16 @@ class Completion:
     # sha256 of the raw provider response, so a verifier can detect
     # post-hoc tampering of the recorded completion.
     raw_response_sha: str = ""
+    # Anthropic extended-thinking telemetry. Both default to
+    # zero / empty so adapters that don't enable thinking serialize
+    # byte-identical to pre-extension records.
+    # NOTE: `thinking_tokens` is the *character count of the visible
+    # summarised thinking trace*, not actual billed thinking tokens —
+    # the Anthropic SDK rolls thinking tokens into `output_tokens` and
+    # exposes no separate counter. Use len(thinking_text) > 0 as the
+    # "thinking was active" signal; use `output_tokens` for cost.
+    thinking_tokens:  int = 0
+    thinking_text:    str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -58,6 +68,9 @@ class TrialResult:
     input_tokens:     int = 0
     output_tokens:    int = 0
     latency_ms:       int = 0
+    # Extended-thinking telemetry (Anthropic). Zero unless the
+    # adapter ran with `thinking_budget` set.
+    thinking_tokens:  int = 0
     trial_signature:  str = ""     # filled by runner via signing.sign_result
 
     def to_dict(self) -> dict[str, Any]:
@@ -66,6 +79,12 @@ class TrialResult:
         # historical tooling that assumes that bound still works.
         d["raw_output"]   = (self.raw_output or "")[:300]
         d["axiom_output"] = (self.axiom_output or "")[:300]
+        # Omit thinking_tokens when zero so trials run without the
+        # `--thinking-budget` flag serialize byte-identical to the
+        # pre-extension format (and pre-existing results.json files
+        # still verify under the new schema).
+        if not self.thinking_tokens:
+            d.pop("thinking_tokens", None)
         return d
 
 

@@ -80,6 +80,16 @@ def _build_parser() -> argparse.ArgumentParser:
                          "--trials > 1 (defense against accidental API spend)")
     rp.add_argument("--no-sign", action="store_true",
                     help="dev only; meta.signature := 'UNSIGNED'")
+    rp.add_argument("--thinking-effort",
+                    choices=("low", "medium", "high", "max"),
+                    default=None,
+                    help="(Anthropic 4.6/4.7 only) enable adaptive extended "
+                         "thinking with the given effort level. Off by "
+                         "default. Use --thinking-budget for legacy models.")
+    rp.add_argument("--thinking-budget", type=int, default=None,
+                    help="(legacy Anthropic ≤ 4.5 only) extended-thinking "
+                         "budget_tokens (≥ 1024). Returns 400 on Opus 4.7; "
+                         "use --thinking-effort instead.")
     rp.add_argument("--verbose", "-v", action="store_true")
 
     # ── verify ─────────────────────────────────────────────────────
@@ -119,11 +129,19 @@ def _check_spend_guard(specs: list[str], trials: int, allow: bool) -> None:
 def cmd_run(args: argparse.Namespace) -> int:
     _check_spend_guard(args.models, args.trials, args.allow_spend)
     # Build adapters.  --stub forces every spec into a stub.
+    adapter_kwargs: dict = {}
+    if args.thinking_effort is not None:
+        adapter_kwargs["thinking_effort"] = args.thinking_effort
+    if args.thinking_budget is not None:
+        adapter_kwargs["thinking_budget"] = args.thinking_budget
     adapters = []
     for spec in args.models:
         if args.stub and not spec.startswith("stub:"):
             spec = f"stub:{spec}"
-        adapters.append(build_adapter(spec))
+        # Adapter-specific kwargs (thinking_*) only apply to non-stub
+        # Anthropic adapters; stub/openai/local would reject them.
+        kw = adapter_kwargs if spec.startswith("anthropic:") else {}
+        adapters.append(build_adapter(spec, **kw))
         if args.verbose:
             print(f"  adapter ready: {spec}", file=sys.stderr)
 

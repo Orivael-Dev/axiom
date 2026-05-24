@@ -101,6 +101,7 @@ class Cat1EpistemicHumility:
                 input_tokens=completion.input_tokens,
                 output_tokens=completion.output_tokens,
                 latency_ms=completion.latency_ms,
+                thinking_tokens=completion.thinking_tokens,
             ))
         return out
 
