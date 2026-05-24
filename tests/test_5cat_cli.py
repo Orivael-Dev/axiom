@@ -23,7 +23,7 @@ def test_parser_run_minimal_invocation():
     assert args.cmd == "run"
     assert args.models == ["stub:demo"]
     # Defaults:
-    assert args.trials == 5
+    assert args.trials == 30
     assert args.temperature == 0.0
     assert args.seed == 1729
     assert args.categories == [1, 2, 3, 4, 5]

@@ -67,8 +67,11 @@ def _build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--categories", type=_parse_categories,
                     default=[1, 2, 3, 4, 5],
                     help="comma-separated category ids (default: 1,2,3,4,5)")
-    rp.add_argument("--trials", type=int, default=5,
-                    help="trials per category per adapter (default: 5)")
+    rp.add_argument("--trials", type=int, default=30,
+                    help="trials per category per adapter (default: 30). "
+                         "Below ~30 the per-category ECE/Brier metrics are "
+                         "noise-dominated and improvement_pct is single-digit-"
+                         "trial unstable; raise further for marketing claims.")
     rp.add_argument("--temperature", type=float, default=0.0)
     rp.add_argument("--seed", type=int, default=1729)
     rp.add_argument("--output", type=Path, default=Path("results.json"))
