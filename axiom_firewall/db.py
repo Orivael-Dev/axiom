@@ -277,6 +277,34 @@ def insert_api_key(k: ApiKey) -> None:
         )
 
 
+def revoke_api_key(tenant_id: str, key_id: str) -> bool:
+    """Mark `key_id` as revoked for `tenant_id`.
+
+    Soft-delete: sets `revoked_at = now` and clears `secret_hash` so
+    `find_tenant_for_secret` can no longer match the bearer token
+    (which is the auth fastpath; revoked_at IS NULL is also checked
+    there but clearing the hash is belt-and-braces). The row stays
+    in the DB so historical `usage_records.api_key_id` foreign-key
+    references remain joinable for billing/audit.
+
+    Returns True if a row was updated (active key for this tenant
+    existed), False if the key doesn't exist OR is already revoked
+    OR belongs to a different tenant. Cross-tenant isolation is
+    enforced via the (tenant_id, key_id) WHERE clause — caller must
+    pass its OWN tenant_id from the session, never one supplied by
+    the client.
+    """
+    init_tenant_db(tenant_id)
+    now = datetime.utcnow().isoformat()
+    with _conn(_tenant_path(tenant_id)) as c:
+        cur = c.execute(
+            "UPDATE api_keys SET revoked_at = ?, secret_hash = NULL "
+            "WHERE tenant_id = ? AND key_id = ? AND revoked_at IS NULL",
+            (now, tenant_id, key_id),
+        )
+        return cur.rowcount > 0
+
+
 def list_api_keys(tenant_id: str) -> list[ApiKey]:
     """Return active keys for the tenant. `secret` is intentionally
     blanked — the plaintext was shown once at creation and is not
