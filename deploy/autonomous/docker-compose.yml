@@ -1,0 +1,22 @@
+# Compose file for the autonomous-agent sandbox image.
+#
+# This is a BUILD target, not a runnable service — the orchestrator
+# spawns its own ephemeral containers per task (`docker run --rm ...`)
+# rather than running this image as a long-lived service.
+#
+# Build:
+#   cd deploy/autonomous && docker compose build
+#
+# After build, the image is available as orivael/axiom-autonomous:local
+# and AutonomousAgent (with sandbox_prefer="docker") will use it.
+
+services:
+  axiom-autonomous-sandbox:
+    image: orivael/axiom-autonomous:local
+    build:
+      context: ../..
+      dockerfile: deploy/autonomous/Dockerfile
+    # No ports, no network, no entrypoint overrides — this service
+    # exists only to satisfy `docker compose build`. The runtime
+    # invocation comes from the orchestrator on the host.
+    profiles: ["build-only"]

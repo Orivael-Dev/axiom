@@ -78,10 +78,11 @@ dev = [
 ]
 
 [project.scripts]
-axiom          = "axiom_constitutional.cli:main"
-axiom-validate = "axiom_constitutional.cli:validate_cmd"
-axiom-certify  = "axiom_constitutional.cli:certify_cmd"
-axiom-mcp      = "axiom_mcp_server:main"
+axiom            = "axiom_constitutional.cli:main"
+axiom-validate   = "axiom_constitutional.cli:validate_cmd"
+axiom-certify    = "axiom_constitutional.cli:certify_cmd"
+axiom-mcp        = "axiom_mcp_server:main"
+axiom-autonomous = "axiom_autonomous_agent:main"
 
 [project.urls]
 Homepage   = "https://orivael.dev"

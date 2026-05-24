@@ -70,13 +70,14 @@ def test_pack_contains_nine_delegates(isolated, tmp_path):
     from examples.exoskeleton_pack import build_exoskeleton_pack
     c = build_exoskeleton_pack(tmp_path / "exo.axm")
     names = [d.name for d in c.delegates]
-    assert len(names) == 11
+    assert len(names) == 13
     expected = {
         "investor_research", "enterprise_targeting",
         "outreach_personalization", "demo_scripts",
         "sales_objection_handling", "competitive_analysis",
         "grant_application", "patent_counsel_packet",
         "customer_discovery", "code_generation", "test_generation",
+        "autonomous_planner", "autonomous_verifier",
     }
     assert set(names) == expected
 
@@ -117,7 +118,7 @@ def test_exo_lists_use_cases(isolated, tmp_path):
     names = exo.use_cases()
     assert "outreach_personalization" in names
     assert "customer_discovery" in names
-    assert len(names) == 11
+    assert len(names) == 13
 
 
 def test_exo_describe_returns_metadata(isolated, tmp_path):
@@ -199,7 +200,7 @@ def test_exo_from_default_pack_works(isolated):
     """No on-disk pack — build one in a tempdir and run it."""
     from axiom_exoskeleton import ExoskeletonAgent
     exo = ExoskeletonAgent.from_default_pack(backend=_CannedBackend())
-    assert len(exo.use_cases()) == 11
+    assert len(exo.use_cases()) == 13
     token = exo.invoke("demo_scripts", "Feature: signed event token.")
     assert token.verify()
 

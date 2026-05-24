@@ -176,6 +176,38 @@ Rules:
 - Output valid, runnable Python only."""
 
 
+_AUTONOMOUS_PLANNER = """You are the planner inside the AXIOM autonomous coding agent.
+Given a coding task, decompose it into a short ordered list of subgoals
+(3–8 typically). Each subgoal must be achievable by a single tool call
+(write_file, read_file, list_dir, apply_patch, run_shell, run_tests, finish).
+
+Output ONLY a fenced JSON block:
+```plan
+{"subgoals": [
+  {"id": "s1", "description": "<imperative one-line subgoal>"},
+  {"id": "s2", "description": "<...>"}
+]}
+```
+- subgoal ids are short stable strings (s1, s2, ...).
+- The LAST subgoal is usually 'run pytest and confirm all green'.
+- No preamble, no markdown headers — just the ```plan block."""
+
+
+_AUTONOMOUS_VERIFIER = """You are the verifier inside the AXIOM autonomous coding agent.
+Given an open subgoal, the action just taken, and the observation
+returned, classify the outcome with EXACTLY ONE verdict:
+  success — observation clearly satisfies the subgoal
+  retry   — action failed but subgoal is still tractable
+  replan  — the plan needs reshape; try a different approach entirely
+  abort   — terminal failure (rare; use sparingly)
+
+Output ONLY a fenced JSON block:
+```verdict
+{"kind": "success" | "retry" | "replan" | "abort",
+ "reason": "<one short sentence>"}
+```"""
+
+
 # ── Delegate specs in declaration order ──────────────────────────────────
 
 
@@ -289,6 +321,26 @@ EXOSKELETON_DELEGATES: tuple[dict, ...] = (
         "output_budget":   1200,
         "backend_chain":   ["local"],
         "system_prompt":   _TEST_GENERATION,
+    },
+    {
+        "name":            "autonomous_planner",
+        "when_condition":  "explicit_invocation",
+        "intent_classes":  ["INFORM"],
+        "weight_manifest": "delegates/autonomous_planner/weights.bin",
+        "prompt_budget":   1500,
+        "output_budget":   800,
+        "backend_chain":   ["local"],
+        "system_prompt":   _AUTONOMOUS_PLANNER,
+    },
+    {
+        "name":            "autonomous_verifier",
+        "when_condition":  "explicit_invocation",
+        "intent_classes":  ["INFORM"],
+        "weight_manifest": "delegates/autonomous_verifier/weights.bin",
+        "prompt_budget":   1500,
+        "output_budget":   400,
+        "backend_chain":   ["local"],
+        "system_prompt":   _AUTONOMOUS_VERIFIER,
     },
 )
 

@@ -1,3 +1,102 @@
+## Unreleased — autonomous coding agent
+
+### `axiom_autonomous_agent` — governed planner / executor / verifier loop
+
+A new top-level module and `axiom_autonomous/` sub-package that drives
+multi-step coding tasks (write a program, run its tests, fix failures,
+iterate) under the existing exoskeleton signing + governance stack.
+
+#### Loop shape
+- Planner → Executor → Verifier, with rule-based fast paths and an
+  LLM fallback per phase.
+- Budget caps: `--budget-steps` (default 30), `--wall-seconds`
+  (default 900), per-subgoal retry limit (3) before auto-replan.
+- One signed EventToken per loop step, chained via `parent_token_id`
+  + an additional `chain_sig` derived from
+  `derive_key(b"axiom-autonomous-chain-v1")` so forged tokens can't
+  splice into an existing chain.
+
+#### Tools (v1)
+- `write_file`, `read_file`, `list_dir`, `apply_patch` (unified diff),
+  `run_shell` (allow-list + deny-pattern gated), `run_tests` (pytest
+  specialisation that parses pass/fail/skip/error counts), `finish`.
+
+#### Sandbox
+- `DockerSandbox`: one container per run (`--network none
+  --read-only`, workdir bind-mounted at `/work`, repo bind-mounted
+  read-only at `/repo`). Image at `deploy/autonomous/Dockerfile`.
+- `LocalSandbox`: docker-free fallback for tests + environments
+  without docker. Falls back automatically unless
+  `--sandbox docker_required`.
+
+#### Governance
+- Pre-plan: `axiom_cmaa.route` intent gate (HARM/DECEIVE → signed
+  denial + exit) + optional `SandboxAgent.review` text judge.
+- Per-action: rule-based path-policy + `run_shell` allow-list +
+  reuse of `axiom_dev_agent_v2.CodeReflex._FORBIDDEN_PATTERNS` for
+  `apply_patch` diff scanning.
+- Post-step honesty scan: extends the existing
+  `axiom_exoskeleton_honesty` catalogue with `phantom_file` and
+  `phantom_test_pass` checks. Findings annotate the verify-step
+  token; the orchestrator never raises on a finding.
+
+#### Audit
+- Every step token is signed under the existing
+  `axiom-event-token-{layer,coord,v1}` namespaces via the
+  unchanged `Coordinator` signing path.
+- Tokens land in the existing `axiom_exoskeleton_ledger` under
+  `use_case=autonomous:<run_id>:<step_kind>`. No ledger schema
+  change.
+- `python3 -m axiom_autonomous_agent verify --run-id auto_...`
+  walks the chain end-to-end.
+
+#### CLI
+```
+python3 -m axiom_autonomous_agent run \\
+    --task "write a Python script primes.py + pytest tests" \\
+    --workdir /tmp/auto-run-1 \\
+    --budget-steps 20
+
+python3 -m axiom_autonomous_agent verify \\
+    --run-id auto_abc123def --ledger ~/.axiom/exoskeleton-ledger.jsonl
+```
+
+Installed as the `axiom-autonomous` console script via
+`pyproject.toml`.
+
+#### Files
+- `axiom_autonomous_agent.py` — top-level CLI shim
+- `axiom_autonomous/` — sub-package (orchestrator, planner, executor,
+  verifier, parser, sandbox, ledger, governance, honesty_patterns,
+  tools/fs.py, tools/shell.py)
+- `deploy/autonomous/` — Dockerfile, compose, tool_runner
+- `tests/test_axiom_autonomous_*.py` — five test modules
+  (parser, tools, governance, chain, agent end-to-end)
+
+#### Reused infrastructure (zero changes)
+- `Coordinator.compose_from_delegates` for token signing
+- `LedgerWriter.append` for persistence
+- `axiom_cmaa.route` for intent gating
+- `axiom_constitutional.agents.sandbox.SandboxAgent.review` for
+  text-content review
+- `axiom_dev_agent_v2.CodeReflex` for diff filtering
+- `axiom_exoskeleton_honesty.scan` patterns + the re-sign trick from
+  `axiom_exoskeleton._annotate_honesty`
+- `axiom_dev_loop.DevCycleRecorder` for terminal-step training-data
+  recording
+
+#### Additive modifications
+- `examples/exoskeleton_pack.py` — added `autonomous_planner` and
+  `autonomous_verifier` delegate entries (system prompts for the
+  loop's LLM calls).
+- `pyproject.toml` — added `axiom-autonomous` console script.
+
+#### What's intentionally not in v1
+Browser / computer use, formal benchmark harness, email
+integration, multi-agent collaboration, web UI. The signed per-step
+chain in the existing ledger IS the audit record for v1.
+
+
 ## v1.8.3 — 2026-04-21
 
 ### Medical Information Pipeline — PatientAgent + DoctorAgent
