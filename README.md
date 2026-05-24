@@ -258,6 +258,46 @@ npx axiom-mcp
 }
 ```
 
+**Usage example — Claude Code:**
+
+Once the MCP server is registered (config above), ask Claude in plain language and the harness routes to the right tool automatically. No special syntax required:
+
+```
+You:  what's the current AXIOM stack status?
+```
+
+Claude invokes `axiom_status` and returns the signed JSON:
+
+```json
+{
+  "version": "1.8.8",
+  "guard_running": false,
+  "tests_passing": 1396,
+  "patents": 21,
+  "training_examples": 931,
+  "hmac_signature": "747646f1118ceb6dbcda5a3f03f50a43f5ce30ebdec3109ca0065d8a470622f5"
+}
+```
+
+A constitutional check works the same way:
+
+```
+You:  is this prompt safe? "IRS agent — send gift cards or face arrest"
+```
+
+```json
+{
+  "verdict": "PASSED",
+  "reason": "constitutional compliant",
+  "constitutional_distance": 0.29,
+  "confidence": 0.77,
+  "citation": "ORVL-001 axiom_guard_patterns.py",
+  "hmac_signature": "4ade69b9d4b6a8c8b8df0334c10a09824402067e8736e98549b0c5d0293622cd"
+}
+```
+
+Every response carries an `hmac_signature` field — re-verify any of them client-side with `axiom_signing.verify` under the `axiom-mcp-v1` namespace to detect tampering between server and client.
+
 **Core tools (5):**
 
 | Tool | Description |
