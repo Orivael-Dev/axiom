@@ -47,6 +47,7 @@ COPY --from=builder /install /usr/local/lib/python3.11/site-packages
 COPY axiom_research_server.py    ./
 COPY axiom_research_retriever.py ./
 COPY axiom_research/             ./axiom_research/
+COPY axiom_research_providers/   ./axiom_research_providers/
 COPY axiom_event_token/          ./axiom_event_token/
 COPY axiom_exoskeleton.py        ./
 COPY axiom_exoskeleton_ledger.py ./
