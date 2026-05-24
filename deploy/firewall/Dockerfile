@@ -50,6 +50,13 @@ COPY axiom_signing.py            ./
 # from BASE_DIR.parent / "docs" / "firewall", so this must land at
 # /app/docs/firewall/*.md alongside the package.
 COPY docs/firewall/         ./docs/firewall/
+# First-party skill packs. dashboard.py reads from
+# BASE_DIR.parent / "packs" (i.e. /app/packs) unless
+# AXIOM_FIREWALL_PACKS_DIR overrides. Signatures inside each
+# pack.json must be produced with the same AXIOM_MASTER_KEY the
+# container runs under — re-sign via scripts/sign_packs.py if the
+# prod key changes.
+COPY packs/                 ./packs/
 
 # Tenant DB volume mount point.
 RUN mkdir -p /data/tenants && chown -R axiom:axiom /data /app
