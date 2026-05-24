@@ -96,6 +96,10 @@ class EventToken:
       - format_version  "1.0", 2-year backward-compat per project standard
       - text/audio/tempo/video/physics/governance — six LayerReports OR
         None if the Coordinator did NOT activate that agent
+      - parent_signature outer signature of the predecessor token in a
+                        conversation chain (empty = chain root or
+                        single-token use). Covered by the outer
+                        signature when present.
       - coordinator_sig signature over the activation manifest +
                         layer signatures (composition integrity)
       - signature       outer HMAC over the canonical bundle
@@ -115,13 +119,14 @@ class EventToken:
     physics:     Optional[LayerReport] = None
     governance:  Optional[LayerReport] = None
 
+    parent_signature: str = ""
     coordinator_sig: str = ""
     signature: str = ""
 
     # ─── Serialization ──────────────────────────────────────────────
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "id":              self.id,
             "format_version":  self.format_version,
             "created_at":      self.created_at,
@@ -138,6 +143,12 @@ class EventToken:
             "coordinator_sig": self.coordinator_sig,
             "signature":       self.signature,
         }
+        # parent_signature is omitted when empty so tokens not part of
+        # a chain serialize byte-identical to the pre-chaining format
+        # — pre-existing signed tokens on disk still verify.
+        if self.parent_signature:
+            d["parent_signature"] = self.parent_signature
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "EventToken":
@@ -155,6 +166,7 @@ class EventToken:
             video=      LayerReport.from_dict(d["video"])      if d.get("video")      else None,
             physics=    LayerReport.from_dict(d["physics"])    if d.get("physics")    else None,
             governance= LayerReport.from_dict(d["governance"]) if d.get("governance") else None,
+            parent_signature=d.get("parent_signature", ""),
             coordinator_sig=d.get("coordinator_sig", ""),
             signature=d.get("signature", ""),
         )

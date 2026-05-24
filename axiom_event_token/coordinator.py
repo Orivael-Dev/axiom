@@ -79,12 +79,17 @@ class Coordinator:
         qrf: Optional[dict] = None,
         activate: Iterable[str] = DEFAULT_ACTIVATION,
         token_id: Optional[str] = None,
+        parent: Optional[EventToken] = None,
     ) -> EventToken:
         """Run the activated agents and return a fully-signed EventToken.
 
         `activate` lists the agents to fire (defaults to all five).
         Governance, if activated, always runs LAST so it can read the
         other layers' confidence + agent names.
+
+        `parent`, if supplied, links this token to its predecessor in
+        a conversation chain — `parent.signature` is recorded in
+        `parent_signature` and covered by this token's outer signature.
         """
         activated = tuple(activate)
         unknown = [a for a in activated if a not in self._registry]
@@ -133,10 +138,11 @@ class Coordinator:
             video=      layer_reports.get("video"),
             physics=    layer_reports.get("physics"),
             governance= layer_reports.get("governance"),
+            parent_signature=parent.signature if parent is not None else "",
         )
 
         # Sign in two steps: coordinator sig first, then outer sig
-        # (so the outer sig covers the coordinator sig too).
+        # (so the outer sig covers the coordinator sig + parent ref).
         coord_sig = _sign(_canonical_coordinator(token), COORD_KEY_NS)
         token = EventToken(
             **{**_token_kwargs(token), "coordinator_sig": coord_sig},
@@ -162,6 +168,7 @@ class Coordinator:
         router=None,                            # DelegateRouter, default = fresh
         token_id: Optional[str] = None,
         extra_context: Optional[dict] = None,
+        parent: Optional[EventToken] = None,
     ) -> EventToken:
         """Route the event to its matching AXM delegates, fire them,
         and assemble a signed EventToken — the modular per-event-token
@@ -237,6 +244,7 @@ class Coordinator:
             video=      layer_reports.get("video"),
             physics=    layer_reports.get("physics"),
             governance= layer_reports.get("governance"),
+            parent_signature=parent.signature if parent is not None else "",
         )
         coord_sig = _sign(_canonical_coordinator(token), COORD_KEY_NS)
         token = EventToken(**{**_token_kwargs(token),
@@ -263,6 +271,7 @@ def _token_kwargs(token: EventToken) -> dict:
         "video":            token.video,
         "physics":          token.physics,
         "governance":       token.governance,
+        "parent_signature": token.parent_signature,
         "coordinator_sig":  token.coordinator_sig,
         "signature":        token.signature,
     }
