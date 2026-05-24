@@ -59,6 +59,70 @@ def test_default_context_root_respects_env(isolated, tmp_path, monkeypatch):
     assert default_context_root() == tmp_path / "sales"
 
 
+def test_default_context_root_falls_back_to_cwd_when_module_path_missing(
+    isolated, tmp_path, monkeypatch,
+):
+    """Container deploy case: package lives in site-packages, so the
+    module-relative docs/internal/sales/ doesn't exist; the corpus is
+    mounted under the working directory instead. With no
+    AXIOM_SALES_CONTEXT_ROOT set, resolution must fall through to
+    `cwd / docs/internal/sales` when it exists. This is the fix for
+    the silent-empty-store bug that made customer_discovery emit
+    generic output in container runs."""
+    monkeypatch.delenv("AXIOM_SALES_CONTEXT_ROOT", raising=False)
+    # Build a fake cwd with the corpus mounted at the conventional path.
+    sales_dir = tmp_path / "docs" / "internal" / "sales"
+    sales_dir.mkdir(parents=True)
+    (sales_dir / "companies.jsonl").write_text(
+        '{"name":"Acme","industry":"saas"}\n', encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    # Point the "module-relative" probe at a directory that doesn't
+    # exist, so the module-parent branch fails and the cwd fallback
+    # takes over. We do this by mocking _Path(__file__).parent via a
+    # monkeypatched __file__ — cleanest is to assert the function
+    # picks the cwd path when the module-relative one is absent. The
+    # module under test lives at the repo root, so its sibling
+    # docs/internal/sales DOES exist on disk; to isolate, we resolve
+    # the function under a temp working dir AND assert the returned
+    # path is the cwd one IFF the module-relative one is absent.
+    from axiom_sales_context import default_context_root
+    resolved = default_context_root()
+    # If the repo's own docs/internal/sales exists at module-parent
+    # we get that one — the cwd branch only triggers when the module-
+    # parent path is gone. Both are valid resolutions; the regression
+    # we're guarding against is "neither got tried in container".
+    assert resolved.is_dir(), (
+        f"resolved root {resolved} should be an existing directory "
+        f"(either module-parent or cwd fallback)"
+    )
+
+
+def test_default_context_root_cwd_fallback_isolated(
+    isolated, tmp_path, monkeypatch,
+):
+    """Isolated unit test of the cwd-fallback branch — bypasses the
+    repo-relative branch entirely by stubbing the module's __file__
+    to point at a directory that has no `docs/internal/sales/`
+    sibling, then asserting the function resolves to cwd."""
+    monkeypatch.delenv("AXIOM_SALES_CONTEXT_ROOT", raising=False)
+    sales_dir = tmp_path / "docs" / "internal" / "sales"
+    sales_dir.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    # Stub module __file__ to a sibling that has no docs/internal/sales.
+    import axiom_sales_context as mod
+    fake_module_home = tmp_path / "fake_site_packages"
+    fake_module_home.mkdir()
+    monkeypatch.setattr(mod, "__file__", str(fake_module_home / "axiom_sales_context.py"))
+
+    from axiom_sales_context import default_context_root
+    resolved = default_context_root()
+    assert resolved == sales_dir
+    assert resolved.is_dir()
+
+
 def test_load_empty_store_returns_empty_lists(isolated, tmp_path):
     from axiom_sales_context import SalesContext
     ctx = SalesContext.load(tmp_path / "does-not-exist")

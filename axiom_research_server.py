@@ -425,6 +425,40 @@ async def root():
     return FileResponse(HTML_PATH, media_type="text/html")
 
 
+def _sales_context_diagnostics() -> dict:
+    """Resolve where the sales corpus is being loaded from and report
+    record counts so the operator can SEE whether customer_discovery
+    & friends will get context injected. Covers the silent-empty case
+    where the module-relative path doesn't exist (e.g. pipx / Docker)
+    and no AXIOM_SALES_CONTEXT_ROOT is set.
+
+    Returns a dict suitable for embedding in /api/health.
+    """
+    try:
+        from axiom_sales_context import (
+            SalesContext, default_context_root,
+        )
+        root = default_context_root()
+        ctx = SalesContext.load(root)
+        counts = {
+            "companies":   len(ctx.companies),
+            "buyers":      len(ctx.buyers),
+            "objections":  len(ctx.objections),
+            "competitors": len(ctx.competitors),
+        }
+        total = sum(counts.values())
+        return {
+            "root":         str(root),
+            "root_exists":  root.is_dir(),
+            "env_override": bool(os.environ.get("AXIOM_SALES_CONTEXT_ROOT")),
+            "records":      counts,
+            "total_records": total,
+            "status":       "loaded" if total > 0 else "empty",
+        }
+    except Exception as e:
+        return {"error": f"sales-context load failed: {e}"}
+
+
 @app.get("/api/health")
 async def health():
     state_built = _state.exo is not None
@@ -438,6 +472,7 @@ async def health():
         "html_path":       str(HTML_PATH),
         "html_present":    HTML_PATH.exists(),
         "bearer_auth":     bool(_API_TOKEN),
+        "sales_context":   _sales_context_diagnostics(),
     }
 
 

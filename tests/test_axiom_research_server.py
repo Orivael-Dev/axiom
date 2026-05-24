@@ -89,6 +89,18 @@ def test_health_starts_unbuilt_then_built(server_env, monkeypatch):
     assert d["state_built"] is False
     assert d["html_present"] is True
 
+    # Sales-context diagnostics surface on /api/health so operators
+    # can see whether customer_discovery & friends will get context
+    # injected, without having to run the request and inspect output.
+    sc = d.get("sales_context")
+    assert sc is not None
+    assert "root" in sc
+    assert "records" in sc
+    assert "status" in sc
+    assert sc["status"] in ("loaded", "empty")
+    for k in ("companies", "buyers", "objections", "competitors"):
+        assert k in sc["records"]
+
     # Trigger lazy build via use-cases.
     r = client.get("/api/use-cases")
     assert r.status_code == 200
@@ -96,6 +108,29 @@ def test_health_starts_unbuilt_then_built(server_env, monkeypatch):
 
     r = client.get("/api/health")
     assert r.json()["state_built"] is True
+
+
+def test_health_sales_context_reports_env_override(
+    server_env, monkeypatch, tmp_path,
+):
+    """When AXIOM_SALES_CONTEXT_ROOT is set, the diagnostics block
+    must report it as env_override=True and read records from the
+    pointed-to directory — proves the operator can override the
+    resolved path without code changes."""
+    sales_dir = tmp_path / "sales"
+    sales_dir.mkdir()
+    (sales_dir / "companies.jsonl").write_text(
+        '{"name":"Acme","industry":"saas","size":"smb"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AXIOM_SALES_CONTEXT_ROOT", str(sales_dir))
+    client, _ = _client(monkeypatch)
+    sc = client.get("/api/health").json()["sales_context"]
+    assert sc["env_override"] is True
+    assert sc["root"] == str(sales_dir)
+    assert sc["root_exists"] is True
+    assert sc["records"]["companies"] == 1
+    assert sc["status"] == "loaded"
 
 
 def test_research_returns_full_shape(server_env, monkeypatch):

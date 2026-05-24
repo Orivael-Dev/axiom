@@ -213,6 +213,70 @@ def test_default_backend_picks_local_when_no_nim_key(isolated, monkeypatch):
     assert isinstance(default_backend(), LocalNanoBackend)
 
 
+def test_default_backend_auto_detects_custom_when_axiom_envs_complete(
+    isolated, monkeypatch,
+):
+    """Setting AXIOM_BASE_URL + AXIOM_API_KEY + AXIOM_MODEL together
+    constitutes an explicit user-endpoint opt-in — default_backend()
+    must pick CustomBackend even when AXIOM_BACKEND is unset and
+    NVIDIA_NIM_API_KEY is present in the same env. This is the fix for
+    the silent-NIM-fallback bug surfaced by the research-env report."""
+    monkeypatch.delenv("AXIOM_BACKEND", raising=False)
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "nvapi-leftover-dev-key")
+    monkeypatch.setenv("AXIOM_BASE_URL", "https://my-endpoint/v1")
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-test")
+    monkeypatch.setenv("AXIOM_MODEL", "my-tuned-model")
+    from axiom_event_token.backends import default_backend, CustomBackend
+    b = default_backend()
+    assert isinstance(b, CustomBackend)
+    assert b.model == "my-tuned-model"
+    assert b._base_url == "https://my-endpoint/v1"
+
+
+def test_default_backend_explicit_axiom_backend_overrides_custom_envs(
+    isolated, monkeypatch,
+):
+    """AXIOM_BACKEND=nim with all CustomBackend envs set must still
+    pick NIM — the explicit override wins over the heuristic."""
+    monkeypatch.setenv("AXIOM_BACKEND", "nim")
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "nvapi-test")
+    monkeypatch.setenv("AXIOM_BASE_URL", "https://other/v1")
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-test")
+    monkeypatch.setenv("AXIOM_MODEL", "tuned")
+    from axiom_event_token.backends import default_backend, NIMBackend
+    assert isinstance(default_backend(), NIMBackend)
+
+
+def test_default_backend_partial_custom_envs_does_not_pick_custom(
+    isolated, monkeypatch,
+):
+    """All THREE CustomBackend env vars must be set for auto-detection.
+    Two-of-three falls through to the NIM/local/deepseek heuristic so
+    a half-configured environment doesn't break with a CustomBackend
+    constructor error."""
+    monkeypatch.delenv("AXIOM_BACKEND", raising=False)
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "nvapi-test")
+    monkeypatch.setenv("AXIOM_BASE_URL", "https://endpoint/v1")
+    monkeypatch.setenv("AXIOM_API_KEY", "sk-test")
+    monkeypatch.delenv("AXIOM_MODEL", raising=False)
+    from axiom_event_token.backends import default_backend, NIMBackend
+    assert isinstance(default_backend(), NIMBackend)
+
+
+def test_default_backend_blank_custom_envs_does_not_pick_custom(
+    isolated, monkeypatch,
+):
+    """Empty-string env vars count as unset for auto-detection — common
+    in container images that declare ENV with empty defaults."""
+    monkeypatch.delenv("AXIOM_BACKEND", raising=False)
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "nvapi-test")
+    monkeypatch.setenv("AXIOM_BASE_URL", "")
+    monkeypatch.setenv("AXIOM_API_KEY", "")
+    monkeypatch.setenv("AXIOM_MODEL", "")
+    from axiom_event_token.backends import default_backend, NIMBackend
+    assert isinstance(default_backend(), NIMBackend)
+
+
 # ─── DeepSeekBackend ─────────────────────────────────────────────────
 
 

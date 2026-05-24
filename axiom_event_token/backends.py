@@ -563,20 +563,46 @@ def _build_domain_backend(domain: str) -> Optional[SLMBackend]:
                 os.environ[k] = v
 
 
+def _custom_backend_env_complete() -> bool:
+    """Are all three CustomBackend env vars set?
+
+    AXIOM_BASE_URL + AXIOM_API_KEY + AXIOM_MODEL together constitute
+    an explicit opt-in to a user-configured OpenAI-compatible endpoint
+    — used by default_backend() to prefer CustomBackend over the
+    auto-detected fallbacks (NIM / Ollama / DeepSeek) when the user
+    has clearly configured one but forgot AXIOM_BACKEND=custom.
+    """
+    return all(
+        os.environ.get(k, "").strip()
+        for k in ("AXIOM_BASE_URL", "AXIOM_API_KEY", "AXIOM_MODEL")
+    )
+
+
 def default_backend() -> SLMBackend:
     """Resolve the default backend from environment.
 
     AXIOM_BACKEND="nim"           → NIMBackend
     AXIOM_BACKEND="local"         → LocalNanoBackend
     AXIOM_BACKEND="deepseek"      → DeepSeekBackend
+    AXIOM_BACKEND="custom"        → CustomBackend
     AXIOM_BACKEND="local,deepseek"→ ChainedBackend (try local first,
                                                     fall back to DeepSeek)
     AXIOM_BACKEND="local,nim"     → ChainedBackend([local, nim])
-    unset                         → "local" if OLLAMA_URL appears
+    unset                         → CustomBackend if AXIOM_BASE_URL +
+                                    AXIOM_API_KEY + AXIOM_MODEL are
+                                    all set (explicit user-endpoint
+                                    opt-in via env);
+                                    else "local" if OLLAMA_URL appears
                                     reachable in env;
                                     else "deepseek" if DEEPSEEK_API_KEY
                                     is set;
                                     else "nim"
+
+    The CustomBackend auto-detection is the fix for the silent-NIM-
+    fallback bug: previously, configuring AXIOM_BASE_URL/AXIOM_API_KEY/
+    AXIOM_MODEL did nothing unless you ALSO set AXIOM_BACKEND=custom,
+    and if NVIDIA_NIM_API_KEY was set in the same env (common on dev
+    boxes) the resolver picked NIM and ignored your custom endpoint.
 
     Per-domain overrides (any subset of ROUTED_DOMAINS):
       AXIOM_BACKEND_MEDICAL=custom + AXIOM_BASE_URL_MEDICAL=...
@@ -590,6 +616,8 @@ def default_backend() -> SLMBackend:
     spec = os.environ.get("AXIOM_BACKEND")
     if spec:
         base = make_backend(spec.split(","))
+    elif _custom_backend_env_complete():
+        base = CustomBackend()
     elif os.environ.get("OLLAMA_URL") or not (
         os.environ.get("NVIDIA_NIM_API_KEY")
         or os.environ.get("DEEPSEEK_API_KEY")

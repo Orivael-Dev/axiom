@@ -97,15 +97,33 @@ def default_context_root() -> Path:
     """Where the sales context lives by default.
 
     Resolution order:
-        1. AXIOM_SALES_CONTEXT_ROOT env var.
-        2. `docs/internal/sales/` next to this module.
-        3. `docs/internal/sales/` under cwd (last-resort fallback).
+        1. AXIOM_SALES_CONTEXT_ROOT env var (always wins if set).
+        2. `docs/internal/sales/` next to this module (dev / repo run).
+        3. `docs/internal/sales/` under cwd (last-resort fallback —
+           covers container deploys where the package lives in
+           site-packages and the sales corpus is mounted alongside
+           the working directory).
+
+    Step 2 wins over step 3 when it points at an existing directory.
+    If step 2's directory is absent (typical in pipx / Docker
+    installs), step 3 is tried. The function always returns a Path;
+    callers handle "directory exists but is empty" via SalesContext.load.
     """
     env = os.environ.get("AXIOM_SALES_CONTEXT_ROOT")
     if env:
         return Path(env).expanduser()
-    here = Path(__file__).resolve().parent
-    return here / "docs" / "internal" / "sales"
+    module_root = Path(__file__).resolve().parent / "docs" / "internal" / "sales"
+    if module_root.is_dir():
+        return module_root
+    cwd_root = Path.cwd() / "docs" / "internal" / "sales"
+    if cwd_root.is_dir():
+        return cwd_root
+    # Neither path exists — return the module-relative one anyway so
+    # the resolved path is stable and informative. SalesContext.load
+    # treats absent paths as "empty store"; the diagnostic surface in
+    # axiom_research_server's /api/health reports the resolved root +
+    # record counts so the user can see what's actually being read.
+    return module_root
 
 
 def _utc_now_iso() -> str:
