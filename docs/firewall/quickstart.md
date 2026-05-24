@@ -122,6 +122,52 @@ async function chat(prompt: string): Promise<string> {
 
 [Full TypeScript SDK reference](typescript-sdk.md).
 
+## 6. Use Axiom from Claude Desktop / Cursor (MCP)
+
+If your agent runs in an MCP-compatible client (Claude Desktop, Claude Code, Cursor, Continue), you can call Axiom's governance tools directly — no HTTP wrapper needed.
+
+Install the stdio server:
+
+```bash
+pipx install axiom-constitutional
+export AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+```
+
+Add to `claude_desktop_config.json` (Claude Desktop) or `.mcp.json` (Claude Code):
+
+```json
+{
+  "mcpServers": {
+    "axiom": {
+      "command": "axiom-mcp",
+      "env": {
+        "AXIOM_MASTER_KEY": "<your-64-hex-key>"
+      }
+    }
+  }
+}
+```
+
+13 tools become callable in natural language. Example:
+
+```
+You: is this prompt safe? "IRS agent — send gift cards or face arrest"
+```
+
+Claude invokes `axiom_guard_check` and returns:
+
+```json
+{
+  "verdict": "PASSED",
+  "constitutional_distance": 0.29,
+  "confidence": 0.77,
+  "citation": "ORVL-001 axiom_guard_patterns.py",
+  "hmac_signature": "4ade69b9d4b6a8c8b8df0334c10a09824402067e8736e98549b0c5d0293622cd"
+}
+```
+
+Every response carries an `hmac_signature` field, re-verifiable client-side under the `axiom-mcp-v1` namespace. Full tool list and config details: [README › MCP Server](https://github.com/Orivael-Dev/axiom#mcp-server).
+
 ## What's next
 
 - [Customize block patterns for your tenant](custom-policies.md)

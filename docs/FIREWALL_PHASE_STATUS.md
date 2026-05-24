@@ -132,7 +132,7 @@ them. Status from `docs/PRODUCTS.md` `### Gaps to ship`:
 | MCP installer (pipx / npx / Homebrew) | `pyproject.toml` `[project.scripts]` `axiom-mcp = "axiom_mcp_server:main"`, `[tool.setuptools] py-modules` ships top-level files | 4 (`test_axiom_mcp_pipx.py`) | **pipx ✅ (2026-05-22)** — `pipx install axiom-constitutional` gets `axiom-mcp` on PATH. npx + Homebrew **still missing**. |
 | **Public registry — `packs.orivael.dev`** | `axiom_packs/server.py`, `deploy/packs/`, `deploy/research/docker-compose.yml` | covered by registry-client tests | **Closed 2026-05-22** — live on Hetzner, serving 14 signed packs |
 | 5–10 curated first-party packs | `packs/` directory: code-review-base, coppa, customer-support-base, fdcpa, gdpr-article-9, hipaa-intake, kid-ages-{3-5,6-8,9-12}, kid-bedtime-mode, kid-classroom-mode, kid-voice-output, pci-dss, prompt-injection-strict, sec-rule-10b-5 | 37 (`test_axiom_kid_packs.py`) covering 5 kid packs; remaining 9 packs lack regression tests | additional pack-specific regression tests **partial** |
-| MCP dashboard at `/dashboard/mcp` | `axiom_firewall/dashboard.py:mcp_index`, `templates/mcp.html` | 4 (`test_axiom_firewall_mcp.py`) | **Closed 2026-05-22** — login-gated page lists all 14 MCP tools + Claude Desktop / Cursor / generic config snippets |
+| MCP onboarding surface | `docs/firewall/quickstart.md` § 6 (Use Axiom from Claude Desktop / Cursor) | covered by `test_axiom_firewall_help.py` (docs route) | **Moved 2026-05-24** — was `/dashboard/mcp` page; collapsed into quickstart so install + sample call land in the same 5-minute path new users already follow |
 | Smithery.ai listing | — | — | **Missing** (external) |
 
 **Net:** The pack format + signing + firewall-side load path are
@@ -220,8 +220,10 @@ can be combined into a CallGuard audio pipeline once the intake
   AND now a live Hetzner deployment at `firewall.orivael.dev`. Only
   Stripe production keys + waitlist work remains.
 - **Phase 2: A-** — pack format + signing + load path solid; public
-  registry live at `packs.orivael.dev`; MCP server (18 tests) +
-  `/dashboard/mcp` page (4 tests) both shipping. Remaining gaps:
+  registry live at `packs.orivael.dev`; MCP server (18 tests)
+  shipping with onboarding folded into `docs/firewall/quickstart.md`
+  § 6 (replaces the `/dashboard/mcp` page, which suffered an
+  opaque-500 deploy and added a tab nobody used). Remaining gaps:
   pipx packaging of the MCP server + Smithery listing (external).
 - **Phase 3: F** — nothing shipped beyond a single GDPR keyword in
   validator comments. Cleanly unbuilt, not partially broken.

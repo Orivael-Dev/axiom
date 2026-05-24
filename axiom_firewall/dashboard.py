@@ -821,49 +821,6 @@ def packs_uninstall(request: Request):
     return RedirectResponse("/dashboard/packs", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.get("/dashboard/mcp", response_class=HTMLResponse)
-def mcp_index(request: Request):
-    """Per-tenant MCP integration page.
-
-    Shows the JSON-RPC 2.0 stdio MCP server's version, trust level, and
-    full tool list, plus drop-in config snippets for Claude Desktop, Cursor,
-    Continue, and a generic MCP client. The tenant's API key is rendered
-    into the snippet so it's copy-paste ready — no manual substitution.
-    """
-    t = _current_tenant(request)
-    if not t:
-        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-
-    try:
-        # Import lazily — axiom_mcp_server reconfigures stdout + sets a fallback
-        # master key at import time, which we don't want triggered for every
-        # dashboard hit. Module-level constants are still cheap to read once.
-        from axiom_mcp_server import TOOLS as _MCP_TOOLS, VERSION as _MCP_VERSION, TRUST_LEVEL as _MCP_TRUST
-
-        tools_for_template = [
-            {"name": tool["name"],
-             "description": tool.get("description", ""),
-             "param_keys": list((tool.get("inputSchema") or {}).get("properties", {}).keys())}
-            for tool in _MCP_TOOLS
-        ]
-
-        return templates.TemplateResponse(
-            request, "mcp.html",
-            _ctx(
-                request, tenant=t,
-                mcp_version=_MCP_VERSION,
-                mcp_trust_level=_MCP_TRUST,
-                mcp_tools=tools_for_template,
-                mcp_tool_count=len(tools_for_template),
-            ),
-        )
-    except Exception:
-        # Default FastAPI 500 hides the cause; log the full traceback to
-        # container stdout so production failures are diagnosable.
-        log.exception("/dashboard/mcp failed for tenant=%s", t.tenant_id)
-        raise
-
-
 # ─── Authenticated API ───────────────────────────────────────────────────
 
 _VERDICT_FOR_CLASS = {
