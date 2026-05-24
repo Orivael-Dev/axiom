@@ -2,11 +2,20 @@
 AXIOM NIM Client
 Thin wrapper around NVIDIA NIM inference (OpenAI-compatible API).
 """
+from __future__ import annotations
+
 import json
 import os
 import time
+from typing import TYPE_CHECKING
 
-from openai import OpenAI
+if TYPE_CHECKING:
+    # Only used for type annotations — never imported at runtime so
+    # `validate_output` (pure-regex guard, no LLM call) keeps working
+    # in environments that don't have `openai` installed, e.g. the
+    # axiom-mcp pipx env serving Claude Desktop.
+    from openai import OpenAI
+
 from axiom_constitutional.agents.sandbox_content import content_sandbox_check
 from axiom_constitutional.dos_watcher import DosWatcher, DoSBlock
 from axiom_constitutional.guards.axiom_destructive_guard import DestructiveOperationGuard as _DestructiveGuard
@@ -131,7 +140,17 @@ def validate_output(response: str, task: str, caller: str = "",
     return response, True
 
 
-def _build_client() -> OpenAI:
+def _build_client() -> "OpenAI":
+    try:
+        from openai import OpenAI as _OpenAI
+    except ImportError as e:
+        raise ImportError(
+            "axiom_constitutional.client needs the `openai` package to "
+            "talk to an inference endpoint. Install it with:\n"
+            "  pipx inject axiom-constitutional openai     # if pipx-installed\n"
+            "  pip install openai                          # otherwise\n"
+            "The pure-Python guards (validate_output etc.) work without it."
+        ) from e
     # AXIOM_API_KEY / AXIOM_BASE_URL are the primary env vars.
     # NVIDIA_API_KEY / NVIDIA_BASE_URL retained as fallbacks for backwards compatibility.
     # Any OpenAI-compatible endpoint is supported (NIM, OpenAI, Ollama, vLLM, LM Studio, etc.)
@@ -155,7 +174,7 @@ def _build_client() -> OpenAI:
             "Set AXIOM_BASE_URL to point at a non-OpenAI endpoint "
             "(e.g. http://localhost:11434/v1 for Ollama)."
         )
-    return OpenAI(api_key=api_key, base_url=base_url)
+    return _OpenAI(api_key=api_key, base_url=base_url)
 
 
 _client: OpenAI | None = None

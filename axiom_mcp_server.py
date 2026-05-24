@@ -46,7 +46,7 @@ if not os.environ.get("AXIOM_MASTER_KEY"):
 from axiom_signing import derive_key
 
 SIGNING_KEY = derive_key(b"axiom-mcp-v1")
-VERSION: str = "1.8.7"
+VERSION: str = "1.8.8"
 TRUST_LEVEL: int = 3
 
 _FROZEN = frozenset({"VERSION", "TRUST_LEVEL"})
