@@ -737,12 +737,28 @@ def help_index(request: Request):
     return HTMLResponse(content=html)
 
 
+# Operator-only docs that must never be served from /help/<slug>.
+# The corresponding files live under docs/firewall/internal/ (which
+# the *.md glob already excludes), and the Dockerfile no longer
+# copies that subdirectory into the image — but this denylist is
+# the third line of defense against the same content reappearing at
+# the top level by accident.
+_HELP_DENYLIST_SLUGS = frozenset({
+    "launch", "billing", "operations-runbook",
+})
+
+
 @app.get("/help/{slug}", response_class=HTMLResponse)
 def help_page(request: Request, slug: str):
     """Render docs/firewall/<slug>.md with the per-doc nav row."""
     # Defensive: only allow simple slugs — no traversal.
     if not slug.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(status_code=400, detail="invalid slug")
+    if slug in _HELP_DENYLIST_SLUGS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no doc named {slug!r}",
+        )
     target = FIREWALL_DOCS_DIR / f"{slug}.md"
     if not target.is_file():
         raise HTTPException(
