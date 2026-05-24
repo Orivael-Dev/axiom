@@ -217,6 +217,8 @@ python examples/axiom_guard_api.py  # port 8001
 
 AXIOM runs as an MCP server — any MCP client (Claude Desktop, Claude Code, Cursor, etc.) gets constitutional governance tools natively.
 
+**Status — verified live in Claude Code:** all 13 tools callable end-to-end; every tool result HMAC-signed under `derive_key(b"axiom-mcp-v1")` so signatures round-trip through `axiom_signing.verify` on the client side.
+
 ```bash
 python axiom_mcp_server.py
 ```
