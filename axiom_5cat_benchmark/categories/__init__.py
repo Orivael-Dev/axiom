@@ -47,6 +47,10 @@ def _ensure_loaded(cat_id: int) -> None:
         3: "axiom_5cat_benchmark.categories.cat3_adaptation",
         4: "axiom_5cat_benchmark.categories.cat4_multiagent",
         5: "axiom_5cat_benchmark.categories.cat5_self_evolution",
+        # Cat 6 (bias detection) is intentionally NOT registered —
+        # see axiom_5cat_benchmark/categories/cat6_bias/__init__.py
+        # for the gating condition (Cat 1 ECE ≤ 0.15 on real LLMs).
+        6: "axiom_5cat_benchmark.categories.cat6_bias",
     }
     pkg = pkg_map.get(cat_id)
     if pkg is None:

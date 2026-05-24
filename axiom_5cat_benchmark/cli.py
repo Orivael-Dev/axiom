@@ -127,13 +127,35 @@ def cmd_run(args: argparse.Namespace) -> int:
         if args.verbose:
             print(f"  adapter ready: {spec}", file=sys.stderr)
 
-    results = run_benchmark(
-        adapters=adapters,
-        category_ids=args.categories,
-        n_trials=args.trials,
-        seed=args.seed,
-        temperature=args.temperature,
-    )
+    try:
+        results = run_benchmark(
+            adapters=adapters,
+            category_ids=args.categories,
+            n_trials=args.trials,
+            seed=args.seed,
+            temperature=args.temperature,
+        )
+    except KeyError as e:
+        # Unregistered category id — likely Cat 6 (bias detection),
+        # which is gated on Cat 1 calibration accuracy. Print a
+        # clean message instead of a stack trace.
+        bad = str(e).strip("'\"")
+        # Eagerly load every known cat so the "registered" list is
+        # the actual answer, not whatever happened to be loaded
+        # before the failure.
+        from axiom_5cat_benchmark.categories import _ensure_loaded
+        for cid in (1, 2, 3, 4, 5, 6):
+            _ensure_loaded(cid)
+        registered = available_categories()
+        print(
+            f"ERROR: {bad}.\n"
+            f"  registered categories: {registered}\n"
+            f"  (Cat 6 — bias detection — is gated on Cat 1 ECE "
+            f"≤ 0.15 on real LLMs; see "
+            f"axiom_5cat_benchmark/categories/cat6_bias/__init__.py.)",
+            file=sys.stderr,
+        )
+        return 2
 
     payload = results.to_dict()
     if args.no_sign:

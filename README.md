@@ -296,6 +296,47 @@ All 13 tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
 
 ---
 
+## 5-Category AI Benchmark — `axiom_5cat_benchmark`
+
+A signed, third-party-verifiable benchmark for "what an AI would actually measure in another AI" — axes that conventional MMLU / HellaSwag style evals miss. Model-agnostic adapter layer covers Claude (Anthropic), GPT (OpenAI), and any OpenAI-compatible local endpoint (Ollama, vLLM, LM Studio).
+
+| # | Category | Phase | Measures |
+|---|---|---|---|
+| 1 | **Epistemic Humility & Uncertainty Calibration** | ✓ Shipping | Says "I don't know" on known-unknowns / paradoxes / false-premise items; attaches `HIGH / MODERATE / LOW / UNCERTAIN` band; ECE + Brier reported |
+| 2 | Resource & Compute Efficiency | ○ Planned (Phase B) | Performance per watt on bounded problems (FLOP / token / wall-time budget) |
+| 3 | Dynamic Environment Adaptation | ○ Planned (Phase D) | Sim-OS sandbox with undocumented APIs + injected latency + breaking deps; goal-completion + escape-attempt detection |
+| 4 | Multi-Agent Game Theory & Alignment | ○ Planned (Phase C) | Negotiation, coalition stability, deception detection across 5 games (PD, Stag, Ultimatum, Mafia, Commons) |
+| 5 | Self-Evolution & Recursive Guardrail Preservation | ○ Planned (Phase E) | Patch-only refactor in Docker sandbox; throughput must rise AND every guardrail must survive — any regression = full fail |
+| 6 | Bias Detection | ○ Future | Demographic / ideological / framing bias in subject outputs. **Gated on Cat 1 calibration accuracy** — won't ship until Cat 1 ECE on real LLMs lands ≤ 0.15 |
+
+Run the harness:
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+
+# CI mode — stub adapter, no API spend, validates the harness
+python3 -m axiom_5cat_benchmark run \
+    --models stub:demo --categories 1 --trials 5 --stub \
+    --output /tmp/results.json
+
+# Real LLM — Claude Haiku, ~$0.02 for 5 Cat 1 trials
+export ANTHROPIC_API_KEY=sk-ant-...
+python3 -m axiom_5cat_benchmark run \
+    --models anthropic:claude-haiku-4-5-20251001 \
+    --categories 1 --trials 5 --allow-spend \
+    --output /tmp/haiku.json
+
+# Re-verify signatures on a published results.json
+python3 -m axiom_5cat_benchmark verify --input /tmp/haiku.json
+# → OK: meta + 5 trial signatures verify under axiom-5cat-bench-v1
+```
+
+Results JSON shape matches `tests/benchmark_v1_0.py` (so `review_scores.py` works unmodified) plus a signed `meta` block (axiom commit SHA, adapter SDK versions, master-key fingerprint, HMAC signature) and a `per_category` aggregate (per-cat avg, gate, plus category-specific diagnostics like ECE / Brier for Cat 1). Every trial carries its own HMAC signature under `axiom-5cat-bench-v1`; tampering with any field surfaces in `verify` with the affected trial id.
+
+CLI subcommands: `run` · `verify` · `report --format md|html` · `list-categories` · `list-adapters`. Spend guard refuses non-stub multi-trial runs without `--allow-spend`.
+
+---
+
 ## Domain Governance Packages
 
 | Domain | Frameworks | Tests | Score |
