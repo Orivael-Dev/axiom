@@ -48,6 +48,7 @@ build/
 *.whl
 
 # Runtime artifacts
+tenants/
 latent_manifests.jsonl
 certs/asi03_audit.jsonl
 certs/asi07_audit.jsonl

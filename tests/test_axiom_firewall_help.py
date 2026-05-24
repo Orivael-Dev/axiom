@@ -1,6 +1,7 @@
 """Tests for the firewall /help routes — render docs/firewall/*.md."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -16,6 +17,10 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setenv("AXIOM_FIREWALL_TENANT_DIR", str(tmp_path / "tenants"))
     monkeypatch.setenv("AXIOM_MASTER_KEY", "test" + "0" * 60)
     monkeypatch.setenv("AXIOM_FIREWALL_SESSION_SECRET", "test-session-secret")
+    # Point packs at an empty tmp dir so /help/packs/<name> tests below
+    # can drop in a signed test pack without colliding with the real
+    # packs/ tree (those are signed under the prod master key).
+    monkeypatch.setenv("AXIOM_FIREWALL_PACKS_DIR", str(tmp_path / "packs"))
     for mod in (
         "axiom_firewall.db", "axiom_firewall.auth",
         "axiom_firewall.dashboard",
@@ -24,6 +29,41 @@ def isolated(monkeypatch, tmp_path):
         if mod in sys.modules:
             del sys.modules[mod]
     yield tmp_path
+
+
+def _write_signed_pack(packs_root: Path, name: str = "test-pack") -> dict:
+    """Sign and persist a minimal pack manifest in packs_root/<name>/pack.json.
+
+    Returns the on-disk dict so tests can assert against its fields.
+    Uses sign_first_party so _load_pack's verify check succeeds under
+    the test AXIOM_MASTER_KEY."""
+    from axiom_firewall.skill_pack import sign_first_party
+    manifest = {
+        "format_version": "1.0",
+        "name":           name,
+        "title":          "Test Pack",
+        "description":    "A pack used to exercise the per-pack help route.",
+        "version":        "0.1.0",
+        "author":         "Orivael Dev",
+        "license":        "MIT",
+        "homepage":       "https://docs.orivael.dev/firewall/packs/test-pack",
+        "tags":           ["test", "compliance"],
+        "tested_against": ["axiom-firewall>=0.1.0"],
+        "policy": {
+            "version": 1,
+            "additional_block_patterns": [
+                {"class": "HARM",    "regex": "block this"},
+                {"class": "DECEIVE", "regex": "or this"},
+            ],
+            "disabled_default_classes": ["CLARIFY"],
+            "allow_only_classes": None,
+        },
+    }
+    manifest["signature"] = sign_first_party(manifest)
+    pack_dir = packs_root / "packs" / name
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest
 
 
 def _client():
@@ -170,3 +210,99 @@ def test_dashboard_nav_links_to_help(isolated):
     assert r.status_code == 200
     # Signed-out nav: Help link visible
     assert 'href="/help"' in r.text
+
+
+# ─── per-pack help page (/help/packs/<name>) ───────────────────────────
+
+def test_help_pack_page_renders_manifest(isolated):
+    """`/help/packs/<name>` replaces the broken `homepage` URLs every
+    signed pack carries. It must load the manifest, verify the
+    signature, and render the marketing-shaped fields plus a policy
+    summary driven by the manifest contents."""
+    manifest = _write_signed_pack(isolated, name="test-pack")
+    client = _client()
+    r = client.get("/help/packs/test-pack")
+    assert r.status_code == 200, r.text
+    # Marketing-shaped fields:
+    assert manifest["title"] in r.text
+    assert manifest["description"] in r.text
+    assert manifest["version"] in r.text
+    assert manifest["author"] in r.text
+    assert manifest["license"] in r.text
+    # Tags rendered as chips:
+    for tag in manifest["tags"]:
+        assert f">{tag}<" in r.text
+    # Policy summary covers the manifest's actual policy shape:
+    assert "2 block pattern" in r.text or "2 HARM" in r.text or "Adds" in r.text
+    assert "CLARIFY" in r.text   # disabled_default_classes
+    # Backlinks present:
+    assert 'href="/dashboard/packs"' in r.text
+    assert 'href="/help/skill-packs"' in r.text
+
+
+def test_help_pack_page_404_for_unknown(isolated):
+    """Unknown packs return 404 — no half-rendered shell."""
+    client = _client()
+    r = client.get("/help/packs/never-published-pack-xyz")
+    assert r.status_code == 404
+
+
+def test_help_pack_page_404_for_unsigned(isolated):
+    """A pack.json that lacks a valid first-party signature must NOT
+    render — the same defense the dashboard install flow uses."""
+    pack_dir = isolated / "packs" / "tampered"
+    pack_dir.mkdir(parents=True)
+    bad = {
+        "format_version": "1.0", "name": "tampered", "title": "X",
+        "description": "x", "version": "0.0.0", "author": "x",
+        "license": "MIT", "tags": [], "tested_against": [],
+        "policy": {"version": 1},
+        "signature": "0" * 64,   # syntactically valid hex, semantically wrong
+    }
+    (pack_dir / "pack.json").write_text(json.dumps(bad), encoding="utf-8")
+    client = _client()
+    r = client.get("/help/packs/tampered")
+    assert r.status_code == 404
+
+
+def test_help_pack_page_blocks_traversal(isolated):
+    """A pack name containing `/` or `..` must be refused — defense
+    against attempting to read arbitrary files via the manifest path."""
+    client = _client()
+    # FastAPI may decode %2F early; either way the response must not
+    # be 200 and must not surface arbitrary file contents.
+    for evil in ("..%2Fetc", "..%2F..%2Fetc%2Fpasswd"):
+        r = client.get(f"/help/packs/{evil}")
+        assert r.status_code in (404, 400)
+
+
+def test_packs_template_links_to_help_pack_page(isolated):
+    """The Skill Packs dashboard card's `Docs →` must point at
+    `/help/packs/<name>` (the on-host route) rather than the broken
+    `homepage` URL stamped into the signed manifest. Tested by
+    rendering the template directly so we don't need a logged-in
+    session."""
+    from fastapi.templating import Jinja2Templates
+    tpl_dir = Path(__file__).resolve().parents[1] / "axiom_firewall" / "templates"
+    templates = Jinja2Templates(directory=str(tpl_dir))
+    # Minimal fake pack record matching the dict shape the real handler
+    # passes — just needs .name + a couple of display fields.
+    class _Fake:
+        name = "test-pack"
+        version = "0.1.0"
+        title = "Test Pack"
+        description = "x"
+        author = "Orivael Dev"
+        license = "MIT"
+        tags: list[str] = []
+        homepage = "https://docs.orivael.dev/firewall/packs/test-pack"
+    fake_request = type("R", (), {"session": {}, "scope": {"type": "http"}})()
+    body = templates.get_template("packs.html").render(
+        request=fake_request, packs=[_Fake()], installed=None,
+        registry_url=None, brand_domain="orivael.dev", docs_host="docs.orivael.dev",
+        dashboard_host="firewall.orivael.dev", tier_limits={}, tier_prices={},
+        free_tier=False, beta_feedback_url=None, tenant=None,
+    )
+    assert 'href="/help/packs/test-pack"' in body
+    # The broken homepage URL must not appear in the rendered card.
+    assert "docs.orivael.dev/firewall/packs/test-pack" not in body
