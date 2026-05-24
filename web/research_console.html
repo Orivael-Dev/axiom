@@ -1035,6 +1035,44 @@
       test_generation:      "Test Generation",
     };
 
+    // Which retrieval domains make sense for each workflow. The domain
+    // filter row hides buttons not in the active workflow's set, and
+    // auto-switches the active domain if the current selection drops
+    // out. General is always included so the user never has zero
+    // domains to pick. Order in the array drives the auto-switch
+    // fallback (first entry wins).
+    const workflowDomains = {
+      general_research:     ["general", "medical", "finance", "security", "hr", "supply_chain"],
+      investor_research:    ["general", "finance"],
+      enterprise_targeting: ["general"],
+      competitive_analysis: ["general"],
+      customer_discovery:   ["general"],
+      patent_counsel_packet:["general", "security"],
+      code_generation:      ["general", "security"],
+      test_generation:      ["general", "security"],
+    };
+
+    function applyWorkflowDomainFilter(workflow) {
+      const allowed = new Set(workflowDomains[workflow] || ["general"]);
+      const buttons = Array.from(els.domainRow.querySelectorAll(".filter"));
+      let activeDropped = false;
+      for (const b of buttons) {
+        const ok = allowed.has(b.dataset.domain);
+        b.hidden   = !ok;
+        b.disabled = !ok;
+        if (b.classList.contains("active") && !ok) activeDropped = true;
+      }
+      if (activeDropped) {
+        const first = buttons.find((b) => allowed.has(b.dataset.domain));
+        if (first) {
+          buttons.forEach((x) => x.classList.remove("active"));
+          first.classList.add("active");
+          activeDomain = first.dataset.domain;
+          els.domainMetric.textContent = domainLabels[activeDomain] || "General";
+        }
+      }
+    }
+
     // Top-nav: smooth-scroll to the corresponding section and sync the
     // .active pill. The "Ledger →" pill is a real href (/ledger) and
     // navigates away — let the browser handle it.
@@ -1083,7 +1121,12 @@
       b.classList.add("active");
       activeWorkflow = b.dataset.workflow;
       els.workflowMetric.textContent = workflowLabels[activeWorkflow] || "General Research";
+      applyWorkflowDomainFilter(activeWorkflow);
     });
+
+    // Apply filter once on load so the default workflow's domain set
+    // is reflected even before the user clicks anything.
+    applyWorkflowDomainFilter(activeWorkflow);
 
     els.runBtn.addEventListener("click", runResearchOnUi);
     els.input.addEventListener("keydown", (e) => { if (e.key === "Enter") runResearchOnUi(); });

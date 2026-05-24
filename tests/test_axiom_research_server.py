@@ -110,6 +110,61 @@ def test_health_starts_unbuilt_then_built(server_env, monkeypatch):
     assert r.json()["state_built"] is True
 
 
+def test_research_console_html_workflow_domain_map_is_complete():
+    """Every workflow button declared in research_console.html must have
+    a corresponding entry in the JS `workflowDomains` map, and every
+    domain it lists must have a matching domain button. Catches drift
+    when someone adds a workflow without updating the filter map (or
+    vice versa) — without that match the domain filter row goes stale
+    and the user sees the wrong options for a workflow."""
+    import re
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "web" / "research_console.html").read_text(encoding="utf-8")
+
+    workflow_buttons = set(re.findall(r'data-workflow="([^"]+)"', html))
+    domain_buttons   = set(re.findall(r'data-domain="([^"]+)"',   html))
+    assert workflow_buttons, "no workflow buttons found in HTML"
+    assert domain_buttons,   "no domain buttons found in HTML"
+
+    map_match = re.search(
+        r"const\s+workflowDomains\s*=\s*\{([^}]+)\}",
+        html, re.DOTALL,
+    )
+    assert map_match, "workflowDomains map not declared in HTML"
+    map_body = map_match.group(1)
+    map_keys = set(re.findall(r"(\w+):\s*\[", map_body))
+    map_domains: set[str] = set()
+    for arr_match in re.finditer(r"\[([^\]]+)\]", map_body):
+        for d in re.findall(r'"([^"]+)"', arr_match.group(1)):
+            map_domains.add(d)
+
+    assert map_keys == workflow_buttons, (
+        f"workflowDomains keys != workflow buttons: "
+        f"missing={workflow_buttons - map_keys}, "
+        f"extra={map_keys - workflow_buttons}"
+    )
+    assert map_domains.issubset(domain_buttons), (
+        f"workflowDomains references domains with no button: "
+        f"{map_domains - domain_buttons}"
+    )
+
+
+def test_research_console_html_filter_function_wired():
+    """The applyWorkflowDomainFilter call must run on every workflow
+    click AND once at page load — otherwise the default workflow's
+    domain set never gets applied. Drift here is silent in any
+    headless test that doesn't drive the DOM."""
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "web" / "research_console.html").read_text(encoding="utf-8")
+    # Function defined.
+    assert "function applyWorkflowDomainFilter(" in html
+    # Called from the workflow row click handler.
+    assert html.count("applyWorkflowDomainFilter(activeWorkflow)") >= 2, (
+        "applyWorkflowDomainFilter must be called from the workflow "
+        "click handler AND once at load to apply the default-workflow filter"
+    )
+
+
 def test_health_sales_context_reports_env_override(
     server_env, monkeypatch, tmp_path,
 ):

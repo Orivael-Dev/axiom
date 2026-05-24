@@ -462,6 +462,7 @@ def default_retriever(repo_root: Optional[Path] = None) -> "LocalRetriever | Dom
         from axiom_research_providers.pubmed import PubMedProvider
         from axiom_research_providers.clinicaltrials import ClinicalTrialsProvider
         from axiom_research_providers.openfda import OpenFDAProvider
+        from axiom_research_providers.wikipedia import WikipediaProvider
     except ImportError as e:
         import logging
         logging.getLogger("axiom.retriever").warning(
@@ -471,8 +472,12 @@ def default_retriever(repo_root: Optional[Path] = None) -> "LocalRetriever | Dom
         _DEFAULT = local_inner
         return _DEFAULT
 
+    # WikipediaProvider runs for general + medical domains. The
+    # MultiProviderRetriever's domain filter handles routing — Wikipedia
+    # doesn't intrude on finance/security/hr/supply_chain queries.
     _DEFAULT = MultiProviderRetriever([
         LocalCorpusProvider(local_inner),
+        WikipediaProvider(),
         PubMedProvider(),
         ClinicalTrialsProvider(),
         OpenFDAProvider(),
