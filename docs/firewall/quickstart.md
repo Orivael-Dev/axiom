@@ -125,5 +125,5 @@ async function chat(prompt: string): Promise<string> {
 ## What's next
 
 - [Customize block patterns for your tenant](custom-policies.md)
-- [Set up Stripe billing for paid tiers](billing.md)
 - [Read the full API reference](api-reference.md)
+- Email `sales@orivael.dev` for paid-tier pricing

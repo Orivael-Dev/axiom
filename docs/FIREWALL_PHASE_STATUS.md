@@ -99,7 +99,7 @@ GAME_PLAN.md §2 deliverables, mapped to code + tests:
 | Output-side guard | `axiom_guard_api.py:/guard/output` | 8 (`test_axiom_firewall_output_endpoint.py`) |
 | Security hardening | covered across firewall modules | 6 (`test_axiom_firewall_hardening.py`) |
 | Python + TS SDK skeletons | `firewall_sdk/python/`, `firewall_sdk/typescript/` | — |
-| Quickstart + operations docs | `docs/firewall/quickstart.md`, `docs/firewall/operations-runbook.md`, `docs/firewall/api-reference.md`, `docs/firewall/python-sdk.md`, `docs/firewall/typescript-sdk.md`, `docs/firewall/self-hosting.md`, `docs/firewall/billing.md`, `docs/firewall/custom-policies.md`, `docs/firewall/launch.md` | — |
+| Quickstart + operations docs | `docs/firewall/quickstart.md`, `docs/firewall/internal/operations-runbook.md`, `docs/firewall/api-reference.md`, `docs/firewall/python-sdk.md`, `docs/firewall/typescript-sdk.md`, `docs/firewall/self-hosting.md`, `docs/firewall/internal/billing.md`, `docs/firewall/custom-policies.md`, `docs/firewall/internal/launch.md` | — |
 | Deploy artifacts | `deploy/firewall/{Dockerfile, docker-compose.yml, Caddyfile, ecs-task-definition.json, cloudformation.yaml, vps-setup.md}` | — |
 
 **Gap to a paying customer:** none in the code/test surface.

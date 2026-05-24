@@ -35,18 +35,10 @@ Layer custom block patterns on top with a [tenant policy](custom-policies.md).
 | [Python SDK](python-sdk.md) | `pip install axiom-firewall` |
 | [TypeScript SDK](typescript-sdk.md) | `npm install @axiom/firewall` |
 | [Custom policies](custom-policies.md) | Per-tenant block patterns + whitelists |
-| [Billing](billing.md) | Pricing, usage, upgrades, invoices |
 
-## Pricing at a glance
+## Pricing
 
-| Tier | Price | Calls / month |
-|---|---|---|
-| Free | $0 | 1,000 |
-| Indie | $49 | 50,000 + $0.001/call overage |
-| Team | $199 | 500,000 + $0.0005/call overage |
-| Enterprise | custom | unlimited, SOC 2 / DPA / BAA |
-
-[Full pricing details](billing.md).
+Email `sales@orivael.dev` for pricing and to discuss your use case.
 
 ## Compliance
 

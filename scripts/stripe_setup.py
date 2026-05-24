@@ -16,7 +16,7 @@ Run once with your live or test secret key:
 Safe to re-run — looks up existing objects by name/lookup_key before
 creating. Tested against Stripe API version 2024-12-18.
 
-Pricing (matches docs/firewall/billing.md and Phase 1 Decisions §5):
+Pricing (matches docs/firewall/internal/billing.md and Phase 1 Decisions §5):
   Indie    $49/mo + $0.001/call overage past 50,000
   Team     $199/mo + $0.0005/call overage past 500,000
 """

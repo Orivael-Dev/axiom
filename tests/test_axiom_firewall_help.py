@@ -41,15 +41,14 @@ def test_help_index_returns_html(isolated):
 
 
 def test_help_index_has_nav_to_other_docs(isolated):
-    """Every .md under docs/firewall/ should appear in the per-doc
-    nav row so beta testers can jump between Quickstart, Billing,
+    """Every customer-facing .md under docs/firewall/ should appear in
+    the per-doc nav row so beta testers can jump between Quickstart,
     Skill Packs, etc. without leaving the dashboard."""
     client = _client()
     r = client.get("/help")
     assert r.status_code == 200
     # The most load-bearing docs for a beta tester:
-    for expected_slug in ("quickstart", "billing", "skill-packs",
-                            "api-reference"):
+    for expected_slug in ("quickstart", "skill-packs", "api-reference"):
         assert f'href="/help/{expected_slug}"' in r.text, \
             f"missing nav link for {expected_slug}"
 
@@ -63,11 +62,29 @@ def test_help_quickstart_renders(isolated):
     assert "axfw_" in r.text   # the api-key prefix is mentioned
 
 
-def test_help_billing_renders(isolated):
+@pytest.mark.parametrize("slug", ["launch", "billing", "operations-runbook"])
+def test_help_internal_docs_are_404(isolated, slug):
+    """Operator-only docs (launch playbook, billing internals,
+    operations runbook) must not be reachable via /help/<slug>. The
+    files live under docs/firewall/internal/, the Dockerfile excludes
+    that subdirectory from the image, and dashboard.py keeps an
+    explicit denylist as a third line of defense."""
     client = _client()
-    r = client.get("/help/billing")
-    assert r.status_code == 200
-    assert "<h1" in r.text
+    r = client.get(f"/help/{slug}")
+    assert r.status_code == 404, \
+        f"/help/{slug} returned {r.status_code} — internal doc must be hidden"
+
+
+def test_help_index_does_not_link_internal_docs(isolated):
+    """The nav row built from docs/firewall/*.md should not surface
+    the internal docs even if a future change moves them back to the
+    top level (the denylist still hides them, but a leaked nav link
+    is itself a confused-deputy signal worth catching in tests)."""
+    client = _client()
+    r = client.get("/help")
+    for forbidden in ("launch", "billing", "operations-runbook"):
+        assert f'href="/help/{forbidden}"' not in r.text, \
+            f"internal doc {forbidden!r} surfaced in /help nav"
 
 
 def test_help_unknown_slug_returns_404(isolated):

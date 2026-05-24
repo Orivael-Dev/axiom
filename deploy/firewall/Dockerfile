@@ -49,7 +49,12 @@ COPY axiom_signing.py            ./
 # Live docs source for the in-dashboard /help page. dashboard.py reads
 # from BASE_DIR.parent / "docs" / "firewall", so this must land at
 # /app/docs/firewall/*.md alongside the package.
-COPY docs/firewall/         ./docs/firewall/
+#
+# IMPORTANT: glob the top-level *.md only — do NOT recurse. The
+# docs/firewall/internal/ subdirectory holds operator-only runbooks
+# (launch playbook, billing, operations runbook) that must never
+# ship inside a publicly-reachable container image.
+COPY docs/firewall/*.md     ./docs/firewall/
 # First-party skill packs. dashboard.py reads from
 # BASE_DIR.parent / "packs" (i.e. /app/packs) unless
 # AXIOM_FIREWALL_PACKS_DIR overrides. Signatures inside each
