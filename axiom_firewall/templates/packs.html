@@ -60,9 +60,7 @@
             <button type="submit" class="cta-button">Install</button>
           {% endif %}
         </form>
-        {% if p.homepage %}
-          <a href="{{ p.homepage }}" class="link pack-docs">Docs →</a>
-        {% endif %}
+        <a href="/help/packs/{{ p.name }}" class="link pack-docs">Docs →</a>
       </div>
     {% endfor %}
   </div>

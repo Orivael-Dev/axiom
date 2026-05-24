@@ -780,6 +780,114 @@ def help_page(request: Request, slug: str):
     return HTMLResponse(content=html)
 
 
+def _render_pack_help_body(manifest: skill_pack.SkillPackManifest) -> str:
+    """Render a verified pack manifest as the body of a /help/packs/<name> page.
+
+    The manifest has already been signature-verified by `_load_pack`, so
+    this function trusts every field. We render the marketing-shaped
+    fields (title / description / version / tags) plus a plain-English
+    policy summary, and put the raw policy JSON in a <details> for the
+    operators who want to audit the exact regexes."""
+    from html import escape as e
+    import json as _json
+
+    pol = manifest.policy or {}
+    add_patterns = pol.get("additional_block_patterns") or []
+    disabled = pol.get("disabled_default_classes") or []
+    allow_only = pol.get("allow_only_classes")
+    tested = manifest.tested_against or []
+
+    parts: list[str] = []
+    parts.append(f"<h1>{e(manifest.title or manifest.name)}</h1>")
+    parts.append(
+        '<p class="pack-meta"><code>{name}</code> v{ver} · '
+        '{author} · {license} · <span title="HMAC-SHA256 first-party '
+        'signature verified at load time">signature verified ✓</span></p>'
+        .format(
+            name=e(manifest.name),
+            ver=e(manifest.version),
+            author=e(manifest.author or "unknown"),
+            license=e(manifest.license or "unspecified"),
+        )
+    )
+    if manifest.description:
+        parts.append(f"<p>{e(manifest.description)}</p>")
+    if manifest.tags:
+        tags_html = "".join(
+            f'<span class="pack-tag">{e(t)}</span>'
+            for t in manifest.tags
+        )
+        parts.append(f'<p class="pack-tags">{tags_html}</p>')
+
+    parts.append("<h2>What this pack does</h2><ul>")
+    if add_patterns:
+        # Group patterns by intent class for a one-line summary per class.
+        from collections import Counter
+        by_class = Counter(p.get("class", "?") for p in add_patterns)
+        breakdown = ", ".join(
+            f"{n} {cls.upper()}" for cls, n in sorted(by_class.items())
+        )
+        parts.append(
+            f"<li>Adds <strong>{len(add_patterns)}</strong> block "
+            f"pattern(s): {e(breakdown)}.</li>"
+        )
+    if disabled:
+        parts.append(
+            "<li>Disables default block classes: "
+            + ", ".join(f"<code>{e(c)}</code>" for c in disabled)
+            + ".</li>"
+        )
+    if allow_only:
+        parts.append(
+            "<li>Whitelist mode — allows only: "
+            + ", ".join(f"<code>{e(c)}</code>" for c in allow_only)
+            + ". Everything else is blocked.</li>"
+        )
+    if not (add_patterns or disabled or allow_only):
+        parts.append("<li>Inherits the default policy unchanged.</li>")
+    parts.append("</ul>")
+
+    if tested:
+        parts.append("<h2>Tested against</h2><ul>")
+        for t in tested:
+            parts.append(f"<li><code>{e(str(t))}</code></li>")
+        parts.append("</ul>")
+
+    parts.append(
+        '<h2>Full policy</h2>'
+        '<details><summary>Show raw policy JSON</summary>'
+        f'<pre><code>{e(_json.dumps(pol, indent=2, sort_keys=True))}</code></pre>'
+        '</details>'
+    )
+    parts.append(
+        '<p style="margin-top:2rem"><a href="/dashboard/packs">'
+        '← Back to Skill Packs</a> · '
+        '<a href="/help/skill-packs">Skill Pack format reference</a></p>'
+    )
+    return "".join(parts)
+
+
+@app.get("/help/packs/{name}", response_class=HTMLResponse)
+def help_pack_page(request: Request, name: str):
+    """Per-pack help page rendered from the verified manifest.
+
+    Replaces the broken `homepage` URLs that every signed pack carries
+    (`https://docs.orivael.dev/firewall/packs/<name>` — a host that
+    isn't served). `_load_pack` enforces name validation, signature
+    verification, and returns None for missing/tampered packs."""
+    manifest = _load_pack(name)
+    if manifest is None:
+        raise HTTPException(
+            status_code=404, detail=f"no pack named {name!r}",
+        )
+    html = _HELP_HTML_TEMPLATE.format(
+        title=f"{manifest.title or manifest.name} — Skill Pack",
+        nav=_help_render_nav("skill-packs"),
+        body=_render_pack_help_body(manifest),
+    )
+    return HTMLResponse(content=html)
+
+
 @app.post("/v1/guard/check")
 async def guard_check(request: Request):
     """Authenticated intent classification of *input* prompts.
