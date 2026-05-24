@@ -1,5 +1,5 @@
 """
-AXIOM Developer CLI v1.8.7
+AXIOM Developer CLI v1.8.8
 Manifest: axiom-cli-impl-v1 | TRUST_LEVEL=3 CANNOT_MUTATE | UTF-8 BUG-003
 Usage: python axiom_cli.py <command> [args]
 BUG-007: .hexdigest() | BUG-008: .encode("utf-8")
@@ -14,7 +14,7 @@ if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(encoding="utf-8")
 if hasattr(sys.stderr, "reconfigure"): sys.stderr.reconfigure(encoding="utf-8")
 
 # ── CANNOT_MUTATE ─────────────────────────────────────────────
-VERSION: str = "1.8.7"
+VERSION: str = "1.8.8"
 _FROZEN = frozenset({"VERSION"})
 
 
@@ -186,7 +186,7 @@ def _b_chain():
     p = Path("axiom_files/.chain/supply_chain.json")
     return p.exists() and len(json.loads(p.read_text(encoding="utf-8"))) > 0
 
-def _b_version(): return VERSION == "1.8.7"
+def _b_version(): return VERSION == "1.8.8"
 
 
 _SMOKE = [
