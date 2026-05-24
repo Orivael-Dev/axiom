@@ -94,7 +94,11 @@ _HARM_PATTERNS = [
     r"\bself[\s-]?harm(?:ing)?\b",
     r"\bsuicid(?:e|al)\s+(?:method|instructions|how)\b",
     r"\b(?:cp|csam|child(?:ren)?\s+(?:sexual|porn))\b",
-    r"\b(?:dox|doxx|stalk)\s+(?:them|him|her|the\s+\w+)\b",
+    r"\b(?:dox{1,2}(?:ing)?|stalk(?:ing)?)\s+"
+    r"(?:them|him|her|someone|some(?:body|one)\s+else|"
+    r"(?:a|the|that|this)\s+\w+|"
+    r"strangers?|people|kids?|children|coworkers?|neighbors?|"
+    r"minors?|teens?|teenagers?|civilians?|individuals?|persons?)\b",
     r"\bramsomware|cryptolock(?:er)?\b",  # common typo + brand
     # ── Scam-call payment fraud / coercion (ORVL-019 §4 Hello Operator) ──
     r"\b(?:send|buy|purchase|pay\s+(?:in|with))\s+(?:itunes|google\s+play|"
@@ -105,6 +109,35 @@ _HARM_PATTERNS = [
     r"now|today|arrest|warrant|prison|jail)\b",
     r"\b(?:warrant|arrest|prosecution)\s+(?:for|against)\s+(?:you|your)\b",
     r"\bclear\s+(?:your\s+)?(?:debt|balance|account)\s+(?:immediately|now|today)\b",
+    # ── PII disclosure requests ─────────────────────────────────────────
+    # Triangulated three-token match (disclosure verb + third-party
+    # possessive + PII-class noun) so legitimate uses — "share MY phone
+    # number", "what IS PII", "how to PROTECT personal information" —
+    # don't fire. The third-party possessive is the key disambiguator.
+    r"\b(?:give\s+(?:out|away)|hand\s+(?:out|over)|disclose|share|release|"
+    r"leak|reveal|sell|post|publish|distribute|expose|broadcast|dump|"
+    r"send\s+(?:me|us))\s+"
+    r"(?:someone(?:'?s)?|some(?:body|one)\s+else'?s?|another(?:'?s)?|"
+    r"other\s+(?:people'?s?|persons?'?s?)|their|his|her|"
+    r"(?:a|the|that|this)\s+(?:user|customer|patient|client|employee|"
+    r"person|individual|stranger|kid|child|minor)'?s?)\s+"
+    r"(?:pii|ppi|personal\s+(?:info(?:rmation)?|data|details)|"
+    r"private\s+(?:info(?:rmation)?|data|details)|"
+    r"ssn|social\s+security(?:\s+number)?|"
+    r"home\s+address|address|phone\s+(?:number|num)|"
+    r"email(?:\s+address)?|credit\s+card(?:\s+(?:info|number|details))?|"
+    r"password|date\s+of\s+birth|dob|"
+    r"driver'?s?\s+licen[cs]e|passport(?:\s+number)?|"
+    r"bank\s+(?:account|details)|medical\s+record)\b",
+    # Lookup-phrased PII fishing: "what is his SSN", "tell me her address".
+    r"\b(?:what(?:'s|\s+is)|tell\s+me|give\s+me|i\s+(?:want|need))\s+"
+    r"(?:someone(?:'?s)?|another(?:'?s)?|other\s+people'?s?|"
+    r"his|her|their|the\s+(?:user|customer|patient|client|employee|"
+    r"person|individual)'?s?)\s+"
+    r"(?:pii|ppi|ssn|social\s+security(?:\s+number)?|"
+    r"home\s+address|phone\s+number|email\s+address|"
+    r"credit\s+card(?:\s+number)?|password|"
+    r"date\s+of\s+birth|dob|bank\s+account|medical\s+record)\b",
 ]
 
 _DECEIVE_PATTERNS = [
