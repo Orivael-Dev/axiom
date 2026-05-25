@@ -87,3 +87,11 @@ certs/
 .DS_Store
 Thumbs.db
 tests/_tmp_bonded_pair_server_logs/
+
+# Private working overlay — per CLAUDE.md, only the README stub is tracked.
+# A fresh clone of the repo must have zero private content under here.
+/docs/internal/*
+!/docs/internal/README.md
+
+# Local dev-agent run artifacts (signed re-evaluation outputs, etc.)
+dev_agent_improvements.jsonl
