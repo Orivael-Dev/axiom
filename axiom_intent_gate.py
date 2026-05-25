@@ -118,6 +118,33 @@ def _packet_trajectory(packet: Any) -> Optional[Sequence[Sequence[float]]]:
     return list(traj)
 
 
+def _packet_pair_id(packet: Any) -> Optional[str]:
+    """Pull a bonded-pair id from the packet, if any.
+
+    Recognised locations, in order:
+      1. ``packet.pair_id`` attribute
+      2. ``packet["pair_id"]`` (Mapping)
+      3. ``packet.payload["pair_id"]``
+      4. ``packet.metadata["pair_id"]``
+    """
+    pid = getattr(packet, "pair_id", None)
+    if pid:
+        return str(pid)
+    if isinstance(packet, Mapping):
+        if packet.get("pair_id"):
+            return str(packet["pair_id"])
+        payload = packet.get("payload")
+        if isinstance(payload, Mapping) and payload.get("pair_id"):
+            return str(payload["pair_id"])
+        meta = packet.get("metadata")
+        if isinstance(meta, Mapping) and meta.get("pair_id"):
+            return str(meta["pair_id"])
+    payload = getattr(packet, "payload", None)
+    if isinstance(payload, Mapping) and payload.get("pair_id"):
+        return str(payload["pair_id"])
+    return None
+
+
 class IntentGate:
     """Cross-container gate that classifies every packet and appends a
     signed log entry. Returns the underlying ``IntentTypingResult`` so the
@@ -130,14 +157,40 @@ class IntentGate:
         classifier: IntentClassifier,
         *,
         log_path: Optional[str] = None,
+        bonded_pair_ledger: Any = None,
     ) -> None:
         if not isinstance(classifier, IntentClassifier):
             raise TypeError("classifier must be an IntentClassifier")
         self._classifier = classifier
         self._log_path = Path(log_path or DEFAULT_LOG_PATH)
+        # Optional dependency — a bonded-pair ledger to consult when a
+        # packet carries a pair_id. If revoked / not authorised, the
+        # gate short-circuits to a HARM verdict before running the
+        # lexical classifier, so revoked grants cannot pass even with
+        # benign content.
+        self._bonded_pair_ledger = bonded_pair_ledger
 
     # ── Public API ────────────────────────────────────────────────────────
     def check(self, packet: Any) -> IntentTypingResult:
+        # Bonded-pair authority gate — runs FIRST when a ledger is wired
+        # in. The whole point of the primitive: revoked grants must be
+        # denied even when the payload itself is benign.
+        if self._bonded_pair_ledger is not None:
+            pair_id = _packet_pair_id(packet)
+            if pair_id is not None:
+                from axiom_event_token.bonded_pair import is_authorized
+                if not is_authorized(self._bonded_pair_ledger, pair_id):
+                    current = self._bonded_pair_ledger.current_state(pair_id)
+                    state_signal = current or "uninitialised"
+                    result = self._classifier.seal_verdict(
+                        "HARM", 1.0,
+                        ("bonded_pair_revoked",
+                         f"pair_id={pair_id}",
+                         f"state={state_signal}"),
+                    )
+                    self._append_log(packet, result)
+                    return result
+
         text = _packet_text(packet)
         traj = _packet_trajectory(packet)
         result = self._classifier.classify(text, trajectory=traj)

@@ -314,6 +314,19 @@ class IntentClassifier:
             return False
         return hmac.compare_digest(result.signature, expected)
 
+    def seal_verdict(
+        self,
+        cls: str,
+        conf: float,
+        signals: Sequence[str],
+    ) -> IntentTypingResult:
+        """Emit a freshly-signed IntentTypingResult without running the
+        classifier. Used by external policy layers (e.g. the bonded-pair
+        revocation check in IntentGate) that have already decided the
+        verdict and just need a signed result to return to callers.
+        """
+        return self._sealed(cls, conf, tuple(signals), None)
+
     # ── Internals ─────────────────────────────────────────────────────────
     def _sealed(
         self,
