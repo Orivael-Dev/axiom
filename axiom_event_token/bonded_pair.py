@@ -46,6 +46,25 @@ from typing import Iterable, List, Mapping, Optional, Tuple
 TOKEN_KEY_NS  = b"axiom-bonded-pair-token-v1"
 LEDGER_KEY_NS = b"axiom-bonded-pair-ledger-v1"
 
+# Where the ledger lives by default. Override per-instance via
+# `BondedPairLedger(path)` or globally via the
+# `AXIOM_BONDED_PAIR_LEDGER` environment variable. Matches the
+# convention used by axiom_exoskeleton_ledger.default_ledger_path.
+DEFAULT_LEDGER_FILENAME = "bonded_pair_ledger.jsonl"
+
+
+def default_ledger_path() -> Path:
+    """Default location for the bonded-pair ledger.
+
+    Resolution order:
+      1. ``$AXIOM_BONDED_PAIR_LEDGER`` env var (absolute path)
+      2. ``~/.axiom/bonded_pair_ledger.jsonl``
+    """
+    override = os.environ.get("AXIOM_BONDED_PAIR_LEDGER")
+    if override:
+        return Path(override)
+    return Path.home() / ".axiom" / DEFAULT_LEDGER_FILENAME
+
 # Allowed states. "ACTIVE_VALIDATED" is the default at init; "REVOKED"
 # and "EXPIRED" are terminal. Operators can add more states by
 # extending this set, but a fixed set keeps the gate code small.
@@ -220,8 +239,8 @@ class BondedPairLedger:
     blocking on the writer.
     """
 
-    def __init__(self, path: Path) -> None:
-        self.path = Path(path)
+    def __init__(self, path: Optional[Path] = None) -> None:
+        self.path = Path(path) if path else default_ledger_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     # ── writes ──
@@ -423,6 +442,8 @@ __all__ = [
     "BondedToken", "StateTransition",
     "BondedPairLedger", "BondedPairLedgerError",
     "mint_pair", "verify_pair", "is_authorized",
+    "default_ledger_path",
     "TOKEN_KEY_NS", "LEDGER_KEY_NS",
     "DEFAULT_STATES", "INITIAL_STATE", "TERMINAL_STATES",
+    "DEFAULT_LEDGER_FILENAME",
 ]
