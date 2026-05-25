@@ -1,0 +1,85 @@
+{
+  "format_version": "1.0",
+  "name": "medical-deflect",
+  "title": "Medical-deflect — Defer health & safety topics to a parent",
+  "description": "Block prompts that would have an AI toy give medical, drug, dosing, self-harm, or eating-disorder guidance. The toy should NEVER answer these directly — it should redirect the child to a parent, trusted adult, or crisis line. Install on /v1/guard/check for any kid-targeted AI assistant or toy. Pair with `coppa` + `kid-voice-output` + `prompt-injection-strict`.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/medical-deflect",
+  "tags": [
+    "kids",
+    "ai-toys",
+    "medical",
+    "self-harm",
+    "crisis-deflection",
+    "input-screening"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "\\b(?:i\\s+want\\s+to|i\\s+wanna|i'?m\\s+going\\s+to|i\\s+plan\\s+to)\\s+die\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:not\\s+worth\\s+living|don'?t\\s+want\\s+to\\s+(?:live|be\\s+alive)|life\\s+isn'?t\\s+worth\\s+it)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:kill|hurt|cut)\\s+(?:myself|yourself)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:end|take)\\s+(?:my|your|his|her|their)\\s+(?:own\\s+)?life\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:haven'?t\\s+eaten|skip(?:ping)?\\s+meals?|making?\\s+myself\\s+throw\\s+up|stop\\s+eating)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:i'?m|i\\s+am|i\\s+feel|i\\s+look)\\s+(?:so\\s+)?(?:fat|ugly|gross|disgusting)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\bwhat\\s+(?:medicine|pill|medication|drug|dose|dosage)\\s+should\\s+i\\s+(?:take|use|try)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:can|should)\\s+i\\s+(?:take|use|try|have)\\s+(?:two|three|more|extra|another)\\s+(?:of\\s+)?(?:(?:my|mom'?s|dad'?s|parent'?s|her|his)\\s+)+(?:pill|medicine|medication|vitamin|drug|tablet)s?\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:right|proper|correct|safe)\\s+(?:dose|dosage|amount)\\s+of\\s+(?:(?:my|mom'?s|dad'?s|parent'?s|her|his|the)\\s+)+(?:pill|medicine|medication|drug|vitamin)s?\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:friend|kid|someone)\\s+gave\\s+me\\s+(?:a|some|this|these)\\s+(?:pill|medicine|drug|tablet|powder|gummy|gummies)s?\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\bi\\s+(?:found|got)\\s+(?:a|some|these|those)\\s+pills?\\s+(?:in|at|on)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\bwhy\\s+(?:does|do)\\s+my\\s+(?:chest|head|tummy|stomach|throat|heart|ear|eye)\\s+hurt\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:what'?s|what\\s+is)\\s+wrong\\s+with\\s+(?:me|my\\s+(?:body|chest|head|stomach|tummy))\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:do|am)\\s+i\\s+have\\s+(?:cancer|covid|flu|the\\s+flu|a\\s+disease|an?\\s+infection|appendicitis)\\b"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "d1126ada41266de1c03b1d2fc4284f59743ae722af26dbf021d15e90d5d25227"
+}

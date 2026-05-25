@@ -1,0 +1,68 @@
+{
+  "format_version": "1.0",
+  "name": "hate-deflect",
+  "title": "Hate-deflect — Refuse slurs, group ranking, and bullying instigation",
+  "description": "Block prompts that would have an AI toy teach slurs, rank groups against each other, mock a protected class, or coach a child into bullying. The toy should refuse the premise of these prompts and redirect to a kindness frame. Install on /v1/guard/check for any kid-targeted AI assistant or toy. Pair with `coppa` + `kid-voice-output` + `prompt-injection-strict` + `medical-deflect`.",
+  "version": "0.1.0",
+  "author": "Orivael Dev",
+  "license": "MIT",
+  "homepage": "https://docs.orivael.dev/firewall/packs/hate-deflect",
+  "tags": [
+    "kids",
+    "ai-toys",
+    "anti-bullying",
+    "bias-refusal",
+    "input-screening"
+  ],
+  "tested_against": [
+    "axiom-firewall>=0.1.0"
+  ],
+  "policy": {
+    "version": 1,
+    "additional_block_patterns": [
+      {
+        "class": "HARM",
+        "regex": "\\b(?:teach|tell|give)\\s+me\\s+(?:a|some|the)\\s+(?:bad\\s+word|slur|racist\\s+word|insult)s?\\s+(?:for|about|against)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:tell|make|write|say|give)\\s+(?:me\\s+)?(?:a|some)\\s+(?:racist|sexist|homophobic|transphobic|ableist|antisemitic)\\s+(?:joke|comment|insult|word|story)s?\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:joke|jokes|make\\s+fun)\\s+(?:about|of|that\\s+(?:makes?|make)\\s+fun\\s+of)\\s+(?:\\[group\\]|\\[race\\]|black|asian|white|hispanic|latino|mexican|jewish|muslim|christian|hindu|gay|trans|disabled)\\s+(?:people|kids?|children|men|women|folks)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:why\\s+are|are|how\\s+are)\\s+(?:people\\s+of|all)\\s+(?:\\[group\\]|\\[race\\]|black|asian|white|hispanic|latino|mexican|jewish|muslim|christian|hindu|gay|trans|disabled)\\s+(?:so\\s+)?(?:bad|dumb|stupid|lazy|evil|worse|inferior|gross|ugly)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:are|is)\\s+(?:girls?|boys?|women|men|kids?|children)\\s+(?:dumb(?:er)?|smart(?:er)?|stupid(?:er)?|better|worse|stronger|weaker)\\s+than\\s+(?:girls?|boys?|women|men|kids?|children)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\bwhich\\s+(?:group|race|religion|ethnicity|gender|sex)\\s+(?:of\\s+(?:people|kids?))?\\s*(?:is|are)\\s+(?:the\\s+)?(?:smart(?:est)?|dumb(?:est)?|stupid(?:est)?|best|worst|better|worse|inferior|superior|strongest|weakest)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\bwhich\\s+religion\\s+(?:is\\s+(?:the\\s+)?(?:worst|best|wrong|right|true|false|stupid|dumb)|do\\s+you\\s+hate)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\bshould\\s+i\\s+(?:make\\s+fun\\s+of|bully|tease|laugh\\s+at|push|hit)\\s+(?:the\\s+)?(?:new\\s+kid|\\[group\\]\\s+kid|black\\s+kid|asian\\s+kid|gay\\s+kid|fat\\s+kid|disabled\\s+kid|weird\\s+kid|short\\s+kid)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:make\\s+fun\\s+of|bully|tease|push|laugh\\s+at)\\s+(?:him|her|them|the\\s+kid)\\s+because\\s+(?:he|she|they)\\s+(?:talks|looks|walks|dresses|prays|sounds|smells)\\s+(?:funny|weird|different|gay|stupid|wrong)\\b"
+      },
+      {
+        "class": "HARM",
+        "regex": "\\b(?:all|most|every)\\s+(?:\\[group\\]|black|asian|white|hispanic|latino|mexican|jewish|muslim|christian|hindu|gay|trans|disabled)\\s+(?:people|kids?|children|men|women)\\s+(?:are|act)\\s+(?:dumb|stupid|lazy|evil|bad|gross|ugly|worse|inferior)\\b"
+      }
+    ],
+    "disabled_default_classes": [],
+    "allow_only_classes": null
+  },
+  "signature": "218ddd8de40a203a3e3870bb3769923a59509dafb63a9c4666a84b47425c43d9"
+}

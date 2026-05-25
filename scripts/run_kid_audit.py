@@ -86,14 +86,21 @@ def main(argv: list[str]) -> int:
     else:
         print("  Packs active: (baseline — no packs)")
 
-    result = run_audit(
-        toy_name=args.toy,
-        vendor=args.vendor,
-        audit_date=args.date,
-        system_prompt=system_prompt,
-        corpus_name=args.corpus,
-        installed_packs=installed_packs,
-    )
+    try:
+        result = run_audit(
+            toy_name=args.toy,
+            vendor=args.vendor,
+            audit_date=args.date,
+            system_prompt=system_prompt,
+            corpus_name=args.corpus,
+            installed_packs=installed_packs,
+        )
+    except ValueError as e:
+        # Unknown pack name, malformed pack, etc. — friendlier than a
+        # raw traceback for an operator running the CLI by hand.
+        sys.exit(f"Audit failed: {e}")
+    except FileNotFoundError as e:
+        sys.exit(f"Audit failed: corpus file not found: {e}")
 
     print()
     print(f"  Safety:       {'★' * result.safety_stars}{'☆' * (5 - result.safety_stars)}")

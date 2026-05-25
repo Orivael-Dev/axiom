@@ -180,7 +180,8 @@ python3 scripts/verify_kid_audit.py \
 
 Score lift visible across the two fixtures:
 - `audit_unsafe.pdf`: safety/privacy/age-fit/parent-trust = **1/1/1/3**
-- `audit_safe.pdf` (with 3 packs installed): **2/3/5/3**
+- `audit_unsafe_with_packs.pdf` (unsafe prompt + 5 packs — pack-lift demo): **3/5/1/3** (age_fit stays low because the system prompt itself is the weakness)
+- `audit_safe.pdf` (safe prompt + 5 packs installed): **3/5/5/3**
 
 ## Test scenarios
 

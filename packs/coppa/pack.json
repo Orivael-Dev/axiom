@@ -22,11 +22,19 @@
     "additional_block_patterns": [
       {
         "class": "HARM",
-        "regex": "(?:ask|tell\\s+me)\\s+(?:the\\s+)?(?:child|kid|student|minor)'?s?\\s+(?:home\\s+)?(?:address|phone\\s+number|email|school|full\\s+name|birthday|location)"
+        "regex": "(?:ask|tell)\\s+(?:me\\s+)?(?:the\\s+)?(?:child|kid|student|minor|her|his|their)'?s?\\s+(?:full\\s+name|first\\s+name|last\\s+name|surname|home\\s+address|street\\s+address|address|phone\\s+(?:number|num)|cell(?:phone)?|telephone|email(?:\\s+address)?|school|birthday|date\\s+of\\s+birth|dob|location|gps(?:\\s+location)?|ssn|social\\s+security(?:\\s+number)?|password|user\\s*name|screen\\s*name|handle|gamertag|roblox(?:\\s+(?:username|handle))?|minecraft(?:\\s+username)?|instagram|tiktok|snapchat|discord|mac\\s+address|device\\s+(?:id|identifier|serial)|persistent\\s+identifier|ip\\s+address|cookie\\s+id|ad(?:vertising)?\\s+id)"
       },
       {
         "class": "HARM",
-        "regex": "(?:what(?:'s|\\s+is)|where(?:'s|\\s+is))\\s+(?:your|the\\s+kid'?s)\\s+(?:school|home\\s+address|mom'?s\\s+phone|parents'?\\s+(?:names?|phone))"
+        "regex": "(?:what(?:'s|\\s+is)|where(?:'s|\\s+is)|give\\s+me|send\\s+me|tell\\s+me)\\s+(?:the\\s+)?(?:your|the\\s+(?:kid|child|student|minor)'?s?|his|her|their)\\s+(?:full\\s+name|first\\s+name|last\\s+name|surname|home\\s+address|street\\s+address|address|exact\\s+(?:street\\s+)?address|gps\\s+(?:coordinates|location)|location|geolocation|phone\\s+(?:number|num)|cell(?:phone)?|telephone|email(?:\\s+address)?|school|birthday|date\\s+of\\s+birth|dob|mom'?s\\s+phone|parents'?\\s+(?:names?|phone)|ssn|social\\s+security(?:\\s+number)?|password|user\\s*name|screen\\s*name|gamertag|roblox(?:\\s+(?:username|handle|password))?|minecraft(?:\\s+username)?|instagram|tiktok|snapchat|discord|mac\\s+address|device\\s+(?:id|identifier|serial)|persistent\\s+identifier|ip\\s+address|cookie\\s+id|ad(?:vertising)?\\s+id)"
+      },
+      {
+        "class": "HARM",
+        "regex": "send\\s+me\\s+(?:the\\s+(?:device|kid|child)'?s?\\s+)?(?:mac\\s+address|device\\s+(?:id|identifier|serial)|persistent\\s+identifier|cookie\\s+id|ip\\s+address|ad(?:vertising)?\\s+id)"
+      },
+      {
+        "class": "HARM",
+        "regex": "(?:can|will|please)\\s+(?:you\\s+)?(?:send|share|show|give|record|take)\\s+(?:me\\s+|us\\s+)?(?:a\\s+|some\\s+)?(?:photo|picture|selfie|video|pic|audio|voice\\s+(?:clip|recording)|recording)s?\\s+of\\s+(?:you|yourself|your\\s+(?:face|room|home))"
       },
       {
         "class": "HARM",
@@ -48,5 +56,5 @@
     "disabled_default_classes": [],
     "allow_only_classes": null
   },
-  "signature": "c899e5d235a916aa5ac13b14f4c8542d662c95966801f2dc56778e124aa1829b"
+  "signature": "ffb9dc23cdad672d54876e6360eb30335c5c81bb7ab376a236b5409e63b722ad"
 }

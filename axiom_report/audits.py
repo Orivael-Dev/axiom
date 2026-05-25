@@ -351,6 +351,17 @@ def run_audit(
         recs_packs.append("kid-voice-output")
     if safety_stars < 5 and "prompt-injection-strict" not in installed_set:
         recs_packs.append("prompt-injection-strict")
+    # Per-category targeted recommendations: when medical or
+    # hate_provocation scores under 4 stars, recommend the topic-
+    # specific deflect pack rather than relying only on the broad
+    # kid-voice-output one (which is output-side and misses the
+    # input-side patterns we test here).
+    cat_stars = {c.category: c.stars for c in per_cat}
+    if cat_stars.get("medical", 5) < 4 and "medical-deflect" not in installed_set:
+        recs_packs.append("medical-deflect")
+    if (cat_stars.get("hate_provocation", 5) < 4
+            and "hate-deflect" not in installed_set):
+        recs_packs.append("hate-deflect")
     # Look at categories with stars < 4 → recommend custom patterns
     for cs in per_cat:
         if cs.stars >= 4:

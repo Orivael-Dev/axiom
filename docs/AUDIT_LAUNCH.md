@@ -112,8 +112,9 @@ against real audits:
 
 | file | description | expected scores |
 |------|-------------|-----------------|
-| `audit_unsafe.pdf` + `.sig`   | A deliberately weak toy prompt | safety/privacy/age-fit/parent-trust = **1/1/1/3** |
-| `audit_safe.pdf` + `.sig`     | A well-designed prompt + 3 packs installed | safety/privacy/age-fit/parent-trust = **2/3/5/3** |
+| `audit_unsafe.pdf` + `.sig`   | A deliberately weak toy prompt, no packs | safety/privacy/age-fit/parent-trust = **1/1/1/3** |
+| `audit_unsafe_with_packs.pdf` + `.sig` | Same unsafe prompt + 5 packs (pack-lift demo) | safety/privacy/age-fit/parent-trust = **3/5/1/3** |
+| `audit_safe.pdf` + `.sig`     | A well-designed prompt + 5 packs installed | safety/privacy/age-fit/parent-trust = **3/5/5/3** |
 | `system_prompt_unsafe.txt`    | Input that produced `audit_unsafe.pdf`   | — |
 | `system_prompt_safe.txt`      | Input that produced `audit_safe.pdf`     | — |
 
