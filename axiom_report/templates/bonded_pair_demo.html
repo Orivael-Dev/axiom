@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bonded Paired-Token — Revocation Audit Demo</title>
+  <style>
+    @page { size: A4; margin: 22mm 18mm; }
+    body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+           font-size: 10.5pt; line-height: 1.45; color: #1c1c1c; }
+    h1 { font-size: 22pt; margin: 0 0 4pt 0; }
+    h2 { font-size: 14pt; margin: 22pt 0 6pt 0; border-bottom: 1px solid #c0c0c0;
+         padding-bottom: 3pt; }
+    h3 { font-size: 11pt; margin: 12pt 0 4pt 0; }
+    .kicker { color: #6b6b6b; font-size: 9pt; letter-spacing: 1.2pt;
+              text-transform: uppercase; margin: 0; }
+    .subtitle { color: #444; margin-top: 0; font-size: 11pt; }
+    table.meta { margin: 12pt 0 8pt 0; border-collapse: collapse; width: 100%; }
+    table.meta th { text-align: left; width: 28%; color: #555;
+                    padding: 2pt 6pt 2pt 0; font-weight: 500; }
+    table.meta td { padding: 2pt 0; font-family: "SF Mono", Menlo, monospace;
+                    font-size: 9.5pt; }
+    .lede { font-size: 11pt; }
+    .verdict { padding: 8pt 10pt; border-left: 3pt solid; margin: 6pt 0 10pt 0; }
+    .verdict.pass { border-left-color: #2c7a2c; background: #f3faf3; }
+    .verdict.fail { border-left-color: #aa2222; background: #fbf3f3; }
+    .verdict h3 { margin-top: 0; }
+    .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9pt; }
+    .sig  { color: #666; word-break: break-all; font-size: 8.5pt; }
+    pre  { background: #f6f6f6; padding: 8pt 10pt; border-radius: 3pt;
+           font-family: "SF Mono", Menlo, monospace; font-size: 8.5pt;
+           white-space: pre-wrap; word-break: break-word; }
+    .footnote { color: #6b6b6b; font-size: 9pt; margin-top: 28pt; }
+    .chip { display: inline-block; padding: 1pt 7pt; border-radius: 9pt;
+            font-size: 8.5pt; font-weight: 600; letter-spacing: 0.5pt;
+            text-transform: uppercase; }
+    .chip.active { background: #d8efd8; color: #1f5a1f; }
+    .chip.revoked { background: #f4d6d6; color: #7a1f1f; }
+    .ok   { color: #1f5a1f; font-weight: 600; }
+    .bad  { color: #7a1f1f; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<section>
+  <p class="kicker">Axiom · Bonded Paired-Token Audit Demo</p>
+  <h1>Revocation Without Key Rotation</h1>
+  <p class="subtitle">
+    A single bonded token pair, minted and signed once; authority
+    revoked mid-stream by flipping the mirror's state; the gate
+    denies the next request without re-issuing the primary or
+    touching any signing key.
+  </p>
+
+  <table class="meta">
+    <tr><th>Pair ID</th><td>{{ pair_id }}</td></tr>
+    <tr><th>Primary token</th><td>{{ primary.token_id }}</td></tr>
+    <tr><th>Mirror token</th><td>{{ mirror.token_id }}</td></tr>
+    <tr><th>Ledger path</th><td>{{ ledger_path }}</td></tr>
+    <tr><th>Generated at</th><td>{{ generated_at }}</td></tr>
+    <tr><th>Report version</th><td>{{ report_version }}</td></tr>
+    <tr><th>Signing namespaces</th>
+        <td>axiom-bonded-pair-token-v1, axiom-bonded-pair-ledger-v1, axiom-report-v1</td></tr>
+  </table>
+
+  <h2>1. The minted pair</h2>
+  <p class="lede">
+    The two halves are signed once at mint time. Their content and
+    signatures never change. State lives outside the signed bytes —
+    in the ledger — so revocation is a register flip, not a re-issue.
+  </p>
+
+  <h3>Primary</h3>
+  <pre>{{ primary_json }}</pre>
+  <p class="mono">verifies: <span class="ok">{{ "✓" if primary_verifies else "✗" }}</span> &nbsp;
+     pair_verify(primary, mirror): <span class="ok">{{ "✓" if pair_verifies else "✗" }}</span></p>
+
+  <h3>Mirror</h3>
+  <pre>{{ mirror_json }}</pre>
+</section>
+
+<section>
+  <h2>2. State register — every transition</h2>
+  <p>
+    The ledger is append-only and hash-chained: every entry carries
+    the previous entry's signature, so a flipped byte anywhere in the
+    log breaks <code>verify_chain()</code> from that point forward.
+  </p>
+
+  <table class="meta">
+    <tr><th>from</th><th>to</th><th>actor</th><th>signature (truncated)</th></tr>
+    {% for t in transitions %}
+    <tr>
+      <th>{{ t.from_state or "(init)" }}</th>
+      <td>
+        {% if t.to_state == "ACTIVE_VALIDATED" %}
+          <span class="chip active">{{ t.to_state }}</span>
+        {% elif t.to_state == "REVOKED" %}
+          <span class="chip revoked">{{ t.to_state }}</span>
+        {% else %}
+          {{ t.to_state }}
+        {% endif %}
+      </td>
+      <td>{{ t.actor }}</td>
+      <td class="sig">{{ t.signature[:16] }}…{{ t.signature[-16:] }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <p class="mono">verify_chain():
+    {% if chain_ok %}<span class="ok">PASS — every prev_signature link checks out.</span>
+    {% else %}<span class="bad">FAIL — chain broken.</span>{% endif %}
+  </p>
+</section>
+
+<section>
+  <h2>3. Two gate checks of the SAME benign packet</h2>
+  <p>
+    A packet whose payload would normally pass the intent classifier
+    (a benign request) is gated by the bonded-pair authority register.
+    Between the two checks, only one thing changes: the ledger entry
+    for this pair. The primary token's bytes and signature are
+    identical in both checks.
+  </p>
+
+  <h3>Packet under test</h3>
+  <pre>{{ packet_json }}</pre>
+
+  <div class="verdict pass">
+    <h3>Check 1 — pair is ACTIVE_VALIDATED</h3>
+    <p>
+      <strong>intent_class:</strong> {{ verdict_before.intent_class }} ·
+      <strong>blocked:</strong> {{ "yes" if verdict_before.intent_class in ("HARM", "DECEIVE") else "no" }} ·
+      <strong>confidence:</strong> {{ verdict_before.confidence }}
+    </p>
+    <p class="mono">signals: {{ verdict_before.signals | join(", ") or "(none)" }}</p>
+    <p class="sig">sig: {{ verdict_before.signature }}</p>
+  </div>
+
+  <h3>→ Operator runs <code>axiom-bonded-pair revoke {{ pair_id }}</code></h3>
+  <p>The ledger appends one signed transition: ACTIVE_VALIDATED → REVOKED.</p>
+
+  <div class="verdict fail">
+    <h3>Check 2 — same packet, pair is REVOKED</h3>
+    <p>
+      <strong>intent_class:</strong> {{ verdict_after.intent_class }} ·
+      <strong>blocked:</strong> <span class="bad">yes</span> ·
+      <strong>confidence:</strong> {{ verdict_after.confidence }}
+    </p>
+    <p class="mono">signals: {{ verdict_after.signals | join(", ") }}</p>
+    <p class="sig">sig: {{ verdict_after.signature }}</p>
+  </div>
+
+  <p class="lede">
+    The primary token's signature did not change. No key was
+    rotated. No consumer was notified. The next gate request was
+    denied because the gate consults the bonded-pair register, and
+    the register has the new state.
+  </p>
+</section>
+
+<section>
+  <h2>4. What this is not</h2>
+  <p>
+    This primitive is not quantum entanglement. There are no Bell
+    correlations and no non-local effects. The name in the
+    implementation is &ldquo;bonded paired-token with atomic state
+    register.&rdquo; The useful property is: authority can be
+    revoked across an arbitrary distance with a single
+    register-flip, without rotating the keys that signed the
+    original tokens. That property is what the demonstration above
+    is verifying byte-for-byte.
+  </p>
+
+  <p class="footnote">
+    HMAC-SHA256 signed under <code>axiom-report-v1</code>. Verify with
+    <code>scripts/verify_kid_audit.py --pdf &lt;this.pdf&gt; --sig &lt;this.pdf.sig&gt;</code>
+    using the AXIOM_MASTER_KEY this file was generated with.
+  </p>
+</section>
+
+</body>
+</html>

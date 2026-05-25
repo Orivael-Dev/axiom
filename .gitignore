@@ -86,3 +86,4 @@ certs/
 # OS
 .DS_Store
 Thumbs.db
+tests/_tmp_bonded_pair_server_logs/

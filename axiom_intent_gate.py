@@ -237,11 +237,23 @@ class IntentGate:
 
 
 # ── Production default ────────────────────────────────────────────────────
-def default_intent_classifier(hmac_key: bytes, *, log_path: Optional[str] = None):
+def default_intent_classifier(
+    hmac_key: bytes,
+    *,
+    log_path: Optional[str] = None,
+    bonded_pair_ledger: Any = None,
+):
     """Convenience constructor for production callers (e.g. CMAA defaults).
 
     Returns a callable suitable for ``intent_classifier=...``.
+
+    ``bonded_pair_ledger`` (optional) wires the gate to consult the
+    bonded-pair state register before classifying. Packets carrying a
+    ``pair_id`` whose state is anything other than ACTIVE_VALIDATED
+    are denied with a HARM verdict and a ``bonded_pair_revoked``
+    signal. See ``axiom_event_token.bonded_pair`` for the primitive.
     """
     classifier = IntentClassifier(hmac_key)
-    gate = IntentGate(classifier, log_path=log_path)
+    gate = IntentGate(classifier, log_path=log_path,
+                      bonded_pair_ledger=bonded_pair_ledger)
     return gate.as_callable()
