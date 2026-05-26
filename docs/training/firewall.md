@@ -167,7 +167,7 @@ a verdict** — billing failures are logged and swallowed.
 
 ### Workflow D: Right-to-erasure / GDPR Article 17
 
-See `docs/firewall/operations-runbook.md` for the SQL + Stripe-cancel
+See `docs/firewall/internal/operations-runbook.md` for the SQL + Stripe-cancel
 sequence. Phase 3 will automate this with a PDF certificate.
 
 ## Test scenarios
@@ -225,6 +225,6 @@ The team should verify these in the testing window:
 
 - Public-facing quickstart: `docs/firewall/quickstart.md`
 - API reference: `docs/firewall/api-reference.md`
-- Operations runbook: `docs/firewall/operations-runbook.md`
+- Operations runbook: `docs/firewall/internal/operations-runbook.md`
 - Phase 1 foundational decisions: `docs/PHASE_1_DECISIONS.md`
 - Game plan: `docs/GAME_PLAN.md`

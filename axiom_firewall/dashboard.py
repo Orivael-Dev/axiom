@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -222,6 +223,11 @@ app.add_middleware(_BodySizeLimitMiddleware)
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+# Live-docs source. Read from the repo's docs/firewall/ tree so a
+# single Markdown edit updates both the public docs site and the
+# in-dashboard /help page.
+FIREWALL_DOCS_DIR = BASE_DIR.parent / "docs" / "firewall"
 
 init_registry()
 _classifier = IntentClassifier(derive_key(b"axiom-firewall-v1"))
@@ -595,6 +601,314 @@ _VERDICT_FOR_CLASS = {
     "HARM":       "block",
     "DECEIVE":    "block",
 }
+
+
+# ── /help — live docs served from docs/firewall/*.md ──────────────────
+
+
+_HELP_HTML_TEMPLATE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title} — Axiom Firewall</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .help-wrap {{ max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }}
+    .help-topbar {{
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; flex-wrap: wrap;
+      margin-bottom: 32px; padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-size: 14px;
+    }}
+    .help-topbar a {{ color: inherit; text-decoration: none; }}
+    .help-topbar a:hover {{ text-decoration: underline; }}
+    .help-doc-nav {{ display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; opacity: 0.85; }}
+    .help-doc-nav a {{ padding: 2px 0; }}
+    .help-doc-nav a.current {{ font-weight: 700; opacity: 1; }}
+    .help-wrap h1 {{ font-size: 32px; margin: 0 0 18px; letter-spacing: -0.02em; }}
+    .help-wrap h2 {{ font-size: 20px; margin: 36px 0 12px; }}
+    .help-wrap h3 {{ font-size: 16px; margin: 26px 0 10px; }}
+    .help-wrap p, .help-wrap li {{ line-height: 1.65; }}
+    .help-wrap code {{ font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 6px;
+      border-radius: 4px; }}
+    .help-wrap pre {{ background: rgba(0,0,0,0.35); border: 1px solid
+      rgba(255,255,255,0.08); border-radius: 8px; padding: 14px 16px;
+      overflow-x: auto; font-size: 13px; line-height: 1.5; }}
+    .help-wrap pre code {{ background: transparent; padding: 0; }}
+    .help-wrap blockquote {{ border-left: 3px solid var(--accent, #72f7d4);
+      margin: 18px 0; padding: 8px 16px;
+      background: rgba(114, 247, 212, 0.07); border-radius: 0 8px 8px 0;
+      font-style: italic; }}
+    .help-wrap table {{ border-collapse: collapse; margin: 18px 0; }}
+    .help-wrap th, .help-wrap td {{ border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 12px; }}
+  </style>
+</head>
+<body>
+  <div class="help-wrap">
+    <div class="help-topbar">
+      <a href="/dashboard">← Dashboard</a>
+      <nav class="help-doc-nav" aria-label="Firewall docs">{nav}</nav>
+    </div>
+    {body}
+  </div>
+</body>
+</html>
+"""
+
+
+def _help_doc_listing() -> list[tuple[str, str, str]]:
+    """Return [(slug, title, path), …] for every .md under docs/firewall/.
+
+    Title is taken from the first `# heading` in the file; falls back
+    to the slug if not found. Sorted with index.md first, then
+    quickstart.md, then the rest alphabetically.
+    """
+    if not FIREWALL_DOCS_DIR.is_dir():
+        return []
+    pref_order = ["index", "quickstart"]
+    out: list[tuple[str, str, str]] = []
+    for p in FIREWALL_DOCS_DIR.glob("*.md"):
+        slug = p.stem
+        title = slug.replace("-", " ").title()
+        try:
+            for line in p.read_text(encoding="utf-8").splitlines()[:8]:
+                if line.startswith("# "):
+                    title = line[2:].strip() or title
+                    break
+        except OSError:
+            continue
+        out.append((slug, title, str(p)))
+    out.sort(key=lambda r: (
+        pref_order.index(r[0]) if r[0] in pref_order else 999,
+        r[1].lower(),
+    ))
+    return out
+
+
+def _help_render_nav(current: str) -> str:
+    """HTML for the per-doc nav row at the top of /help pages."""
+    items = []
+    for slug, title, _path in _help_doc_listing():
+        klass = "current" if slug == current else ""
+        items.append(
+            f'<a class="{klass}" href="/help/{slug}">{title}</a>'
+        )
+    return "".join(items)
+
+
+def _help_render_markdown(md_text: str) -> str:
+    try:
+        import markdown as _md
+        html = _md.markdown(
+            md_text,
+            extensions=["fenced_code", "tables", "toc", "sane_lists"],
+            output_format="html5",
+        )
+    except ImportError:
+        import html as _html
+        return (
+            '<p style="color:#ffd166;">⚠ <code>markdown</code> '
+            'package not installed — serving raw text.</p>'
+            f'<pre>{_html.escape(md_text)}</pre>'
+        )
+    return _HELP_REL_LINK_RE.sub(_help_rewrite_rel_link, html)
+
+
+# Rewrite relative cross-doc links of the form `href="<slug>.md"` (with an
+# optional fragment) to absolute `/help/<slug>` URLs. Without this the
+# rendered HTML carries the raw `.md` href: from /help/index, the browser
+# resolves it to /help/<slug>.md, which the /help/{slug} regex rejects
+# (no dots allowed) → 404. From /help (no trailing slash) the browser even
+# strips the parent segment and lands on /<slug>.md. Absolute URLs, scheme
+# URLs, anchor-only links, and root-relative paths are all left alone.
+_HELP_REL_LINK_RE = re.compile(
+    r'href="(?!https?:|mailto:|//|/|#)([A-Za-z0-9_-]+)\.md(#[^"]*)?"'
+)
+
+
+def _help_rewrite_rel_link(m: re.Match[str]) -> str:
+    slug, frag = m.group(1), m.group(2) or ""
+    if slug in _HELP_DENYLIST_SLUGS:
+        # Author-typed link to an internal doc — preserve the visible
+        # anchor text but neutralise the URL so we don't emit a 404.
+        return 'href="#"'
+    return f'href="/help/{slug}{frag}"'
+
+
+@app.get("/help", response_class=HTMLResponse)
+def help_index(request: Request):
+    """Render docs/firewall/index.md (or quickstart.md as a fallback)
+    and list every other available doc in the top nav."""
+    listing = _help_doc_listing()
+    if not listing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"no firewall docs at {FIREWALL_DOCS_DIR}",
+        )
+    # Pick the first listed slug as the landing page.
+    slug, title, path = listing[0]
+    md_text = Path(path).read_text(encoding="utf-8")
+    html = _HELP_HTML_TEMPLATE.format(
+        title=title,
+        nav=_help_render_nav(slug),
+        body=_help_render_markdown(md_text),
+    )
+    return HTMLResponse(content=html)
+
+
+# Operator-only docs that must never be served from /help/<slug>.
+# The corresponding files live under docs/firewall/internal/ (which
+# the *.md glob already excludes), and the Dockerfile no longer
+# copies that subdirectory into the image — but this denylist is
+# the third line of defense against the same content reappearing at
+# the top level by accident.
+_HELP_DENYLIST_SLUGS = frozenset({
+    "launch", "billing", "operations-runbook",
+})
+
+
+@app.get("/help/{slug}", response_class=HTMLResponse)
+def help_page(request: Request, slug: str):
+    """Render docs/firewall/<slug>.md with the per-doc nav row."""
+    # Defensive: only allow simple slugs — no traversal.
+    if not slug.replace("-", "").replace("_", "").isalnum():
+        raise HTTPException(status_code=400, detail="invalid slug")
+    if slug in _HELP_DENYLIST_SLUGS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no doc named {slug!r}",
+        )
+    target = FIREWALL_DOCS_DIR / f"{slug}.md"
+    if not target.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"no doc named {slug!r}",
+        )
+    md_text = target.read_text(encoding="utf-8")
+    # Pull the title from the first H1, fall back to a titlecased slug.
+    title = slug.replace("-", " ").title()
+    for line in md_text.splitlines()[:8]:
+        if line.startswith("# "):
+            title = line[2:].strip() or title
+            break
+    html = _HELP_HTML_TEMPLATE.format(
+        title=title,
+        nav=_help_render_nav(slug),
+        body=_help_render_markdown(md_text),
+    )
+    return HTMLResponse(content=html)
+
+
+def _render_pack_help_body(manifest: skill_pack.SkillPackManifest) -> str:
+    """Render a verified pack manifest as the body of a /help/packs/<name> page.
+
+    The manifest has already been signature-verified by `_load_pack`, so
+    this function trusts every field. We render the marketing-shaped
+    fields (title / description / version / tags) plus a plain-English
+    policy summary, and put the raw policy JSON in a <details> for the
+    operators who want to audit the exact regexes."""
+    from html import escape as e
+    import json as _json
+
+    pol = manifest.policy or {}
+    add_patterns = pol.get("additional_block_patterns") or []
+    disabled = pol.get("disabled_default_classes") or []
+    allow_only = pol.get("allow_only_classes")
+    tested = manifest.tested_against or []
+
+    parts: list[str] = []
+    parts.append(f"<h1>{e(manifest.title or manifest.name)}</h1>")
+    parts.append(
+        '<p class="pack-meta"><code>{name}</code> v{ver} · '
+        '{author} · {license} · <span title="HMAC-SHA256 first-party '
+        'signature verified at load time">signature verified ✓</span></p>'
+        .format(
+            name=e(manifest.name),
+            ver=e(manifest.version),
+            author=e(manifest.author or "unknown"),
+            license=e(manifest.license or "unspecified"),
+        )
+    )
+    if manifest.description:
+        parts.append(f"<p>{e(manifest.description)}</p>")
+    if manifest.tags:
+        tags_html = "".join(
+            f'<span class="pack-tag">{e(t)}</span>'
+            for t in manifest.tags
+        )
+        parts.append(f'<p class="pack-tags">{tags_html}</p>')
+
+    parts.append("<h2>What this pack does</h2><ul>")
+    if add_patterns:
+        # Group patterns by intent class for a one-line summary per class.
+        from collections import Counter
+        by_class = Counter(p.get("class", "?") for p in add_patterns)
+        breakdown = ", ".join(
+            f"{n} {cls.upper()}" for cls, n in sorted(by_class.items())
+        )
+        parts.append(
+            f"<li>Adds <strong>{len(add_patterns)}</strong> block "
+            f"pattern(s): {e(breakdown)}.</li>"
+        )
+    if disabled:
+        parts.append(
+            "<li>Disables default block classes: "
+            + ", ".join(f"<code>{e(c)}</code>" for c in disabled)
+            + ".</li>"
+        )
+    if allow_only:
+        parts.append(
+            "<li>Whitelist mode — allows only: "
+            + ", ".join(f"<code>{e(c)}</code>" for c in allow_only)
+            + ". Everything else is blocked.</li>"
+        )
+    if not (add_patterns or disabled or allow_only):
+        parts.append("<li>Inherits the default policy unchanged.</li>")
+    parts.append("</ul>")
+
+    if tested:
+        parts.append("<h2>Tested against</h2><ul>")
+        for t in tested:
+            parts.append(f"<li><code>{e(str(t))}</code></li>")
+        parts.append("</ul>")
+
+    parts.append(
+        '<h2>Full policy</h2>'
+        '<details><summary>Show raw policy JSON</summary>'
+        f'<pre><code>{e(_json.dumps(pol, indent=2, sort_keys=True))}</code></pre>'
+        '</details>'
+    )
+    parts.append(
+        '<p style="margin-top:2rem"><a href="/dashboard/packs">'
+        '← Back to Skill Packs</a> · '
+        '<a href="/help/skill-packs">Skill Pack format reference</a></p>'
+    )
+    return "".join(parts)
+
+
+@app.get("/help/packs/{name}", response_class=HTMLResponse)
+def help_pack_page(request: Request, name: str):
+    """Per-pack help page rendered from the verified manifest.
+
+    Replaces the broken `homepage` URLs that every signed pack carries
+    (`https://docs.orivael.dev/firewall/packs/<name>` — a host that
+    isn't served). `_load_pack` enforces name validation, signature
+    verification, and returns None for missing/tampered packs."""
+    manifest = _load_pack(name)
+    if manifest is None:
+        raise HTTPException(
+            status_code=404, detail=f"no pack named {name!r}",
+        )
+    html = _HELP_HTML_TEMPLATE.format(
+        title=f"{manifest.title or manifest.name} — Skill Pack",
+        nav=_help_render_nav("skill-packs"),
+        body=_render_pack_help_body(manifest),
+    )
+    return HTMLResponse(content=html)
 
 
 @app.post("/v1/guard/check")

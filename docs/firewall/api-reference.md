@@ -77,7 +77,7 @@ public API.
 
 `POST /billing/upgrade/{tier}`, `POST /billing/portal`,
 `POST /billing/webhook` — used internally by the dashboard and by
-Stripe. See [billing](billing.md) for details.
+Stripe. Contact `sales@orivael.dev` for pricing details.
 
 ## Webhooks (Phase 2+)
 

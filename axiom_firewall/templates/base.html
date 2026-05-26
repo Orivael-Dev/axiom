@@ -14,11 +14,13 @@
         <a href="/dashboard">Dashboard</a>
         <a href="/dashboard/packs">Packs</a>
         <a href="/dashboard/policy">Policy</a>
+        <a href="/help">Help</a>
         <a href="/billing">Billing</a>
         <form method="post" action="/logout" class="inline">
           <button type="submit" class="link">Log out</button>
         </form>
       {% else %}
+        <a href="/help">Help</a>
         <a href="/login">Log in</a>
         <a href="/signup" class="cta">Sign up</a>
       {% endif %}
@@ -31,7 +33,7 @@
 
   <footer>
     <span>© 2026 Axiom · {{ brand_domain }}</span>
-    <span><a href="https://{{ docs_host }}">Docs</a></span>
+    <span><a href="/help">Docs</a></span>
   </footer>
 </body>
 </html>
