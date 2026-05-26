@@ -97,3 +97,9 @@ dev_agent_improvements.jsonl
 
 # Bonded-pair server-integration test scratch dir
 tests/_tmp_bonded_pair_server_logs/
+
+# Firewall tenant registry — runtime SQLite created when the dashboard
+# imports with the default AXIOM_FIREWALL_TENANT_DIR=tenants.  Real
+# deploys point this at /data/tenants via env; this directory only ever
+# exists when tests/imports run from the repo root.
+tenants/

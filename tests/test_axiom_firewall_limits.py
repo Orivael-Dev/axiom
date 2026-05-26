@@ -170,9 +170,10 @@ def test_guard_check_returns_429_at_free_quota(isolated_tenants):
     from axiom_firewall.auth import hash_password
     from axiom_firewall.dashboard import app
     from axiom_firewall.db import (
-        _conn, _tenant_path, find_tenant_by_email, list_api_keys,
+        _conn, _tenant_path, find_tenant_by_email, insert_api_key,
     )
     from axiom_firewall.limits import TIER_MONTHLY_HARD_CAP
+    from axiom_firewall.models import ApiKey
 
     client = TestClient(app)
     client.post(
@@ -180,9 +181,10 @@ def test_guard_check_returns_429_at_free_quota(isolated_tenants):
         data={"email": "fullup@example.com", "password": "longenoughpw"},
         follow_redirects=False,
     )
-    client.post("/dashboard/keys", data={"name": "x"}, follow_redirects=False)
     tenant = find_tenant_by_email("fullup@example.com")
-    secret = list_api_keys(tenant.tenant_id)[0].secret
+    k = ApiKey.new(tenant_id=tenant.tenant_id, name="x")
+    insert_api_key(k)
+    secret = k.secret
 
     # Backfill the cap directly into usage_records.
     cap = TIER_MONTHLY_HARD_CAP["free"]

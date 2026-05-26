@@ -38,7 +38,9 @@ See `deploy/firewall/docker-compose.yml` and `deploy/firewall/Caddyfile`.
 ```bash
 cd deploy/firewall
 cp .env.example .env
-# fill in AXIOM_MASTER_KEY, AXIOM_FIREWALL_SESSION_SECRET, FIREWALL_HOST
+# fill in AXIOM_ENV=production, AXIOM_MASTER_KEY,
+# AXIOM_FIREWALL_SESSION_SECRET, FIREWALL_HOST. See the Production
+# checklist below for what each one does and the rotation gotchas.
 docker compose --profile tls up -d
 ```
 
@@ -61,11 +63,58 @@ uvicorn axiom_firewall.dashboard:app \
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `AXIOM_MASTER_KEY` | yes | HMAC root for signing verdicts. 64 hex chars. |
-| `AXIOM_FIREWALL_SESSION_SECRET` | yes | Cookie signing key. 64+ chars. |
+| `AXIOM_ENV` | prod | Set to `production` in any prod deploy. Turns the session-secret check into a hard error (boot fails instead of warning) and forces the `Secure` flag on session cookies. Defaults to `development`. |
+| `AXIOM_MASTER_KEY` | yes | HMAC root for signing verdicts **and** the pepper for the API-key hash table. 64 hex chars. **Must stay stable across restarts** — see [Production checklist](#production-checklist) below. |
+| `AXIOM_FIREWALL_SESSION_SECRET` | yes | Cookie signing key. 32+ chars; with `AXIOM_ENV=production` the app refuses to boot if this is the dev default or shorter. |
 | `AXIOM_FIREWALL_TENANT_DIR` | no | Where to keep tenant SQLite files. Default `tenants`. Mount this to a persistent volume. |
 | `AXIOM_FIREWALL_PUBLIC_URL` | no | The URL the dashboard is served at. Used for Stripe redirects. |
 | `AXIOM_FIREWALL_CORS_ORIGINS` | no | Comma-separated origins permitted to call `/v1/guard/check` from a browser. Empty = server-side only. |
+
+## Production checklist
+
+Three gotchas to wire into your prod compose file / k8s manifest before
+the first request lands:
+
+1. **Set `AXIOM_ENV=production`.** Without it, a missing or weak
+   `AXIOM_FIREWALL_SESSION_SECRET` is a runtime warning the team can
+   miss in a busy log stream. With it, the app refuses to boot — the
+   failure surfaces in `docker compose up` immediately and you fix it
+   before traffic arrives.
+
+2. **Generate a real `AXIOM_FIREWALL_SESSION_SECRET`** and put it in
+   your secret store. 32 chars minimum (the boot check enforces this in
+   prod):
+
+   ```
+   python3 -c 'import secrets; print(secrets.token_hex(32))'
+   ```
+
+   If this leaks, anyone can forge session cookies for any tenant.
+   Rotate the value to force a global logout.
+
+3. **Keep `AXIOM_MASTER_KEY` stable across restarts.** It's used in two
+   places now:
+   - HMAC signing of every verdict (changes invalidate prior receipts).
+   - The peppered hash of API keys stored in the tenant SQLite files.
+     The legacy plaintext-to-hash migration runs **once at write time**,
+     not on every read — so rotating `AXIOM_MASTER_KEY` after keys are
+     in the DB makes every existing API key fail authentication
+     permanently.
+
+   Treat it like a database encryption key: generate once, store in
+   AWS Secrets Manager / GCP Secret Manager / a sealed-secrets CRD,
+   never rotate without a migration plan. If you must rotate, the
+   safe sequence is: pause traffic → re-hash every row with the new
+   pepper → swap the env var → resume.
+
+A minimal prod `.env` snippet that satisfies all three:
+
+```
+AXIOM_ENV=production
+AXIOM_MASTER_KEY=<64 hex chars, generated once and stored in your secret manager>
+AXIOM_FIREWALL_SESSION_SECRET=<64 hex chars, rotatable>
+AXIOM_FIREWALL_TENANT_DIR=/data/tenants
+```
 
 ## Optional: enable Stripe billing
 

@@ -4,6 +4,14 @@ Password hashing: PBKDF2-HMAC-SHA256, 200k iterations, 16-byte salt.
 (stdlib-only; no bcrypt dep)
 
 API key auth: Authorization: Bearer axfw_<token>
+
+API key storage: we never persist the plaintext API secret. At creation
+we HMAC-SHA256 it under a server-side pepper derived from
+AXIOM_MASTER_KEY and store only that hash. Lookup hashes the incoming
+bearer token the same way and queries by the hash. A leaked SQLite
+file therefore exposes only opaque digests; an attacker also needs the
+master key (which lives in env, not on disk) to mount a rainbow-table
+attack.
 """
 from __future__ import annotations
 
@@ -13,6 +21,8 @@ import secrets
 import uuid
 from datetime import datetime
 from time import perf_counter
+
+from axiom_signing import derive_key
 
 from .db import find_tenant_by_id, find_tenant_for_secret, insert_usage
 from .models import ApiKey, Tenant, UsageRecord
@@ -58,11 +68,32 @@ def check_password(pw: str, pw_hash: str) -> bool:
     return hmac.compare_digest(candidate, expected)
 
 
+# Server-side pepper for API-key hashes. Derived from AXIOM_MASTER_KEY
+# so it rotates with the master key (and is never written to disk).
+# Lazy-evaluated so import-order tests can swap master keys.
+def _api_key_pepper() -> bytes:
+    return derive_key(b"axiom-firewall-api-key-pepper")
+
+
+def hash_api_secret(secret: str) -> str:
+    """Deterministic peppered hash used for storage + lookup.
+
+    Deterministic because we need to look up the row by hash (an
+    Argon2/bcrypt-style salted hash would require scanning every row
+    and re-hashing on each request). The pepper provides the rainbow-
+    table defence: without AXIOM_MASTER_KEY, a leaked SQLite is just
+    a list of opaque digests.
+    """
+    return hmac.new(
+        _api_key_pepper(), secret.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+
 def authenticate(secret: str) -> tuple[Tenant, ApiKey] | None:
     """Look up tenant + key for an API secret. None if invalid or revoked."""
     if not secret or not secret.startswith("axfw_"):
         return None
-    return find_tenant_for_secret(secret)
+    return find_tenant_for_secret(hash_api_secret(secret))
 
 
 def record_call(*, tenant_id: str, key_id: str, endpoint: str,
