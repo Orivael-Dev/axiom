@@ -243,3 +243,84 @@ def test_landing_page_renders_brand(isolated_tenants):
     assert "orivael.dev" in r.text
     assert "firewall.orivael.dev" in r.text
     assert "Block harm" in r.text
+
+
+# ─── Beta-tester touchpoints ─────────────────────────────────────────
+
+
+def test_fresh_signup_shows_welcome_banner(isolated_tenants):
+    """A brand-new free-tier user with no keys and no calls should see
+    the 3-step welcome banner — that's the empty state that turns a
+    blank dashboard into onboarding."""
+    from fastapi.testclient import TestClient
+    from axiom_firewall.dashboard import app
+
+    client = TestClient(app)
+    r = client.post(
+        "/signup",
+        data={"email": "fresh@example.com", "password": "longenoughpw"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "Welcome to the Axiom Intent Firewall beta" in r.text
+    # Three numbered steps
+    assert "Create an API key" in r.text
+    assert "axfw_" in r.text       # mentioned in the steps
+    assert "first call" in r.text
+
+
+def test_welcome_banner_hidden_after_key_created(isolated_tenants):
+    """Once any key exists, the welcome banner stops nagging."""
+    from fastapi.testclient import TestClient
+    from axiom_firewall.dashboard import app
+
+    client = TestClient(app)
+    client.post("/signup",
+                data={"email": "u@example.com", "password": "longenoughpw"},
+                follow_redirects=False)
+    client.post("/dashboard/keys", data={"name": "dev"},
+                follow_redirects=True)
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "Welcome to the Axiom Intent Firewall beta" not in r.text
+
+
+def test_beta_footer_link_renders_when_env_set(
+    isolated_tenants, monkeypatch,
+):
+    """AXIOM_FIREWALL_BETA_FEEDBACK env var → footer beta badge + link."""
+    monkeypatch.setenv(
+        "AXIOM_FIREWALL_BETA_FEEDBACK",
+        "mailto:beta@orivael.dev",
+    )
+    # Reload so the module-level constant picks up the new env.
+    for mod in ("axiom_firewall.dashboard",):
+        if mod in sys.modules:
+            del sys.modules[mod]
+    from fastapi.testclient import TestClient
+    from axiom_firewall.dashboard import app
+
+    client = TestClient(app)
+    client.post("/signup",
+                data={"email": "u@example.com", "password": "longenoughpw"},
+                follow_redirects=False)
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "mailto:beta@orivael.dev" in r.text
+    assert "feedback welcome" in r.text
+
+
+def test_beta_footer_hidden_when_env_unset(isolated_tenants):
+    """Unset → no beta badge in footer (clean prod look post-beta)."""
+    from fastapi.testclient import TestClient
+    from axiom_firewall.dashboard import app
+
+    client = TestClient(app)
+    client.post("/signup",
+                data={"email": "u@example.com", "password": "longenoughpw"},
+                follow_redirects=False)
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "feedback welcome" not in r.text

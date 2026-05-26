@@ -11,6 +11,26 @@
     {% endif %}
   </p>
 
+  {% if free_tier and month_used == 0 and not keys %}
+    {# Empty state — first thing a fresh beta tester sees after signup. #}
+    <div class="alert success">
+      <strong>Welcome to the Axiom Intent Firewall beta.</strong>
+      You're on the Free tier — 1,000 calls/month, no card required.
+      <ol style="margin: 0.5rem 0 0 1.25rem;">
+        <li>Create an API key below (give it a name like <code>dev</code>).</li>
+        <li>Copy the secret — it starts with <code>axfw_</code> and is shown ONCE.</li>
+        <li>Run the curl in the Quickstart section to make your first call.</li>
+      </ol>
+      {% if beta_feedback_url %}
+        <p style="margin-top: 0.5rem;">
+          Something broken or confusing?
+          <a href="{{ beta_feedback_url }}" target="_blank" rel="noopener">
+            Tell us</a> — beta feedback shapes the next release.
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <div class="quota">
     <div class="quota-label">
       <span>This month: {{ "{:,}".format(month_used) }} / {{ "{:,}".format(tier_limit) }}</span>

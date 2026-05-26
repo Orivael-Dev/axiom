@@ -20,6 +20,11 @@ def isolated_tenants(tmp_path, monkeypatch):
     monkeypatch.setenv("AXIOM_FIREWALL_TENANT_DIR", str(tmp_path / "tenants"))
     monkeypatch.setenv("AXIOM_MASTER_KEY", "test" + "0" * 60)
     monkeypatch.setenv("AXIOM_FIREWALL_SESSION_SECRET", "test")
+    # These tests exercise the Stripe checkout/portal path (post-beta).
+    # The dashboard's default BETA_MODE=1 disables self-serve upgrade,
+    # so opt out here. Beta-mode behaviour is covered by
+    # test_axiom_firewall_billing_beta.py.
+    monkeypatch.setenv("AXIOM_FIREWALL_BETA_MODE", "0")
     for mod in (
         "axiom_firewall.db", "axiom_firewall.auth",
         "axiom_firewall.billing", "axiom_firewall.dashboard",

@@ -93,6 +93,28 @@ if _IS_PROD:
             "`python3 -c 'import secrets; print(secrets.token_hex(32))'`."
         )
 
+# Beta-tester touchpoints. Set AXIOM_FIREWALL_BETA_FEEDBACK to a
+# mailto: or URL when running a beta; renders a footer link + a
+# welcome banner pointing at it. Leave blank to suppress (post-beta).
+BETA_FEEDBACK_URL = os.environ.get(
+    "AXIOM_FIREWALL_BETA_FEEDBACK", "",
+).strip()
+
+# Beta mode — disables self-serve upgrade buttons in /billing in favour
+# of "Contact sales" mailto links. Set AXIOM_FIREWALL_BETA_MODE=0 to
+# re-enable Stripe checkout once GA pricing is locked. Defaults to ON
+# during the beta period — Stripe checkout works (the routes are still
+# wired), but the UI funnels prospects to a human conversation first.
+BETA_MODE = os.environ.get(
+    "AXIOM_FIREWALL_BETA_MODE", "1",
+).strip().lower() in ("1", "true", "yes")
+
+# Sales contact email for the "Contact sales" CTA during beta + for the
+# Enterprise tier always.
+SALES_EMAIL = os.environ.get(
+    "AXIOM_FIREWALL_SALES_EMAIL", f"sales@{BRAND_DOMAIN}",
+).strip()
+
 # CORS — locked down by default. Set AXIOM_FIREWALL_CORS_ORIGINS to a
 # comma-separated list of origins (or "*" to allow all). The signup /
 # dashboard pages are served same-origin, so this only matters for
@@ -270,6 +292,9 @@ def _ctx(request: Request, **extra) -> dict:
         "api_host": API_HOST,
         "tier_limits": TIER_RATE_LIMITS,
         "tier_prices": TIER_PRICE_USD,
+        "beta_feedback_url": BETA_FEEDBACK_URL,
+        "beta_mode":         BETA_MODE,
+        "sales_email":       SALES_EMAIL,
         **extra,
     }
 
@@ -1238,12 +1263,24 @@ def billing_upgrade(request: Request, tier: str):
     t = _current_tenant(request)
     if not t:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if BETA_MODE:
+        raise HTTPException(
+            403,
+            f"Self-serve upgrades are disabled during the beta. "
+            f"Contact {SALES_EMAIL} for pricing.",
+        )
     if not billing.is_enabled():
         raise HTTPException(503, "Billing is not configured on this deployment")
     try:
         url = billing.create_checkout_session(t, tier)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(400, str(e))
+    except Exception:
+        log.exception(
+            "Stripe checkout failed for tenant=%s tier=%s",
+            t.tenant_id, tier,
+        )
+        raise HTTPException(502, "Billing provider error — please try again")
     return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1258,6 +1295,9 @@ def billing_portal(request: Request):
         url = billing.create_portal_session(t)
     except RuntimeError as e:
         raise HTTPException(400, str(e))
+    except Exception:
+        log.exception("Stripe portal failed for tenant=%s", t.tenant_id)
+        raise HTTPException(502, "Billing provider error — please try again")
     return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
 
