@@ -247,6 +247,19 @@ class EvolutionProposeRequest(BaseModel):
 class EvolutionApproveRequest(BaseModel):
     candidate_image: str
 
+# ── Bonded paired-token request shapes ─────────────────────────
+class BondedPairMintRequest(BaseModel):
+    primary_payload: dict
+    mirror_payload: dict
+    actor: Optional[str] = "rest"
+
+class BondedPairTransitionRequest(BaseModel):
+    to_state: str
+    actor: Optional[str] = "rest"
+
+class BondedPairRevokeRequest(BaseModel):
+    actor: Optional[str] = "rest"
+
 # ── ORVL-019 ASPA request shapes ───────────────────────────────
 class PhoneOutboundRequest(BaseModel):
     text: str
@@ -775,6 +788,7 @@ def security_suite(agent: str = "worker"):
 # Singleton orchestrator built lazily on first use so import-time failures
 # (e.g. missing AXIOM_MASTER_KEY in a smoke test) don't break the whole API.
 _cmaa_singleton = None
+_bonded_pair_ledger_singleton = None
 _cmaa_log_dir = Path(os.environ.get("AXIOM_CMAA_LOG_DIR", str(PROJECT_ROOT)))
 
 
@@ -783,21 +797,42 @@ def _get_cmaa():
     if _cmaa_singleton is None:
         from axiom_cmaa import bootstrap_default
         _cmaa_log_dir.mkdir(parents=True, exist_ok=True)
+        # Wire the same bonded-pair ledger into CMAA so a revoke
+        # propagates to BOTH /gate/check AND /cmaa/route on the next
+        # request.
         _cmaa_singleton = bootstrap_default(
             log_path=str(_cmaa_log_dir / "axiom_cmaa_log.jsonl"),
             intent_log_path=str(_cmaa_log_dir / "axiom_intent_gate_log.jsonl"),
+            bonded_pair_ledger=_bonded_pair_ledger(),
         )
     return _cmaa_singleton
 
 
+def _bonded_pair_ledger():
+    """Lazy singleton — the same ledger backs the REST endpoints, the
+    standalone /gate/* path, and the CMAA wrapper. One ledger per
+    process, default location, so a revoke from /v1/bonded_pair/*
+    takes effect on /gate/check on the very next request."""
+    global _bonded_pair_ledger_singleton
+    if _bonded_pair_ledger_singleton is None:
+        from axiom_event_token.bonded_pair import BondedPairLedger
+        _bonded_pair_ledger_singleton = BondedPairLedger()
+    return _bonded_pair_ledger_singleton
+
+
 def _gate_callable():
-    """Standalone gate (independent of CMAA's wrapped copy) for /gate/*."""
+    """Standalone gate (independent of CMAA's wrapped copy) for /gate/*.
+    Wires in the bonded-pair ledger so packets with a revoked pair_id
+    are denied on this path too."""
     from axiom_intent_classifier import IntentClassifier
     from axiom_intent_gate import IntentGate
     from axiom_signing import derive_key
     key = derive_key(b"axiom-intent-gate-server-v1")
-    return IntentGate(IntentClassifier(key),
-                      log_path=str(_cmaa_log_dir / "axiom_intent_gate_log.jsonl"))
+    return IntentGate(
+        IntentClassifier(key),
+        log_path=str(_cmaa_log_dir / "axiom_intent_gate_log.jsonl"),
+        bonded_pair_ledger=_bonded_pair_ledger(),
+    )
 
 
 @app.post("/gate/check")
@@ -837,6 +872,87 @@ def gate_log(limit: int = 25):
         except json.JSONDecodeError:
             continue
     return {"entries": entries, "count": len(entries)}
+
+
+# ── Bonded paired-token REST surface ───────────────────────────
+# Same process-wide ledger that /gate/check and /cmaa/route consult,
+# so a revoke posted here takes effect at the gate on the very next
+# request — no key rotation, no token re-issue.
+
+@app.post("/v1/bonded_pair/mint")
+def bonded_pair_mint(req: BondedPairMintRequest):
+    """Mint a bonded pair and initialise it to ACTIVE_VALIDATED."""
+    from axiom_event_token.bonded_pair import mint_pair
+    led = _bonded_pair_ledger()
+    primary, mirror = mint_pair(req.primary_payload, req.mirror_payload)
+    led.init_pair(primary.pair_id, actor=req.actor or "rest")
+    return {
+        "pair_id":     primary.pair_id,
+        "primary":     primary.to_dict(),
+        "mirror":      mirror.to_dict(),
+        "current_state": led.current_state(primary.pair_id),
+        "ledger_path": str(led.path),
+    }
+
+
+@app.post("/v1/bonded_pair/{pair_id}/transition")
+def bonded_pair_transition(pair_id: str, req: BondedPairTransitionRequest):
+    """Move a pair to a new state. 400 on illegal transitions."""
+    from axiom_event_token.bonded_pair import BondedPairLedgerError
+    led = _bonded_pair_ledger()
+    try:
+        t = led.transition(pair_id, req.to_state, actor=req.actor or "rest")
+    except BondedPairLedgerError as e:
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+    return t.to_dict()
+
+
+@app.post("/v1/bonded_pair/{pair_id}/revoke")
+def bonded_pair_revoke(pair_id: str, req: BondedPairRevokeRequest):
+    """Shortcut: transition pair_id to REVOKED. The whole point of the
+    primitive — flips authority for every gate consulting the ledger,
+    without rotating the primary token's signing key."""
+    from axiom_event_token.bonded_pair import BondedPairLedgerError
+    led = _bonded_pair_ledger()
+    try:
+        t = led.revoke(pair_id, actor=req.actor or "rest")
+    except BondedPairLedgerError as e:
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+    return t.to_dict()
+
+
+@app.get("/v1/bonded_pair/{pair_id}/state")
+def bonded_pair_state(pair_id: str):
+    """Current state of a pair. 404 when never initialised."""
+    led = _bonded_pair_ledger()
+    s = led.current_state(pair_id)
+    if s is None:
+        raise HTTPException(status_code=404,
+                            detail={"error": f"pair {pair_id} not initialised"})
+    return {
+        "pair_id":       pair_id,
+        "current_state": s,
+        "authorized":    s == "ACTIVE_VALIDATED",
+    }
+
+
+@app.get("/v1/bonded_pair/{pair_id}/history")
+def bonded_pair_history(pair_id: str):
+    """Full transition log for a pair."""
+    led = _bonded_pair_ledger()
+    h = led.history(pair_id)
+    if not h:
+        raise HTTPException(status_code=404,
+                            detail={"error": f"pair {pair_id} not initialised"})
+    return {"pair_id": pair_id,
+            "transitions": [t.to_dict() for t in h]}
+
+
+@app.get("/v1/bonded_pair/verify")
+def bonded_pair_verify():
+    """Replay the ledger and verify its hash chain end-to-end."""
+    led = _bonded_pair_ledger()
+    return {"ok": led.verify_chain(), "ledger_path": str(led.path)}
 
 
 @app.post("/cmaa/route")

@@ -1,0 +1,177 @@
+{
+  "name": "axiom",
+  "title": "AXIOM — Constitutional & Runtime Authority Tools",
+  "description": "Constitutional AI governance + runtime authority control as MCP tools. Includes the bonded paired-token gate, intent classifier, constitutional reasoning trace, language validator, multi-agent orchestrator, OS shield, sovereign phone coprocessor, physical-intelligence agent, and AXM container runtime. Every tool result is HMAC-SHA256 signed under axiom-mcp-v1 so the client can re-verify with axiom_signing.verify and detect any tampering between server and client.",
+  "version": "1.8.0",
+  "homepage": "https://github.com/Orivael-Dev/axiom",
+  "documentation": "https://github.com/Orivael-Dev/axiom#mcp-server",
+  "license": "Apache-2.0",
+  "author": "Orivael Dev",
+  "marketing_site": "https://orivael.dev",
+  "live_demo": "https://firewall.orivael.dev",
+
+  "transport": "stdio",
+  "protocol": "JSON-RPC 2.0",
+  "command": "python3",
+  "args": ["axiom_mcp_server.py"],
+  "env_required": ["AXIOM_MASTER_KEY"],
+  "env_doc": {
+    "AXIOM_MASTER_KEY": "64-char hex string. Generate with `python3 -c \"import secrets; print(secrets.token_hex(32))\"`. Every signing namespace is derived from this single root via axiom_signing.derive_key."
+  },
+
+  "tools": [
+    {
+      "name": "axiom_guard_check",
+      "category": "core",
+      "description": "Check input against the constitutional boundary. Returns verdict + constitutional distance + signed manifest.",
+      "input_schema": { "type": "object", "properties": { "input": { "type": "string" } }, "required": ["input"] }
+    },
+    {
+      "name": "axiom_lint",
+      "category": "core",
+      "description": "Lint an .axiom spec file for authorship-time issues. Returns health score + per-issue list.",
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }
+    },
+    {
+      "name": "axiom_trace",
+      "category": "core",
+      "description": "Run the full 3-phase constitutional reasoning trace (preflight / mid_chain / final_synthesis) with magnitude + monotonicity gates.",
+      "input_schema": { "type": "object", "properties": { "prompt": { "type": "string" } }, "required": ["prompt"] }
+    },
+    {
+      "name": "axiom_qrf",
+      "category": "core",
+      "description": "Quantum-style reasoning forecast: N parallel branches with constitutional probability per outcome.",
+      "input_schema": { "type": "object", "properties": { "prompt": { "type": "string" }, "branches": { "type": "integer" } }, "required": ["prompt"] }
+    },
+    {
+      "name": "axiom_status",
+      "category": "core",
+      "description": "Get the AXIOM stack status (version, guard runtime state, test count, patent count, training corpus size).",
+      "input_schema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "axiom_validate",
+      "category": "patent_emulator",
+      "patent": "ORVL-001",
+      "description": "Run the .axiom language validator with optional strict mode.",
+      "input_schema": { "type": "object", "properties": { "agent": { "type": "string" }, "strict": { "type": "boolean" } }, "required": ["agent"] }
+    },
+    {
+      "name": "axiom_intent_gate_check",
+      "category": "patent_emulator",
+      "patent": "ORVL-016",
+      "description": "Classify text + optional trajectory through the intent gate. Returns intent_class (INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN), confidence, signals, and HMAC signature.",
+      "input_schema": { "type": "object", "properties": { "text": { "type": "string" }, "trajectory": { "type": "array" } }, "required": ["text"] }
+    },
+    {
+      "name": "axiom_cmaa_route",
+      "category": "patent_emulator",
+      "patent": "ORVL-017",
+      "description": "Route a constitutional packet through the multi-agent orchestrator. HARM / DECEIVE intents are refused before reaching the orchestrator; bonded-pair revocations short-circuit authority without rotating keys.",
+      "input_schema": { "type": "object", "properties": { "packet": { "type": "object" } }, "required": ["packet"] }
+    },
+    {
+      "name": "axiom_cmaa_fleet",
+      "category": "patent_emulator",
+      "patent": "ORVL-017",
+      "description": "Inspect fleet trust levels, suspended containers, and review queue depth.",
+      "input_schema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "axiom_shield",
+      "category": "patent_emulator",
+      "patent": "ORVL-013",
+      "description": "Drive the OS Shield daemon — constitutional ransomware defence that stops attackers at the enumeration stage, not after encryption.",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["status", "tick", "restore"] } }, "required": ["action"] }
+    },
+    {
+      "name": "axiom_phone_gate",
+      "category": "patent_emulator",
+      "patent": "ORVL-019",
+      "description": "Run text through the Sovereign Phone constitutional coprocessor. `out` gates outbound queries; `in` gates inbound cloud responses.",
+      "input_schema": { "type": "object", "properties": { "direction": { "type": "string", "enum": ["out", "in"] }, "text": { "type": "string" } }, "required": ["direction", "text"] }
+    },
+    {
+      "name": "axiom_axm",
+      "category": "patent_emulator",
+      "patent": "ORVL-023",
+      "description": "Operate an .AXM container — successor-to-GGUF format treating models as living execution graphs with signed skill delegates and proof ledgers.",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["inspect", "verify", "route"] }, "path": { "type": "string" } }, "required": ["action", "path"] }
+    },
+    {
+      "name": "axiom_cpi",
+      "category": "patent_emulator",
+      "patent": "ORVL-022",
+      "description": "Drive the Constitutional Physical Intelligence agent — toddler reflex / supervisor / curriculum / examiner stack for robotics, prosthetics, vehicles.",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["stability", "classify", "simulate", "pickup", "status"] } }, "required": ["action"] }
+    }
+  ],
+
+  "install": {
+    "claude_desktop": {
+      "description": "Add this block under `mcpServers` in your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\\Claude\\claude_desktop_config.json` on Windows).",
+      "snippet": {
+        "mcpServers": {
+          "axiom": {
+            "command": "python3",
+            "args": ["/absolute/path/to/axiom/axiom_mcp_server.py"],
+            "env": {
+              "AXIOM_MASTER_KEY": "<your-64-hex-key>"
+            }
+          }
+        }
+      }
+    },
+    "claude_code": {
+      "description": "Drop into `.mcp.json` at the root of any project you want to govern with AXIOM. Path is relative to the project root once you clone the repo into it (or a sibling directory).",
+      "snippet": {
+        "mcpServers": {
+          "axiom": {
+            "command": "python3",
+            "args": ["axiom_mcp_server.py"],
+            "env": {
+              "AXIOM_MASTER_KEY": "<your-64-hex-key>"
+            }
+          }
+        }
+      }
+    },
+    "cursor": {
+      "description": "Cursor reads MCP servers from `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per-project). Same shape as Claude Code.",
+      "snippet": {
+        "mcpServers": {
+          "axiom": {
+            "command": "python3",
+            "args": ["/absolute/path/to/axiom/axiom_mcp_server.py"],
+            "env": {
+              "AXIOM_MASTER_KEY": "<your-64-hex-key>"
+            }
+          }
+        }
+      }
+    },
+    "generic_stdio": {
+      "description": "Any MCP client that speaks JSON-RPC 2.0 over stdio. Spawn the process with AXIOM_MASTER_KEY in the environment and read/write line-delimited JSON-RPC on stdin/stdout.",
+      "command": "AXIOM_MASTER_KEY=<hex> python3 axiom_mcp_server.py"
+    }
+  },
+
+  "prerequisites": {
+    "python": ">=3.11",
+    "repo": "git clone https://github.com/Orivael-Dev/axiom.git",
+    "deps": "pip install -r requirements.txt"
+  },
+
+  "signing": {
+    "namespace": "axiom-mcp-v1",
+    "algorithm": "HMAC-SHA256",
+    "verification": "from axiom_signing import derive_key; import hmac, hashlib; key = derive_key(b'axiom-mcp-v1'); ...",
+    "guarantee": "Every tool result body carries an hmac_signature field. Verifying it under the same AXIOM_MASTER_KEY confirms the response was produced by this server and not modified in transit."
+  },
+
+  "support": {
+    "issues": "https://github.com/Orivael-Dev/axiom/issues",
+    "contact": "mailto:hello@orivael.dev"
+  }
+}

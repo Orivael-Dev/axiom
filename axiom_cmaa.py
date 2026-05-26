@@ -180,6 +180,7 @@ class ConstitutionalMultiAgentArchitecture:
         fleet_manifest: Optional[Mapping[str, int]] = None,
         log_path: Optional[str] = None,
         intent_log_path: Optional[str] = None,
+        bonded_pair_ledger: Any = None,
         cbv: Optional[Callable[[str], str]] = None,
         cas: Optional[Callable[[str], str]] = None,
         crl_train: Optional[Callable[[str], str]] = None,
@@ -194,6 +195,7 @@ class ConstitutionalMultiAgentArchitecture:
             from axiom_intent_gate import default_intent_classifier
             intent_classifier = default_intent_classifier(
                 self._key, log_path=intent_log_path,
+                bonded_pair_ledger=bonded_pair_ledger,
             )
         self._classify = intent_classifier
         self._trust = dict(fleet_manifest) if fleet_manifest is not None else dict(_DEFAULT_TRUST)
@@ -392,6 +394,7 @@ def bootstrap_default(
     log_path: Optional[str] = None,
     intent_log_path: Optional[str] = None,
     fleet_manifest: Optional[Mapping[str, int]] = None,
+    bonded_pair_ledger: Any = None,
 ) -> "ConstitutionalMultiAgentArchitecture":
     """One-call constructor for production callers.
 
@@ -402,6 +405,11 @@ def bootstrap_default(
         from axiom_cmaa import bootstrap_default
         orch = bootstrap_default()
         orch.route(packet)
+
+    Pass ``bonded_pair_ledger=`` to plumb the bonded-pair revocation
+    surface through to ``orch.route()`` — packets whose ``pair_id`` is
+    REVOKED in that ledger will be denied without reaching the
+    container fleet.
 
     Test callers should keep using ``ConstitutionalMultiAgentArchitecture``
     directly so they can inject deterministic stubs.
@@ -414,4 +422,5 @@ def bootstrap_default(
         fleet_manifest=fleet_manifest,
         log_path=log_path,
         intent_log_path=intent_log_path,
+        bonded_pair_ledger=bonded_pair_ledger,
     )

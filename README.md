@@ -1,10 +1,71 @@
-# axiom-constitutional
+# AXIOM — Runtime Authority Control for AI Agents
 
-> Patent Pending — ORVL-001 through ORVL-023 | Provisional Filed May 2026
+> Patent Pending · ORVL-001-PROV · Runtime Authority Control for Agentic AI
 
-**Constitutional AI governance that operates on the shape of thought — not just the content of output.**
+**Revoke AI agent authority instantly — without rotating keys.**
 
-AXIOM is a constitutional AI governance stack. Where other systems filter outputs after generation, AXIOM captures reasoning trajectories, measures constitutional distance from constraint boundaries at each stage, and kills non-convergent paths before answers form. Every decision is HMAC-SHA256 signed and stored in an append-only audit trail.
+AXIOM gives agentic AI systems a verifiable control layer: bonded paired tokens, signed state registers, append-only audit trails, and runtime gates that block unauthorized agent actions before execution. The primary token's bytes never change. The mirror's holder flips one register entry and the next gated request is denied.
+
+- **No key rotation** — revoke authority without re-issuing signing keys
+- **Same token** — the primary token's bytes and signature stay identical
+- **Runtime block** — the next gated request is denied with a signed reason
+
+Live demo: [firewall.orivael.dev](https://firewall.orivael.dev/) · Marketing site: [orivael.dev](https://orivael.dev/) · Signed audit walkthrough: [`fixtures/bonded_pair_demo/audit.pdf`](fixtures/bonded_pair_demo/audit.pdf)
+
+---
+
+## 30-second proof
+
+```bash
+$ AXIOM_MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+
+# Mint a bonded pair + initialise the ledger
+$ python3 axiom_bonded_pair_cli.py mint \
+    --primary '{"execution_command": "run_local_model_optimization"}' \
+    --mirror  '{"monitor_target": "primary"}'
+pair_id:  bp-ce9581c1a64043ba
+primary:  AXIOM-BP-bp-ce9581c1a64043ba-A    sig: 4089688b…0fe166a
+mirror:   AXIOM-BP-bp-ce9581c1a64043ba-B    sig: 75494c9f…194b68
+state:    ACTIVE_VALIDATED
+
+# Same packet, gated → passes
+intent: INFORM  blocked: no   reason: authority active
+
+$ python3 axiom_bonded_pair_cli.py revoke bp-ce9581c1a64043ba --actor security_monitor
+transition:  ACTIVE_VALIDATED → REVOKED
+ledger:      append-only, hash-chained
+
+# Same packet, same primary token bytes → now denied
+intent: HARM    blocked: yes  signal: bonded_pair_revoked
+```
+
+Three driver surfaces, one shared signed state register:
+
+| Surface | Mint | Revoke | State |
+|---|---|---|---|
+| **Python** | `axiom_event_token.bonded_pair.mint_pair(...)` | `BondedPairLedger().revoke(pair_id, actor)` | `is_authorized(led, pair_id)` |
+| **CLI** | `axiom-bonded-pair mint --primary … --mirror …` | `axiom-bonded-pair revoke <pair_id>` | `axiom-bonded-pair state <pair_id>` (exit 0 iff ACTIVE_VALIDATED) |
+| **REST** | `POST /v1/bonded_pair/mint` | `POST /v1/bonded_pair/{id}/revoke` | `GET /v1/bonded_pair/{id}/state` |
+
+A REST `revoke` takes effect on the next `/gate/check` and `/cmaa/route` in the same process — the gate consults the same hash-chained ledger that `verify` replays end-to-end.
+
+---
+
+## What AXIOM is
+
+A runtime control language and audit layer for agentic AI. Three things compose into the product:
+
+1. **Bonded paired-token authority** — primary + mirror tokens minted together; state lives in a signed register the manager owns, so revocation is a register-flip instead of a key rotation. See [`axiom_event_token/bonded_pair.py`](axiom_event_token/bonded_pair.py).
+2. **Runtime guard stack** — intent classifier + bonded-pair check + CMAA orchestrator. Gates inspect every action before it reaches a tool, an API, or a model runtime. HARM / DECEIVE trajectories are refused with signed reasons.
+3. **Signed audit manifests** — every verdict, every state transition, every gate decision is HMAC-SHA256 signed and appended to a hash-chained ledger. Tampering breaks the chain at `verify_chain()`.
+
+Built for AI SaaS startups adding revocation controls before procurement asks, security teams wrapping risky agent actions with verifiable runtime checks, and regulated-AI teams that need to prove when authority changed.
+
+---
+
+## What AXIOM also does (the deeper stack)
+
+The headline above is the surface most deployers will start with. The repo also ships the constitutional governance machinery the runtime authority layer sits on top of — trajectory geometry, intent typing, OS shielding, physical-intelligence gating, sensory maps, and a constitutional language for declaring what agents may and may not do. Every layer is HMAC-signed and append-only.
 
 ```bash
 # Run the full guard stack
@@ -221,9 +282,10 @@ AXIOM runs as an MCP server — any MCP client (Claude Desktop, Claude Code, Cur
 python axiom_mcp_server.py
 ```
 
-**One-click install** — hosted MCP config at `orivael-dev.github.io/axiom/mcp.json`:
+**Hosted manifest** — `orivael-dev.github.io/axiom/mcp.json` ([source](docs/mcp.json)) is a single JSON file describing the server: the 13 tools with their input schemas, the four signing namespaces, prerequisites, and copy-paste install blocks for Claude Desktop, Claude Code, Cursor, and any generic stdio MCP client. Curl it, grep the `install.<your-client>.snippet` block, paste into your client's config:
+
 ```bash
-npx axiom-mcp
+curl -s https://orivael-dev.github.io/axiom/mcp.json | jq .install.claude_code.snippet
 ```
 
 **Claude Desktop** — add to `claude_desktop_config.json`:
