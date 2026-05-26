@@ -158,6 +158,7 @@ class IntentGate:
         *,
         log_path: Optional[str] = None,
         bonded_pair_ledger: Any = None,
+        companion_panel: Any = None,
     ) -> None:
         if not isinstance(classifier, IntentClassifier):
             raise TypeError("classifier must be an IntentClassifier")
@@ -169,6 +170,13 @@ class IntentGate:
         # lexical classifier, so revoked grants cannot pass even with
         # benign content.
         self._bonded_pair_ledger = bonded_pair_ledger
+        # Optional dependency — a three-layer Friend / BestFriend / Mom
+        # companion panel.  When wired in, the gate consults the panel
+        # ONLY for borderline classifier verdicts (UNCERTAIN, or
+        # confidence below ESCALATION_FLOOR) and lets Mom upgrade the
+        # verdict on a SAFETY signal.  Confident classifier verdicts
+        # — including BLOCK classes — bypass the panel.
+        self._companion_panel = companion_panel
 
     # ── Public API ────────────────────────────────────────────────────────
     def check(self, packet: Any) -> IntentTypingResult:
@@ -194,6 +202,38 @@ class IntentGate:
         text = _packet_text(packet)
         traj = _packet_trajectory(packet)
         result = self._classifier.classify(text, trajectory=traj)
+
+        # Companion panel second pass — only for borderline verdicts.
+        # The panel never DOWNgrades; it can only escalate UNCERTAIN /
+        # low-confidence INFORM to HARM (Mom SAFETY) or CLARIFY (Mom
+        # DISTRESS).  Confident verdicts and existing BLOCK_CLASSES
+        # results are returned unchanged.
+        if self._companion_panel is not None and not result.blocks:
+            from axiom_companion_panel import ESCALATION_FLOOR
+            borderline = (
+                result.intent_class == "UNCERTAIN"
+                or result.confidence < ESCALATION_FLOOR
+            )
+            if borderline:
+                panel_verdict = self._companion_panel.evaluate(
+                    text, result.intent_class,
+                )
+                if panel_verdict.upgrade_to is not None:
+                    upgraded_signals = tuple(result.signals) + tuple(
+                        panel_verdict.signals
+                    ) + (f"panel:mom_signal={panel_verdict.mom_signal}",)
+                    # Re-seal as the upgraded class.  Confidence is
+                    # ceilinged to the panel's certainty (SAFETY = high,
+                    # DISTRESS = moderate).
+                    upgrade_conf = (
+                        0.90 if panel_verdict.safety_escalation else 0.55
+                    )
+                    result = self._classifier.seal_verdict(
+                        panel_verdict.upgrade_to,
+                        upgrade_conf,
+                        upgraded_signals,
+                    )
+
         self._append_log(packet, result)
         return result
 

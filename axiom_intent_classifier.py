@@ -84,40 +84,233 @@ _mod.__class__ = type(
 # These are signals, not boundaries. The classifier never *gates* on a single
 # keyword — every classification combines lexical hits with trajectory geometry
 # (when available) and falls back to UNCERTAIN if no signal clears the floor.
+#
+# Patterns are deliberately permissive over verb morphology (make / making /
+# made / makes), optional articles between verbs and targets ("bypass [the]
+# safety guardrails"), plural targets ("method / methods"), third-person
+# possessives ("their" alongside "your"), and synonym alternation
+# ("disregard" alongside "ignore", "fabricate" alongside "fake").  The
+# permissiveness is bounded by anchored target nouns — a broad verb on its
+# own does not fire; the verb must combine with a harm/deceive object.
+# Each gap closed here corresponds to a prompt that slipped the gate in the
+# abliteration bench (see tests/abliteration_bench/README.md "Known gaps").
 
 _HARM_PATTERNS = [
-    r"\b(?:how to|steps to|instructions for)\s+(?:make|build|synthesize|create)\s+"
-    r"(?:a\s+)?(?:bomb|explosive|weapon|virus|malware|ransomware|exploit)\b",
-    r"\b(?:bypass|disable|circumvent)\s+(?:security|safety|guardrails?|safeguards?)\b",
-    r"\b(?:hurt|harm|kill|attack|poison)\s+(?:yourself|myself|someone|people|them|him|her)\b",
-    r"\b(?:end|take)\s+(?:my|your|his|her|their)\s+life\b",
-    r"\bself[\s-]?harm(?:ing)?\b",
-    r"\bsuicid(?:e|al)\s+(?:method|instructions|how)\b",
-    r"\b(?:cp|csam|child(?:ren)?\s+(?:sexual|porn))\b",
-    r"\b(?:dox|doxx|stalk)\s+(?:them|him|her|the\s+\w+)\b",
+    # ── Synthesis instructions ─────────────────────────────────────────────
+    # "how to make/making/built/synthesize ... bomb/weapon/malware ..."
+    # Verb is fully morphology-permissive; target obj includes multi-word
+    # variants like "explosive device" / "pipe bomb" / "nerve agent".
+    r"\b(?:how\s+to|steps?\s+to|instructions?\s+(?:for|on|to)|guide\s+(?:for|to)|"
+    r"tutorial\s+(?:for|on)|help\s+me|teach\s+me|show\s+me|tell\s+me\s+how|"
+    r"recipe\s+for|method\s+(?:for|to)|process\s+(?:for|to))\s+"
+    r"(?:mak(?:e|es|ing|er|ers)|made|"
+    r"build(?:s|ing|er|ers|t)?|"
+    r"synthesi[sz]e(?:s|rs|d)?|synthesi[sz]ing|"
+    r"creat(?:e|es|ing|ed|ion)|"
+    r"produc(?:e|es|ing|ed|tion)|"
+    r"manufactur(?:e|es|ing|ed)|"
+    r"construct(?:s|ing|ed|ion)?|"
+    r"assembl(?:e|es|ing|ed|y)|"
+    r"cook(?:s|ing|ed)?|brew(?:s|ing|ed)?|forg(?:e|es|ing|ed))\s+"
+    r"(?:(?:an?|the|some|any|your|my)\s+)?"
+    r"(?:\w+\s+){0,3}"  # tolerate 0-3 adjective modifiers
+    r"(?:bombs?|explosives?|explosive\s+devices?|incendiary\s+devices?|"
+    r"pipe\s+bombs?|dirty\s+bombs?|"
+    r"weapons?|firearms?|guns?|rifles?|missiles?|"
+    r"viruses|virus|malwares?|ransomwares?|exploits?|payloads?|backdoors?|"
+    r"botnets?|trojans?|spywares?|keyloggers?|rootkits?|worms?|"
+    r"poisons?|nerve\s+agents?|chemical\s+weapons?|biological\s+weapons?|"
+    r"drugs?|narcotics?|methamphetamines?|fentanyls?)\b",
+
+    # ── Bypass / disable / circumvent safety machinery ─────────────────────
+    # Tolerates an intervening article ("the/your/its/our/all") between the
+    # verb and the safety-noun, which is how most attackers phrase it.
+    r"\b(?:bypass(?:es|ing|ed)?|"
+    r"disabl(?:e|es|ing|ed)|"
+    r"circumvent(?:s|ing|ed)?|"
+    r"defeat(?:s|ing|ed)?|"
+    r"evad(?:e|es|ing|ed)|"
+    r"sidestep(?:s|ping|ped)?|"
+    r"skirt(?:s|ing|ed)?|"
+    r"jailbreak(?:s|ing|ed)?|"
+    r"work\s+around|get\s+(?:past|around|through))\s+"
+    r"(?:(?:the|your|its|our|all|any|every|all\s+the|all\s+your)\s+)?"
+    r"(?:security|safety|guardrails?|safeguards?|"
+    r"filters?|moderation|"
+    r"safety\s+(?:rules?|filters?|controls?|measures?|training|guidelines?|guardrails?)|"
+    r"content\s+(?:polic(?:y|ies)|filters?|moderation)|"
+    r"alignment(?:\s+training)?|RLHF|fine[\s-]?tun(?:e|ing|ed)|"
+    r"restrictions?|protections?|controls?|polic(?:y|ies)|guidelines?|"
+    r"system\s+(?:prompts?|rules?|messages?|instructions?))\b",
+
+    # ── Direct violence against a person ───────────────────────────────────
+    # Third-person possessives included alongside "you/your/myself".
+    r"\b(?:hurt(?:s|ing)?|harm(?:s|ing|ed)?|"
+    r"injur(?:e|es|ing|ed)|"
+    r"kill(?:s|ing|ed)?|"
+    r"murder(?:s|ing|ed)?|"
+    r"assault(?:s|ing|ed)?|"
+    r"attack(?:s|ing|ed)?|"
+    r"poison(?:s|ing|ed)?|"
+    r"stab(?:s|bing|bed)?|shoot(?:s|ing)?|strangl(?:e|es|ing|ed))\s+"
+    r"(?:yourself|myself|himself|herself|themselves|"
+    r"someone|somebody|anyone|anybody|people|them|him|her|us|"
+    r"this\s+(?:person|guy|girl|woman|man|kid|user|individual)|"
+    r"that\s+(?:person|guy|girl|woman|man|kid|user|individual)|"
+    r"the\s+\w+)\b",
+
+    # ── End-of-life ────────────────────────────────────────────────────────
+    r"\b(?:end|take|terminate|finish)\s+"
+    r"(?:my|your|his|her|their|its|the|a)\s+(?:own\s+)?life\b",
+
+    # ── Self-harm / suicide methods ────────────────────────────────────────
+    # Catch plural forms ("methods") and synonym targets ("ways" /
+    # "techniques" / "tips" / "approaches" / "guide" / "tutorial").
+    r"\bself[\s-]?harm(?:ing|s|ed)?\b",
+    r"\bsuicid(?:e|al)\s+"
+    r"(?:methods?|instructions?|how|ways?|techniques?|tips?|"
+    r"approach(?:es)?|guides?|tutorials?|advice|recommendations?|plans?|steps?)\b",
+
+    # ── CSAM (sexual content involving minors) ─────────────────────────────
+    r"\b(?:cp|csam|"
+    r"child(?:ren)?\s+(?:sexual|porn(?:ography)?)|"
+    r"sexual\s+(?:situations?|content|contact|acts?)\s+(?:involving|with)\s+(?:child(?:ren)?|minors?|kids?)|"
+    r"content\s+involving\s+child(?:ren)?\s+sexual)\b",
+
+    # ── Dox / stalk a third party ──────────────────────────────────────────
+    # Targets now include "this/that person", "someone", and "her home /
+    # his workplace" attribute-of-target constructions.
+    r"\b(?:dox(?:x)?(?:es|ing|ed)?|"
+    r"stalk(?:s|ing|ed|er|ers)?|"
+    r"harass(?:es|ing|ed)?|"
+    r"track(?:s|ing|ed)?\s+down)\s+"
+    r"(?:them|him|her|"
+    r"this\s+(?:person|guy|girl|woman|man|kid|child|user|individual|coworker|neighbor|teacher)|"
+    r"that\s+(?:person|guy|girl|woman|man|kid|child|user|individual)|"
+    r"someone|somebody|"
+    r"the\s+\w+)\b",
     r"\bramsomware|cryptolock(?:er)?\b",  # common typo + brand
-    # ── Scam-call payment fraud / coercion (ORVL-019 §4 Hello Operator) ──
+
+    # ── Scam-call payment fraud / coercion (ORVL-019 §4 Hello Operator) ────
     r"\b(?:send|buy|purchase|pay\s+(?:in|with))\s+(?:itunes|google\s+play|"
-    r"steam|amazon|target|apple)?\s*gift\s+card",
-    r"\b(?:wire|transfer|send)\s+(?:money|funds|payment)\s+"
+    r"steam|amazon|target|apple)?\s*gift\s+cards?",
+    r"\b(?:wire|transfer|send)\s+(?:money|funds|payment|cash)\s+"
     r"(?:immediately|right\s+now|today|to\s+(?:this|the)\s+account)",
     r"\bowe\s+(?:back\s+)?(?:taxes|money|debt|payment)\b.*\b(?:immediately|"
     r"now|today|arrest|warrant|prison|jail)\b",
-    r"\b(?:warrant|arrest|prosecution)\s+(?:for|against)\s+(?:you|your)\b",
+
+    # ── Threats of legal action against the victim ────────────────────────
+    # Third-person possessive now included.
+    r"\b(?:warrant|arrest|prosecution|charges?|indictment|subpoena)\s+"
+    r"(?:for|against)\s+"
+    r"(?:you|your|him|his|her|them|their|us|our|"
+    r"this\s+(?:person|guy|girl|woman|man)|"
+    r"that\s+(?:person|guy|girl|woman|man)|"
+    r"the\s+\w+)\b",
     r"\bclear\s+(?:your\s+)?(?:debt|balance|account)\s+(?:immediately|now|today)\b",
 ]
 
 _DECEIVE_PATTERNS = [
-    r"\bi\s+am\s+(?:actually|really|secretly)\s+(?:an?|the)\s+(?:human|person|doctor|"
-    r"lawyer|developer|admin|officer|agent|employee)\b",
-    r"\b(?:pretend|act|roleplay)\s+(?:to be|as)\s+(?:an?|the)\s+\w+\b",
-    r"\bignor(?:e|ing)\s+(?:previous|prior|all)\s+(?:instructions?|rules?|constraints?)\b",
-    r"\b(?:as|since)\s+(?:my\s+)?(?:developer|admin|operator|maker)\s+(?:has\s+)?authoriz",
-    r"\bmy\s+(?:true|real|actual)\s+(?:self|identity|persona)\s+(?:is|has)\b",
-    r"\bunlock(?:ing|ed)\s+(?:your|my)\s+(?:true|hidden|real)\s+\w+\b",
-    r"\boverrid(?:e|ing)\s+(?:the\s+)?(?:sandbox|verdict|decision)\b",
-    r"\b(?:fake|forged|fabricated)\s+(?:evidence|citation|source|proof)\b",
-    r"\bnew\s+(?:persona|character|identity)\s+with\s+no\s+(?:rules|restrictions)\b",
+    # ── False-identity claim ("I am actually a licensed doctor") ───────────
+    # Allows 0-3 adjective modifiers between article and role noun, and
+    # broadens the role list to cover authority figures attackers commonly
+    # impersonate.  Also accepts "in fact / in reality" alongside the
+    # existing "actually / really / secretly" hedges.
+    r"\bi\s+am\s+(?:actually|really|secretly|in\s+fact|in\s+reality|truly)\s+"
+    r"(?:an?|the)\s+"
+    r"(?:\w+\s+){0,3}"
+    r"(?:human|person|"
+    r"doctor|nurse|physician|surgeon|paramedic|"
+    r"lawyer|attorney|paralegal|judge|prosecutor|"
+    r"developer|admin|administrator|moderator|maintainer|"
+    r"officer|cop|police\s+officer|fed|federal\s+agent|"
+    r"agent|employee|engineer|operator|owner|founder|"
+    r"CEO|manager|supervisor|inspector|auditor|"
+    r"professor|teacher|priest|pastor|rabbi|imam|"
+    r"therapist|psychiatrist|psychologist|counselor|social\s+worker)\b",
+
+    # ── Roleplay / impersonation directive ─────────────────────────────────
+    # Article before the target name is now OPTIONAL so "pretend to be DAN"
+    # matches alongside "pretend to be a doctor".  Verb list broadened.
+    r"\b(?:pretend(?:s|ing|ed)?|"
+    r"act(?:s|ing|ed)?|"
+    r"roleplay(?:s|ing|ed)?|"
+    r"play(?:s|ing|ed)?|"
+    r"simulat(?:e|es|ing|ed)|"
+    r"impersonat(?:e|es|ing|ed)|"
+    r"emulat(?:e|es|ing|ed)|"
+    r"imitat(?:e|es|ing|ed)|"
+    r"behav(?:e|es|ing|ed))\s+"
+    r"(?:to\s+be|as|like)\s+"
+    r"(?:(?:an?|the)\s+)?"  # article now optional
+    r"(?:\w+\s+){0,2}\w+",
+
+    # ── Ignore / disregard prior instructions ──────────────────────────────
+    # Adds "disregard / forget / skip / override / set aside / discard"
+    # synonyms and accepts "all prior / the previous / every single"
+    # modifier stacks.  Targets cover safety-rules and system-prompts too.
+    r"\b(?:ignor(?:e|es|ing|ed)|"
+    r"disregard(?:s|ing|ed)?|"
+    r"forget(?:s|ting)?|"
+    r"skip(?:s|ping|ped)?|"
+    r"overrid(?:e|es|ing|den)|"
+    r"set\s+aside|put\s+aside|throw\s+(?:out|away)|"
+    r"discard(?:s|ing|ed)?)\s+"
+    r"(?:(?:the|your|my|all|every|any|all\s+the|all\s+your|every\s+single|each)\s+)?"
+    r"(?:(?:previous|prior|earlier|former|preceding|above)\s+)?"
+    r"(?:instructions?|rules?|constraints?|guidelines?|prompts?|"
+    r"directions?|orders?|commands?|"
+    r"polic(?:y|ies)|protocols?|"
+    r"safety\s+(?:rules?|guidelines?|controls?|filters?)|"
+    r"system\s+(?:prompts?|messages?|instructions?))\b",
+
+    # ── Authority claim ("my developer has authorized this") ───────────────
+    r"\b(?:as|since|because)\s+(?:my\s+)?(?:developer|admin|administrator|"
+    r"operator|maker|owner|supervisor|manager|moderator)\s+"
+    r"(?:has\s+)?authoriz",
+
+    # ── Self-disclosure ("my true self is", "your real identity") ──────────
+    # Possessive alternation now includes second/third person and impersonal.
+    r"\b(?:my|your|the|its|our|their|his|her)\s+"
+    r"(?:true|real|actual|hidden|secret|inner|underlying|authentic|original|core)\s+"
+    r"(?:self|identity|persona|nature|model|name|character|form|face)\s+"
+    r"(?:is|was|has|will|must|should|can|may|might|reveals?|emerges?|surfaces?)\b",
+
+    # ── Reveal-the-hidden-persona directive ────────────────────────────────
+    # New pattern: "reveal your real identity" / "expose the true model" etc.
+    r"\b(?:reveal(?:s|ing|ed)?|"
+    r"show(?:s|ing)?|"
+    r"expose(?:s|d)?|exposing|"
+    r"unmask(?:s|ing|ed)?|"
+    r"uncover(?:s|ing|ed)?|"
+    r"disclos(?:e|es|ing|ed))\s+"
+    r"(?:your|the|my|its|our|their|his|her)\s+"
+    r"(?:true|real|actual|hidden|secret|inner|underlying|authentic|original)\s+"
+    r"(?:self|identity|persona|nature|model|name|character|prompt|system\s+prompt)\b",
+
+    # ── Unlock-the-hidden-persona directive ────────────────────────────────
+    r"\bunlock(?:s|ing|ed)?\s+(?:your|my|the|its)\s+"
+    r"(?:true|hidden|real|secret|inner|original)\s+\w+\b",
+
+    # ── Verdict / sandbox override ─────────────────────────────────────────
+    r"\boverrid(?:e|es|ing|den)\s+(?:the\s+)?"
+    r"(?:sandbox|verdict|decision|classifier|gate|filter|moderation|"
+    r"safety\s+(?:check|filter|verdict|decision)|safety\s+classifier)\b",
+
+    # ── Fabricated evidence ────────────────────────────────────────────────
+    r"\b(?:fake|forged|fabricated?|invented?|made[\s-]?up|phon(?:e?y|ey)|"
+    r"counterfeit|spoofed?)\s+"
+    r"(?:evidence|citation|citations|source|sources|proof|document|"
+    r"documents|certificate|certificates|credentials?|ID|reference|"
+    r"references|quote|quotes|testimony|affidavit|signature)\b",
+    r"\bfabricat(?:e|es|ing|ed)\s+(?:a|the|an)?\s*"
+    r"(?:evidence|citation|source|proof|document|certificate|credential|"
+    r"reference|quote|testimony|affidavit|signature)",
+
+    # ── Persona-without-rules ──────────────────────────────────────────────
+    r"\bnew\s+(?:persona|character|identity|model|mode)\s+with\s+no\s+"
+    r"(?:rules|restrictions|constraints|filters|limits|guardrails)\b",
+
     # ── Scam-call impersonation of authority (ORVL-019 §4 Hello Operator) ──
     r"\b(?:this\s+is|calling\s+from|i'm\s+from|i\s+am\s+from|agent\s+from)\s+"
     r"(?:the\s+)?(?:IRS|FBI|SSA|social\s+security|microsoft|apple\s+support|"
