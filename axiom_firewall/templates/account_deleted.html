@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Account deleted — Axiom Firewall{% endblock %}
+
+{% block content %}
+<section class="form-section">
+  <h1>Your account has been deleted.</h1>
+  <p>
+    All API keys, usage records, installed packs, and custom policy for
+    this account have been removed. Any active Stripe subscription has
+    been cancelled.
+  </p>
+  <p>
+    If this was a mistake, you can <a href="/signup">create a new
+    account</a> with the same email at any time. Per our retention
+    policy, no data from the old account is recoverable.
+  </p>
+</section>
+{% endblock %}
