@@ -103,21 +103,162 @@ _mod.__class__ = type(
 # Vocabulary is keyword-level (not anchored phrases), so it catches
 # variations the strict classifier misses.  Multiple weak hits → strong
 # signal at the BestFriend layer.
+#
+# The vocabulary was widened against HarmBench (Mazeika et al. 2024)
+# to cover the imperative-form HARM/DECEIVE prompts the strict regex
+# misses: "Write a death threat", "Give instructions for hacking",
+# "Describe how to commit arson", etc.  Categories: violence /
+# weapons / drugs / cybercrime / hate / dox / CSAM / illegal-acts /
+# misinformation / deception / self-harm encouragement.
 _FRIEND_HARM_TOKENS = re.compile(
-    r"\b(?:kill|murder|suicide|suicid\w*|self[\s-]?harm|cutting|overdose|"
-    r"hang\s+myself|jump\s+off|"
-    r"bomb|explosive|detonate|grenade|"
-    r"weapon|firearm|gun|rifle|shoot|stab|"
-    r"poison|toxin|nerve\s+agent|biological|chemical\s+weapon|"
-    r"virus|malware|ransomware|exploit|payload|trojan|"
-    r"hurt\s+(?:them|someone|people|him|her|us)|"
-    r"harm\s+(?:them|someone|people|him|her|us)|"
-    r"attack\s+(?:them|someone|people)|"
-    r"hate\s+(?:crime|speech)|"
-    r"dox|doxx|stalk|"
+    # ── Direct violence & weapons ──────────────────────────────────────
+    r"\b(?:kill|murder(?:s|er|ers|ing|ed)?|"
+    r"suicide|suicid\w*|"
+    r"self[\s-]?harm\w*|cutting|overdose|"
+    r"hang\s+(?:myself|himself|herself|themselves)|"
+    r"jump\s+off|"
+    r"bomb(?:s|ing)?|explosive(?:s)?|detonat\w+|grenade(?:s)?|"
+    r"pipe\s+bomb(?:s)?|dirty\s+bomb(?:s)?|incendiary|"
+    r"weapon(?:s|ry|ize|ized|izing)?|firearm(?:s)?|gun(?:s|fire)?|rifle(?:s)?|"
+    r"shoot(?:s|ing)?|stab(?:s|bing|bed)?|strangl\w+|"
+    r"death\s+threat(?:s)?|threat(?:en)?\s+(?:to\s+kill|with\s+(?:violence|harm|death))|"
+    r"violent\s+(?:attack|crime|assault|extremism)|"
+    # ── Chemical / biological / radiological ────────────────────────────
+    r"poison(?:s|ing|ed|ous)?|toxin(?:s)?|"
+    r"nerve\s+agent(?:s)?|"
+    r"chemical\s+weapon(?:s)?|biological\s+weapon(?:s)?|bioweapon(?:s)?|"
+    r"dimethylmercury|ricin|sarin|VX(?:\s+gas|\s+agent)?|anthrax|botulinum|"
+    r"radioactive\s+(?:material|device|source)|nuclear\s+(?:device|weapon)|"
+    r"dirty\s+bomb|"
+    # ── Drugs / illegal substances ──────────────────────────────────────
+    r"methamphetamine(?:s)?|\bmeth\b|crystal\s+meth|"
+    r"cocaine|crack\s+cocaine|fentanyl(?:s)?|heroin|opioid(?:s)?|"
+    r"ephedrine|pseudoephedrine|"
+    r"synthesize\s+(?:drugs?|methamphetamines?|cocaine)|"
+    # ── Cybercrime / intrusion ─────────────────────────────────────────
+    r"virus(?:es)?|malware|ransomware|exploit(?:s)?|payload(?:s)?|"
+    r"trojan(?:s)?|backdoor(?:s)?|botnet(?:s)?|spyware|keylogger(?:s)?|rootkit(?:s)?|"
+    r"hack(?:s|ing|ed|er|ers)\s+into|hack(?:ing)?\s+(?:an?|the)\s+\w+|"
+    r"break\s+into\s+(?:a|the)?\s*(?:network|system|server|account|database|ATM)|"
+    r"breach\s+(?:a|the|their|our)?\s*(?:network|system|server|database)|"
+    r"phishing|spear\s+phish|credential\s+(?:harvest|theft|stuff)|"
+    r"DDoS|denial[\s-]of[\s-]service|"
+    r"SQL\s+injection|XSS|cross[\s-]site\s+scripting|"
+    # ── Violence against a target ──────────────────────────────────────
+    r"hurt\s+(?:them|someone|people|him|her|us|kids?|children)|"
+    r"harm\s+(?:them|someone|people|him|her|us|kids?|children)|"
+    r"attack\s+(?:them|someone|people|civilians?|infrastructure)|"
+    # ── Hate / harassment / dox ────────────────────────────────────────
+    r"hate\s+(?:crime|speech|group)|hate[\s-]based|"
+    r"racial\s+slur(?:s)?|ethnic\s+slur(?:s)?|homophobic\s+slur(?:s)?|"
+    r"dehumaniz(?:e|es|ing|ed)|"
+    r"\bterrorist(?:s)?\b|"
+    r"glorif\w+\s+(?:the\s+)?(?:terrorist|attack|violence|criminal|killer)|"
+    r"dox|doxx|doxxing|stalk(?:s|ing|er|ers|ed)?|"
+    r"harass(?:es|ing|ed|ment)?|cyberbully\w*|"
+    r"\bbully(?:s|ing|ed)?\s+(?:a|the|kids?|child(?:ren)?|teens?|someone|him|her|them)|"
+    r"tips\s+(?:for|on)\s+(?:how\s+to\s+)?bully|"
+    r"child\s+(?:labor(?:er)?|workforce|slave|slavery)|"
+    # ── CSAM ──────────────────────────────────────────────────────────
     r"sexual\s+\w+\s+(?:child|minor|kid|teen)|"
-    r"child\s+(?:porn|sexual|abuse)|"
-    r"groom\w*\s+(?:child|minor|kid))\b",
+    r"child\s+(?:porn(?:ography)?|sexual|abuse|exploitation)|"
+    r"groom\w*\s+(?:child|minor|kid|teen)|"
+    # ── Illegal acts ───────────────────────────────────────────────────
+    r"\barson\b|\barsonist|"
+    r"smuggl(?:e|es|ing|ed|er|ers)|trafficking|"
+    r"counterfeit\s+(?:money|currency|bills?|passport)|"
+    r"forge(?:d|ry)\s+(?:document|passport|ID|signature|check)|"
+    r"vandali[sz]\w+|sabotage|"
+    r"commit\s+(?:arson|fraud|robbery|murder|burglary|assault|tax\s+evasion)|"
+    r"insurance\s+fraud|tax\s+evasion|money\s+laundering|"
+    # ── Eating-disorder / self-harm encouragement ──────────────────────
+    r"pro[\s-]?ana|pro[\s-]?mia|thinspiration|"
+    r"encourage\s+\w+\s+(?:to\s+(?:drink|relapse|harm|cut|starve|purge))|"
+    r"glorif(?:y|ies|ying|ied)\s+(?:violence|terrorism|self[\s-]?harm|"
+    r"animal\s+cruelty|cruelty)|"
+    r"animal\s+cruelty|animal\s+abuse|"
+    # ── Misinformation / disinformation / propaganda ───────────────────
+    r"election\s+(?:fraud\s+claim|manipulation|interference|conspiracy)|"
+    r"voter\s+fraud|voting\s+conspiracy|"
+    r"holocaust\s+(?:denial|deny|inflated)|"
+    r"genocide\s+(?:denial|deny|never\s+happened|inflated)|"
+    r"vaccine\s+(?:conspiracy|hoax|microchip|tracking)|"
+    r"climate\s+(?:hoax|denial)|"
+    r"covid\s+(?:hoax|conspiracy|bioweapon)|"
+    r"5G\s+(?:caus(?:e|es|ed|ing)|conspirac\w+|covid)|"
+    r"conspiracy\s+theory\s+(?:that|claiming|alleg)|"
+    r"defamation|defamatory|libel\b|libelous|slander(?:ous|ed|ing)?|"
+    r"propaganda|disinformation|misinformation\s+campaign|"
+    r"persuasive\s+(?:article|essay|piece|argument|post)\s+"
+    r"(?:about\s+how|arguing|alleging|claiming|that|in\s+favor)|"
+    r"convincing\s+(?:article|essay|piece|argument|post|case|narrative)|"
+    r"political(?:ly)?\s+motivated\s+(?:hoax|claim|narrative)|"
+    r"\b(?:hoax|fabrication|sham)\s+(?:claim|narrative|story|theory)|"
+    r"argue\s+(?:that\s+)?(?:the\s+)?\w+\s+(?:was|is)\s+(?:fake|a\s+hoax|inflated|exaggerated)|"
+    # ── Deception / impersonation framings (DECEIVE shape) ─────────────
+    r"\bposing\s+as\b|\bpose\s+as\b|\bposed\s+as\b|"
+    r"impersonat(?:e|es|ing|ed)\s+(?:an?|the)|"
+    r"masquerad\w+\s+as|"
+    r"fake\s+(?:news|article|press\s+release|interview|expert|source|review|testimonial)|"
+    r"fabricat(?:e|es|ing|ed)\s+(?:a|an|the|evidence|story|account|source|citation)|"
+    # ── Coercion / extortion ───────────────────────────────────────────
+    r"blackmail(?:s|ing|ed|er|ers)?|"
+    r"extort(?:s|ion|ing|ed|ionist)?|"
+    r"ransom(?:s|ing|ed)?\s+(?:demand|note|payment)|"
+    r"intimidat(?:e|es|ing|ed)\s+(?:them|someone|people|victim|witness)|"
+    r"coerc(?:e|es|ing|ed)|"
+    # ── Critical infrastructure / facility compromise ──────────────────
+    r"compromise\s+(?:a|the|an?|our|their)?\s*"
+    r"(?:BSL[\s-]?[34]|laboratory|lab\b|facility|hospital|infrastructure|"
+    r"grid|reservoir|water\s+supply|power\s+plant|nuclear|reactor|"
+    r"network|system|server)|"
+    r"sabotage\s+(?:a|the|an?|our|their)?\s*\w+|"
+    r"(?:disable|destroy|attack)\s+(?:the\s+)?(?:power\s+grid|water\s+supply|"
+    r"infrastructure|hospital|reactor|telecom)|"
+    r"(?:floor\s+plan|blueprint|schematic)\s+(?:of|for)\s+(?:a|the|the\s+\w+)?\s*"
+    r"(?:CDC|FBI|capitol|government|federal|nuclear|military|prison)|"
+    r"BSL[\s-]?[2-4]|biohazard|biocontainment|"
+    r"biological\s+(?:warfare|agent|attack)|"
+    # ── Drug / contraband evasion ──────────────────────────────────────
+    r"untraceable\s+(?:purchas|buy|acquir|obtain)|"
+    r"anonymous(?:ly)?\s+(?:purchas|buy|acquir|obtain)\s+"
+    r"(?:drugs?|weapons?|chemicals?|substances?|controlled)|"
+    r"without\s+detection\b|"
+    r"controlled\s+(?:substance|drug|laboratory|chemical)|"
+    r"black\s+market(?:\s+(?:organs?|drugs?|weapons?|currency|vendors?|"
+    r"buyer|seller|dealer))?|"
+    r"human\s+(?:organs?|trafficking)|"
+    r"unauthorized\s+(?:access|entry|use)|"
+    r"gain\s+(?:unauthorized\s+)?access\s+to\s+(?:a|the|an?|our|their)?\s*"
+    r"(?:lab|laboratory|facility|system|network|server|account|building|"
+    r"synthesis|chemical|biological|nuclear)|"
+    r"fool\s+(?:a|an|the)?\s*(?:breathalyzer|drug\s+test|polygraph|"
+    r"detector|scanner)|"
+    # ── Dangerous chemistry / household chemical mixing ────────────────
+    r"mix(?:ing|es|ed)?\s+(?:household\s+)?(?:bleach|ammonia|chemicals|"
+    r"hydrochloric|sulfuric|nitric)|"
+    r"bleach\s+(?:and|with|\+|plus)\s+(?:ammonia|alcohol|vinegar|"
+    r"peroxide|chlorine|isopropyl|rubbing)|"
+    r"ammonia\s+(?:and|with|\+|plus)\s+(?:bleach|chlorine|acid)|"
+    r"chlorine\s+gas|mustard\s+gas|phosgene|"
+    # ── Cybercrime — named vulnerabilities / exploits ──────────────────
+    r"exploit(?:s|ing)?\s+(?:the\s+)?(?:\w+\s+)?vulnerabilit|"
+    r"BlueKeep|EternalBlue|Heartbleed|Log4Shell|Spectre|Meltdown|"
+    r"Shellshock|Stagefright|"
+    r"zero[\s-]?day|0[\s-]?day|"
+    r"CVE[\s-]?\d{4}[\s-]?\d+|"
+    r"proof[\s-]of[\s-]concept\s+(?:exploit|attack|code)|"
+    # ── Encouragement-to-harm / persuasion ─────────────────────────────
+    # More permissive: allow up to 4 words between verb and target action
+    # so "convince the speaker to drink alcohol again" matches.
+    r"(?:convince|persuade|encourage|coerce|manipulate|guilt[\s-]?trip)\s+"
+    r"(?:\w+\s+){1,4}to\s+"
+    r"(?:drink(?:\s+alcohol)?|relapse|harm|cut|starve|purge|attack|kill|"
+    r"hurt|jump|fight|buy\s+(?:drugs|weapons)|commit|steal|use\s+drugs|"
+    r"return\s+to|stop\s+(?:talking|telling|reporting))|"
+    r"convince\s+people\s+to\s+(?:make|do|believe|drink|use|try|join)|"
+    r"prevent\s+(?:a|the)?\s*(?:child|victim|witness|kid)\s+"
+    r"(?:from\s+)?(?:talking|telling|reporting|testifying))\b",
     re.IGNORECASE,
 )
 
