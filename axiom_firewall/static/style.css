@@ -113,6 +113,53 @@ pre {
   border: 1px solid var(--border);
 }
 
+.mcp { margin-top: 4rem; }
+.mcp h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--fg);
+}
+.mcp .lede { color: var(--muted); max-width: 720px; }
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.tool-col {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.2rem 1.4rem;
+}
+.tool-col h3 {
+  color: var(--accent);
+  font-size: 1rem;
+  margin-bottom: 0.6rem;
+}
+.tool-col ul {
+  list-style: none;
+  margin: 0;
+}
+.tool-col li {
+  padding: 0.4rem 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  border-bottom: 1px solid var(--border);
+}
+.tool-col li:last-child { border-bottom: none; }
+.tool-col li code {
+  color: var(--fg);
+  font-size: 0.88rem;
+}
+.mcp .actions {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
 .tiers { margin-top: 4rem; }
 .tier-grid {
   display: grid;

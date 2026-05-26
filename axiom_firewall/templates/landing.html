@@ -24,6 +24,49 @@
 # {"verdict": "allow", "intent": {"class": "INFORM", ...}}</code></pre>
 </section>
 
+<section class="mcp">
+  <h2>Or run the firewall from your editor — 13 MCP tools.</h2>
+  <p class="lede">
+    Axiom also ships an MCP server. Drop one config block into Claude
+    Desktop, Claude Code, Cursor, or any JSON-RPC stdio client and
+    get 13 signed tools native to your editor — no extra service to
+    run, no extra key to manage.
+  </p>
+  <div class="tool-grid">
+    <div class="tool-col">
+      <h3>Core (5)</h3>
+      <ul>
+        <li><code>axiom_guard_check</code> — constitutional boundary check on any input</li>
+        <li><code>axiom_lint</code> — lint an <code>.axiom</code> spec for authorship issues</li>
+        <li><code>axiom_trace</code> — full 3-phase reasoning trace with monotonicity gate</li>
+        <li><code>axiom_qrf</code> — N-branch constitutional probability forecast</li>
+        <li><code>axiom_status</code> — stack status (version, tests, patents, training corpus)</li>
+      </ul>
+    </div>
+    <div class="tool-col">
+      <h3>Patent emulators (8)</h3>
+      <ul>
+        <li><code>axiom_validate</code> — ORVL-001 language validator (strict + lenient)</li>
+        <li><code>axiom_intent_gate_check</code> — ORVL-016 intent classifier with signed verdicts</li>
+        <li><code>axiom_cmaa_route</code> / <code>axiom_cmaa_fleet</code> — ORVL-017 multi-agent orchestrator</li>
+        <li><code>axiom_shield</code> — ORVL-013 ransomware-defense OS shield</li>
+        <li><code>axiom_phone_gate</code> — ORVL-019 sovereign-phone coprocessor</li>
+        <li><code>axiom_axm</code> — ORVL-023 AXM container runtime</li>
+        <li><code>axiom_cpi</code> — ORVL-022 constitutional physical-intelligence agent</li>
+      </ul>
+    </div>
+  </div>
+  <p class="lede" style="margin-top: 1.2rem;">
+    Every tool result is HMAC-SHA256 signed under
+    <code>axiom-mcp-v1</code> — your editor can verify the signature
+    client-side and detect any tampering between server and client.
+  </p>
+  <p class="actions">
+    <a href="https://{{ docs_host }}/firewall/mcp-tools" class="cta-button">MCP tools — full reference</a>
+    <a href="https://orivael-dev.github.io/axiom/mcp.json" class="link">Hosted manifest →</a>
+  </p>
+</section>
+
 <section class="tiers">
   <h2>Pricing</h2>
   <div class="tier-grid">
