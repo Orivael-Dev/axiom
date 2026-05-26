@@ -84,6 +84,150 @@ def test_invalid_keys_rejected(isolated_tenants):
     assert authenticate("axfw_does_not_exist") is None
 
 
+def test_revoke_api_key_drops_active_status_and_breaks_auth(isolated_tenants):
+    """Revocation soft-deletes: row stays for usage_record joins, but
+    list_api_keys hides it and the bearer-token auth fastpath stops
+    matching. Clearing secret_hash is belt-and-braces — the
+    revoked_at IS NULL filter would catch it anyway, but clearing
+    the hash means an accidental future query without that filter
+    still can't authenticate the key."""
+    from axiom_firewall.auth import authenticate, hash_password
+    from axiom_firewall.db import (
+        insert_api_key, insert_tenant, list_api_keys, revoke_api_key,
+    )
+    from axiom_firewall.models import ApiKey, Tenant
+
+    t = Tenant.new(email="rev@example.com",
+                   pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+    k = ApiKey.new(tenant_id=t.tenant_id, name="prod")
+    insert_api_key(k)
+
+    # Auth works before revoke.
+    assert authenticate(k.secret) is not None
+    assert len(list_api_keys(t.tenant_id)) == 1
+
+    # Revoke returns True on a successful first revoke.
+    assert revoke_api_key(t.tenant_id, k.key_id) is True
+
+    # Auth now fails — bearer-hash cleared, revoked_at set.
+    assert authenticate(k.secret) is None
+    # list_api_keys filters out revoked rows.
+    assert list_api_keys(t.tenant_id) == []
+
+    # Idempotency: a second revoke returns False (no row matched
+    # because revoked_at IS NULL is part of the WHERE clause).
+    assert revoke_api_key(t.tenant_id, k.key_id) is False
+
+
+def test_revoke_api_key_cross_tenant_isolation(isolated_tenants):
+    """Tenant A must NOT be able to revoke Tenant B's key. The
+    (tenant_id, key_id) WHERE clause is the isolation primitive —
+    if a caller ever passes the wrong tenant_id, the UPDATE simply
+    matches zero rows and returns False. No exception raised so
+    the dashboard route can render a consistent 'not_found' result
+    without leaking key-existence info across tenants."""
+    from axiom_firewall.auth import authenticate, hash_password
+    from axiom_firewall.db import (
+        insert_api_key, insert_tenant, list_api_keys, revoke_api_key,
+    )
+    from axiom_firewall.models import ApiKey, Tenant
+
+    a = Tenant.new(email="a@example.com", pw_hash=hash_password("longenoughpw"))
+    b = Tenant.new(email="b@example.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(a); insert_tenant(b)
+    kb = ApiKey.new(tenant_id=b.tenant_id, name="prod")
+    insert_api_key(kb)
+
+    # Tenant A tries to revoke Tenant B's key.
+    assert revoke_api_key(a.tenant_id, kb.key_id) is False
+
+    # B's key still authenticates and still lists active.
+    assert authenticate(kb.secret) is not None
+    assert len(list_api_keys(b.tenant_id)) == 1
+
+
+def test_dashboard_revoke_endpoint_requires_login(isolated_tenants):
+    """Unauthenticated POST to revoke must 303 to /login — no
+    information leakage about which key_ids exist."""
+    from fastapi.testclient import TestClient
+    from axiom_firewall.dashboard import app
+    client = TestClient(app)
+    r = client.post(
+        "/dashboard/keys/some-key-id/revoke",
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/login"
+
+
+def test_dashboard_revoke_endpoint_revokes_own_key(isolated_tenants):
+    """Authenticated user can revoke a key they own; the dashboard
+    re-renders without the revoked key visible and shows the
+    'revoked' confirmation."""
+    from fastapi.testclient import TestClient
+    from axiom_firewall.dashboard import app
+    client = TestClient(app)
+    r = client.post(
+        "/signup",
+        data={"email": "carol@example.com", "password": "longenoughpw"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    # Create a key so we have something to revoke. The HTML response
+    # also gives us the key_id by reading the dashboard.
+    r = client.post("/dashboard/keys", data={"name": "prod"},
+                    follow_redirects=True)
+    assert r.status_code == 200
+    # Now fetch the dashboard and parse the key_id out of the row.
+    from axiom_firewall.db import find_tenant_by_email, list_api_keys
+    t = find_tenant_by_email("carol@example.com")
+    keys = list_api_keys(t.tenant_id)
+    assert len(keys) == 1
+    kid = keys[0].key_id
+
+    # Revoke it.
+    r = client.post(f"/dashboard/keys/{kid}/revoke",
+                    follow_redirects=True)
+    assert r.status_code == 200
+    assert "API key revoked" in r.text
+    # No active keys remain.
+    assert list_api_keys(t.tenant_id) == []
+    # And the key row no longer appears in the table.
+    assert kid[:8] not in r.text
+
+
+def test_dashboard_revoke_endpoint_reports_not_found_on_alien_key(
+    isolated_tenants,
+):
+    """When the key_id doesn't belong to the logged-in tenant, the
+    revoke endpoint must NOT 500 or leak the key's existence — it
+    reports the same 'not_found' result the user would see if the
+    key were already revoked or never existed."""
+    from fastapi.testclient import TestClient
+    from axiom_firewall.dashboard import app
+    from axiom_firewall.db import insert_api_key, insert_tenant
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.models import ApiKey, Tenant
+    # Pre-seed tenant B with a key, OUTSIDE the test client session.
+    b = Tenant.new(email="b@example.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(b)
+    kb = ApiKey.new(tenant_id=b.tenant_id, name="b-prod")
+    insert_api_key(kb)
+
+    client = TestClient(app)
+    client.post(
+        "/signup",
+        data={"email": "a@example.com", "password": "longenoughpw"},
+        follow_redirects=False,
+    )
+    r = client.post(f"/dashboard/keys/{kb.key_id}/revoke",
+                    follow_redirects=True)
+    assert r.status_code == 200
+    assert "already revoked or doesn&#39;t belong" in r.text or \
+           "already revoked or doesn't belong" in r.text
+
+
 def test_dashboard_signup_flow(isolated_tenants):
     """End-to-end: signup → dashboard renders → key creation → key shown once."""
     from fastapi.testclient import TestClient

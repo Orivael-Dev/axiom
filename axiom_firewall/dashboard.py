@@ -44,7 +44,7 @@ from .auth import (
 )
 from .db import (
     delete_tenant, find_tenant_by_email, find_tenant_by_id, init_registry,
-    insert_api_key, insert_tenant, list_api_keys,
+    insert_api_key, insert_tenant, list_api_keys, revoke_api_key,
     update_tenant_password, update_tenant_recovery_hash, usage_summary,
 )
 from .limits import (
@@ -425,6 +425,23 @@ def create_key(request: Request, name: str = Form(...)):
     k = ApiKey.new(tenant_id=t.tenant_id, name=name)
     insert_api_key(k)
     request.session["new_secret"] = k.secret
+    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/dashboard/keys/{key_id}/revoke")
+def revoke_key(request: Request, key_id: str):
+    """Revoke an API key. Soft-delete: sets revoked_at + clears the
+    bearer-hash so the key stops authenticating immediately, but the
+    row stays for billing/audit joins. tenant_id comes from the
+    session — never from the request — so a logged-in tenant can
+    only revoke its OWN keys."""
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    revoked = revoke_api_key(t.tenant_id, key_id)
+    request.session["revoke_result"] = (
+        "ok" if revoked else "not_found"
+    )
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 

@@ -81,6 +81,13 @@
     </div>
   {% endif %}
 
+  {% set revoke_result = request.session.pop('revoke_result', None) %}
+  {% if revoke_result == 'ok' %}
+    <div class="alert success">API key revoked. Calls using that key will be rejected immediately.</div>
+  {% elif revoke_result == 'not_found' %}
+    <div class="alert error">That key is already revoked or doesn't belong to this account.</div>
+  {% endif %}
+
   <h2>API keys</h2>
   <form method="post" action="/dashboard/keys" class="inline-form">
     <input type="text" name="name" placeholder="Key name (e.g. production)" required>
@@ -89,13 +96,20 @@
 
   {% if keys %}
     <table class="keys">
-      <thead><tr><th>Name</th><th>Key ID</th><th>Created</th></tr></thead>
+      <thead><tr><th>Name</th><th>Key ID</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody>
         {% for k in keys %}
           <tr>
             <td>{{ k.name }}</td>
             <td><code>{{ k.key_id[:8] }}…</code></td>
             <td>{{ k.created_at.strftime('%Y-%m-%d') }}</td>
+            <td>
+              <form method="post" action="/dashboard/keys/{{ k.key_id }}/revoke"
+                    class="inline-form"
+                    onsubmit="return confirm('Revoke key &quot;{{ k.name|e }}&quot;? Calls using it will fail immediately. This cannot be undone.');">
+                <button type="submit" class="danger">Revoke</button>
+              </form>
+            </td>
           </tr>
         {% endfor %}
       </tbody>
