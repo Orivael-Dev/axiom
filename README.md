@@ -282,9 +282,10 @@ AXIOM runs as an MCP server — any MCP client (Claude Desktop, Claude Code, Cur
 python axiom_mcp_server.py
 ```
 
-**One-click install** — hosted MCP config at `orivael-dev.github.io/axiom/mcp.json`:
+**Hosted manifest** — `orivael-dev.github.io/axiom/mcp.json` ([source](docs/mcp.json)) is a single JSON file describing the server: the 13 tools with their input schemas, the four signing namespaces, prerequisites, and copy-paste install blocks for Claude Desktop, Claude Code, Cursor, and any generic stdio MCP client. Curl it, grep the `install.<your-client>.snippet` block, paste into your client's config:
+
 ```bash
-npx axiom-mcp
+curl -s https://orivael-dev.github.io/axiom/mcp.json | jq .install.claude_code.snippet
 ```
 
 **Claude Desktop** — add to `claude_desktop_config.json`:
