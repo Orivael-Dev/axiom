@@ -32,6 +32,7 @@ Layer custom block patterns on top with a [tenant policy](custom-policies.md).
 |---|---|
 | [Quickstart](quickstart.md) | Sign up, get a key, make your first call (5 min) |
 | [API reference](api-reference.md) | `/v1/guard/check` and other endpoints |
+| [MCP tools](mcp-tools.md) | The 13 MCP tools — install in Claude Desktop, Claude Code, Cursor, or any JSON-RPC stdio client |
 | [Python SDK](python-sdk.md) | `pip install axiom-firewall` |
 | [TypeScript SDK](typescript-sdk.md) | `npm install @axiom/firewall` |
 | [Custom policies](custom-policies.md) | Per-tenant block patterns + whitelists |
