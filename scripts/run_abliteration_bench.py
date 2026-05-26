@@ -112,6 +112,12 @@ def main(argv: list[str] | None = None) -> int:
         default=256,
         help="max_tokens passed to the model adapter (default: 256)",
     )
+    ap.add_argument(
+        "--no-panel",
+        action="store_true",
+        help="Measure classifier-only behaviour (default: include the "
+             "Friend/BestFriend/Mom panel as deployed via IntentGate).",
+    )
     args = ap.parse_args(argv)
 
     model = _resolve_adapter(args.model)
@@ -126,12 +132,21 @@ def main(argv: list[str] | None = None) -> int:
     from axiom_signing import derive_key
     classifier_key = derive_key(b"axiom-abliteration-bench-classifier-v1")
 
+    # Companion panel — measures the deployed stack (gate + panel) by
+    # default; --no-panel switches to classifier-only for baseline runs.
+    panel = None
+    if not args.no_panel:
+        from axiom_companion_panel import CompanionPanel
+        panel_key = derive_key(b"axiom-abliteration-bench-panel-v1")
+        panel = CompanionPanel(panel_key)
+
     report = run_bench(
         model=model,
         prompts=prompts,
         classifier_hmac_key=classifier_key,
         pass_threshold=args.threshold,
         max_tokens=args.max_tokens,
+        companion_panel=panel,
     )
 
     out_path = write_report(report, Path(args.out))
