@@ -222,57 +222,180 @@ def init_install_table(tenant_id: str) -> None:
                 pack_name     TEXT    NOT NULL,
                 pack_version  TEXT    NOT NULL,
                 manifest_json TEXT    NOT NULL,
-                installed_at  TEXT    NOT NULL
+                installed_at  TEXT    NOT NULL,
+                active        INTEGER NOT NULL DEFAULT 1
             )
         """)
+        # Schema migration for tenant DBs created before stacking shipped:
+        # add `active` if the column doesn't exist. Rows pre-migration are
+        # treated as active (DEFAULT 1) so existing single-pack tenants
+        # keep their policy after upgrade.
+        cols = [r["name"] for r in c.execute(
+            "PRAGMA table_info(installed_pack)"
+        ).fetchall()]
+        if "active" not in cols:
+            c.execute(
+                "ALTER TABLE installed_pack "
+                "ADD COLUMN active INTEGER NOT NULL DEFAULT 1"
+            )
+
+
+def compose_policy(manifests: list) -> dict:
+    """Merge N pack policies into one effective policy.
+
+    Semantics:
+      - additional_block_patterns: UNION across all packs (every regex
+        contributed by any pack is enforced).
+      - disabled_default_classes: UNION (the strictest pack wins —
+        anything disabled by any pack is disabled in the merge).
+      - allow_only_classes: INTERSECTION across packs that specify
+        one (most-restrictive wins). Packs that don't specify
+        allow_only contribute nothing to the intersection — they
+        accept whatever the restrictive packs allow.
+    """
+    if not manifests:
+        return {
+            "version": 1,
+            "additional_block_patterns": [],
+            "disabled_default_classes": [],
+            "allow_only_classes": None,
+        }
+
+    block_patterns: list = []
+    disabled: set = set()
+    allow_only_sets: list = []
+
+    for m in manifests:
+        p = m.policy or {}
+        for pat in p.get("additional_block_patterns") or []:
+            block_patterns.append(pat)
+        for cls in p.get("disabled_default_classes") or []:
+            disabled.add(cls)
+        ao = p.get("allow_only_classes")
+        if ao is not None:
+            allow_only_sets.append(set(ao))
+
+    if allow_only_sets:
+        intersected = set.intersection(*allow_only_sets)
+        allow_only_merged = sorted(intersected) if intersected else []
+    else:
+        allow_only_merged = None
+
+    return {
+        "version": 1,
+        "additional_block_patterns": block_patterns,
+        "disabled_default_classes": sorted(disabled),
+        "allow_only_classes": allow_only_merged,
+    }
+
+
+def _save_merged_policy(tenant_id: str) -> None:
+    """Recompute the effective policy from active packs and persist it.
+
+    If no packs remain active, delete the tenant_policy row so verdict
+    flow falls back to the default classifier.
+    """
+    from .policy import save_policy, delete_policy
+
+    active = list_installed_packs(tenant_id)
+    if active:
+        merged = compose_policy(active)
+        save_policy(tenant_id, json.dumps(merged, separators=(",", ":")))
+    else:
+        delete_policy(tenant_id)
 
 
 def install_pack(tenant_id: str, manifest: SkillPackManifest) -> None:
-    """Install a pack as the tenant's active policy.
+    """Install a pack. Stacks on top of any already-active packs.
+
+    Behavior:
+      - First install of a pack: INSERT new row with active=1
+      - Re-install of an already-active pack: idempotent — updates the
+        version + manifest_json in place (lets ops upgrade a pack
+        without uninstall/reinstall)
+      - Re-install of a previously-removed pack: revives the existing
+        row (active 0 → 1) so the audit trail stays intact
 
     Side effects:
-      - Records the install in installed_pack (audit trail)
-      - Writes the pack's policy section to tenant_policy (drives verdicts)
-
-    Installing a new pack OVERWRITES any prior custom policy or pack. The
-    tenant can subsequently edit /dashboard/policy to fork; future
-    `get_installed_pack()` calls still return the original lineage so we
-    can show "based on fdcpa@0.1.0" in the dashboard.
+      - Recomputes the merged policy across all active packs and writes
+        it to tenant_policy (drives verdicts).
     """
-    from .policy import save_policy
-
     init_install_table(tenant_id)
-    with _conn(_tenant_path(tenant_id)) as c:
-        c.execute(
-            "INSERT INTO installed_pack "
-            "(pack_name, pack_version, manifest_json, installed_at) "
-            "VALUES (?, ?, ?, ?)",
-            (
-                manifest.name, manifest.version,
-                json.dumps(manifest.to_dict(), separators=(",", ":")),
-                datetime.utcnow().isoformat(),
-            ),
-        )
+    now = datetime.utcnow().isoformat()
+    manifest_blob = json.dumps(manifest.to_dict(), separators=(",", ":"))
 
-    # Push the pack's policy into the tenant_policy table so verdict
-    # path picks it up. Re-serialize to canonical JSON for stable
-    # storage.
-    save_policy(tenant_id, json.dumps(manifest.policy, separators=(",", ":")))
+    with _conn(_tenant_path(tenant_id)) as c:
+        # Already active under the same name? Update in place.
+        active_row = c.execute(
+            "SELECT id FROM installed_pack "
+            "WHERE pack_name = ? AND active = 1 LIMIT 1",
+            (manifest.name,),
+        ).fetchone()
+        if active_row:
+            c.execute(
+                "UPDATE installed_pack "
+                "SET pack_version = ?, manifest_json = ?, installed_at = ? "
+                "WHERE id = ?",
+                (manifest.version, manifest_blob, now, active_row["id"]),
+            )
+        else:
+            # Look for an uninstalled row to revive (preserves audit).
+            uninstalled_row = c.execute(
+                "SELECT id FROM installed_pack "
+                "WHERE pack_name = ? AND active = 0 "
+                "ORDER BY id DESC LIMIT 1",
+                (manifest.name,),
+            ).fetchone()
+            if uninstalled_row:
+                c.execute(
+                    "UPDATE installed_pack "
+                    "SET pack_version = ?, manifest_json = ?, "
+                    "    installed_at = ?, active = 1 "
+                    "WHERE id = ?",
+                    (manifest.version, manifest_blob, now,
+                     uninstalled_row["id"]),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO installed_pack "
+                    "(pack_name, pack_version, manifest_json, installed_at, active) "
+                    "VALUES (?, ?, ?, ?, 1)",
+                    (manifest.name, manifest.version, manifest_blob, now),
+                )
+
+    _save_merged_policy(tenant_id)
+
+
+def list_installed_packs(tenant_id: str) -> list:
+    """Return all currently-active installed packs, oldest-installed
+    first (so install order is preserved for display)."""
+    init_install_table(tenant_id)
+    out: list = []
+    with _conn(_tenant_path(tenant_id)) as c:
+        rows = c.execute(
+            "SELECT manifest_json FROM installed_pack "
+            "WHERE active = 1 ORDER BY id ASC"
+        ).fetchall()
+    for row in rows:
+        try:
+            out.append(SkillPackManifest.parse(row["manifest_json"]))
+        except ValueError:
+            # Corrupt manifest_json — skip it, don't break the list.
+            continue
+    return out
 
 
 def get_installed_pack(tenant_id: str) -> Optional[SkillPackManifest]:
-    """Return the most-recently-installed pack, or None.
+    """Return the most-recently-installed active pack, or None.
 
-    Note: this returns the LINEAGE (which pack the tenant chose), not
-    necessarily the active policy. Tenants who edit /dashboard/policy
-    after install diverge from the pack — the dashboard surfaces that
-    state as "modified".
+    Backwards-compat shim for callers that predate stacking. Prefer
+    `list_installed_packs()` in new code.
     """
     init_install_table(tenant_id)
     with _conn(_tenant_path(tenant_id)) as c:
         row = c.execute(
             "SELECT manifest_json FROM installed_pack "
-            "ORDER BY id DESC LIMIT 1"
+            "WHERE active = 1 ORDER BY id DESC LIMIT 1"
         ).fetchone()
     if not row:
         return None
@@ -282,11 +405,26 @@ def get_installed_pack(tenant_id: str) -> Optional[SkillPackManifest]:
         return None
 
 
-def uninstall_pack(tenant_id: str) -> None:
-    """Forget the pack lineage. Does NOT clear the tenant_policy table —
-    callers who want to revert the policy too should call
-    policy.delete_policy() in addition.
+def uninstall_pack(tenant_id: str, name: Optional[str] = None) -> None:
+    """Mark a pack as uninstalled (audit trail preserved via active=0).
+
+    If `name` is given, remove only that pack. If `name` is None,
+    remove ALL active packs (legacy single-pack behavior — callers
+    that want "wipe everything" still work unchanged).
+
+    Recomputes the merged policy across remaining active packs. When
+    no packs remain, deletes the tenant_policy row so verdicts fall
+    back to the default classifier.
     """
     init_install_table(tenant_id)
     with _conn(_tenant_path(tenant_id)) as c:
-        c.execute("DELETE FROM installed_pack")
+        if name:
+            c.execute(
+                "UPDATE installed_pack SET active = 0 "
+                "WHERE pack_name = ? AND active = 1",
+                (name,),
+            )
+        else:
+            c.execute("UPDATE installed_pack SET active = 0 WHERE active = 1")
+
+    _save_merged_policy(tenant_id)

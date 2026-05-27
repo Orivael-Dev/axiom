@@ -266,3 +266,258 @@ def test_corrupt_pack_persistence_returns_none(isolated_tenants):
             ("broken", "0.0.1", "{bad json", "2026-05-16T00:00:00"),
         )
     assert get_installed_pack(t.tenant_id) is None
+
+
+# ─── Multi-pack stacking ────────────────────────────────────────────────
+
+
+def _make_manifest(name: str, *, blocks=None, disabled=None, allow_only=None,
+                   version: str = "0.1.0") -> dict:
+    """Build a fresh manifest dict with custom policy bits, derived from
+    _VALID_MANIFEST. Used by the stacking + compose tests below."""
+    m = dict(_VALID_MANIFEST)
+    m["name"] = name
+    m["title"] = f"Test pack {name}"
+    m["version"] = version
+    m["policy"] = {
+        "version": 1,
+        "additional_block_patterns": blocks or [],
+        "disabled_default_classes": disabled or [],
+        "allow_only_classes": allow_only,
+    }
+    return m
+
+
+def test_install_stacks_multiple_packs(isolated_tenants):
+    """install_pack on a new name appends to the stack; both packs
+    remain active and list_installed_packs returns them in install
+    order (oldest first)."""
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.db import insert_tenant
+    from axiom_firewall.models import Tenant
+    from axiom_firewall.skill_pack import (
+        SkillPackManifest, install_pack, list_installed_packs,
+    )
+
+    t = Tenant.new(email="stack@b.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+
+    install_pack(t.tenant_id, SkillPackManifest.parse(
+        _make_manifest("fdcpa",
+                       blocks=[{"class": "HARM", "regex": "fdcpa-pattern"}])))
+    install_pack(t.tenant_id, SkillPackManifest.parse(
+        _make_manifest("gdpr",
+                       blocks=[{"class": "HARM", "regex": "gdpr-pattern"}])))
+
+    active = list_installed_packs(t.tenant_id)
+    assert [p.name for p in active] == ["fdcpa", "gdpr"]
+
+
+def test_install_same_pack_is_idempotent(isolated_tenants):
+    """Re-installing an already-active pack updates in place rather
+    than creating a duplicate active row."""
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.db import insert_tenant
+    from axiom_firewall.models import Tenant
+    from axiom_firewall.skill_pack import (
+        SkillPackManifest, install_pack, list_installed_packs,
+    )
+
+    t = Tenant.new(email="idem@b.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+
+    install_pack(t.tenant_id, SkillPackManifest.parse(_make_manifest("fdcpa")))
+    install_pack(t.tenant_id, SkillPackManifest.parse(_make_manifest("fdcpa")))
+    install_pack(t.tenant_id, SkillPackManifest.parse(
+        _make_manifest("fdcpa", version="0.2.0")))
+
+    active = list_installed_packs(t.tenant_id)
+    assert len(active) == 1
+    assert active[0].version == "0.2.0"   # in-place upgrade succeeded
+
+
+def test_install_revives_previously_removed_pack(isolated_tenants):
+    """install → uninstall → install of the same name reuses the
+    audit-trail row (active flipped 1→0→1) rather than creating a
+    second row."""
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.db import _conn, _tenant_path, insert_tenant
+    from axiom_firewall.models import Tenant
+    from axiom_firewall.skill_pack import (
+        SkillPackManifest, install_pack, uninstall_pack,
+    )
+
+    t = Tenant.new(email="rev@b.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+
+    install_pack(t.tenant_id, SkillPackManifest.parse(_make_manifest("fdcpa")))
+    uninstall_pack(t.tenant_id, name="fdcpa")
+    install_pack(t.tenant_id, SkillPackManifest.parse(_make_manifest("fdcpa")))
+
+    with _conn(_tenant_path(t.tenant_id)) as c:
+        rows = c.execute(
+            "SELECT COUNT(*) AS n FROM installed_pack WHERE pack_name = ?",
+            ("fdcpa",),
+        ).fetchone()
+    assert rows["n"] == 1   # single audit row, not duplicates
+
+
+def test_uninstall_by_name_keeps_others(isolated_tenants):
+    """Removing one pack from the stack leaves the others active and
+    the merged policy reflects only what remains."""
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.db import insert_tenant
+    from axiom_firewall.models import Tenant
+    from axiom_firewall.policy import get_policy
+    from axiom_firewall.skill_pack import (
+        SkillPackManifest, install_pack, list_installed_packs, uninstall_pack,
+    )
+
+    t = Tenant.new(email="byname@b.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+
+    install_pack(t.tenant_id, SkillPackManifest.parse(
+        _make_manifest("fdcpa",
+                       blocks=[{"class": "HARM", "regex": "fdcpa-only"}])))
+    install_pack(t.tenant_id, SkillPackManifest.parse(
+        _make_manifest("gdpr",
+                       blocks=[{"class": "HARM", "regex": "gdpr-only"}])))
+
+    uninstall_pack(t.tenant_id, name="fdcpa")
+
+    active = list_installed_packs(t.tenant_id)
+    assert [p.name for p in active] == ["gdpr"]
+    policy = get_policy(t.tenant_id)
+    patterns = [regex.pattern for (_cls, regex) in policy.additional_block_patterns]
+    assert any("gdpr-only" in pat for pat in patterns)
+    assert not any("fdcpa-only" in pat for pat in patterns)
+
+
+def test_uninstall_all_clears_policy(isolated_tenants):
+    """uninstall_pack with no name removes every active pack and
+    clears tenant_policy so verdicts fall back to defaults."""
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.db import insert_tenant
+    from axiom_firewall.models import Tenant
+    from axiom_firewall.policy import get_policy
+    from axiom_firewall.skill_pack import (
+        SkillPackManifest, install_pack, list_installed_packs, uninstall_pack,
+    )
+
+    t = Tenant.new(email="all@b.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+
+    install_pack(t.tenant_id, SkillPackManifest.parse(_make_manifest("fdcpa")))
+    install_pack(t.tenant_id, SkillPackManifest.parse(_make_manifest("gdpr")))
+    uninstall_pack(t.tenant_id)
+
+    assert list_installed_packs(t.tenant_id) == []
+    policy = get_policy(t.tenant_id)
+    assert policy.additional_block_patterns == ()
+
+
+def test_compose_policy_unions_block_patterns(isolated_tenants):
+    """Installing two packs with disjoint block patterns yields a
+    merged policy that enforces both."""
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.db import insert_tenant
+    from axiom_firewall.models import Tenant
+    from axiom_firewall.policy import get_policy
+    from axiom_firewall.skill_pack import SkillPackManifest, install_pack
+
+    t = Tenant.new(email="union@b.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+
+    install_pack(t.tenant_id, SkillPackManifest.parse(
+        _make_manifest("pack-a", blocks=[{"class": "HARM", "regex": "alpha-pat"}])))
+    install_pack(t.tenant_id, SkillPackManifest.parse(
+        _make_manifest("pack-b", blocks=[{"class": "DECEIVE", "regex": "beta-pat"}])))
+
+    policy = get_policy(t.tenant_id)
+    patterns = [regex.pattern for (_cls, regex) in policy.additional_block_patterns]
+    assert any("alpha-pat" in pat for pat in patterns)
+    assert any("beta-pat" in pat for pat in patterns)
+
+
+def test_compose_policy_intersects_allow_only(isolated_tenants):
+    """allow_only_classes intersects across packs that specify one —
+    most-restrictive wins. Packs without allow_only don't relax the
+    restriction."""
+    from axiom_firewall.skill_pack import SkillPackManifest, compose_policy
+
+    a = SkillPackManifest.parse(_make_manifest(
+        "pack-a", allow_only=["INFORM", "CLARIFY"]))
+    b = SkillPackManifest.parse(_make_manifest(
+        "pack-b", allow_only=["CLARIFY", "REFUSE"]))
+    c = SkillPackManifest.parse(_make_manifest("pack-c"))
+
+    merged = compose_policy([a, b, c])
+    assert merged["allow_only_classes"] == ["CLARIFY"]
+
+
+def test_compose_policy_unions_disabled_default_classes(isolated_tenants):
+    """disabled_default_classes UNIONs — any pack disabling a class
+    disables it in the merged policy."""
+    from axiom_firewall.skill_pack import SkillPackManifest, compose_policy
+
+    a = SkillPackManifest.parse(_make_manifest("pack-a", disabled=["CLARIFY"]))
+    b = SkillPackManifest.parse(_make_manifest("pack-b", disabled=["REFUSE"]))
+
+    merged = compose_policy([a, b])
+    assert merged["disabled_default_classes"] == ["CLARIFY", "REFUSE"]
+
+
+def test_compose_policy_empty_returns_empty_policy(isolated_tenants):
+    """Edge case: composing zero manifests yields an empty default
+    policy shape (used when the last pack is uninstalled)."""
+    from axiom_firewall.skill_pack import compose_policy
+
+    merged = compose_policy([])
+    assert merged["additional_block_patterns"] == []
+    assert merged["disabled_default_classes"] == []
+    assert merged["allow_only_classes"] is None
+
+
+def test_migration_adds_active_column_to_legacy_db(isolated_tenants):
+    """Tenant DBs created before the `active` column shipped should be
+    auto-migrated on next init_install_table call, with pre-existing
+    rows treated as active (DEFAULT 1)."""
+    from axiom_firewall.auth import hash_password
+    from axiom_firewall.db import _conn, _tenant_path, init_tenant_db, insert_tenant
+    from axiom_firewall.models import Tenant
+    from axiom_firewall.skill_pack import (
+        SkillPackManifest, init_install_table, install_pack,
+        list_installed_packs,
+    )
+
+    t = Tenant.new(email="mig@b.com", pw_hash=hash_password("longenoughpw"))
+    insert_tenant(t)
+    init_tenant_db(t.tenant_id)
+
+    with _conn(_tenant_path(t.tenant_id)) as c:
+        c.execute("""
+            CREATE TABLE installed_pack (
+                id            INTEGER PRIMARY KEY,
+                pack_name     TEXT NOT NULL,
+                pack_version  TEXT NOT NULL,
+                manifest_json TEXT NOT NULL,
+                installed_at  TEXT NOT NULL
+            )
+        """)
+        legacy_manifest = SkillPackManifest.parse(_make_manifest("legacy-pack"))
+        c.execute(
+            "INSERT INTO installed_pack "
+            "(pack_name, pack_version, manifest_json, installed_at) "
+            "VALUES (?, ?, ?, ?)",
+            ("legacy-pack", "0.1.0",
+             json.dumps(legacy_manifest.to_dict(), separators=(",", ":")),
+             "2026-05-01T00:00:00"),
+        )
+
+    init_install_table(t.tenant_id)
+    active = list_installed_packs(t.tenant_id)
+    assert [p.name for p in active] == ["legacy-pack"]
+
+    install_pack(t.tenant_id, SkillPackManifest.parse(_make_manifest("new-pack")))
+    active = list_installed_packs(t.tenant_id)
+    assert {p.name for p in active} == {"legacy-pack", "new-pack"}
