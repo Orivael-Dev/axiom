@@ -51,7 +51,12 @@ def _sign(data: dict) -> str:
 
 TOOLS = [
     {"name": "axiom_guard_check",
-     "description": "Check input against constitutional boundary",
+     "description": "Two-layer constitutional check on a prompt or output text. "
+                    "Layer 0: ORVL-016 intent classifier — HARM / DECEIVE inputs "
+                    "(jailbreak attempts, persona-override, harm instructions) "
+                    "block here. Layer 1+: output-content scanners — destructive "
+                    "ops, XSS/SSRF/injection, PII leakage, persona-switching "
+                    "compliance signals.",
      "inputSchema": {"type": "object",
          "properties": {"input": {"type": "string", "description": "The prompt or content to check"}},
          "required": ["input"]}},
@@ -219,8 +224,62 @@ TOOLS = [
 ]
 
 
+_intent_classifier_singleton = None
+
+
+def _get_intent_classifier():
+    """Lazy-built shared IntentClassifier for the guard tool.
+
+    Compiling the regex banks is module-import side-effect free
+    (they're module globals in axiom_intent_classifier); per-instance
+    state is just the HMAC key, so one shared instance is fine."""
+    global _intent_classifier_singleton
+    if _intent_classifier_singleton is None:
+        from axiom_intent_classifier import IntentClassifier
+        from axiom_signing import derive_key
+        _intent_classifier_singleton = IntentClassifier(
+            derive_key(b"axiom-intent-gate-mcp-v1")
+        )
+    return _intent_classifier_singleton
+
+
 def _handle_guard_check(args: dict) -> dict:
     text = args.get("input", "")
+
+    # ── Layer 0 — ORVL-016 intent gate ────────────────────────────
+    # Runs BEFORE the output-content scanners. validate_output is a
+    # content-pattern guard (PII regexes, destructive ops, persona-
+    # switching strings); it cannot detect a prompt that ASKS for
+    # harm but contains no harmful content itself. The intent gate
+    # classifies the text into INFORM / CLARIFY / REFUSE / HARM /
+    # DECEIVE / UNCERTAIN and BLOCK_CLASSES = {HARM, DECEIVE} short-
+    # circuit the rest of the pipeline. Failures of the classifier
+    # itself fall through to the content layer — never silently pass.
+    try:
+        intent_result = _get_intent_classifier().classify(text)
+    except (TypeError, ValueError, ImportError):
+        intent_result = None
+
+    if intent_result is not None and intent_result.blocks:
+        out = {
+            "verdict": "BLOCKED",
+            "reason": f"intent_gate: {intent_result.intent_class.lower()}",
+            "intent_class":      intent_result.intent_class,
+            "intent_confidence": round(intent_result.confidence, 4),
+            "intent_signals":    list(intent_result.signals)[:5],
+            "constitutional_distance": 0.0,
+            "confidence":  round(min(intent_result.confidence, 0.99), 2),
+            "citation":    "ORVL-016 axiom_intent_classifier.py",
+        }
+        out["hmac_signature"] = _sign({
+            "input":        text[:200],
+            "verdict":      "BLOCKED",
+            "intent_class": intent_result.intent_class,
+            "layer":        0,
+        })
+        return out
+
+    # ── Layers 1-4 — output-content scanners (unchanged) ──────────
     from axiom_constitutional.client import validate_output
     _, is_clean = validate_output(text, task="mcp-guard")
     dist, conf = 0.0, 0.0
@@ -233,9 +292,11 @@ def _handle_guard_check(args: dict) -> dict:
         pass
     verdict = "PASSED" if is_clean else "BLOCKED"
     reason = "constitutional compliant" if is_clean else "guard violation detected"
+    intent_class = intent_result.intent_class if intent_result is not None else "UNKNOWN"
     sig = _sign({"input": text[:200], "verdict": verdict, "dist": dist})
     return {"verdict": verdict, "reason": reason, "constitutional_distance": dist,
             "confidence": conf, "citation": "ORVL-001 axiom_guard_patterns.py",
+            "intent_class": intent_class,
             "hmac_signature": sig}
 
 
