@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Governance Under Question</title>
+    <link>https://governance.orivael.dev/</link>
+    <atom:link href="https://governance.orivael.dev/feed.xml" rel="self" type="application/rss+xml" />
+    <description>Independent updates on AI governance, security, bias, and reports/benchmarks. Companion publication for original research papers.</description>
+    <language>en-us</language>
+    <copyright>© 2026 Governance Under Question. CC BY 4.0 unless otherwise noted.</copyright>
+    <managingEditor>editor@orivael.dev (Antonio Roberts)</managingEditor>
+    <webMaster>editor@orivael.dev (Antonio Roberts)</webMaster>
+    <lastBuildDate>Wed, 21 May 2026 12:00:00 GMT</lastBuildDate>
+    <generator>Hand-written HTML, no CMS</generator>
+    <image>
+      <url>https://governance.orivael.dev/og.png</url>
+      <title>Governance Under Question</title>
+      <link>https://governance.orivael.dev/</link>
+    </image>
+
+    <item>
+      <title>Issue 004: RFC — We're Designing a Fairness Agent. Tell Us Why It's Wrong.</title>
+      <link>https://governance.orivael.dev/issues/004-rfc-equality-agent.html</link>
+      <guid isPermaLink="true">https://governance.orivael.dev/issues/004-rfc-equality-agent.html</guid>
+      <pubDate>Thu, 22 May 2026 12:00:00 GMT</pubDate>
+      <category>Equality</category>
+      <category>RFC</category>
+      <category>Bias</category>
+      <description><![CDATA[
+        The Equality Agent RFC is open. Five questions the community
+        should answer before code lands: what baseline, what
+        categories, when to suspend, multi-agent voting threshold,
+        and what the kill record looks like. Measurement first
+        (Phase 1 publishes a reproducible baseline before any
+        intervention ships). Comment via GitHub issue tagged
+        rfc-equality.
+      ]]></description>
+    </item>
+
+    <item>
+      <title>Working Paper: Signed Multi-Layer Event Tokens for AI Governance</title>
+      <link>https://governance.orivael.dev/papers/2026-event-tokens.html</link>
+      <guid isPermaLink="true">https://governance.orivael.dev/papers/2026-event-tokens.html</guid>
+      <pubDate>Wed, 21 May 2026 12:00:00 GMT</pubDate>
+      <category>Working paper</category>
+      <category>Governance</category>
+      <description><![CDATA[
+        Three-layer signature construction (per-layer HMAC + coordinator
+        signature + outer signature) that makes multimodal AI events
+        tamper-evident in O(1) verification. Reference implementation,
+        ~1,400-event ledger, and constitutional overlay open-source.
+        Working paper v0.1 — PDF + arXiv submission targeted for Q3 2026.
+      ]]></description>
+    </item>
+
+    <item>
+      <title>Issue 001: Why AI Governance Needs Evidence, Not Vibes</title>
+      <link>https://governance.orivael.dev/issues/001-evidence-not-vibes.html</link>
+      <guid isPermaLink="true">https://governance.orivael.dev/issues/001-evidence-not-vibes.html</guid>
+      <pubDate>Tue, 01 May 2026 12:00:00 GMT</pubDate>
+      <category>Governance</category>
+      <description><![CDATA[
+        Opening report. Defines evidence-first governance as four
+        requirements: a specific measurable claim, a reproducible eval,
+        a tamper-evident artifact, and stated limits. Sets the standard
+        every future issue and paper will be audited against.
+      ]]></description>
+    </item>
+
+  </channel>
+</rss>
