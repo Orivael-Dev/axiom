@@ -179,6 +179,230 @@
     }
     .status-banner.show { display: block; }
 
+    /* ─── Status pills (replace the ✓/✗ column on each row) ────────── */
+    .status-pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--mono);
+      border: 1px solid;
+      white-space: nowrap;
+    }
+    .status-pill.ok {
+      background: rgba(99, 230, 190, 0.10);
+      color: var(--success);
+      border-color: rgba(99, 230, 190, 0.30);
+    }
+    .status-pill.bad {
+      background: rgba(255, 107, 107, 0.10);
+      color: var(--danger);
+      border-color: rgba(255, 107, 107, 0.30);
+    }
+
+    /* ─── Inspect button (rightmost action column) ─────────────────── */
+    .inspect-btn {
+      background: transparent; border: none;
+      color: var(--accent-2);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 4px 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .inspect-btn:hover { color: var(--accent); }
+    .inspect-btn svg { width: 14px; height: 14px; }
+
+    /* ─── Detail drawer (slides in from the right when token clicked) ─ */
+    .detail-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(2, 6, 14, 0.55);
+      backdrop-filter: blur(3px);
+      display: none;
+      z-index: 999;
+    }
+    .detail-backdrop.show { display: block; }
+    .detail-drawer {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(540px, 100%);
+      background: var(--bg);
+      border-left: 1px solid var(--border);
+      box-shadow: -22px 0 80px rgba(0, 0, 0, 0.55);
+      color: var(--text);
+      transform: translateX(100%);
+      transition: transform 0.22s cubic-bezier(.2,.8,.2,1);
+      z-index: 1000;
+      display: flex; flex-direction: column;
+    }
+    .detail-drawer.show { transform: translateX(0); }
+    .detail-drawer header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 18px 22px;
+      background: rgba(255, 255, 255, 0.025);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .detail-drawer header h2 {
+      margin: 0; font-size: 15px;
+      color: var(--text);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .detail-drawer header h2 svg { width: 16px; height: 16px; color: var(--accent-2); }
+    .detail-drawer header .drawer-id {
+      margin: 4px 0 0; font-size: 11px; font-family: var(--mono);
+      color: var(--muted);
+    }
+    .detail-close {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-size: 13px; line-height: 1;
+      padding: 6px 11px; border-radius: 10px; cursor: pointer;
+      font-family: var(--mono);
+    }
+    .detail-close:hover { color: var(--text); border-color: var(--accent); }
+    .drawer-body {
+      flex: 1; overflow-y: auto;
+      padding: 20px 22px 28px;
+    }
+
+    .drawer-section { margin-bottom: 22px; }
+    .drawer-section-title {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: var(--mono);
+      margin: 0 0 10px;
+    }
+
+    /* Status summary block: verdict + verified-ness side by side */
+    .verdict-summary {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+    .verdict-summary .vs-label {
+      font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); font-family: var(--mono); margin: 0 0 6px;
+    }
+
+    /* Policy/use-case chip */
+    .chip-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+    }
+    .chip-row .chip-name { color: var(--accent-2); font-family: var(--mono); font-size: 13px; }
+    .chip-row .chip-meta { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+
+    /* Timeline of trajectory steps */
+    .timeline {
+      position: relative;
+      padding-left: 22px;
+      margin-left: 4px;
+      border-left: 2px solid rgba(255, 255, 255, 0.08);
+    }
+    .timeline-step { position: relative; margin-bottom: 18px; }
+    .timeline-step:last-child { margin-bottom: 0; }
+    .timeline-step .dot {
+      position: absolute;
+      left: -29px; top: 4px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--bg);
+    }
+    .timeline-step .dot.input   { background: var(--muted); }
+    .timeline-step .dot.process { background: var(--accent-2); }
+    .timeline-step .dot.ok      { background: var(--success); }
+    .timeline-step .dot.bad     { background: var(--danger); }
+
+    .timeline-step .step-title {
+      font-size: 11px; color: var(--muted);
+      font-family: var(--mono);
+      margin: 0 0 6px;
+    }
+    .timeline-box {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.18);
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+    .timeline-box.input { background: rgba(0, 0, 0, 0.28); }
+    .timeline-box.process {
+      background: rgba(142, 167, 255, 0.06);
+      border-color: rgba(142, 167, 255, 0.18);
+      color: rgba(220, 230, 255, 0.85);
+      font-family: var(--mono);
+      font-size: 11.5px;
+    }
+    .timeline-box.process p { margin: 0; }
+    .timeline-box.gate-ok {
+      background: rgba(99, 230, 190, 0.08);
+      border-color: rgba(99, 230, 190, 0.25);
+      color: var(--success);
+    }
+    .timeline-box.gate-bad {
+      background: rgba(255, 107, 107, 0.08);
+      border-color: rgba(255, 107, 107, 0.25);
+      color: var(--danger);
+    }
+    .timeline-box .gate-headline {
+      font-weight: 600; margin: 0 0 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .timeline-box .gate-headline svg { width: 14px; height: 14px; }
+    .timeline-box .gate-detail { margin: 0; font-size: 11.5px; opacity: 0.85; }
+
+    /* Field rows used for the metadata grid + signature footer */
+    .field-row {
+      display: grid; grid-template-columns: 130px 1fr;
+      gap: 14px; padding: 9px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      align-items: start;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-label {
+      color: var(--muted); font-size: 11px;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      font-family: var(--mono); padding-top: 2px;
+    }
+    .field-value {
+      font-family: var(--mono); font-size: 12.5px;
+      word-break: break-all; color: var(--text);
+    }
+    .field-value.text {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      word-break: normal; line-height: 1.55;
+    }
+    .copy-btn {
+      margin-left: 8px; padding: 2px 8px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); border-radius: 6px; cursor: pointer;
+      font-family: var(--mono); font-size: 11px;
+    }
+    .copy-btn:hover  { color: var(--accent); border-color: var(--accent); }
+    .copy-btn.copied { color: var(--success); border-color: var(--success); }
+    .token-link {
+      color: var(--accent-2); cursor: pointer;
+      text-decoration: underline; text-decoration-style: dotted;
+      text-underline-offset: 3px;
+    }
+    .token-link:hover { color: var(--accent); }
+
+    @media (max-width: 600px) {
+      .detail-drawer { width: 100%; }
+    }
+
     footer { text-align: center; color: var(--muted); font-size: 12px;
              margin-top: 28px; font-family: var(--mono); }
 
@@ -236,8 +460,8 @@
               <th data-sort="input_tokens" style="text-align:right;">In<span class="sort-arrow"></span></th>
               <th data-sort="output_tokens" style="text-align:right;">Out<span class="sort-arrow"></span></th>
               <th data-sort="latency_ms" style="text-align:right;">Latency<span class="sort-arrow"></span></th>
-              <th data-sort="verified">✓<span class="sort-arrow"></span></th>
-              <th>Excerpt</th>
+              <th data-sort="verified">Status<span class="sort-arrow"></span></th>
+              <th style="text-align:right;">Action</th>
             </tr>
           </thead>
           <tbody id="ledgerBody">
@@ -251,6 +475,29 @@
       Each row signed under <code>axiom-exoskeleton-ledger-v1</code> · tamper detection independent of the EventToken's signatures.
     </footer>
   </main>
+
+  <!-- Detail drawer: slides in from the right when a token_id or Inspect
+       button is clicked. Populated by JS. -->
+  <div class="detail-backdrop" id="detailBackdrop" aria-hidden="true"></div>
+  <aside class="detail-drawer" id="detailDrawer" role="dialog"
+         aria-labelledby="detailTitle" aria-modal="true" aria-hidden="true">
+    <header>
+      <div>
+        <h2 id="detailTitle">
+          <!-- play-circle icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/>
+          </svg>
+          Trajectory Replay
+        </h2>
+        <p class="drawer-id" id="detailDrawerId">—</p>
+      </div>
+      <button class="detail-close" id="detailClose"
+              aria-label="Close detail">Close ✕</button>
+    </header>
+    <div class="drawer-body" id="detailBody"></div>
+  </aside>
 
   <script>
     const $ = (id) => document.getElementById(id);
@@ -360,24 +607,42 @@
       });
     }
 
+    // SVG eye icon used in the Inspect button (kept inline so the page
+    // has zero external asset dependencies).
+    const EYE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+      <circle cx="12" cy="12" r="3"/></svg>`;
+
     function rowHtml(e) {
       const time = (e.timestamp_utc || "").replace("T", " ").replace("Z", "");
-      const tokId = (e.token_id || "").slice(0, 14);
-      const verifiedCell = e.verified
-        ? '<span class="ok">✓</span>'
-        : '<span class="bad">✗ tamper</span>';
-      const excerpt = (e.input_excerpt || "").slice(0, 140);
+      const tokFull = e.token_id || "";
+      const tokShort = tokFull.slice(0, 14);
+      const statusPill = e.verified
+        ? '<span class="status-pill ok">Verified</span>'
+        : '<span class="status-pill bad">Tampered</span>';
+      // The token cell stays clickable (dotted underline) AND a dedicated
+      // Inspect button anchors the rightmost cell — both open the same
+      // detail drawer. data-token-id on each handler is the lookup key.
       return `<tr>
         <td class="nowrap muted">${escapeHtml(time)}</td>
         <td><span class="delegate-tag">${escapeHtml(e.use_case || "")}</span></td>
-        <td class="nowrap muted">${escapeHtml(tokId)}</td>
+        <td class="nowrap muted">
+          <span class="token-link" data-token-id="${escapeHtml(tokFull)}"
+                title="Click for full entry detail">${escapeHtml(tokShort)}</span>
+        </td>
         <td class="nowrap">${escapeHtml(e.backend || "")}</td>
         <td class="nowrap muted">${escapeHtml(e.model || "")}</td>
         <td style="text-align:right;">${e.input_tokens || 0}</td>
         <td style="text-align:right;">${e.output_tokens || 0}</td>
         <td style="text-align:right;">${e.latency_ms || 0}ms</td>
-        <td>${verifiedCell}</td>
-        <td><div class="excerpt" title="${escapeHtml(e.input_excerpt || "")}">${escapeHtml(excerpt)}</div></td>
+        <td>${statusPill}</td>
+        <td style="text-align:right;">
+          <button class="inspect-btn" data-token-id="${escapeHtml(tokFull)}"
+                  title="Open full trajectory replay">
+            ${EYE_SVG}<span>Inspect</span>
+          </button>
+        </td>
       </tr>`;
     }
 
@@ -397,6 +662,189 @@
       if (key === sortKey) sortDir = sortDir === "asc" ? "desc" : "asc";
       else { sortKey = key; sortDir = NUMERIC_COLS.has(key) ? "desc" : "asc"; }
       render();
+    });
+
+    // ─── Detail drawer open/close ──────────────────────────────────
+    const detailBackdrop = $("detailBackdrop");
+    const detailDrawer   = $("detailDrawer");
+    const detailBody     = $("detailBody");
+    const detailClose    = $("detailClose");
+    const detailDrawerId = $("detailDrawerId");
+
+    function openDetailFor(tokenId) {
+      const entry = allEntries.find(e => e.token_id === tokenId);
+      if (!entry) return;
+      detailDrawerId.textContent = tokenId;
+      detailBody.innerHTML = detailHtml(entry);
+      detailBackdrop.classList.add("show");
+      detailDrawer.classList.add("show");
+      detailDrawer.setAttribute("aria-hidden", "false");
+      detailClose.focus();
+    }
+
+    function closeDetail() {
+      detailBackdrop.classList.remove("show");
+      detailDrawer.classList.remove("show");
+      detailDrawer.setAttribute("aria-hidden", "true");
+    }
+
+    function field(label, value, opts = {}) {
+      const cls = opts.text ? "field-value text" : "field-value";
+      return `<div class="field-row">
+        <div class="field-label">${escapeHtml(label)}</div>
+        <div class="${cls}">${value}</div>
+      </div>`;
+    }
+
+    function copyable(text) {
+      const safe = escapeHtml(text);
+      return `<span>${safe}</span>
+        <button class="copy-btn" data-copy="${safe}">Copy</button>`;
+    }
+
+    // Inline shield-check / shield-alert SVGs for the gate step.
+    const SHIELD_OK_SVG = `<svg viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round"
+      stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <polyline points="9,12 11,14 15,10"/></svg>`;
+    const SHIELD_BAD_SVG = `<svg viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round"
+      stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <line x1="12" y1="8" x2="12" y2="13"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+
+    function detailHtml(e) {
+      const time = (e.timestamp_utc || "").replace("T", " ").replace("Z", "");
+      const inTok = e.input_tokens  || 0;
+      const outTok = e.output_tokens || 0;
+      const latency = (e.latency_ms || 0) + "ms";
+      const status = e.verified ? "Verified" : "Tampered";
+      const statusClass = e.verified ? "ok" : "bad";
+
+      // 1. Summary block + 2. Use-case chip + 3. Timeline + 4. Signature
+      const summary = `
+        <div class="drawer-section">
+          <div class="verdict-summary">
+            <div>
+              <p class="vs-label">Final verdict</p>
+              <span class="status-pill ${statusClass}">${status}</span>
+            </div>
+            <div style="text-align: right;">
+              <p class="vs-label">Latency</p>
+              <span style="font-family: var(--mono); font-weight: 700;">${escapeHtml(latency)}</span>
+            </div>
+          </div>
+        </div>`;
+
+      const chip = `
+        <div class="drawer-section">
+          <h4 class="drawer-section-title">Use case · Backend</h4>
+          <div class="chip-row">
+            <span class="chip-name">${escapeHtml(e.use_case || "—")}</span>
+            <span class="chip-meta">${escapeHtml(e.backend || "—")} · ${escapeHtml(e.model || "—")}</span>
+          </div>
+        </div>`;
+
+      // Three-step timeline. Step 2 contents adapt to the research
+      // ledger's flat metadata — the mockup's "internal reasoning"
+      // trajectory isn't captured in this ledger, so we surface the
+      // observable execution facts instead.
+      const gateBox = e.verified
+        ? `<div class="timeline-box gate-ok">
+             <p class="gate-headline">${SHIELD_OK_SVG} Signature verifies</p>
+             <p class="gate-detail">HMAC-SHA256 over the entry payload
+             matches the on-disk signature. The ledger row has not been
+             tampered with since it was written.</p>
+           </div>`
+        : `<div class="timeline-box gate-bad">
+             <p class="gate-headline">${SHIELD_BAD_SVG} Signature mismatch — tampering detected</p>
+             <p class="gate-detail">The HMAC over this entry's payload
+             does not match its stored signature. Either the row was
+             edited after write, or the master key has rotated. Treat
+             the entry as untrusted.</p>
+           </div>`;
+      const gateDotClass = e.verified ? "ok" : "bad";
+
+      const timeline = `
+        <div class="drawer-section">
+          <h4 class="drawer-section-title">Signed manifest log</h4>
+          <div class="timeline">
+            <div class="timeline-step">
+              <div class="dot input"></div>
+              <p class="step-title">1 · Input received</p>
+              <div class="timeline-box input">${escapeHtml(e.input_excerpt || "(empty)")}</div>
+            </div>
+            <div class="timeline-step">
+              <div class="dot process"></div>
+              <p class="step-title">2 · Backend execution</p>
+              <div class="timeline-box process">
+                <p>&gt; backend = ${escapeHtml(e.backend || "—")}</p>
+                <p>&gt; model   = ${escapeHtml(e.model   || "—")}</p>
+                <p>&gt; tokens  = ${inTok} in &nbsp;→&nbsp; ${outTok} out</p>
+                <p>&gt; chars   = ${e.input_chars || 0}</p>
+                <p>&gt; latency = ${escapeHtml(latency)}</p>
+                <p>&gt; t       = ${escapeHtml(time)}</p>
+              </div>
+            </div>
+            <div class="timeline-step">
+              <div class="dot ${gateDotClass}"></div>
+              <p class="step-title">3 · Ledger verification gate</p>
+              ${gateBox}
+            </div>
+          </div>
+        </div>`;
+
+      const sigOrNone = e.signature
+        ? copyable(e.signature)
+        : '<span style="color: var(--danger);">(no signature)</span>';
+
+      const meta = `
+        <div class="drawer-section">
+          <h4 class="drawer-section-title">Cryptographic identity</h4>
+          ${field("Token ID",  copyable(e.token_id || ""))}
+          ${field("Signature", sigOrNone)}
+        </div>`;
+
+      return summary + chip + timeline + meta;
+    }
+
+    // Open: click on a .token-link OR the .inspect-btn (delegated).
+    els.tbody.addEventListener("click", (event) => {
+      const trigger = event.target.closest(".token-link, .inspect-btn");
+      if (!trigger) return;
+      openDetailFor(trigger.dataset.tokenId);
+    });
+
+    // Close: explicit X button, click on the backdrop, Escape key.
+    detailClose.addEventListener("click", closeDetail);
+    detailBackdrop.addEventListener("click", closeDetail);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && detailDrawer.classList.contains("show")) {
+        closeDetail();
+      }
+    });
+
+    // Copy-to-clipboard inside the drawer — delegated so we don't have
+    // to rebind every time the drawer contents are re-rendered.
+    detailBody.addEventListener("click", async (event) => {
+      const btn = event.target.closest(".copy-btn");
+      if (!btn) return;
+      const payload = btn.dataset.copy || "";
+      try {
+        await navigator.clipboard.writeText(payload);
+        const orig = btn.textContent;
+        btn.textContent = "Copied ✓";
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.remove("copied");
+        }, 1200);
+      } catch {
+        btn.textContent = "Copy failed";
+        setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+      }
     });
 
     loadLedger();
