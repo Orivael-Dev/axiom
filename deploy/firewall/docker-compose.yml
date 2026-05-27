@@ -38,6 +38,8 @@ services:
       - firewall-data:/data
     ports:
       - "8004:8004"
+    networks:
+      - axiom-net
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8004/healthz').status==200 else 1)"]
       interval: 30s
@@ -54,11 +56,20 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      FIREWALL_HOST: ${FIREWALL_HOST:?set FIREWALL_HOST (e.g. firewall.example.com)}
+      FIREWALL_HOST:  ${FIREWALL_HOST:?set FIREWALL_HOST (e.g. firewall.example.com)}
+      # Defaults match the orivael.dev production deploy. Override
+      # both when redeploying to a different domain (e.g. RESEARCH_HOST=
+      # research.acme.com PACKS_HOST=packs.acme.com).
+      RESEARCH_HOST:  ${RESEARCH_HOST:-research.orivael.dev}
+      PACKS_HOST:     ${PACKS_HOST:-packs.orivael.dev}
+      BETA_AUTH_USER: ${BETA_AUTH_USER:-}
+      BETA_AUTH_HASH: ${BETA_AUTH_HASH:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    networks:
+      - axiom-net
     depends_on:
       - firewall
 
@@ -66,3 +77,8 @@ volumes:
   firewall-data:
   caddy-data:
   caddy-config:
+
+networks:
+  axiom-net:
+    name: axiom-net
+    driver: bridge
