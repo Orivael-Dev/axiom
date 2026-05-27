@@ -373,7 +373,67 @@ def test_surface_report_tamper_fails_verify(isolated):
     assert bad.verify() is False
 
 
-# ─── VideoAgent end-to-end (8 sub-reports + back-compat stub) ───────────
-# Trimmed: both tests require the event_token Coordinator's `video` agent
-# registration to actually run depth/surface classification through the
-# pipeline. They ship with the bonded-pair event_token PR.
+# ─── VideoAgent end-to-end: 8 sub-reports + new summary fields ──────────
+
+
+def test_video_agent_now_includes_depth_and_surface(isolated):
+    """VideoAgent real-mode payload grew from 6 sub-reports to 8.
+
+    Cup approaches camera (depth steps of 0.12 — above the 0.10
+    change threshold so each step fires an approach event), then
+    tips over halfway through. Verifies that both new agents land
+    in the payload + summary surfaces their headline fields.
+    """
+    from axiom_event_token import Coordinator
+    from axiom_video import Object, Scene, SceneGraph
+    scenes = []
+    for i in range(8):
+        cy = 0.2 + i * 0.05
+        orientation = 0 if i < 4 else 45    # 45° = unambiguously tilted
+        # depth jumps 0.12/frame so each step > change_threshold 0.10
+        cup_depth = min(1.0, 0.10 + i * 0.12)
+        scenes.append(Scene(frame_index=i, objects=(
+            Object(id="cup", label="cup", bbox=_box(0.5, cy),
+                   extras={"color": (220, 30, 30),
+                           "depth": cup_depth,
+                           "orientation": orientation}),
+            Object(id="floor", label="floor",
+                   bbox=(0.0, 0.85, 1.0, 1.0),
+                   extras={"color": (30, 30, 220),
+                           "depth": 0.05, "orientation": 0}),
+        )))
+    sg = SceneGraph.from_list(scenes)
+    token = Coordinator().compose(
+        video={"scene_graph": sg},
+        activate=("video", "governance"),
+    )
+    assert token.verify() is True
+    p = token.video.payload
+    assert p["mode"] == "real"
+    for key in (
+        "object_track_report", "motion_report", "impact_report",
+        "temporal_chain_report", "time_keeper_report", "color_report",
+        "depth_report", "surface_report",
+    ):
+        assert key in p, f"{key} missing from VideoAgent payload"
+    # New summary fields
+    s = p["summary"]
+    assert s["depth_source"] == "extras"
+    assert s["n_depth_events"] >= 1     # cup is approaching
+    assert s["n_tip_events"] >= 1       # cup tips over
+
+
+def test_video_agent_legacy_stub_mode_still_works(isolated):
+    """Sanity check we didn't break back-compat with the hand-coded
+    video dict path."""
+    from axiom_event_token import Coordinator
+    coord = Coordinator()
+    token = coord.compose(
+        video={"object_motion": "downward",
+               "impact_point": "floor",
+               "fracture_pattern": "radial_scatter",
+               "confidence": 0.85},
+        activate=("video", "governance"),
+    )
+    assert token.verify() is True
+    assert token.video.payload["mode"] == "stub"

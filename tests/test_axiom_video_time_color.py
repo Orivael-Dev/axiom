@@ -266,6 +266,47 @@ def test_color_watcher_tamper_breaks_signature(isolated):
     assert tampered.verify() is False
 
 
-# Section "VideoAgent end-to-end through the Coordinator" trimmed —
-# requires the event_token Coordinator's `video` agent registration,
-# ships with the bonded-pair event_token PR.
+# ─── VideoAgent end-to-end through the Coordinator ──────────────────────
+
+
+def test_video_agent_real_mode_includes_time_and_color_reports(isolated):
+    """The upgraded VideoAgent now produces 6 sub-reports + a summary
+    that surfaces rhythm_class + scene_color."""
+    from axiom_event_token import Coordinator
+    from axiom_video import Object, Scene, SceneGraph
+
+    # Hand-built mini-scene: two colored objects, with motion
+    scenes = []
+    for i in range(10):
+        cx = 0.2 + i * 0.02     # slow lateral motion
+        scenes.append(Scene(
+            frame_index=i,
+            objects=(
+                Object(id="cup", label="cup",
+                       bbox=(cx, 0.4, cx + 0.1, 0.5),
+                       extras={"color": (255, 0, 0)}),
+                Object(id="ball", label="ball",
+                       bbox=(0.7, 0.7, 0.8, 0.8),
+                       extras={"color": (0, 0, 255)}),
+            ),
+        ))
+    sg = SceneGraph.from_list(scenes)
+
+    token = Coordinator().compose(
+        video={"scene_graph": sg},
+        activate=("video", "governance"),
+    )
+    assert token.verify() is True
+    p = token.video.payload
+    assert p["mode"] == "real"
+    # Six sub-reports nested
+    for key in (
+        "object_track_report", "motion_report", "impact_report",
+        "temporal_chain_report", "time_keeper_report", "color_report",
+    ):
+        assert key in p, f"{key} missing from VideoAgent payload"
+    # Summary surfaces the new fields
+    assert "rhythm_class" in p["summary"]
+    assert "scene_color"  in p["summary"]
+    # Both colored tracks accounted for
+    assert p["summary"]["scene_color"] in ("red", "blue")

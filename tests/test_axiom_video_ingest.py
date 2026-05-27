@@ -245,6 +245,88 @@ def test_ingest_preserves_detector_supplied_color(isolated):
     assert sg.scenes[0].objects[0].extras["color"] == (50, 50, 50)
 
 
-# Section "Full pipeline: real frames → 6 detectors → signed EventToken"
-# trimmed — requires the event_token Coordinator's `video` agent
-# registration, ships with the bonded-pair event_token PR.
+# ─── Full pipeline: real frames → 6 detectors → signed EventToken ───────
+
+
+def test_full_pipeline_from_real_frames_to_event_token(isolated):
+    """The end-to-end story: PIL frames → FrameIngester → SceneGraph →
+    VideoAgent (6 sub-reports) → signed EventToken. This is the
+    'live demo' contract that proves Phase B works for a customer."""
+    from PIL import Image
+    from axiom_event_token import Coordinator
+    from axiom_video import (
+        DetectedObject, FrameIngester, ScriptedObjectDetector,
+    )
+
+    # Build 20 frames of a red cup at top, falling toward the floor.
+    # Two tracked objects (cup + floor) so the pipeline has motion +
+    # contact to chew on.
+    W, H = 100, 100
+    frames = []
+    detections = []
+    for i in range(20):
+        img = Image.new("RGB", (W, H), (240, 240, 240))   # off-white BG
+        # Cup at falling y
+        cup_y = 10 + i * 4
+        for y in range(max(0, cup_y), min(H, cup_y + 15)):
+            for x in range(40, 60):
+                img.putpixel((x, y), (220, 30, 30))    # red cup
+        # Floor near the bottom — a blue strip
+        for y in range(85, 100):
+            for x in range(W):
+                img.putpixel((x, y), (30, 30, 220))   # blue floor
+        frames.append(img)
+
+        # Detector script — cup bbox follows cup_y, floor static
+        cy1 = max(0, cup_y) / H
+        cy2 = min(H, cup_y + 15) / H
+        detections.append([
+            DetectedObject(label="cup",   id="cup",
+                           bbox=(0.40, cy1, 0.60, cy2),
+                           confidence=0.95),
+            DetectedObject(label="floor", id="floor",
+                           bbox=(0.0,  0.85, 1.0, 1.0),
+                           confidence=0.99),
+        ])
+
+    sg = FrameIngester(ScriptedObjectDetector(detections)).ingest(
+        frames, fps=30.0,
+    )
+
+    # Sanity check that color got sampled
+    cup_scene = sg.scenes[0]
+    cup_obj = [o for o in cup_scene.objects if o.id == "cup"][0]
+    assert "color" in cup_obj.extras
+    # Cup should sample close to (220, 30, 30) — give a tolerance
+    r, g, b = cup_obj.extras["color"]
+    assert 180 <= r <= 255 and g < 100 and b < 100
+
+    # Run the full VideoAgent pipeline
+    token = Coordinator().compose(
+        video={"scene_graph": sg},
+        activate=("video", "governance"),
+    )
+    assert token.verify() is True
+    assert token.video is not None
+
+    p = token.video.payload
+    assert p["mode"] == "real"
+    # The 6 sub-reports all present
+    for key in (
+        "object_track_report", "motion_report", "impact_report",
+        "temporal_chain_report", "time_keeper_report", "color_report",
+    ):
+        assert key in p
+    # Cup motion should classify as downward (cup is falling)
+    # Floor is static; dominant_motion picks whichever wins on count.
+    # Cup + floor → one downward + one static. Either is acceptable
+    # as `dominant_motion`; what matters is that motion was detected
+    # on cup.
+    motions = p["motion_report"]["payload"]["motions"]
+    cup_motion = [m for m in motions if m["id"] == "cup"][0]
+    assert cup_motion["motion_class"] == "downward"
+    # Color report should see two tracks (cup + floor) with their colors
+    color_tracks = {t["id"]: t["dominant_color"]
+                    for t in p["color_report"]["payload"]["tracks"]}
+    assert color_tracks["cup"] == "red"
+    assert color_tracks["floor"] == "blue"
