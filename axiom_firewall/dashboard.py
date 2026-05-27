@@ -26,7 +26,12 @@ from pathlib import Path
 from time import perf_counter
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -253,6 +258,11 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 # in-dashboard /help page.
 FIREWALL_DOCS_DIR = BASE_DIR.parent / "docs" / "firewall"
 
+# Self-hosted MCP server manifest. Served at /mcp.json so the landing
+# page's "Hosted manifest" CTA resolves without depending on GitHub
+# Pages or a separate docs subdomain.
+MCP_MANIFEST_PATH = BASE_DIR.parent / "docs" / "mcp.json"
+
 init_registry()
 _classifier = IntentClassifier(derive_key(b"axiom-firewall-v1"))
 
@@ -281,6 +291,19 @@ def readyz():
             {"status": "unready", "error": str(e)},
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
+
+
+@app.get("/mcp.json", include_in_schema=False)
+def mcp_manifest():
+    """Serve the MCP server manifest — linked from the landing page's
+    "Hosted manifest" CTA so the URL works without GitHub Pages or a
+    separate docs domain."""
+    if not MCP_MANIFEST_PATH.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"mcp.json not found at {MCP_MANIFEST_PATH}",
+        )
+    return FileResponse(MCP_MANIFEST_PATH, media_type="application/json")
 
 
 def _ctx(request: Request, **extra) -> dict:
