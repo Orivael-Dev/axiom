@@ -24,6 +24,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
+from typing import Optional
 
 from fastapi import FastAPI, Form, Header, HTTPException, Request, status
 from fastapi.responses import (
@@ -816,12 +817,14 @@ def packs_index(request: Request):
     t = _current_tenant(request)
     if not t:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    installed_packs = skill_pack.list_installed_packs(t.tenant_id)
     return templates.TemplateResponse(
         request, "packs.html",
         _ctx(
             request, tenant=t,
             packs=_list_available_packs(),
-            installed=skill_pack.get_installed_pack(t.tenant_id),
+            installed_packs=installed_packs,
+            installed_names={ip.name for ip in installed_packs},
             registry_url=REGISTRY_URL or None,
         ),
     )
@@ -852,12 +855,19 @@ def packs_install(request: Request, name: str = Form(...)):
 
 
 @app.post("/dashboard/packs/uninstall")
-def packs_uninstall(request: Request):
+def packs_uninstall(request: Request, name: Optional[str] = Form(None)):
+    """Remove a pack from the stack.
+
+    If `name` is provided, only that pack is removed and the merged
+    policy is recomputed from the remaining active packs. If `name`
+    is empty, every active pack is removed (the "Remove all" CTA).
+    `uninstall_pack` itself handles clearing tenant_policy when no
+    packs remain — no separate delete_policy call needed.
+    """
     t = _current_tenant(request)
     if not t:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-    skill_pack.uninstall_pack(t.tenant_id)
-    policy_mod.delete_policy(t.tenant_id)
+    skill_pack.uninstall_pack(t.tenant_id, name=name or None)
     return RedirectResponse("/dashboard/packs", status_code=status.HTTP_303_SEE_OTHER)
 
 

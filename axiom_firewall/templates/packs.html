@@ -8,17 +8,35 @@
     Drop-in policy bundles for common compliance + safety use cases.
   </p>
 
-  {% if installed %}
+  {% if installed_packs %}
     <div class="alert success">
-      <strong>Active pack:</strong>
-      <code>{{ installed.name }}@{{ installed.version }}</code>
-      — {{ installed.title }}
+      <strong>Installed packs ({{ installed_packs|length }}):</strong>
+      <p style="margin: 0.5rem 0; opacity: 0.8; font-size: 13px;">
+        Policies stack — block patterns are UNIONed across every pack,
+        and the most-restrictive allow-list wins.
+      </p>
+      <ul class="installed-list" style="margin: 0.5rem 0; padding-left: 1.2rem;">
+        {% for ip in installed_packs %}
+          <li>
+            <code>{{ ip.name }}@{{ ip.version }}</code> — {{ ip.title }}
+            <form method="post" action="/dashboard/packs/uninstall" class="inline">
+              <input type="hidden" name="name" value="{{ ip.name }}">
+              <button type="submit" class="link"
+                      onclick="return confirm('Remove {{ ip.name }} from the stack?')">
+                Remove
+              </button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if installed_packs|length > 1 %}
       <form method="post" action="/dashboard/packs/uninstall" class="inline" style="margin-top: 0.5rem">
         <button type="submit" class="link"
-                onclick="return confirm('Uninstall {{ installed.name }} and revert to default classifier?')">
-          Uninstall
+                onclick="return confirm('Remove all {{ installed_packs|length }} packs and revert to default classifier?')">
+          Remove all
         </button>
       </form>
+      {% endif %}
     </div>
   {% endif %}
 
@@ -54,10 +72,10 @@
         {% endif %}
         <form method="post" action="/dashboard/packs/install" class="inline">
           <input type="hidden" name="name" value="{{ p.name }}">
-          {% if installed and installed.name == p.name %}
-            <button type="submit" class="cta-button" disabled>Installed</button>
+          {% if installed_names and p.name in installed_names %}
+            <button type="submit" class="cta-button" disabled>Installed ✓</button>
           {% else %}
-            <button type="submit" class="cta-button">Install</button>
+            <button type="submit" class="cta-button">Add to stack</button>
           {% endif %}
         </form>
         <a href="/help/packs/{{ p.name }}" class="link pack-docs">Docs →</a>
