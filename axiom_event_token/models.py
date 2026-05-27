@@ -94,8 +94,12 @@ class EventToken:
     Mirrors the AXIOM_EVENT_TOKEN block in the concept note:
       - id              stable identifier (caller-provided or auto)
       - format_version  "1.0", 2-year backward-compat per project standard
-      - text/audio/video/physics/governance — five LayerReports OR None
-        if the Coordinator did NOT activate that agent
+      - text/audio/tempo/video/physics/governance — six LayerReports OR
+        None if the Coordinator did NOT activate that agent
+      - parent_signature outer signature of the predecessor token in a
+                        conversation chain (empty = chain root or
+                        single-token use). Covered by the outer
+                        signature when present.
       - coordinator_sig signature over the activation manifest +
                         layer signatures (composition integrity)
       - signature       outer HMAC over the canonical bundle
@@ -107,29 +111,44 @@ class EventToken:
 
     text:        Optional[LayerReport] = None
     audio:       Optional[LayerReport] = None
+    tempo:       Optional[LayerReport] = None
+    vad:         Optional[LayerReport] = None
+    voice:       Optional[LayerReport] = None
+    qrf:         Optional[LayerReport] = None
     video:       Optional[LayerReport] = None
     physics:     Optional[LayerReport] = None
     governance:  Optional[LayerReport] = None
 
+    parent_signature: str = ""
     coordinator_sig: str = ""
     signature: str = ""
 
     # ─── Serialization ──────────────────────────────────────────────
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "id":              self.id,
             "format_version":  self.format_version,
             "created_at":      self.created_at,
             "activated_agents": list(self.activated_agents),
             "text":       self.text.to_dict()       if self.text       else None,
             "audio":      self.audio.to_dict()      if self.audio      else None,
+            "tempo":      self.tempo.to_dict()      if self.tempo      else None,
+            "vad":        self.vad.to_dict()        if self.vad        else None,
+            "voice":      self.voice.to_dict()      if self.voice      else None,
+            "qrf":        self.qrf.to_dict()        if self.qrf        else None,
             "video":      self.video.to_dict()      if self.video      else None,
             "physics":    self.physics.to_dict()    if self.physics    else None,
             "governance": self.governance.to_dict() if self.governance else None,
             "coordinator_sig": self.coordinator_sig,
             "signature":       self.signature,
         }
+        # parent_signature is omitted when empty so tokens not part of
+        # a chain serialize byte-identical to the pre-chaining format
+        # — pre-existing signed tokens on disk still verify.
+        if self.parent_signature:
+            d["parent_signature"] = self.parent_signature
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "EventToken":
@@ -140,9 +159,14 @@ class EventToken:
             activated_agents=tuple(d.get("activated_agents", ())),
             text=       LayerReport.from_dict(d["text"])       if d.get("text")       else None,
             audio=      LayerReport.from_dict(d["audio"])      if d.get("audio")      else None,
+            tempo=      LayerReport.from_dict(d["tempo"])      if d.get("tempo")      else None,
+            vad=        LayerReport.from_dict(d["vad"])        if d.get("vad")        else None,
+            voice=      LayerReport.from_dict(d["voice"])      if d.get("voice")      else None,
+            qrf=        LayerReport.from_dict(d["qrf"])        if d.get("qrf")        else None,
             video=      LayerReport.from_dict(d["video"])      if d.get("video")      else None,
             physics=    LayerReport.from_dict(d["physics"])    if d.get("physics")    else None,
             governance= LayerReport.from_dict(d["governance"]) if d.get("governance") else None,
+            parent_signature=d.get("parent_signature", ""),
             coordinator_sig=d.get("coordinator_sig", ""),
             signature=d.get("signature", ""),
         )
@@ -156,8 +180,9 @@ class EventToken:
         """Full verification: every layer signature + coordinator sig +
         outer token signature must all check out.
         """
-        for layer in (self.text, self.audio, self.video,
-                      self.physics, self.governance):
+        for layer in (self.text, self.audio, self.tempo, self.vad,
+                      self.voice, self.qrf, self.video, self.physics,
+                      self.governance):
             if layer is not None and not layer.verify():
                 return False
         if self.coordinator_sig:
@@ -193,6 +218,10 @@ def _canonical_coordinator(token: EventToken) -> bytes:
         "layer_signatures": {
             "text":        token.text.signature       if token.text       else None,
             "audio":       token.audio.signature      if token.audio      else None,
+            "tempo":       token.tempo.signature      if token.tempo      else None,
+            "vad":         token.vad.signature        if token.vad        else None,
+            "voice":       token.voice.signature      if token.voice      else None,
+            "qrf":         token.qrf.signature        if token.qrf        else None,
             "video":       token.video.signature      if token.video      else None,
             "physics":     token.physics.signature    if token.physics    else None,
             "governance":  token.governance.signature if token.governance else None,

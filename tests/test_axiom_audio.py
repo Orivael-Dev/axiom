@@ -231,6 +231,42 @@ def test_roundtrip_json_serialize_deserialize(isolated, tmp_path):
     assert restored.verify() is True
 
 
-# Sections 9 + 10 (AudioAgent in the event-token Coordinator) live with
-# the event_token bonded-pair PR — the Coordinator's `audio` agent
-# registration ships there, not here.
+# 9. End-to-end: AudioAgent in the event-token Coordinator picks up
+#    the real ambient classifier when a wav_path is provided
+def test_event_token_audio_agent_uses_real_classifier(isolated, tmp_path):
+    from axiom_event_token import Coordinator
+    wav = tmp_path / "shatter.wav"
+    _write_wav(wav, _glass_shatter())
+    coord = Coordinator()
+    token = coord.compose(
+        text="The glass cup fell and shattered.",
+        audio={"wav_path": str(wav)},
+        physics={"material": "brittle_glass", "surface": "hard_surface",
+                 "motion": "downward"},
+        activate=("text", "audio", "physics", "governance"),
+    )
+    assert token.verify() is True
+    # Real classifier produced the glass-like verdict (not the stub default)
+    assert token.audio.payload["material_signature"] == "glass-like"
+    assert token.audio.payload["impact_profile"] == "sharp_transient"
+    # Debug telemetry is present (proof we ran real DSP, not the stub)
+    assert "debug" in token.audio.payload
+    assert "centroid_hz" in token.audio.payload["debug"]
+
+
+# 10. The stub fallback still works when no wav_path is provided
+def test_audio_agent_stub_fallback_no_wav_path(isolated):
+    from axiom_event_token import Coordinator
+    coord = Coordinator()
+    token = coord.compose(
+        text="hi",
+        audio={"impact_profile": "sharp_transient", "material_signature": "glass",
+               "confidence": 0.9},
+        activate=("text", "audio", "governance"),
+    )
+    assert token.verify() is True
+    # Stub echoes caller-provided fields verbatim
+    assert token.audio.payload["impact_profile"] == "sharp_transient"
+    assert token.audio.payload["material_signature"] == "glass"
+    # No debug block — proof the real classifier did NOT run
+    assert "debug" not in token.audio.payload

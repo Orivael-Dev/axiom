@@ -298,11 +298,44 @@ def test_harness_passes_all_gates(isolated):
 
 
 # ─── VideoAgent — real mode + back-compat stub mode ─────────────────────
-# Section trimmed: the "real mode" + "legacy stub mode" tests require the
-# event_token Coordinator's `video` agent registration to actually
-# CLASSIFY video — they ship with the bonded-pair event_token PR.
-# The off-by-default test below works on plain main because it only
-# activates ("text", "governance") and asserts token.video is None.
+
+
+def test_video_agent_real_mode_runs_full_pipeline(isolated):
+    sys.path.insert(0, "scripts")
+    from video_harness import scene_reach_grip_tilt_fall
+    from axiom_event_token import Coordinator
+    sg = scene_reach_grip_tilt_fall()
+    coord = Coordinator()
+    token = coord.compose(
+        video={"scene_graph": sg},
+        activate=("video", "governance"),
+    )
+    assert token.verify() is True
+    assert token.video is not None
+    p = token.video.payload
+    assert p["mode"] == "real"
+    assert p["summary"]["n_tracks"] >= 2     # hand + cup
+    assert p["summary"]["n_impacts"] >= 1
+    # All 4 sub-reports nested + verifiable
+    for key in ("object_track_report", "motion_report",
+                "impact_report", "temporal_chain_report"):
+        assert key in p
+
+
+def test_video_agent_legacy_stub_mode_still_works(isolated):
+    """Old test_event_token contract: hand-coded video dict, no scene_graph."""
+    from axiom_event_token import Coordinator
+    coord = Coordinator()
+    token = coord.compose(
+        video={"object_motion": "downward", "impact_point": "floor",
+               "fracture_pattern": "radial_scatter", "confidence": 0.85},
+        activate=("video", "governance"),
+    )
+    assert token.verify() is True
+    p = token.video.payload
+    assert p["mode"] == "stub"
+    assert p["object_motion"] == "downward"
+    assert p["fracture_pattern"] == "radial_scatter"
 
 
 def test_video_agent_off_by_default(isolated):

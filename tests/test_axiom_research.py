@@ -227,6 +227,35 @@ def test_research_report_roundtrip_through_json(isolated):
     assert restored.verify() is True
 
 
-# Section 5 (QRFAgent in the event-token Coordinator) lives with the
-# event_token bonded-pair PR — the Coordinator's `qrf` agent registration
-# ships there, not here.
+# ─── 5. QRFAgent in the event-token Coordinator ─────────────────────────
+
+
+def test_qrf_agent_selectively_activates_in_coordinator(isolated):
+    from axiom_event_token import Coordinator
+    coord = Coordinator()
+    token = coord.compose(
+        qrf={"query": "Will inflation cool?", "domain": "financial"},
+        activate=("qrf", "governance"),
+    )
+    assert token.verify() is True
+    assert token.qrf is not None
+    assert token.text is None
+    assert token.audio is None
+    assert "qrf" in token.governance.payload["evidence_trace"]
+
+
+def test_qrf_off_by_default_in_default_activation(isolated):
+    from axiom_event_token import Coordinator
+    coord = Coordinator()
+    token = coord.compose(text="hi", activate=("text", "governance"))
+    assert token.qrf is None
+
+
+def test_qrf_agent_handles_missing_query_without_crashing(isolated):
+    from axiom_event_token import Coordinator
+    coord = Coordinator()
+    token = coord.compose(activate=("qrf",))   # no qrf input at all
+    assert token.verify() is True
+    assert token.qrf is not None
+    assert token.qrf.payload["top_branch"] == "(no-query)"
+    assert token.qrf.confidence == 0.0
