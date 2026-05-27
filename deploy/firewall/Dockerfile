@@ -55,6 +55,8 @@ COPY axiom_signing.py            ./
 # (launch playbook, billing, operations runbook) that must never
 # ship inside a publicly-reachable container image.
 COPY docs/firewall/*.md     ./docs/firewall/
+# MCP server manifest served at /mcp.json (linked from landing.html).
+COPY docs/mcp.json          ./docs/mcp.json
 # First-party skill packs. dashboard.py reads from
 # BASE_DIR.parent / "packs" (i.e. /app/packs) unless
 # AXIOM_FIREWALL_PACKS_DIR overrides. Signatures inside each

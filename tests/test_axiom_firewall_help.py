@@ -306,3 +306,42 @@ def test_packs_template_links_to_help_pack_page(isolated):
     assert 'href="/help/packs/test-pack"' in body
     # The broken homepage URL must not appear in the rendered card.
     assert "docs.orivael.dev/firewall/packs/test-pack" not in body
+
+
+# ─── /mcp.json + landing-page CTAs ──────────────────────────────────────
+
+def test_mcp_manifest_route_serves_json(isolated):
+    """/mcp.json must serve docs/mcp.json so the landing page's
+    "Hosted manifest" CTA resolves without depending on GitHub Pages
+    or a separate docs subdomain."""
+    client = _client()
+    r = client.get("/mcp.json")
+    assert r.status_code == 200, r.text
+    assert "application/json" in r.headers["content-type"].lower()
+    body = r.json()
+    assert body["name"] == "axiom"
+    assert "tools" in body and isinstance(body["tools"], list) and body["tools"]
+
+
+def test_help_mcp_tools_renders(isolated):
+    """The "MCP tools — full reference" CTA on the landing page points
+    at /help/mcp-tools — confirm the doc renders so the link isn't
+    dead."""
+    client = _client()
+    r = client.get("/help/mcp-tools")
+    assert r.status_code == 200, r.text
+    assert "<h1" in r.text
+
+
+def test_landing_page_links_resolve_to_self_hosted_mcp_targets(isolated):
+    """Landing page's MCP CTAs must point at the self-hosted /mcp.json
+    and /help/mcp-tools — not the GitHub Pages or docs-subdomain URLs
+    that were dead in production."""
+    client = _client()
+    r = client.get("/")
+    assert r.status_code == 200
+    assert 'href="/mcp.json"' in r.text
+    assert 'href="/help/mcp-tools"' in r.text
+    # Dead URLs must not survive:
+    assert "orivael-dev.github.io/axiom/mcp.json" not in r.text
+    assert "/firewall/mcp-tools" not in r.text
