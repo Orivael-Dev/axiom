@@ -179,6 +179,86 @@
     }
     .status-banner.show { display: block; }
 
+    /* ─── Detail card (click on a token_id to open) ────────────────── */
+    .detail-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(2, 6, 14, 0.78);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 60px 20px 40px;
+      z-index: 1000;
+      overflow-y: auto;
+    }
+    .detail-backdrop.show { display: flex; }
+    .detail-modal {
+      width: min(720px, 100%);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 28px 30px;
+      color: var(--text);
+      animation: detailIn 0.16s ease-out;
+    }
+    @keyframes detailIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .detail-modal header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin: 0 0 18px; padding: 0 0 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-modal header h2 {
+      margin: 0; font-size: 17px; letter-spacing: 0.02em;
+      font-family: var(--mono); color: var(--accent);
+    }
+    .detail-close {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-size: 14px; line-height: 1;
+      padding: 6px 11px; border-radius: 10px; cursor: pointer;
+      font-family: var(--mono);
+    }
+    .detail-close:hover { color: var(--text); border-color: var(--accent); }
+    .field-row {
+      display: grid; grid-template-columns: 130px 1fr;
+      gap: 14px; padding: 9px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      align-items: start;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-label {
+      color: var(--muted); font-size: 11px;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      font-family: var(--mono); padding-top: 2px;
+    }
+    .field-value {
+      font-family: var(--mono); font-size: 13px;
+      word-break: break-all; color: var(--text);
+    }
+    .field-value.text {
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      word-break: normal; line-height: 1.55;
+    }
+    .field-value .ok    { color: var(--success); }
+    .field-value .bad   { color: var(--danger); }
+    .copy-btn {
+      margin-left: 8px; padding: 2px 8px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); border-radius: 6px; cursor: pointer;
+      font-family: var(--mono); font-size: 11px;
+    }
+    .copy-btn:hover  { color: var(--accent); border-color: var(--accent); }
+    .copy-btn.copied { color: var(--success); border-color: var(--success); }
+    .token-link {
+      color: var(--accent-2); cursor: pointer;
+      text-decoration: underline; text-decoration-style: dotted;
+      text-underline-offset: 3px;
+    }
+    .token-link:hover { color: var(--accent); }
+
     footer { text-align: center; color: var(--muted); font-size: 12px;
              margin-top: 28px; font-family: var(--mono); }
 
@@ -251,6 +331,19 @@
       Each row signed under <code>axiom-exoskeleton-ledger-v1</code> · tamper detection independent of the EventToken's signatures.
     </footer>
   </main>
+
+  <!-- Detail card: opened when a token_id is clicked. Populated by JS. -->
+  <div class="detail-backdrop" id="detailBackdrop" aria-hidden="true">
+    <div class="detail-modal" role="dialog" aria-labelledby="detailTitle"
+         aria-modal="true">
+      <header>
+        <h2 id="detailTitle">Ledger entry</h2>
+        <button class="detail-close" id="detailClose"
+                aria-label="Close detail">Close ✕</button>
+      </header>
+      <div id="detailBody"></div>
+    </div>
+  </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
@@ -362,15 +455,22 @@
 
     function rowHtml(e) {
       const time = (e.timestamp_utc || "").replace("T", " ").replace("Z", "");
-      const tokId = (e.token_id || "").slice(0, 14);
+      const tokFull = e.token_id || "";
+      const tokShort = tokFull.slice(0, 14);
       const verifiedCell = e.verified
         ? '<span class="ok">✓</span>'
         : '<span class="bad">✗ tamper</span>';
       const excerpt = (e.input_excerpt || "").slice(0, 140);
+      // The token cell becomes the click target. Both the cell and the
+      // <span> carry the full token id in data-token-id so handlers can
+      // find the original entry without round-tripping through state.
       return `<tr>
         <td class="nowrap muted">${escapeHtml(time)}</td>
         <td><span class="delegate-tag">${escapeHtml(e.use_case || "")}</span></td>
-        <td class="nowrap muted">${escapeHtml(tokId)}</td>
+        <td class="nowrap muted">
+          <span class="token-link" data-token-id="${escapeHtml(tokFull)}"
+                title="Click for full entry detail">${escapeHtml(tokShort)}</span>
+        </td>
         <td class="nowrap">${escapeHtml(e.backend || "")}</td>
         <td class="nowrap muted">${escapeHtml(e.model || "")}</td>
         <td style="text-align:right;">${e.input_tokens || 0}</td>
@@ -397,6 +497,105 @@
       if (key === sortKey) sortDir = sortDir === "asc" ? "desc" : "asc";
       else { sortKey = key; sortDir = NUMERIC_COLS.has(key) ? "desc" : "asc"; }
       render();
+    });
+
+    // ─── Detail-card open/close ────────────────────────────────────
+    const detailBackdrop = $("detailBackdrop");
+    const detailBody     = $("detailBody");
+    const detailClose    = $("detailClose");
+
+    function openDetailFor(tokenId) {
+      const entry = allEntries.find(e => e.token_id === tokenId);
+      if (!entry) return;
+      detailBody.innerHTML = detailHtml(entry);
+      detailBackdrop.classList.add("show");
+      detailBackdrop.setAttribute("aria-hidden", "false");
+      detailClose.focus();
+    }
+
+    function closeDetail() {
+      detailBackdrop.classList.remove("show");
+      detailBackdrop.setAttribute("aria-hidden", "true");
+    }
+
+    function field(label, value, opts = {}) {
+      const cls = opts.text ? "field-value text" : "field-value";
+      return `<div class="field-row">
+        <div class="field-label">${escapeHtml(label)}</div>
+        <div class="${cls}">${value}</div>
+      </div>`;
+    }
+
+    function copyable(text) {
+      // Render a value followed by a Copy button. The button reads its
+      // payload from data-copy so we don't have to escape it twice.
+      const safe = escapeHtml(text);
+      return `<span class="copyable-value">${safe}</span>
+        <button class="copy-btn" data-copy="${safe}">Copy</button>`;
+    }
+
+    function detailHtml(e) {
+      const time = (e.timestamp_utc || "").replace("T", " ").replace("Z", "");
+      const verifiedHtml = e.verified
+        ? '<span class="ok">✓ verified</span>'
+        : '<span class="bad">✗ signature mismatch — tampering detected</span>';
+      const sigOrNone = e.signature
+        ? copyable(e.signature)
+        : '<span class="bad">(no signature)</span>';
+      return [
+        field("Token ID",      copyable(e.token_id || "")),
+        field("Timestamp",     escapeHtml(time)),
+        field("Use case",      escapeHtml(e.use_case || "")),
+        field("Backend",       escapeHtml(e.backend || "")),
+        field("Model",         escapeHtml(e.model || "")),
+        field("Verified",      verifiedHtml),
+        field("Input tokens",  String(e.input_tokens || 0)),
+        field("Output tokens", String(e.output_tokens || 0)),
+        field("Input chars",   String(e.input_chars  || 0)),
+        field("Latency",       (e.latency_ms || 0) + " ms"),
+        field("Input excerpt", escapeHtml(e.input_excerpt || ""), { text: true }),
+        field("Signature",     sigOrNone),
+      ].join("");
+    }
+
+    // Open: click on any .token-link in the table body.
+    els.tbody.addEventListener("click", (event) => {
+      const tok = event.target.closest(".token-link");
+      if (!tok) return;
+      openDetailFor(tok.dataset.tokenId);
+    });
+
+    // Close: explicit X button, click on backdrop (not the modal itself),
+    // and Escape key while open.
+    detailClose.addEventListener("click", closeDetail);
+    detailBackdrop.addEventListener("click", (event) => {
+      if (event.target === detailBackdrop) closeDetail();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && detailBackdrop.classList.contains("show")) {
+        closeDetail();
+      }
+    });
+
+    // Copy-to-clipboard inside the modal — delegated so we don't need
+    // to rebind every time the modal contents are re-rendered.
+    detailBody.addEventListener("click", async (event) => {
+      const btn = event.target.closest(".copy-btn");
+      if (!btn) return;
+      const payload = btn.dataset.copy || "";
+      try {
+        await navigator.clipboard.writeText(payload);
+        const orig = btn.textContent;
+        btn.textContent = "Copied ✓";
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.remove("copied");
+        }, 1200);
+      } catch {
+        btn.textContent = "Copy failed";
+        setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+      }
     });
 
     loadLedger();
