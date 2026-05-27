@@ -123,8 +123,123 @@ def test_honesty_preamble_size_under_200_tokens(isolated):
         "preamble grew past 1000 chars — check budgets"
 
 
+def test_preamble_is_in_every_delegate_prompt(isolated):
+    """Spot-check the pack's claim-making delegates use the preamble.
+    The 4 "tool" delegates (code/test generation, autonomous
+    planner/verifier) are exempt — their system prompts explicitly
+    forbid preamble text so they can emit clean source / structured
+    output."""
+    from examples.exoskeleton_pack import EXOSKELETON_DELEGATES
+    from axiom_exoskeleton_honesty import HONESTY_PREAMBLE
+    head = HONESTY_PREAMBLE.split("\n")[0]  # 'TRUTH RULES …'
+    EXEMPT = {"code_generation", "test_generation",
+              "autonomous_planner", "autonomous_verifier"}
+    claim_delegates = [d for d in EXOSKELETON_DELEGATES
+                       if d["name"] not in EXEMPT]
+    assert claim_delegates, "expected at least one claim-making delegate"
+    for d in claim_delegates:
+        assert head in d["system_prompt"], \
+            f"{d['name']} missing honesty preamble"
 
-# Integration tests below (test_preamble_is_in_every_delegate_prompt +
-# the "End-to-end ExoskeletonAgent integration" section) need
-# examples.exoskeleton_pack + axiom_exoskeleton.py — neither is on
-# main yet. They ship with the exoskeleton agent PR.
+
+# ── End-to-end ExoskeletonAgent integration ─────────────────────────
+
+
+class _OverclaimBackend:
+    """Stub that returns track-record-claiming text so we can verify
+    the post-scan + re-sign path fires correctly."""
+    name  = "stub"
+    model = "stub-model"
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def generate(self, *, system, prompt, max_output_tokens, timeout_s=60.0):
+        from axiom_event_token.backends import BackendResult
+        return BackendResult(
+            text=self._text,
+            input_tokens=len(prompt) // 4,
+            output_tokens=len(self._text) // 4,
+            latency_ms=2,
+            backend=self.name,
+            model=self.model,
+        )
+
+
+def test_invoke_attaches_findings_when_output_overclaims(
+    isolated, tmp_path,
+):
+    from examples.exoskeleton_pack import build_exoskeleton_pack
+    from axiom_exoskeleton import ExoskeletonAgent
+
+    c = build_exoskeleton_pack(tmp_path / "exo.axm")
+    bad = _OverclaimBackend(
+        "AXIOM has helped startups and our customers saved $1M."
+    )
+    exo = ExoskeletonAgent(c, backend=bad)
+    token = exo.invoke("outreach_personalization", "hello buyer")
+    p = token.text.payload
+    findings = p.get("honesty_findings") or []
+    assert findings, "expected honesty findings on overclaim output"
+    assert p.get("honesty_block_count", 0) >= 1
+    cats = {f["category"] for f in findings}
+    assert "invented_track_record" in cats
+
+
+def test_invoke_token_verifies_after_honesty_annotation(
+    isolated, tmp_path,
+):
+    """Augmenting the payload must NOT break the cryptographic
+    chain — token.verify() must still pass end-to-end."""
+    from examples.exoskeleton_pack import build_exoskeleton_pack
+    from axiom_exoskeleton import ExoskeletonAgent
+
+    c = build_exoskeleton_pack(tmp_path / "exo.axm")
+    exo = ExoskeletonAgent(
+        c,
+        backend=_OverclaimBackend(
+            "AXIOM has helped enterprise customers reduce costs by 30%."
+        ),
+    )
+    token = exo.invoke("competitive_analysis", "Compare to Lakera")
+    assert token.verify()
+    # The re-signed text layer must verify on its own too.
+    assert token.text.verify()
+
+
+def test_invoke_clean_output_has_no_findings_key(
+    isolated, tmp_path,
+):
+    """When output is clean, the honesty_findings key should be
+    absent (not just empty) so the JSON stays tidy."""
+    from examples.exoskeleton_pack import build_exoskeleton_pack
+    from axiom_exoskeleton import ExoskeletonAgent
+
+    c = build_exoskeleton_pack(tmp_path / "exo.axm")
+    exo = ExoskeletonAgent(
+        c,
+        backend=_OverclaimBackend(
+            "AXIOM is designed to enable verifiable agent oversight."
+        ),
+    )
+    token = exo.invoke("investor_research", "AI governance thesis")
+    p = token.text.payload
+    assert "honesty_findings" not in p
+    assert token.verify()
+
+
+def test_render_human_surfaces_findings_block(
+    isolated, tmp_path,
+):
+    from examples.exoskeleton_pack import build_exoskeleton_pack
+    from axiom_exoskeleton import ExoskeletonAgent, render_human
+
+    c = build_exoskeleton_pack(tmp_path / "exo.axm")
+    exo = ExoskeletonAgent(
+        c,
+        backend=_OverclaimBackend("AXIOM has helped startups today."),
+    )
+    token = exo.invoke("customer_discovery", "demo call notes")
+    out = render_human(token)
+    assert "HONESTY FINDINGS" in out
+    assert "invented_track_record" in out
