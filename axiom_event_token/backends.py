@@ -529,12 +529,21 @@ def _build_domain_backend(domain: str) -> Optional[SLMBackend]:
       Ollama (local):
         OLLAMA_MODEL / OLLAMA_URL
       NIM (specifically NVIDIA NIM):
-        NIM_MODEL  (NVIDIA_NIM_API_KEY is auth — usually shared)
+        NVIDIA_NIM_API_KEY / NIM_BASE_URL / NIM_MODEL
+        — every NIM dimension is independently per-domain shadowable
+        so an operator can wire separate NIM endpoints with separate
+        keys (e.g. a security-tuned NIM at one tenant and a
+        medically-tuned NIM at another).
 
     Use:
       AXIOM_BACKEND_MEDICAL=local
       OLLAMA_MODEL_MEDICAL=meditron:70b      # different local model
       OLLAMA_URL_MEDICAL=http://gpu-box:11434   # or different Ollama host
+
+      AXIOM_BACKEND_SECURITY=nim
+      NIM_MODEL_SECURITY=qwen2.5-coder-32b
+      NVIDIA_NIM_API_KEY_SECURITY=nvapi-...   # separate key OK
+      NIM_BASE_URL_SECURITY=https://my-nim/v1  # separate endpoint OK
     """
     suffix = domain.upper()
     spec = os.environ.get(f"AXIOM_BACKEND_{suffix}")
@@ -546,7 +555,7 @@ def _build_domain_backend(domain: str) -> Optional[SLMBackend]:
     shadowed_keys = (
         "AXIOM_API_KEY", "AXIOM_BASE_URL", "AXIOM_MODEL",
         "OLLAMA_MODEL", "OLLAMA_URL",
-        "NIM_MODEL",
+        "NIM_MODEL", "NIM_BASE_URL", "NVIDIA_NIM_API_KEY",
     )
     original = {k: os.environ.get(k) for k in shadowed_keys}
     try:

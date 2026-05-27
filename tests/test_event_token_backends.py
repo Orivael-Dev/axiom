@@ -425,3 +425,93 @@ def test_make_backend_recognises_custom(isolated, monkeypatch):
     from axiom_event_token.backends import make_backend, CustomBackend
     b = make_backend(["custom"])
     assert isinstance(b, CustomBackend)
+
+
+# ─── Per-domain NIM routing (AXIOM_BACKEND_<DOM> + *_<DOM>) ─────────────
+
+
+def test_per_domain_nim_uses_domain_specific_api_key(isolated, monkeypatch):
+    """Operators running separate NIM endpoints per domain must be able
+    to wire a different NVIDIA_NIM_API_KEY per domain — the suffixed
+    NVIDIA_NIM_API_KEY_<DOM> must shadow the bare key while the
+    domain-routed backend is constructed."""
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "shared-default-key")
+    monkeypatch.setenv("AXIOM_BACKEND_MEDICAL", "nim")
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY_MEDICAL", "medical-only-key")
+    monkeypatch.setenv("NIM_MODEL_MEDICAL", "nvidia/medical-special")
+
+    from axiom_event_token.backends import _build_domain_backend, NIMBackend
+
+    b = _build_domain_backend("medical")
+    assert isinstance(b, NIMBackend)
+    assert b._api_key == "medical-only-key"
+    assert b.model    == "nvidia/medical-special"
+
+
+def test_per_domain_nim_uses_domain_specific_base_url(isolated, monkeypatch):
+    """A self-hosted NIM endpoint (or a regional NIM mirror) requires a
+    domain-specific NIM_BASE_URL_<DOM> override. The default is the
+    public integrate.api.nvidia.com host; a per-domain override must
+    pin a different host while constructing the routed backend."""
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "k")   # shared key fine here
+    monkeypatch.setenv("AXIOM_BACKEND_SECURITY", "nim")
+    monkeypatch.setenv("NIM_BASE_URL_SECURITY", "https://nim.security.internal/v1")
+    monkeypatch.setenv("NIM_MODEL_SECURITY",     "qwen/qwen2.5-coder-32b-instruct")
+
+    from axiom_event_token.backends import _build_domain_backend, NIMBackend
+
+    b = _build_domain_backend("security")
+    assert isinstance(b, NIMBackend)
+    assert b._base_url == "https://nim.security.internal/v1"
+    assert b.model     == "qwen/qwen2.5-coder-32b-instruct"
+
+
+def test_per_domain_nim_falls_back_to_bare_env_when_suffix_missing(
+        isolated, monkeypatch):
+    """When a per-domain override is partial (BACKEND set, others not),
+    the routed backend must fall through to the bare-named env vars —
+    same fallback semantics as the OpenAI-shape config."""
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "shared-key")
+    monkeypatch.setenv("NIM_BASE_URL",       "https://shared-host/v1")
+    monkeypatch.setenv("NIM_MODEL",          "shared/model")
+    # Only the BACKEND switch is per-domain; everything else inherits.
+    monkeypatch.setenv("AXIOM_BACKEND_FINANCE", "nim")
+
+    from axiom_event_token.backends import _build_domain_backend, NIMBackend
+
+    b = _build_domain_backend("finance")
+    assert isinstance(b, NIMBackend)
+    assert b._api_key  == "shared-key"
+    assert b._base_url == "https://shared-host/v1"
+    assert b.model     == "shared/model"
+
+
+def test_per_domain_nim_does_not_leak_into_other_domains(isolated, monkeypatch):
+    """Domain shadowing is a context manager — after the routed backend
+    is built, the bare env vars must be restored exactly so a second
+    domain's build sees the unshadowed values."""
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "bare-key")
+    monkeypatch.setenv("NIM_MODEL",          "bare-model")
+    monkeypatch.setenv("AXIOM_BACKEND_MEDICAL", "nim")
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY_MEDICAL", "medical-key")
+    monkeypatch.setenv("NIM_MODEL_MEDICAL",          "medical-model")
+    monkeypatch.setenv("AXIOM_BACKEND_FINANCE", "nim")
+    # FINANCE has no suffixed overrides — should pick up the bare values
+    # exactly, untouched by the prior MEDICAL build.
+
+    from axiom_event_token.backends import _build_domain_backend, NIMBackend
+    import os
+
+    med = _build_domain_backend("medical")
+    assert isinstance(med, NIMBackend)
+    assert med._api_key == "medical-key"
+    assert med.model    == "medical-model"
+
+    # Bare env vars restored after medical build:
+    assert os.environ["NVIDIA_NIM_API_KEY"] == "bare-key"
+    assert os.environ["NIM_MODEL"]          == "bare-model"
+
+    fin = _build_domain_backend("finance")
+    assert isinstance(fin, NIMBackend)
+    assert fin._api_key == "bare-key"
+    assert fin.model    == "bare-model"
