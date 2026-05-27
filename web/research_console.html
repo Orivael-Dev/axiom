@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AXIOM Re:Search Engine</title>
+  <style>
+    :root {
+      --bg: #050810;
+      --panel: rgba(255, 255, 255, 0.055);
+      --panel-strong: rgba(255, 255, 255, 0.095);
+      --border: rgba(255, 255, 255, 0.14);
+      --text: #f4f7fb;
+      --muted: #aab6ca;
+      --soft: rgba(170, 182, 202, 0.18);
+      --accent: #72f7d4;
+      --accent-2: #8ea7ff;
+      --accent-3: #c89cff;
+      --warning: #ffd166;
+      --danger: #ff6b6b;
+      --success: #63e6be;
+      --shadow: 0 22px 80px rgba(0, 0, 0, 0.42);
+      --mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 6%, rgba(114, 247, 212, 0.16), transparent 30%),
+        radial-gradient(circle at 92% 14%, rgba(142, 167, 255, 0.18), transparent 32%),
+        radial-gradient(circle at 70% 110%, rgba(200, 156, 255, 0.12), transparent 30%),
+        var(--bg);
+      overflow-x: hidden;
+    }
+
+    .shell {
+      width: min(1320px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 56px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 36px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .logo-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(114, 247, 212, 0.24), rgba(200, 156, 255, 0.22));
+      border: 1px solid var(--border);
+      box-shadow: inset 0 0 24px rgba(114, 247, 212, 0.12);
+      font-size: 18px;
+    }
+
+    .top-nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav-pill {
+      color: var(--muted);
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.035);
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 13px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+
+    .nav-pill:hover {
+      color: var(--text);
+      border-color: rgba(114, 247, 212, 0.32);
+    }
+
+    .nav-pill.active {
+      color: var(--text);
+      background: rgba(114, 247, 212, 0.12);
+      border-color: rgba(114, 247, 212, 0.4);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    .hero {
+      text-align: center;
+      max-width: 960px;
+      margin: 0 auto 22px;
+      padding: 16px 22px 4px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(114, 247, 212, 0.32);
+      background: rgba(114, 247, 212, 0.08);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    .chip .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(114, 247, 212, 0.7);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 6vw, 64px);
+      line-height: 0.96;
+      letter-spacing: -0.06em;
+    }
+
+    h1 .re {
+      color: var(--accent);
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: clamp(15px, 1.6vw, 18px);
+      line-height: 1.55;
+      max-width: 780px;
+      margin: 18px auto 0;
+    }
+
+    .pipeline {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+
+    .stage {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .stage strong { color: var(--text); font-weight: 700; }
+    .arrow { color: var(--accent-2); }
+
+    /* ── Pre-flight backend banner ──────────────────────────────────
+       Shown on page load if /api/health reports the backend isn't
+       ready. Yellow so it nags but doesn't look like a real error. */
+    .preflight-banner {
+      margin: 12px 0 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--warning);
+      background: rgba(255, 209, 102, 0.06);
+      color: var(--warning);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .preflight-banner code {
+      background: rgba(255, 209, 102, 0.12);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ── Signed-verification ribbon ─────────────────────────────────
+       Pinned to the top of the report area after a successful run,
+       in front of TL;DR. Green border + monospaced token_id so the
+       "this is a real signed event" claim has a visible anchor. */
+    .signed-ribbon {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border-left: 3px solid var(--success);
+      background: rgba(99, 230, 190, 0.08);
+      font-size: 13px;
+      color: #cfe;
+    }
+    .signed-ribbon.failed {
+      border-left-color: #e05050;
+      background: rgba(224, 80, 80, 0.08);
+      color: #fdd;
+    }
+    .signed-ribbon .label {
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: var(--success);
+    }
+    .signed-ribbon.failed .label { color: #ff8a8a; }
+    .signed-ribbon code {
+      font-family: ui-monospace, Menlo, monospace;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: #fff;
+    }
+    .signed-ribbon .sep { opacity: 0.5; }
+
+    .alert-error {
+      margin: 8px 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--danger);
+      background: rgba(224, 80, 80, 0.08);
+      color: #fdd;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .alert-error button {
+      background: rgba(224, 80, 80, 0.18);
+      border: 1px solid var(--danger);
+      color: #fdd;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .alert-error button:hover { background: rgba(224, 80, 80, 0.3); }
+
+    .resume-picker {
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      padding: 0 14px;
+    }
+    .resume-picker summary {
+      cursor: pointer;
+      padding: 10px 0;
+      color: var(--muted);
+      font-size: 13px;
+      user-select: none;
+    }
+    .resume-picker[open] summary { color: var(--text); }
+    .picker-row {
+      display: flex;
+      gap: 8px;
+      padding: 4px 0 12px;
+      align-items: center;
+    }
+    .picker-row select {
+      flex: 1;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .search-panel {
+      margin: 26px auto 0;
+      max-width: 1060px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.095), rgba(255,255,255,0.045));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .search-row {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+    }
+
+    .search-row input {
+      width: 100%;
+      border: 1px solid var(--border);
+      outline: none;
+      border-radius: 22px;
+      background: rgba(7, 10, 18, 0.72);
+      color: var(--text);
+      padding: 18px 20px;
+      font-size: 17px;
+    }
+
+    .search-row input::placeholder { color: rgba(170, 182, 202, 0.72); }
+
+    .search-row button,
+    .ghost-button,
+    .branch-action {
+      border: 0;
+      cursor: pointer;
+      border-radius: 22px;
+      padding: 0 24px;
+      font-weight: 800;
+      color: #061110;
+      background: linear-gradient(135deg, var(--accent), #c7fff0);
+      transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+      white-space: nowrap;
+    }
+
+    .search-row button:hover,
+    .branch-action:hover,
+    .ghost-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 30px rgba(114, 247, 212, 0.22);
+    }
+
+    .mode-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: center;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    .mode-row .label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    .filter.active,
+    .filter:hover {
+      color: var(--text);
+      border-color: rgba(114, 247, 212, 0.42);
+      background: rgba(114, 247, 212, 0.09);
+    }
+
+    .filter.workflow.active {
+      border-color: rgba(200, 156, 255, 0.45);
+      background: rgba(200, 156, 255, 0.10);
+    }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      max-width: 1060px;
+      margin: 18px auto 24px;
+    }
+
+    .metric {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.045);
+      border-radius: 18px;
+      padding: 13px 14px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      font-family: var(--mono);
+    }
+
+    .metric strong {
+      font-size: 19px;
+    }
+
+    .metric small { color: var(--muted); font-size: 12px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .col-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      overflow: hidden;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .card-head h2 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -0.01em;
+    }
+
+    .badge {
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--accent);
+      background: rgba(114, 247, 212, 0.09);
+      border: 1px solid rgba(114, 247, 212, 0.2);
+      font-family: var(--mono);
+      letter-spacing: 0.04em;
+    }
+
+    .badge.purple {
+      color: var(--accent-3);
+      background: rgba(200, 156, 255, 0.10);
+      border-color: rgba(200, 156, 255, 0.3);
+    }
+
+    .badge.blue {
+      color: var(--accent-2);
+      background: rgba(142, 167, 255, 0.10);
+      border-color: rgba(142, 167, 255, 0.3);
+    }
+
+    .card-body { padding: 22px; }
+
+    .report-section {
+      margin-bottom: 18px;
+    }
+
+    .report-section h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-family: var(--mono);
+    }
+
+    .report-section p {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.55;
+      color: #eef3fb;
+    }
+
+    .report-section ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+
+    .report-section ul li {
+      color: #d8e2f2;
+      font-size: 14px;
+      padding-left: 18px;
+      position: relative;
+      line-height: 1.5;
+    }
+
+    .report-section ul li::before {
+      content: "▸";
+      color: var(--accent);
+      position: absolute;
+      left: 0;
+    }
+
+    .citations-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .citation {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .citation .src-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .citation .src-title {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .citation .src-meta {
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+
+    .citation .src-snippet {
+      color: #cbd5e6;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .citation .score-bar {
+      height: 4px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      margin-top: 9px;
+      overflow: hidden;
+    }
+
+    .citation .score-bar > i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 999px;
+    }
+
+    .branch-stack { display: grid; gap: 12px; }
+
+    .branch-card {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.045);
+      padding: 15px;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .branch-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(114, 247, 212, 0.3);
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .branch-card.killed {
+      opacity: 0.72;
+      border-style: dashed;
+      border-color: rgba(255, 107, 107, 0.34);
+    }
+
+    .branch-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .branch-title strong { font-size: 15px; }
+    .branch-title small { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+
+    .prob {
+      font-weight: 900;
+      font-size: 19px;
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+
+    .prob.killed-text {
+      color: var(--danger);
+      font-size: 12px;
+      padding-top: 4px;
+    }
+
+    .branch-summary {
+      color: #dbe4f2;
+      line-height: 1.48;
+      margin: 0 0 10px;
+      font-size: 13px;
+    }
+
+    .branch-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .branch-meta span {
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(0, 0, 0, 0.18);
+      border-radius: 999px;
+      padding: 5px 8px;
+      font-family: var(--mono);
+    }
+
+    .branch-action {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 13px;
+      font-size: 12px;
+    }
+
+    .details-panel {
+      margin-top: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(0, 0, 0, 0.22);
+      padding: 14px;
+      display: none;
+    }
+
+    .details-panel.open { display: block; }
+
+    .details-panel h3 { margin: 0 0 8px; font-size: 14px; }
+
+    .details-panel pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      font-family: var(--mono);
+    }
+
+    .receipt {
+      border: 1px solid rgba(114, 247, 212, 0.18);
+      background: rgba(114, 247, 212, 0.04);
+      border-radius: 18px;
+      padding: 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .receipt .ok { color: var(--success); font-weight: 700; }
+    .receipt .key { color: var(--accent); }
+
+    .receipt .row {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 10px;
+      padding: 3px 0;
+    }
+
+    .receipt .row strong { color: var(--text); font-weight: 600; }
+
+    .cost-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .cost {
+      padding: 9px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .cost span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+
+    .cost strong {
+      font-size: 16px;
+      color: var(--text);
+      font-family: var(--mono);
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 22px;
+    }
+
+    .mini-card {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 16px;
+    }
+
+    .mini-card h3 { margin: 0 0 7px; font-size: 14px; }
+    .mini-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .mini-card code {
+      background: rgba(114, 247, 212, 0.08);
+      color: var(--accent);
+      padding: 1px 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: var(--mono);
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 28px;
+      font-family: var(--mono);
+    }
+
+    @media (max-width: 980px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .search-row { flex-direction: column; }
+      .search-row button { min-height: 54px; }
+      .status-strip { grid-template-columns: repeat(2, 1fr); }
+      .grid, .bottom-grid { grid-template-columns: 1fr; }
+      .hero { padding-left: 0; padding-right: 0; }
+      .cost-grid { grid-template-columns: 1fr; }
+      .receipt .row { grid-template-columns: 100px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="logo">
+        <div class="logo-mark">◈</div>
+        <div>
+          <div>AXIOM Re:Search Engine</div>
+          <small style="color: var(--muted); font-weight: 500;">Retrieve → reason → synthesize, with a signed audit trail</small>
+        </div>
+      </div>
+
+      <nav class="top-nav" aria-label="Console sections" id="topNav">
+        <a class="nav-pill active" href="#section-research"  data-section="research">Research</a>
+        <a class="nav-pill"        href="#section-branches"  data-section="branches">Reasoning Paths</a>
+        <a class="nav-pill"        href="#section-sources"   data-section="sources">Sources</a>
+        <a class="nav-pill"        href="/ledger">Ledger →</a>
+        <a class="nav-pill"        href="/help">📖 Instructions</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="chip"><span class="dot"></span>QRF · Modular Delegates · Signed Event Tokens</div>
+      <h1>Ask. Retrieve. Reason. <span class="re">Re:</span>port.</h1>
+      <p>
+        AXIOM's research engine retrieves real sources, runs them through QRF's
+        multi-branch probability reasoning, synthesizes a verifiable report,
+        and signs every step. Pick a workflow to switch the synthesizer's
+        delegate; pick a domain to bound the retrieval scope.
+      </p>
+      <div class="pipeline" aria-hidden="true">
+        <span class="stage"><strong>retrieve</strong></span><span class="arrow">→</span>
+        <span class="stage"><strong>QRF</strong> branches</span><span class="arrow">→</span>
+        <span class="stage"><strong>synthesize</strong></span><span class="arrow">→</span>
+        <span class="stage"><strong>sign</strong> &amp; record</span>
+      </div>
+
+      <section class="search-panel" aria-label="Research query" id="section-research">
+        <details class="resume-picker" id="resumePicker">
+          <summary>📚 Resume from a prior signed run</summary>
+          <p style="font-size: 12px; margin: 4px 0 8px; color: var(--muted);">
+            Pick a prior question to re-run live. The replay produces a fresh signed token —
+            both the original and the replay will appear in the ledger.
+          </p>
+          <div class="picker-row">
+            <select id="resumeSelect">
+              <option value="">— pick a prior run —</option>
+            </select>
+            <button id="resumeBtn" disabled>Load + Run</button>
+          </div>
+        </details>
+        <div class="search-row">
+          <input
+            id="researchInput"
+            type="search"
+            placeholder="Ask a research question — e.g. Which AI governance startups have raised in 2025?"
+            autocomplete="off"
+          />
+          <button id="researchBtn">Run Research</button>
+        </div>
+
+        <div class="mode-row">
+          <div class="label">Domain</div>
+          <div class="filter-row" id="domainRow">
+            <button class="filter active" data-domain="general">General</button>
+            <button class="filter" data-domain="medical">Medical</button>
+            <button class="filter" data-domain="finance">Finance</button>
+            <button class="filter" data-domain="security">Security</button>
+            <button class="filter" data-domain="hr">HR</button>
+            <button class="filter" data-domain="supply_chain">Supply Chain</button>
+          </div>
+        </div>
+
+        <div class="mode-row">
+          <div class="label">Workflow</div>
+          <div class="filter-row" id="workflowRow">
+            <button class="filter workflow active" data-workflow="general_research">General Research</button>
+            <button class="filter workflow" data-workflow="investor_research">Investor Research</button>
+            <button class="filter workflow" data-workflow="enterprise_targeting">Enterprise Targeting</button>
+            <button class="filter workflow" data-workflow="competitive_analysis">Competitive Analysis</button>
+            <button class="filter workflow" data-workflow="customer_discovery">Customer Discovery</button>
+            <button class="filter workflow" data-workflow="patent_counsel_packet">Patent Packet</button>
+            <button class="filter workflow" data-workflow="code_generation">Code Generation</button>
+            <button class="filter workflow" data-workflow="test_generation">Test Generation</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="status-strip" aria-label="Run status metrics">
+      <div class="metric">
+        <span>Workflow</span>
+        <strong id="workflowMetric">General Research</strong>
+      </div>
+      <div class="metric">
+        <span>Domain</span>
+        <strong id="domainMetric">General</strong>
+      </div>
+      <div class="metric">
+        <span>Probability band</span>
+        <strong id="probMetric">—</strong>
+      </div>
+      <div class="metric">
+        <span>Constitutional distance</span>
+        <strong id="distanceMetric">—</strong>
+      </div>
+      <div class="metric">
+        <span>Branch health</span>
+        <strong id="healthMetric">—</strong>
+      </div>
+    </section>
+
+    <!--
+      Pre-flight backend health banner. Hidden by default; revealed
+      on page load when /api/health says the backend isn't built yet
+      or AXIOM_MASTER_KEY isn't visible. Quietly stays hidden when
+      the backend looks healthy.
+    -->
+    <div id="preflightBanner" class="preflight-banner" hidden></div>
+
+    <section class="grid">
+      <div class="col-stack">
+        <article class="card">
+          <div class="card-head">
+            <h2>Synthesized Report</h2>
+            <span class="badge" id="reportBadge">awaiting run</span>
+          </div>
+          <div class="card-body" id="reportBody">
+            <p class="answer-text" style="color: var(--muted);">
+              Submit a question to see a signed research report.
+              Every Run produces a fresh EventToken with a new HMAC signature.
+            </p>
+          </div>
+        </article>
+
+        <article class="card" id="section-sources">
+          <div class="card-head">
+            <h2>Retrieved Sources</h2>
+            <span class="badge blue" id="sourcesCountBadge">0 sources</span>
+          </div>
+          <div class="card-body">
+            <ul class="citations-list" id="citationsList">
+              <li style="color: var(--muted); font-size: 13px; list-style: none;">—</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+      <div class="col-stack">
+        <article class="card" id="section-branches">
+          <div class="card-head">
+            <h2>QRF Reasoning Paths</h2>
+            <span class="badge purple">Multi-branch</span>
+          </div>
+          <div class="card-body">
+            <div class="branch-stack" id="branchResults">
+              <div style="color: var(--muted); font-size: 13px;">
+                Reasoning branches appear here. Killed branches are preserved as
+                signed audit records — not silently hidden.
+              </div>
+            </div>
+            <div class="details-panel" id="detailPanel">
+              <h3 id="detailTitle">Branch Detail</h3>
+              <pre id="detailBody"></pre>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <h2>Signed Event Receipt</h2>
+            <span class="badge" id="receiptBadge">awaiting run</span>
+          </div>
+          <div class="card-body">
+            <div class="receipt" id="receipt">
+              <div class="row"><strong>token_id</strong><span>—</span></div>
+              <div class="row"><strong>workflow</strong><span>—</span></div>
+              <div class="row"><strong>backend</strong><span>—</span></div>
+              <div class="row"><strong>signed_at</strong><span>—</span></div>
+              <div class="row"><strong>verified</strong><span>—</span></div>
+              <div class="row"><strong>ledger</strong><span>—</span></div>
+            </div>
+            <div class="cost-grid">
+              <div class="cost"><span>in tokens</span><strong id="inTokMetric">—</strong></div>
+              <div class="cost"><span>out tokens</span><strong id="outTokMetric">—</strong></div>
+              <div class="cost"><span>latency</span><strong id="latencyMetric">—</strong></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="bottom-grid">
+      <div class="mini-card">
+        <h3>Live backend</h3>
+        <p>Every run calls <code>POST /api/research</code> (or the SSE stream). The response shape matches AXIOM's <code>EventToken</code> — see <code>axiom_event_token/models.py</code>. Start with <code>scripts/serve_research_console.sh</code>.</p>
+      </div>
+      <div class="mini-card">
+        <h3>Workflow vs domain</h3>
+        <p><strong>Workflow</strong> selects the exoskeleton delegate that synthesizes the report (one of the §9 founder-workflow agents). <strong>Domain</strong> bounds the retrieval scope.</p>
+      </div>
+      <div class="mini-card">
+        <h3>Signed audit trail</h3>
+        <p>Every run produces a signed <code>EventToken</code> appended to <code>~/.axiom/exoskeleton-ledger.jsonl</code>. Each ledger entry carries its own HMAC under <code>axiom-exoskeleton-ledger-v1</code> — independent of the EventToken's signatures.</p>
+      </div>
+    </section>
+
+    <footer>
+      AXIOM Re:Search Engine prototype · single-file HTML · ready for GitHub Pages, Netlify, Vercel, or local browser testing
+    </footer>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const els = {
+      input:        $("researchInput"),
+      runBtn:       $("researchBtn"),
+      domainRow:    $("domainRow"),
+      workflowRow:  $("workflowRow"),
+      workflowMetric: $("workflowMetric"),
+      domainMetric:   $("domainMetric"),
+      probMetric:     $("probMetric"),
+      distanceMetric: $("distanceMetric"),
+      healthMetric:   $("healthMetric"),
+      reportBody:     $("reportBody"),
+      reportBadge:    $("reportBadge"),
+      sourcesCountBadge: $("sourcesCountBadge"),
+      citationsList:  $("citationsList"),
+      branchResults:  $("branchResults"),
+      detailPanel:    $("detailPanel"),
+      detailTitle:    $("detailTitle"),
+      detailBody:     $("detailBody"),
+      receipt:        $("receipt"),
+      receiptBadge:   $("receiptBadge"),
+      inTokMetric:    $("inTokMetric"),
+      outTokMetric:   $("outTokMetric"),
+      latencyMetric:  $("latencyMetric"),
+    };
+
+    let activeDomain   = "general";
+    let activeWorkflow = "general_research";
+
+    const domainLabels = {
+      general:      "General",
+      medical:      "Medical",
+      finance:      "Finance",
+      security:     "Security",
+      hr:           "HR",
+      supply_chain: "Supply Chain",
+    };
+
+    const workflowLabels = {
+      general_research:     "General Research",
+      investor_research:    "Investor Research",
+      enterprise_targeting: "Enterprise Targeting",
+      competitive_analysis: "Competitive Analysis",
+      customer_discovery:   "Customer Discovery",
+      patent_counsel_packet:"Patent Packet",
+      code_generation:      "Code Generation",
+      test_generation:      "Test Generation",
+    };
+
+    // Which retrieval domains make sense for each workflow. The domain
+    // filter row hides buttons not in the active workflow's set, and
+    // auto-switches the active domain if the current selection drops
+    // out. General is always included so the user never has zero
+    // domains to pick. Order in the array drives the auto-switch
+    // fallback (first entry wins).
+    const workflowDomains = {
+      general_research:     ["general", "medical", "finance", "security", "hr", "supply_chain"],
+      investor_research:    ["general", "finance"],
+      enterprise_targeting: ["general"],
+      competitive_analysis: ["general"],
+      customer_discovery:   ["general"],
+      patent_counsel_packet:["general", "security"],
+      code_generation:      ["general", "security"],
+      test_generation:      ["general", "security"],
+    };
+
+    function applyWorkflowDomainFilter(workflow) {
+      const allowed = new Set(workflowDomains[workflow] || ["general"]);
+      const buttons = Array.from(els.domainRow.querySelectorAll(".filter"));
+      let activeDropped = false;
+      for (const b of buttons) {
+        const ok = allowed.has(b.dataset.domain);
+        b.hidden   = !ok;
+        b.disabled = !ok;
+        if (b.classList.contains("active") && !ok) activeDropped = true;
+      }
+      if (activeDropped) {
+        const first = buttons.find((b) => allowed.has(b.dataset.domain));
+        if (first) {
+          buttons.forEach((x) => x.classList.remove("active"));
+          first.classList.add("active");
+          activeDomain = first.dataset.domain;
+          els.domainMetric.textContent = domainLabels[activeDomain] || "General";
+        }
+      }
+    }
+
+    // Top-nav: smooth-scroll to the corresponding section and sync the
+    // .active pill. The "Ledger →" pill is a real href (/ledger) and
+    // navigates away — let the browser handle it.
+    const topNav = document.getElementById("topNav");
+    topNav.addEventListener("click", (event) => {
+      const pill = event.target.closest(".nav-pill[data-section]");
+      if (!pill) return;
+      topNav.querySelectorAll(".nav-pill").forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+      // Anchor-href handles the actual scroll smoothly via CSS.
+    });
+
+    // Scroll-spy: as the user scrolls, light up the pill for whichever
+    // section is closest to the top of the viewport.
+    const sections = [
+      ["research", document.getElementById("section-research")],
+      ["branches", document.getElementById("section-branches")],
+      ["sources",  document.getElementById("section-sources")],
+    ].filter(([, el]) => el);
+    const navPillFor = (name) => topNav.querySelector(`.nav-pill[data-section="${name}"]`);
+    function syncActiveFromScroll() {
+      const y = window.scrollY + 140;       // small offset for the header
+      let active = "research";
+      for (const [name, el] of sections) {
+        if (el.offsetTop <= y) active = name;
+      }
+      topNav.querySelectorAll(".nav-pill[data-section]").forEach(p => p.classList.remove("active"));
+      const p = navPillFor(active);
+      if (p) p.classList.add("active");
+    }
+    window.addEventListener("scroll", syncActiveFromScroll, { passive: true });
+
+    els.domainRow.addEventListener("click", (event) => {
+      const b = event.target.closest(".filter");
+      if (!b) return;
+      els.domainRow.querySelectorAll(".filter").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      activeDomain = b.dataset.domain;
+      els.domainMetric.textContent = domainLabels[activeDomain] || "General";
+    });
+
+    els.workflowRow.addEventListener("click", (event) => {
+      const b = event.target.closest(".filter");
+      if (!b) return;
+      els.workflowRow.querySelectorAll(".filter").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      activeWorkflow = b.dataset.workflow;
+      els.workflowMetric.textContent = workflowLabels[activeWorkflow] || "General Research";
+      applyWorkflowDomainFilter(activeWorkflow);
+    });
+
+    // Apply filter once on load so the default workflow's domain set
+    // is reflected even before the user clicks anything.
+    applyWorkflowDomainFilter(activeWorkflow);
+
+    els.runBtn.addEventListener("click", runResearchOnUi);
+    els.input.addEventListener("keydown", (e) => { if (e.key === "Enter") runResearchOnUi(); });
+
+    // When the page is served from the live FastAPI server, /api/research
+    // is real. When opened as file://, no backend is available.
+    const API_BASE = (location.protocol === "http:" || location.protocol === "https:")
+                       ? location.origin
+                       : null;
+
+    // ── Pre-flight backend health check ──────────────────────────────
+    // Fires once on page load. If /api/health reports the backend
+    // isn't built yet (no master key, no exoskeleton pack), surface
+    // a small yellow banner before the investor clicks anything.
+    // Hidden when the server looks healthy or when served from file://.
+    (async function preflightHealth() {
+      if (!API_BASE) return;
+      const banner = document.getElementById("preflightBanner");
+      if (!banner) return;
+      try {
+        const resp = await fetch(API_BASE + "/api/health",
+                                  { cache: "no-store" });
+        if (!resp.ok) {
+          banner.innerHTML =
+            `Backend pre-flight: <code>/api/health</code> returned ` +
+            `<code>${resp.status}</code>. Live runs may fail — ` +
+            `check that the research server is running and that ` +
+            `<code>AXIOM_MASTER_KEY</code> is set.`;
+          banner.hidden = false;
+          return;
+        }
+        const d = await resp.json();
+        const looksUnbuilt =
+          (d.backend && String(d.backend).includes("not yet built")) ||
+          d.state_built === false;
+        if (looksUnbuilt) {
+          banner.innerHTML =
+            `Backend not configured — verify <code>AXIOM_BACKEND</code> ` +
+            `and <code>AXIOM_MASTER_KEY</code> are set before running.`;
+          banner.hidden = false;
+        }
+      } catch (err) {
+        const banner = document.getElementById("preflightBanner");
+        if (banner) {
+          banner.innerHTML =
+            `Backend pre-flight failed: ` +
+            `<code>${String(err.message || err).slice(0, 140)}</code>. ` +
+            `Live runs unavailable — check the research server is ` +
+            `serving on this origin.`;
+          banner.hidden = false;
+        }
+      }
+    })();
+
+    async function runResearchOnUi() {
+      const query = els.input.value.trim();
+      if (!query) {
+        els.reportBody.innerHTML =
+          '<p class="answer-text" style="color: var(--warning);">Enter a research question first. The engine needs a target before it can retrieve + branch.</p>';
+        return;
+      }
+      els.reportBody.innerHTML = '<p class="answer-text" style="color: var(--muted);">Preparing pipeline…</p>';
+      els.citationsList.innerHTML = "";
+      els.branchResults.innerHTML = "";
+      els.detailPanel.classList.remove("open");
+
+      // Medical domain has its own AXM-medical pipeline — bracketed
+      // Token Descriptors + a Coordinator Token + the human-review
+      // flag. Skip the generic /api/research path.
+      if (API_BASE && activeDomain === "medical") {
+        try {
+          const resp = await fetch(API_BASE + "/api/medical/research", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ question: query, profile: "summarize" }),
+          });
+          if (!resp.ok) {
+            const detail = await resp.text();
+            throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 200)}`);
+          }
+          renderMedicalResult(await resp.json());
+          return;
+        } catch (err) {
+          els.reportBody.innerHTML =
+            `<div class="alert-error">
+               Medical endpoint failed: <strong>${escapeHtml(String(err.message || err))}</strong>.
+               <button onclick="runResearchOnUi()" style="margin-left: 10px;">Retry</button>
+             </div>`;
+          return;
+        }
+      }
+
+      if (!API_BASE) {
+        els.reportBody.innerHTML =
+          `<div class="alert-error">
+             No backend available. Start the research server and navigate to
+             <code>http://127.0.0.1:8765/</code>.
+           </div>`;
+        return;
+      }
+      // Streaming path — best for visible progress + better troubleshooting.
+      try {
+        await streamResearch(query);
+        return;
+      } catch (err) {
+        // SSE failed — try the synchronous endpoint before giving up.
+        els.reportBody.innerHTML =
+          `<p class="answer-text" style="color: var(--muted);">Stream failed (${escapeHtml(String(err.message || err))}). Retrying via sync endpoint…</p>`;
+      }
+      try {
+        const resp = await fetch(API_BASE + "/api/research", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ query, domain: activeDomain, workflow: activeWorkflow }),
+        });
+        if (!resp.ok) {
+          const detail = await resp.text();
+          throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 200)}`);
+        }
+        renderResult(await resp.json(), "live");
+        return;
+      } catch (err) {
+        els.reportBody.innerHTML =
+          `<div class="alert-error">
+             Live API call failed: <strong>${escapeHtml(String(err.message || err))}</strong>.
+             <button onclick="runResearchOnUi()" style="margin-left: 10px;">Retry</button>
+           </div>`;
+      }
+    }
+
+    async function streamResearch(query) {
+      const resp = await fetch(API_BASE + "/api/research/stream", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
+        body:    JSON.stringify({ query, domain: activeDomain, workflow: activeWorkflow }),
+      });
+      if (!resp.ok || !resp.body) {
+        const txt = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${txt.slice(0, 200)}`);
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const stageBox = document.createElement("p");
+      stageBox.className = "answer-text";
+      stageBox.style.color = "var(--muted)";
+      stageBox.innerHTML = '<span style="color: var(--accent);">●</span> initializing…';
+      els.reportBody.innerHTML = "";
+      els.reportBody.appendChild(stageBox);
+      let finalResult = null;
+      let lastError = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+        for (const block of events) {
+          const lines = block.split("\n");
+          let evt = "message", data = "";
+          for (const line of lines) {
+            if (line.startsWith("event:")) evt = line.slice(6).trim();
+            else if (line.startsWith("data:")) data = line.slice(5).trim();
+          }
+          let payload = {};
+          try { payload = data ? JSON.parse(data) : {}; } catch (e) { /* ignore */ }
+          if (evt === "stage") {
+            stageBox.innerHTML = `<span style="color: var(--accent);">●</span> ${escapeHtml(payload.message || payload.name)}`;
+          } else if (evt === "partial") {
+            const summary = [];
+            if (payload.sources_count !== undefined)
+              summary.push(`${payload.sources_count} sources (${payload.retrieval_real ? "real" : "stub"})`);
+            if (payload.branch_count !== undefined)
+              summary.push(`${payload.branch_count} branches (${payload.branches_real ? "real QRF" : "stub"})`);
+            if (summary.length) {
+              const note = document.createElement("div");
+              note.style.color = "var(--muted)";
+              note.style.fontSize = "12px";
+              note.style.marginTop = "4px";
+              note.innerHTML = "↳ " + escapeHtml(summary.join(" · "));
+              stageBox.appendChild(note);
+            }
+          } else if (evt === "result") {
+            finalResult = payload;
+          } else if (evt === "error") {
+            lastError = `${payload.status || "ERR"}: ${payload.detail || "unknown"}`;
+          } else if (evt === "done") {
+            // pipeline complete
+          }
+        }
+      }
+      if (lastError) throw new Error(lastError);
+      if (!finalResult) throw new Error("stream ended with no result event");
+      renderResult(finalResult, "live");
+    }
+
+    function renderMedicalResult(d) {
+      // Minimal renderer for the AXM Medical Research instrument.
+      // The report area gets a human-review banner + the
+      // bracketed Token Descriptor in a <pre> block. The
+      // citations + branches panels stay empty (a medical
+      // session isn't structured the same way).
+      const tiers = d.tier_distribution || {};
+      const tierStr = ["1","2","3","4","5"].map((k) =>
+        `T${k}: ${tiers[k] || 0}`).join(" · ");
+      const banner = d.requires_human_review
+        ? `<p class="answer-text" style="color: var(--warning); border: 1px solid var(--warning); padding: 10px; border-radius: 6px;">
+             <strong>Human review required.</strong> The governance layer flagged this session — review the descriptor before acting.
+           </p>`
+        : "";
+      const desc = escapeHtml(d.descriptor || "(no descriptor)");
+      els.reportBody.innerHTML = `
+        ${banner}
+        <p class="answer-text" style="color: var(--muted);">
+          Medical AXM container <code>${escapeHtml(d.container_id)}</code> · profile <code>${escapeHtml(d.profile)}</code> ·
+          ${(d.event_tokens || []).length} signed event tokens ·
+          ${(d.coordinator_tokens || []).length} coordinator tokens ·
+          ${tierStr}
+        </p>
+        <p class="answer-text" style="color: var(--muted);">
+          manifest_root: <code>${escapeHtml((d.manifest_root || "").slice(0, 80))}</code>
+        </p>
+        <details open style="margin-top: 12px;">
+          <summary style="cursor: pointer; color: var(--accent);">Bracketed Token Descriptor (copy into any LLM)</summary>
+          <pre style="background: var(--bg-2); border: 1px solid var(--border); padding: 12px; border-radius: 6px; overflow: auto; max-height: 480px; font-size: 12px;">${desc}</pre>
+        </details>`;
+      els.citationsList.innerHTML =
+        '<p class="answer-text" style="color: var(--muted);">Medical sessions render evidence as bracketed Token Descriptors above. Source provenance + DOI/PMID is inside each [EVENT_TOKEN] block.</p>';
+      els.branchResults.innerHTML = "";
+      if (els.domainMetric) els.domainMetric.textContent = "Medical";
+    }
+
+    function renderResult(result, mode) {
+      const passed = result.branches.filter((b) => b.status !== "killed").length;
+
+      const badgeLabel = "Live · signed";
+      els.reportBadge.textContent = badgeLabel;
+      els.workflowMetric.textContent = result.workflowLabel;
+      els.domainMetric.textContent   = result.domainLabel;
+      els.probMetric.textContent     = Math.round(result.probabilityBand * 100) + "%";
+      els.distanceMetric.textContent = result.constitutionalDistance.toFixed(2);
+      els.healthMetric.textContent   = `${passed} / ${result.branches.length} passed`;
+
+      const r = result.report;
+      // Signed-verification ribbon — sits above TL;DR so every
+      // rendered report visibly carries its signing fingerprint.
+      const rec = result.receipt || {};
+      const ribbonClass = rec.verified ? "signed-ribbon" : "signed-ribbon failed";
+      const ribbonLabel = rec.verified
+        ? "✓ SIGNED · VERIFIED"
+        : "✗ SIGNATURE FAILED";
+      const tokenIdShort = rec.token_id
+        ? escapeHtml(rec.token_id)
+        : "—";
+      const ledgerShort = rec.ledger
+        ? escapeHtml(String(rec.ledger).replace(/^.*\/(\.[^/]+\/[^/]+)$/, "$1"))
+        : "—";
+      const ribbonHtml = `
+        <div class="${ribbonClass}">
+          <span class="label">${ribbonLabel}</span>
+          <code>${tokenIdShort}</code>
+          <span class="sep">·</span>
+          <span>${result.cost && result.cost.latency_ms ? result.cost.latency_ms + "ms" : ""}</span>
+          <span class="sep">·</span>
+          <span>${escapeHtml(rec.backend || "")}</span>
+          <span class="sep">·</span>
+          <span>ledger: ${ledgerShort}</span>
+        </div>`;
+      els.reportBody.innerHTML = `
+        ${ribbonHtml}
+        <div class="report-section">
+          <h3>TL;DR</h3>
+          <p>${escapeHtml(r.tldr)}</p>
+        </div>
+        <div class="report-section">
+          <h3>Key Findings</h3>
+          <ul>${r.keyFindings.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>
+        </div>
+        <div class="report-section">
+          <h3>Open Questions</h3>
+          <ul>${r.openQuestions.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>
+        </div>
+      `;
+
+      els.sourcesCountBadge.textContent = `${result.sources.length} sources`;
+      els.citationsList.innerHTML = result.sources.map((s) => `
+        <li class="citation">
+          <div class="src-head">
+            <span class="src-title">${escapeHtml(s.title)}</span>
+            <span class="src-meta">
+              <span class="badge">${escapeHtml(s.provider || "local")}${s.evidence_tier ? ` · Tier ${s.evidence_tier}` : ""}</span>
+              ${escapeHtml(s.kind)} · score ${(s.score).toFixed(2)}
+            </span>
+          </div>
+          <div class="src-snippet">${escapeHtml(s.snippet)}</div>
+          <div class="src-meta" style="margin-top:6px;">${escapeHtml(s.uri)}</div>
+          <div class="score-bar"><i style="width:${Math.round(s.score * 100)}%"></i></div>
+        </li>`).join("");
+
+      els.branchResults.innerHTML = result.branches.map((branch, index) => {
+        const killed = branch.status === "killed";
+        const prob   = killed ? "Killed" : `${Math.round(branch.probability * 100)}%`;
+        return `
+          <article class="branch-card ${killed ? "killed" : ""}">
+            <div class="branch-top">
+              <div class="branch-title">
+                <strong>${escapeHtml(branch.id)} · ${escapeHtml(branch.title)}</strong>
+                <small>${escapeHtml(branch.status.toUpperCase())}</small>
+              </div>
+              <div class="prob ${killed ? "killed-text" : ""}">${prob}</div>
+            </div>
+            <p class="branch-summary">${escapeHtml(branch.summary)}</p>
+            <div class="branch-meta">
+              <span>distance ${branch.distance}</span>
+              <span>citations ${branch.citations}</span>
+              <span>status ${escapeHtml(branch.status)}</span>
+            </div>
+            <button class="branch-action" onclick="openBranchDetail(${index})">Open Branch</button>
+          </article>`;
+      }).join("");
+
+      // `rec` was already declared at the top of renderResult for
+      // the signed-verification ribbon. Reuse it here for the
+      // receipt card so we don't double-declare.
+      els.receiptBadge.textContent = rec.verified ? "verified" : "FAILED";
+      els.receipt.innerHTML = `
+        <div class="row"><strong>token_id</strong>  <span class="key">${escapeHtml(rec.token_id)}</span></div>
+        <div class="row"><strong>workflow</strong>  <span>${escapeHtml(rec.workflow)}</span></div>
+        <div class="row"><strong>backend</strong>   <span>${escapeHtml(rec.backend)}</span></div>
+        <div class="row"><strong>signed_at</strong> <span>${escapeHtml(rec.signed_at)}</span></div>
+        <div class="row"><strong>verified</strong>  <span class="${rec.verified ? "ok" : ""}">${rec.verified ? "true ✓" : "false"}</span></div>
+        <div class="row"><strong>ledger</strong>    <span>${escapeHtml(rec.ledger)}</span></div>
+      `;
+      els.inTokMetric.textContent   = result.cost.input_tokens;
+      els.outTokMetric.textContent  = result.cost.output_tokens;
+      els.latencyMetric.textContent = result.cost.latency_ms + " ms";
+
+      window.__branches = result.branches;
+    }
+
+    function openBranchDetail(index) {
+      const branch = window.__branches[index];
+      if (!branch) return;
+      els.detailTitle.textContent = `${branch.id} · ${branch.title}`;
+      els.detailBody.textContent  = branch.detail;
+      els.detailPanel.classList.add("open");
+      els.detailPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    // Resume picker — populated lazily when the <details> opens.
+    (function setupResumePicker() {
+      const picker = document.getElementById("resumePicker");
+      const sel    = document.getElementById("resumeSelect");
+      const btn    = document.getElementById("resumeBtn");
+      if (!picker || !sel || !btn) return;
+
+      let loaded = false;
+
+      picker.addEventListener("toggle", async () => {
+        if (!picker.open || loaded || !API_BASE) return;
+        loaded = true;
+        sel.innerHTML = '<option value="">Loading prior runs…</option>';
+        try {
+          const resp = await fetch(API_BASE + "/api/runs?limit=15",
+                                    { cache: "no-store" });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const { runs } = await resp.json();
+          if (!runs || runs.length === 0) {
+            sel.innerHTML = '<option value="">— no prior runs found —</option>';
+            return;
+          }
+          sel.innerHTML = '<option value="">— pick a prior run —</option>';
+          for (const r of runs) {
+            const opt = document.createElement("option");
+            opt.value = r.question || "";
+            const ts = r.timestamp_utc
+              ? r.timestamp_utc.slice(0, 16).replace("T", " ") : "?";
+            const preview = (r.question || "").slice(0, 55) +
+              ((r.question || "").length > 55 ? "…" : "");
+            opt.textContent =
+              `${r.token_id.slice(0, 10)} · ${r.kind} · ${ts} · ${preview}`;
+            sel.appendChild(opt);
+          }
+        } catch (err) {
+          sel.innerHTML =
+            `<option value="">— load failed: ${escapeHtml(String(err.message || err))} —</option>`;
+        }
+      });
+
+      sel.addEventListener("change", () => {
+        btn.disabled = !sel.value;
+      });
+
+      btn.addEventListener("click", () => {
+        const q = sel.value;
+        if (!q) return;
+        els.input.value = q;
+        picker.open = false;
+        loaded = false; // force reload on next open so new run appears
+        runResearchOnUi();
+      });
+    })();
+  </script>
+</body>
+</html>

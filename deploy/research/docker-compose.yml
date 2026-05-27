@@ -1,0 +1,108 @@
+# AXIOM Re:Search Engine — Hetzner deploy stack.
+#
+# Services: research + packs. TLS is handled by axiom-caddy in the
+# firewall stack (deploy/firewall/docker-compose.yml). Both containers
+# join the shared axiom-net network so axiom-caddy can reach them by
+# container name.
+#
+# Quickstart:
+#   1. Bring up the firewall stack first (creates axiom-net + axiom-caddy):
+#        cd /opt/axiom/deploy/firewall
+#        docker compose --profile tls up -d
+#   2. Then start research + packs:
+#        cd /opt/axiom/deploy/research
+#        cp .env.example .env   # fill in AXIOM_MASTER_KEY, DEEPSEEK_API_KEY, etc.
+#        docker compose up -d --build
+#
+# Tear down:
+#   docker compose down
+
+services:
+
+  research:
+    build:
+      context: ../..
+      dockerfile: deploy/research/Dockerfile
+    image: orivael/axiom-research:local
+    container_name: axiom-research
+    restart: unless-stopped
+    # Lets the container reach a service on the docker host —
+    # specifically, Ollama running on the box itself (the most common
+    # "BYO local SLM" setup). With this line, OLLAMA_URL can be set
+    # to http://host.docker.internal:11434 in .env. Linux containers
+    # don't get this hostname for free; macOS / Windows Docker
+    # Desktop does, so this is a no-op on those.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # env_file passes EVERY key=value in .env through to the container.
+    # That covers the per-domain routing vars (AXIOM_BACKEND_MEDICAL,
+    # OLLAMA_MODEL_MEDICAL, AXIOM_RETRIEVAL_DIR_*, etc.) automatically
+    # — no need to add a passthrough line here every time a new domain
+    # is configured.
+    #
+    # required: false so a fresh clone doesn't refuse to start before
+    # `cp .env.example .env`. AXIOM_MASTER_KEY's ${VAR:?...} validator
+    # in the environment: block below still hard-fails on truly empty
+    # config.
+    env_file:
+      - path: .env
+        required: false
+    # The `environment:` block below still applies the
+    # ${VAR:?default} validators (AXIOM_MASTER_KEY required, sane
+    # defaults for the legacy single-backend vars). Docker merges the
+    # two: env_file is read first, then environment overrides on
+    # collision, which matches the "explicit beats implicit" rule.
+    environment:
+      AXIOM_MASTER_KEY:     ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY (openssl rand -hex 32)}
+      AXIOM_RESEARCH_TOKEN: ${AXIOM_RESEARCH_TOKEN:-}
+      AXIOM_BACKEND:        ${AXIOM_BACKEND:-deepseek}
+      DEEPSEEK_API_KEY:     ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL:       ${DEEPSEEK_MODEL:-deepseek-chat}
+      NVIDIA_NIM_API_KEY:   ${NVIDIA_NIM_API_KEY:-}
+      NIM_MODEL:            ${NIM_MODEL:-}
+      OLLAMA_URL:           ${OLLAMA_URL:-}
+      OLLAMA_MODEL:         ${OLLAMA_MODEL:-}
+      AXIOM_API_KEY:        ${AXIOM_API_KEY:-${DEEPSEEK_API_KEY:-}}
+      AXIOM_BASE_URL:       ${AXIOM_BASE_URL:-https://api.deepseek.com/v1}
+      AXIOM_MODEL:          ${AXIOM_MODEL:-${DEEPSEEK_MODEL:-deepseek-chat}}
+      HOME: /data
+    volumes:
+      - research-data:/data
+    expose:
+      - "8765"
+    networks:
+      - axiom-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/api/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  packs:
+    build:
+      context: ../..
+      dockerfile: deploy/packs/Dockerfile
+    image: orivael/axiom-packs:local
+    container_name: axiom-packs
+    restart: unless-stopped
+    environment:
+      AXIOM_MASTER_KEY: ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY in .env}
+    expose:
+      - "8005"
+    networks:
+      - axiom-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8005/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  research-data:
+
+networks:
+  axiom-net:
+    external: true
+    name: axiom-net
