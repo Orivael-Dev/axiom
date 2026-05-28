@@ -227,3 +227,70 @@ class TestAXMInvariants:
         assert raw_delegate_key  not in text
         # Sanity: fingerprint IS exposed.
         assert container.fingerprint() in text
+
+
+# ===========================================================================
+# SECTION 4 — quant_map widening (str | dict) for SRD integration
+# ===========================================================================
+
+class TestAXMQuantMapWidening:
+    """Phase D of the SRD plan: AXMHeader.quant_map now accepts a
+    structured dict in addition to the legacy string tag."""
+
+    def _make_header(self, qm):
+        return AXMHeader(
+            format_version="1.0",
+            core_logic="test_core",
+            quant_map=qm,
+            delegates=(),
+            safety_proofs=False,
+            hardware_map="cpu",
+        )
+
+    def test_passed_string_form_still_works(self):
+        """Backwards compatibility: every existing axm file uses the
+        string form — it must still sign cleanly."""
+        h = self._make_header("elastic_per_layer")
+        payload = h._payload()
+        assert payload["quant_map"] == "elastic_per_layer"
+
+    def test_passed_dict_form_round_trips(self):
+        """SRD's per-row shape: {scheme, group_size, alpha, bpw}.
+        The payload preserves the dict for downstream consumers."""
+        srd_spec = {
+            "scheme": "srd",
+            "group_size": 64,
+            "alpha": 1.0,
+            "bpw": 13.0,
+        }
+        h = self._make_header(srd_spec)
+        payload = h._payload()
+        assert payload["quant_map"] == srd_spec
+        # Defensive copy — mutating the returned dict must not poison
+        # the header.
+        payload["quant_map"]["alpha"] = 0.0
+        assert h.quant_map["alpha"] == 1.0
+
+    def test_passed_dict_payload_is_json_canonicalizable(self):
+        """The signing path uses json.dumps(sort_keys=True) — the
+        dict form must survive that round-trip."""
+        h = self._make_header({
+            "scheme": "srd",
+            "group_size": 64,
+            "alpha": 1.0,
+            "bpw": 13.0,
+        })
+        canonical = json.dumps(h._payload(), sort_keys=True)
+        round_tripped = json.loads(canonical)
+        assert round_tripped["quant_map"]["scheme"] == "srd"
+        assert round_tripped["quant_map"]["bpw"] == 13.0
+
+    def test_blocked_wrong_type_rejected(self):
+        """quant_map can't be None / list / int — only str | dict."""
+        from axiom_axm import _canonicalize_quant_map
+        with pytest.raises(TypeError, match="quant_map"):
+            _canonicalize_quant_map(None)
+        with pytest.raises(TypeError, match="quant_map"):
+            _canonicalize_quant_map([("scheme", "srd")])
+        with pytest.raises(TypeError, match="quant_map"):
+            _canonicalize_quant_map(42)

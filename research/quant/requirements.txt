@@ -1,0 +1,19 @@
+# Research-only deps for the SRD perplexity benchmark.
+#
+# NOT added to pyproject.toml — shipping torch + transformers as
+# installable extras would balloon the published package surface
+# without serving any production user. Users running the benchmark
+# install these once into a dedicated venv (or use the Colab
+# notebook at notebooks/srd_benchmark.ipynb where Cell 1 installs
+# them).
+#
+# CPU-only torch is fine for unit tests + the coherence smoke test.
+# Full perplexity sweep wants GPU; Colab T4 is the reference target.
+
+torch>=2.0
+transformers>=4.40,<4.50
+datasets>=2.18
+accelerate>=0.30
+sentencepiece>=0.2
+matplotlib>=3.8
+tqdm>=4.66
