@@ -1,2 +1,7 @@
 [build]
-  publish = "sites"
+  publish = "docs"
+
+[[redirects]]
+  from = "/"
+  to = "/axiom_console.html"
+  status = 200
