@@ -45,7 +45,7 @@ import weakref
 import zipfile
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -128,10 +128,20 @@ def _proof_key() -> bytes:
 # ── Frozen dataclasses (every record HMAC-signed) ─────────────────────────
 @dataclass(frozen=True)
 class AXMHeader:
-    """Semantic State Header — replaces GGUF's flat key-value metadata."""
+    """Semantic State Header — replaces GGUF's flat key-value metadata.
+
+    `quant_map` accepts either a string tag (legacy, e.g.
+    `"elastic_per_layer"`) or a structured dict describing a real
+    quantization scheme. The dict form is opened up so concrete
+    schemes can declare themselves end-to-end — see SRD's
+    `{"scheme": "srd", "group_size": 64, "alpha": 1.0, "bpw": 13.0}`
+    shape produced by `axiom_quant.SRDPackedTensor`. The signed
+    payload preserves whichever form was passed; downstream consumers
+    inspect type to decide how to interpret it.
+    """
     format_version: str
     core_logic:     str
-    quant_map:      str
+    quant_map:      Union[str, Dict[str, Any]]
     delegates:      Tuple[str, ...]
     safety_proofs:  bool
     hardware_map:   str
@@ -141,11 +151,28 @@ class AXMHeader:
         return {
             "format_version": self.format_version,
             "core_logic":     self.core_logic,
-            "quant_map":      self.quant_map,
+            "quant_map":      _canonicalize_quant_map(self.quant_map),
             "delegates":      list(self.delegates),
             "safety_proofs":  self.safety_proofs,
             "hardware_map":   self.hardware_map,
         }
+
+
+def _canonicalize_quant_map(qm: Union[str, Dict[str, Any]]) -> Union[str, dict]:
+    """Round-trip-stable canonical form for HMAC signing.
+
+    String values stay strings (backwards compatibility for every
+    existing AXM file). Dict values are returned as-is — they get
+    canonicalized at the JSON layer by `json.dumps(sort_keys=True)`
+    in the signing path.
+    """
+    if isinstance(qm, str):
+        return qm
+    if isinstance(qm, dict):
+        return dict(qm)
+    raise TypeError(
+        f"quant_map must be str or dict, got {type(qm).__name__}"
+    )
 
 
 _DEFAULT_PROMPT_BUDGET = 512
