@@ -226,3 +226,110 @@ def test_constant_weight_recovers_exactly_at_alpha_one():
     err = (W - out).abs().max().item()
     # Residue cleans up the base's quantization error to floating-point noise
     assert err < 1e-4
+
+
+# ── HF-style model loader (research/quant/quantize_model.py) ─────────
+#
+# Tests exercise the loader's plumbing using plain nn.Module subclasses
+# so they run in any env (no transformers / HF download). The actual
+# coherence smoke test on TinyLlama happens in the Colab notebook.
+
+
+class _MockTransformerBlock(torch.nn.Module):
+    """Two Linears that mimic an attention block — divisible shapes."""
+    def __init__(self, d_in: int = 64, d_out: int = 128):
+        super().__init__()
+        self.q_proj = torch.nn.Linear(d_in, d_out, bias=False)
+        self.out_proj = torch.nn.Linear(d_out, d_in, bias=False)
+
+
+class _MockModel(torch.nn.Module):
+    """Tiny model with the same name shape as a HF causal LM:
+    body.<n>.{q,out}_proj + lm_head + embed_tokens. Lets us exercise
+    the skip_modules logic without pulling transformers."""
+    def __init__(self):
+        super().__init__()
+        self.embed_tokens = torch.nn.Linear(32, 64, bias=False)
+        self.body = torch.nn.ModuleList([
+            _MockTransformerBlock() for _ in range(2)
+        ])
+        self.lm_head = torch.nn.Linear(64, 32, bias=False)
+
+    def forward(self, x):
+        x = self.embed_tokens(x)
+        for blk in self.body:
+            x = blk.out_proj(blk.q_proj(x))
+        return self.lm_head(x)
+
+
+def test_loader_quantizes_body_skips_lm_head_and_embed():
+    from research.quant.quantize_model import quantize_hf_model_inplace
+    m = _MockModel()
+    embed_before = m.embed_tokens.weight.clone()
+    lmhead_before = m.lm_head.weight.clone()
+    qproj_before = m.body[0].q_proj.weight.clone()
+
+    packed = quantize_hf_model_inplace(m, alpha=1.0, progress=False)
+
+    # body Linears were quantized
+    assert "body.0.q_proj" in packed
+    assert "body.0.out_proj" in packed
+    assert "body.1.q_proj" in packed
+    assert "body.1.out_proj" in packed
+    # lm_head and embed_tokens untouched
+    assert "lm_head" not in packed
+    assert "embed_tokens" not in packed
+    assert torch.allclose(m.embed_tokens.weight, embed_before)
+    assert torch.allclose(m.lm_head.weight, lmhead_before)
+    # body weight actually changed
+    assert not torch.allclose(m.body[0].q_proj.weight, qproj_before)
+
+
+def test_loader_refuses_to_quantize_lm_head_silently():
+    """Bug-bait guard: omitting lm_head from skip_modules should raise."""
+    from research.quant.quantize_model import quantize_hf_model_inplace
+    m = _MockModel()
+    with pytest.raises(ValueError, match="lm_head"):
+        quantize_hf_model_inplace(m, alpha=1.0, skip_modules=(), progress=False)
+
+
+def test_loader_alpha_validation():
+    from research.quant.quantize_model import quantize_hf_model_inplace
+    m = _MockModel()
+    with pytest.raises(ValueError, match="alpha"):
+        quantize_hf_model_inplace(m, alpha=1.5, progress=False)
+
+
+def test_loader_skips_non_divisible_in_features():
+    """Real models occasionally have odd in_features (e.g. 100); the
+    loader should skip rather than crash."""
+    from research.quant.quantize_model import quantize_hf_model_inplace
+    m = torch.nn.Sequential(
+        torch.nn.Linear(100, 64, bias=False),    # 100 not divisible by 64
+        torch.nn.Linear(64, 64, bias=False),     # divisible — gets quantized
+    )
+    before_0 = m[0].weight.clone()
+    packed = quantize_hf_model_inplace(m, alpha=1.0, group_size=64,
+                                        progress=False)
+    # Layer 0 skipped (non-divisible), layer 1 quantized
+    assert "0" not in packed
+    assert "1" in packed
+    assert torch.allclose(m[0].weight, before_0)
+
+
+def test_loader_per_tensor_mode():
+    """per_tensor=True should still quantize every body Linear and
+    handle the 100-in-feature case (per-tensor doesn't care about
+    group_size divisibility)."""
+    from research.quant.quantize_model import quantize_hf_model_inplace
+    m = torch.nn.Sequential(
+        torch.nn.Linear(100, 64, bias=False),
+        torch.nn.Linear(64, 32, bias=False),
+    )
+    packed = quantize_hf_model_inplace(m, alpha=1.0, per_tensor=True,
+                                        progress=False)
+    assert "0" in packed
+    assert "1" in packed
+    # per-tensor packs have group_size == in_features
+    assert packed["0"].group_size == 100
+    assert packed["1"].group_size == 64
