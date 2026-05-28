@@ -124,6 +124,69 @@ curl -X POST http://localhost:8001/guard/check \
 
 ---
 
+## Fine-Tune in Colab
+
+Two notebooks ship working on a free Colab T4:
+
+- `axiom_qwen_finetune.ipynb` — Qwen2.5-Coder-1.5B → GGUF (F16 / Q8_0 / Q4_K_M)
+- `axiom_tinyllama_finetune.ipynb` — TinyLlama-1.1B → GGUF
+
+Open either in Colab, run Cell 1 (verify GPU) and Cell 2 (install deps +
+pull the adapter). Cell 3 is now a one-line call to `load_training_data()`
+that auto-picks a source for the environment — Drive if mounted, Colab
+file picker otherwise, then a bundled 50-row sample as a last resort so
+the notebook is runnable end-to-end with zero user setup.
+
+### Copy-paste: pick your data source in Cell 3
+
+```python
+# Bundled 50-row sample (kicks the tires; runs end-to-end with zero setup)
+examples = load_training_data('sample')
+
+# Force the Colab file picker
+examples = load_training_data('upload')
+
+# Google Drive (mounts /content/drive if needed)
+examples = load_training_data('drive:/MyTrain/axiom_data.jsonl')
+
+# HuggingFace hub (split + slice syntax supported)
+examples = load_training_data('hf:tatsu-lab/alpaca#train[:500]')
+
+# Any raw .jsonl URL
+examples = load_training_data('https://example.com/my_data.jsonl')
+
+# A path you already curled / mounted
+examples = load_training_data('/content/my_data.jsonl')
+
+# TinyLlama notebook only — also pass output_format='text'
+examples = load_training_data('sample', output_format='text')
+```
+
+### Input shapes (auto-detected)
+
+| Shape          | Example                                                      |
+|----------------|--------------------------------------------------------------|
+| Qwen ChatML    | `{"messages": [{"role": "system", ...}, ...]}`               |
+| Alpaca-style   | `{"instruction": "...", "input": "...", "output": "..."}`    |
+| ChatML text    | `{"text": "<\|im_start\|>system\n...<\|im_end\|>..."}`       |
+
+Alpaca-shape inputs also accept `response` as an alias for `output`,
+and are deduped by `instruction` and filtered to `min_output_chars=30`
+by default. Both knobs are kwargs on `load_training_data`.
+
+### Use the loader outside a notebook
+
+The adapter is a plain Python module — works in any script that wants
+AXIOM-shaped ChatML data:
+
+```python
+from notebooks.axiom_colab import load_training_data
+examples = load_training_data('hf:Orivael-Dev/axiom-train#train')
+# → list[{"messages": [...]}], ready for trl.SFTTrainer / unsloth / etc.
+```
+
+---
+
 ## Developer CLI
 
 ```bash
