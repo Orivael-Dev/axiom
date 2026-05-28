@@ -1041,15 +1041,16 @@
     // out. General is always included so the user never has zero
     // domains to pick. Order in the array drives the auto-switch
     // fallback (first entry wins).
+    const ALL_DOMAINS = ["general", "medical", "finance", "security", "hr", "supply_chain"];
     const workflowDomains = {
-      general_research:     ["general", "medical", "finance", "security", "hr", "supply_chain"],
-      investor_research:    ["general", "finance"],
-      enterprise_targeting: ["general"],
-      competitive_analysis: ["general"],
-      customer_discovery:   ["general"],
-      patent_counsel_packet:["general", "security"],
-      code_generation:      ["general", "security"],
-      test_generation:      ["general", "security"],
+      general_research:     ALL_DOMAINS,
+      investor_research:    ALL_DOMAINS,
+      enterprise_targeting: ALL_DOMAINS,
+      competitive_analysis: ALL_DOMAINS,
+      customer_discovery:   ALL_DOMAINS,
+      patent_counsel_packet:ALL_DOMAINS,
+      code_generation:      ALL_DOMAINS,
+      test_generation:      ALL_DOMAINS,
     };
 
     function applyWorkflowDomainFilter(workflow) {
@@ -1358,6 +1359,20 @@
         '<p class="answer-text" style="color: var(--muted);">Medical sessions render evidence as bracketed Token Descriptors above. Source provenance + DOI/PMID is inside each [EVENT_TOKEN] block.</p>';
       els.branchResults.innerHTML = "";
       if (els.domainMetric) els.domainMetric.textContent = "Medical";
+
+      // Medical sessions don't run the QRF branch reasoner, so surface
+      // medical-meaningful analogues in the three top-row metrics
+      // (otherwise they stay frozen at the previous run's QRF values).
+      const totalSources = ["1","2","3","4","5"]
+        .reduce((sum, k) => sum + (tiers[k] || 0), 0);
+      const highTierPct = totalSources > 0
+        ? Math.round(((tiers["1"] || 0) + (tiers["2"] || 0)) / totalSources * 100)
+        : 0;
+      if (els.probMetric)     els.probMetric.textContent     = highTierPct + "%";
+      if (els.distanceMetric) els.distanceMetric.textContent = "—";
+      if (els.healthMetric)   els.healthMetric.textContent   =
+        `${(d.event_tokens || []).length} signed`
+        + (d.requires_human_review ? " · review" : "");
     }
 
     function renderResult(result, mode) {
