@@ -1,0 +1,62 @@
+[
+  {
+    "name": "llama_cpp_Q4_K_M",
+    "description": "llama.cpp K-quant (M) baseline (published_cite).",
+    "bpw_reported": 4.85,
+    "perplexity": 9.05,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for TinyLlama-1.1B. Stride may differ slightly from our SRD harness \u2014 flagged in the write-up."
+  },
+  {
+    "name": "llama_cpp_Q5_K_M",
+    "description": "llama.cpp K-quant (M) baseline (published_cite).",
+    "bpw_reported": 5.69,
+    "perplexity": 8.36,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for TinyLlama-1.1B. Stride may differ slightly from our SRD harness \u2014 flagged in the write-up."
+  },
+  {
+    "name": "llama_cpp_Q6_K",
+    "description": "llama.cpp K-quant (K) baseline (published_cite).",
+    "bpw_reported": 6.56,
+    "perplexity": 7.82,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for TinyLlama-1.1B. Stride may differ slightly from our SRD harness \u2014 flagged in the write-up."
+  },
+  {
+    "name": "llama_cpp_Q8_0",
+    "description": "llama.cpp K-quant (0) baseline (published_cite).",
+    "bpw_reported": 8.5,
+    "perplexity": 7.71,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for TinyLlama-1.1B. Stride may differ slightly from our SRD harness \u2014 flagged in the write-up."
+  }
+]

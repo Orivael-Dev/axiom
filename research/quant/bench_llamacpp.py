@@ -198,11 +198,20 @@ def llama_perplexity(
     *,
     llama_bin: Optional[Path],
     context: int = 2048,
+    ppl_stride: Optional[int] = None,
     n_threads: Optional[int] = None,
     wikitext_path: Optional[Path] = None,
 ) -> tuple[float, float]:
     """Run `llama-perplexity` against WikiText-2 and parse the final
-    estimate. Returns (ppl, wallclock_seconds)."""
+    estimate. Returns (ppl, wallclock_seconds).
+
+    ppl_stride: passed as --ppl-stride N. Use 512 to match the SRD eval
+    harness (overlapping windows, same convention as bench_perplexity.py).
+    Default None omits the flag (llama.cpp uses stride=context, i.e.
+    non-overlapping chunks — faster but ~2x higher PPL than stride=512).
+    Note: --perplexity was removed in llama.cpp b9393+; the binary now
+    runs perplexity by default.
+    """
     binary = _find_binary("llama-perplexity", llama_bin)
     if wikitext_path is None:
         raise ValueError(
@@ -210,7 +219,9 @@ def llama_perplexity(
             "raw test text as a file. Pass --wikitext-file."
         )
     cmd = [str(binary), "-m", str(gguf_path), "-f", str(wikitext_path),
-           "-c", str(context), "--perplexity"]
+           "-c", str(context)]
+    if ppl_stride is not None:
+        cmd += ["--ppl-stride", str(ppl_stride)]
     if n_threads is not None:
         cmd += ["-t", str(n_threads)]
 
@@ -238,6 +249,7 @@ def rerun_locally(
     llama_bin: Optional[Path],
     wikitext_path: Path,
     context: int,
+    ppl_stride: Optional[int],
     n_threads: Optional[int],
 ) -> list[dict]:
     """Full local re-run: convert → quantize → perplexity for each K-quant."""
@@ -247,15 +259,17 @@ def rerun_locally(
         quant_gguf = quantize_gguf(f16_gguf, q, llama_bin)
         ppl, wall = llama_perplexity(
             quant_gguf, llama_bin=llama_bin, context=context,
-            n_threads=n_threads, wikitext_path=wikitext_path,
+            ppl_stride=ppl_stride, n_threads=n_threads,
+            wikitext_path=wikitext_path,
         )
+        stride_note = f"--ppl-stride {ppl_stride}" if ppl_stride else "stride=context (default)"
         rows.append(_row_to_dict(KQuantRow(
             name=f"llama_cpp_{q}",
             bpw_reported=PUBLISHED.get(q, {}).get("bpw", float("nan")),
             perplexity=ppl,
             source="rerun_local",
             wallclock_seconds=round(wall, 2),
-            notes=f"Re-run via llama-perplexity on {gguf_dir.name}.",
+            notes=f"Re-run via llama-perplexity on {gguf_dir.name}. {stride_note}.",
         ), model_name=model_name))
     return rows
 
@@ -303,6 +317,11 @@ def _parse_args() -> argparse.Namespace:
                    help="Path to wikitext-2 raw test text "
                         "(required with --rerun-locally)")
     p.add_argument("--context", type=int, default=2048)
+    p.add_argument("--ppl-stride", type=int, default=512,
+                   help="Stride for llama-perplexity (default 512 to match "
+                        "bench_perplexity.py; set 0 for llama.cpp default "
+                        "stride=context which is ~2x faster but not "
+                        "comparable to the SRD eval numbers)")
     p.add_argument("--threads", type=int, default=None)
     p.add_argument("--output", type=Path, required=True)
     return p.parse_args()
@@ -323,6 +342,7 @@ def main() -> int:
             llama_bin=args.llama_bin,
             wikitext_path=args.wikitext_file,
             context=args.context,
+            ppl_stride=args.ppl_stride if args.ppl_stride != 0 else None,
             n_threads=args.threads,
         )
     else:
