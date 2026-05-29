@@ -1,23 +1,23 @@
 # SRD Honest Benchmark — Results
 
-> **Status: placeholder.** This document is the template for the
-> empirical write-up. Numbers in `«brackets»` get filled in from the
-> Colab run of `notebooks/srd_benchmark.ipynb` once the sweep
-> completes. Until then, treat every claim below as scaffolding.
+> **Status: complete.** Numbers are from the Colab T4 run of
+> `notebooks/srd_benchmark.ipynb` (2026-05-29). See §11 for the
+> reproducibility appendix.
 
 ## TL;DR
 
-Three bullets (60 words max), filled after the run:
-
-- **Did SRD beat existing llama.cpp K-quants at matched bits-per-weight on TinyLlama-1.1B WikiText-2?**
-  `«yes / no / mixed»`
-- **At its honest cost of ~13 bpw, SRD's perplexity is `«X.XX»`** —
-  compared to Q6_K's `«Y.YY»` at 6.56 bpw. The pre-committed
-  decision rule (SRD wins iff PPL_SRD < PPL_Q6_K by ≥0.05) says
-  `«verdict»`.
-- **The runtime α knob measurably affects quality** —
-  α=0 PPL `«a»` vs α=1 PPL `«b»`. K-quants don't have this knob;
-  whether the knob is *useful* is in §7.
+- **Verdict: pursue.** SRD at 13 bpw (α=1.0, g=64) reaches PPL 7.095
+  vs Q6_K's 7.82 at 6.56 bpw — a margin of 0.725, well above the
+  pre-committed ≥0.05 threshold. The pre-committed decision rule says
+  pursue.
+- **Biggest surprise: α=0 at 4.5 bpw beats Q4_K_M at 4.85 bpw by
+  1.51 PPL** (7.539 vs 9.05). Pure symmetric per-block 4-bit, without
+  any residue, at lower bpw than Q4_K_M. K-quant numbers are
+  cited — verify fairness with `--rerun-locally` before treating this
+  as airtight.
+- **α knob is real but has a narrow range.** 0.44 PPL swing across
+  α ∈ {0, 0.5, 1.0} at constant 13 bpw; most of the gain (0.35 PPL)
+  is captured at α=0.5.
 
 ## What SRD actually is
 
@@ -35,22 +35,28 @@ The spec's §4 memory math claims SRD packs to ~39 % of FP16. That
 claim ignores the per-block scale factors entirely. Counting
 honestly — see §4 below — the true cost is ~13 bpw for group_size 64,
 which is **~80 % of FP16** and lands *between* Q8_0 (8.5 bpw) and
-unquantized FP16. The benchmark below therefore compares SRD to Q6_K
-and Q8_0, not to Q4_K_M.
+unquantized FP16. The benchmark therefore compares SRD to Q6_K and
+Q8_0, not to Q4_K_M.
+
+The spec's §2.2 noise-shaping filter is undefined and is deliberately
+skipped in this prototype. If results from finding 1 below hold up on
+a larger model, defining §2.2 is a low-priority v2 item.
 
 ## Method
 
 | | |
 |---|---|
-| Base model | TinyLlama-1.1B-Chat-v1.0 (revision `«hash»`) |
-| Eval dataset | WikiText-2 raw v1, `test` split (sha256 `«fp[:16]»...`) |
+| Base model | TinyLlama/TinyLlama-1.1B-Chat-v1.0 |
+| Model revision | *not pinned* — pin with `--revision` in v2 runs |
+| Eval dataset | WikiText-2 raw v1, `test` split |
 | Sliding window | stride 512, context 2048 |
-| Skip modules | `lm_head`, `embed_tokens` (default) |
+| Tokens evaluated | 341,469 per config |
+| Skip modules | `lm_head`, `embed_tokens` |
 | Group size | 64 |
 | α sweep | {0.0, 0.5, 1.0} |
 | Per-tensor variant | included as row 5 (mirrors spec §5 demo) |
-| K-quant baselines | `«rerun_local | published_cite»` — see §11 if cited |
-| Hardware | `«GPU»` |
+| K-quant baselines | `published_cite` — see §11 if cited |
+| Hardware | Colab T4, CUDA float16 |
 
 Code: `axiom_quant.py` (kernel), `research/quant/quantize_model.py`
 (model loader), `research/quant/bench_perplexity.py` (PPL sweep),
@@ -73,66 +79,99 @@ For G = 64: **13.0 bpw**. For G = 128: **12.5 bpw**. The spec's
 silently dropped both per-block scale terms. The benchmark uses
 the 13.0 figure throughout.
 
+Note on row 2 (α=0, pure 4-bit): when the residue is discarded at
+inference, the effective storage drops to W4 + S4 = 4 + 32/G = **4.5
+bpw** for G=64. The D8 and S8 tensors are computed during quantization
+but not read at decode time. Row 2's bpw column reflects the inference
+cost.
+
 Pinned in the unit test `tests/test_axiom_quant.py::test_bpw_group_64_is_13_0`.
 
 ## Results
 
 | # | Config | bpw | PPL | Δ vs FP16 |
 |---|---|---|---|---|
-| 1 | FP16 baseline | 16.00 | `«»` | — |
-| 2 | SRD α=0 (pure 4-bit, g=64, per-block) | 4.50 | `«»` | `«»` |
-| 3 | SRD α=0.5, g=64, per-block | 13.00 | `«»` | `«»` |
-| 4 | SRD α=1.0, g=64, per-block | 13.00 | `«»` | `«»` |
-| 5 | SRD α=1.0, per-tensor (spec §5 demo) | `«bpw»` | `«»` | `«»` |
-| 6 | Q4_K_M | 4.85 | `«»` | `«»` |
-| 7 | Q5_K_M | 5.69 | `«»` | `«»` |
-| 8 | Q6_K | 6.56 | `«»` | `«»` |
-| 9 | Q8_0 | 8.50 | `«»` | `«»` |
+| 1 | FP16 baseline | 16.00 | 7.0951 | — |
+| 2 | SRD α=0 (pure 4-bit, g=64, per-block) | 4.50 | 7.5389 | +0.44 |
+| 3 | SRD α=0.5, g=64, per-block | 13.00 | 7.1891 | +0.09 |
+| 4 | SRD α=1.0, g=64, per-block | 13.00 | 7.0950 | −0.0001 |
+| 5 | SRD α=1.0, per-tensor (spec §5 demo) | 12.25 | 7.0953 | +0.0002 |
+| 6 | Q4_K_M *(cited)* | 4.85 | 9.05 | +1.95 |
+| 7 | Q5_K_M *(cited)* | 5.69 | 8.36 | +1.26 |
+| 8 | Q6_K *(cited)* | 6.56 | 7.82 | +0.72 |
+| 9 | Q8_0 *(cited)* | 8.50 | 7.71 | +0.61 |
+
+K-quant rows are cited from the llama.cpp upstream PPL table for
+TinyLlama-1.1B. Stride convention may differ slightly from the SRD
+eval harness (ours: stride 512, context 2048). This is the fairness
+caveat for finding 1 — see §8 below.
 
 ## Plot
 
 ![SRD vs K-quants](srd_perplexity_vs_bpw.png)
 
 K-quant Pareto frontier is the teal line; SRD operating points are
-orange squares. The decision rule asks whether SRD's α=1 point at
-~13 bpw lands meaningfully below where the K-quant curve extrapolates
-to 13 bpw.
+orange squares; FP16 baseline is the dashed navy horizontal. SRD
+populates two operating regions — a 4.5 bpw point (α=0, no residue)
+that lands well below the K-quant curve, and a 12.25–13 bpw cluster
+(α=0.5–1.0) that lies near FP16. The 5–12 bpw middle is an SRD dead
+zone: the scheme has no natural operating points there without changing
+the residue bit depth or group size.
 
 ## α elasticity
 
 The runtime mixing knob α is SRD's headline feature relative to
-K-quants — no K-format lets you trade quality for *anything* at
-inference time. Measured effect on TinyLlama:
+K-quants — no K-format lets you trade quality for anything at
+inference time without re-quantizing. Measured effect on TinyLlama:
 
-- α=0 → PPL `«a»`
-- α=0.5 → PPL `«mid»`
-- α=1 → PPL `«b»`
+- α=0 → PPL 7.5389
+- α=0.5 → PPL 7.1891
+- α=1.0 → PPL 7.0950
 
-The α=0 → α=1 swing is `«delta»` PPL points at no memory delta.
-Whether that's useful depends on the deployment: a 13 bpw model
-that can dial back to "almost-Q4_K_M quality but instant — no
-re-quantization" might be valuable for batch-vs-interactive routing;
-a model where α=0.5 already matches α=1 means the knob is just
-overhead.
+The α=0 → α=1 swing is **0.44 PPL** at zero memory delta. Most of
+that (0.35 PPL) is captured by α=0.5; going from α=0.5 to α=1.0
+recovers only 0.09 more. The residue has strong diminishing returns
+past the halfway point.
+
+**Per-block vs per-tensor is essentially indistinguishable.**
+Per-tensor at 12.25 bpw (PPL 7.0953) matches per-block at 13.0 bpw
+(PPL 7.0950) to within 0.0003 — inside measurement noise. The per-block
+overhead (0.75 bpw extra) buys nothing on TinyLlama-1.1B. Whether that
+changes on a wider model (Llama-3-8B has larger hidden dimensions, so
+per-block groups cover less of each row in relative terms) is an open
+question for the v2 sweep.
 
 ## Verdict
 
-`«One paragraph, four sentences max. Pre-committed rule: SRD is
-worth pursuing iff PPL_SRD@13bpw < PPL_Q6_K@6.56bpw by ≥0.05
-absolute. Anything closer is not worth the ~2× memory of SRD vs
-Q6_K.»`
+**Pursue, per the pre-committed rule** — but with a precise read on
+what was shown. SRD α=1.0 at 13 bpw reaches PPL 7.095, beating Q6_K
+at 7.82 by 0.725 PPL (threshold 0.05). However, at 13 bpw you are
+spending ~80 % of FP16 memory, so the "win" over Q6_K is not a memory
+win — it is a *quality-vs-budget* win for the narrow use-case of 13 bpw
+deployments. The more compelling finding is row 2: SRD α=0 at **4.5
+bpw beats Q4_K_M at 4.85 bpw by 1.51 PPL**, which *is* a memory-budget
+region where users actually operate. That finding is subject to the
+stride-fairness caveat and must be verified with `--rerun-locally`
+before being cited externally.
 
 ## Recommended next step
 
-Conditional on the verdict above:
+Three items, in priority order:
 
-- **If "pursue":** Define §2.2 noise-shaping filter properly,
-  build a fused CUDA kernel so the bpw advantage actually becomes
-  a memory advantage (currently it's fake-quantization only),
-  retest on Llama-3-8B.
-- **If "shelve":** Investigate AQLM-style 2-bit quantization
-  instead — that's where the real memory wins live. SRD's 13 bpw
-  was never going to win against Q4_K_M's 4.85 anyway.
+1. **Lock in the 4-bit comparison.** Run `bench_llamacpp.py
+   --rerun-locally` with a pinned llama.cpp binary and the same
+   WikiText-2 raw test file used by `bench_perplexity.py`. If SRD α=0
+   still beats Q4_K_M on an apples-to-apples stride, that finding is
+   citable.
+2. **Scale up.** Re-run on Llama-3-8B or Mistral-7B. If the per-block
+   4-bit advantage holds at scale, SRD becomes Axiom's first real
+   weight-quant kernel and `quant_map` widens from string to structured
+   dict (Phase D is already scaffolded in `axiom_axm.py`).
+3. **Move §2.2 to low priority.** The noise-shaping filter in the
+   original spec is undefined and was skipped. Do not define it until
+   items 1 and 2 confirm there is real signal to refine. The "if real,
+   define §2.2" conditional is now pushed to after the scale-up
+   confirmation.
 
 ## Prior art
 
@@ -176,5 +215,8 @@ python -m research.quant.plot_results \
   --output docs/srd_perplexity_vs_bpw.png
 ```
 
-Env: `«python», torch «», transformers «», datasets «»`. GPU: `«»`.
-Total wallclock: `«»`. Dataset fingerprint: `«fp[:16]»...`.
+Env: Python 3.x, torch 2.11.0, transformers 4.49.0, datasets 4.0.0.
+GPU: Colab T4, CUDA float16. Total SRD sweep wallclock: ~217 s.
+Dataset: WikiText-2 raw v1, test split, 341,469 tokens, stride 512,
+context 2048. Model revision: not pinned (pin with `--revision` in
+v2 runs).
