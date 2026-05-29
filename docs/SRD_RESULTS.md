@@ -56,7 +56,7 @@ a larger model, defining §2.2 is a low-priority v2 item.
 | α sweep | {0.0, 0.5, 1.0} |
 | Per-tensor variant | included as row 5 (mirrors spec §5 demo) |
 | K-quant baselines | `published_cite` — see §11 if cited |
-| Hardware | Colab T4, CUDA float16 |
+| Hardware | Colab T4 + L4 confirmed, CUDA float16 |
 
 Code: `axiom_quant.py` (kernel), `research/quant/quantize_model.py`
 (model loader), `research/quant/bench_perplexity.py` (PPL sweep),
@@ -105,6 +105,12 @@ K-quant rows are cited from the llama.cpp upstream PPL table for
 TinyLlama-1.1B. Stride convention may differ slightly from the SRD
 eval harness (ours: stride 512, context 2048). This is the fairness
 caveat for finding 1 — see §8 below.
+
+**Cross-hardware reproducibility confirmed.** The SRD sweep was
+independently re-run on a Colab L4 (torch 2.11.0+cu128). All five
+PPL values match the T4 run to within 0.0001 — well inside float16
+rounding noise. The L4 sweep completed in ~87 s total (~2.5× faster
+than T4). The kernel is deterministic across GPU generations.
 
 ### Local rerun attempt (2026-05-29, GTX 1660 Ti)
 
@@ -260,8 +266,8 @@ python -m research.quant.plot_results \
   --output docs/srd_perplexity_vs_bpw.png
 ```
 
-Env: Python 3.x, torch 2.11.0, transformers 4.49.0, datasets 4.0.0.
-GPU: Colab T4, CUDA float16. Total SRD sweep wallclock: ~217 s.
+Env: Python 3.x, torch 2.11.0+cu128, transformers 4.49.0, datasets 4.0.0.
+GPU: Colab T4 (~217 s) and L4 (~87 s) — results identical to 4 d.p.
 Dataset: WikiText-2 raw v1, test split, 341,469 tokens, stride 512,
 context 2048. Model revision: not pinned (pin with `--revision` in
 v2 runs).
