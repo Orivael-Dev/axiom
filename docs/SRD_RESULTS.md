@@ -106,6 +106,44 @@ TinyLlama-1.1B. Stride convention may differ slightly from the SRD
 eval harness (ours: stride 512, context 2048). This is the fairness
 caveat for finding 1 — see §8 below.
 
+### Local rerun attempt (2026-05-29, GTX 1660 Ti)
+
+A local rerun on Windows with `llama-perplexity b9393` and the
+TheBloke `TinyLlama-1.1B-Chat-v1.0` GGUFs produced:
+
+| Quant | bpw | PPL (rerun) | PPL (cited) |
+|---|---|---|---|
+| Q4_K_M | 4.85 | 14.75 | 9.05 |
+| Q5_K_M | 5.69 | 14.62 | 8.36 |
+| Q6_K | 6.56 | 14.51 | 7.82 |
+| Q8_0 | 8.50 | 14.49 | 7.71 |
+
+The relative ordering is correct but the absolute values are ~5–6 PPL
+higher than both the cited numbers and our SRD Colab results. Two
+compounding reasons:
+
+**Stride mismatch (primary).** Our SRD Colab eval used stride 512 with
+context 2048 — each token evaluated with up to 1536 tokens of prior
+context. The llama.cpp default (`--ppl-stride 0`) uses
+stride = context = 2048 (non-overlapping chunks), so the first ~50
+tokens of every 2048-token chunk have little to no prior context. This
+inflates PPL significantly regardless of quantization quality. Running
+with `--ppl-stride 512` on the laptop took >30 min per quant (vs ~8.5
+min without stride) — not feasible locally; Colab T4 is the right
+platform.
+
+**Model variant (secondary).** The cited numbers (9.05 etc.) are from
+the llama.cpp README, measured on the **base** TinyLlama-1.1B model.
+The TheBloke GGUFs and our SRD Colab eval both used
+`TinyLlama-1.1B-Chat-v1.0` (instruction-tuned). The two model
+variants have different weight distributions that affect absolute PPL
+on raw WikiText-2 text.
+
+**Bottom line:** the local rerun numbers are internally consistent but
+not comparable to the SRD Colab results. The true apples-to-apples
+comparison — same Chat model checkpoint, same stride 512 — requires the
+Colab path described in §9 next step 1.
+
 ## Plot
 
 ![SRD vs K-quants](srd_perplexity_vs_bpw.png)
@@ -158,11 +196,18 @@ before being cited externally.
 
 Three items, in priority order:
 
-1. **Lock in the 4-bit comparison.** Run `bench_llamacpp.py
-   --rerun-locally` with a pinned llama.cpp binary and the same
-   WikiText-2 raw test file used by `bench_perplexity.py`. If SRD α=0
-   still beats Q4_K_M on an apples-to-apples stride, that finding is
-   citable.
+1. **Lock in the 4-bit comparison via Colab.** A local GTX 1660 Ti
+   rerun confirmed the methodology gap: llama.cpp's default
+   stride=context gives PPL ~14.7 for Q4_K_M (vs cited 9.05) because
+   non-overlapping chunks have no prior context. The correct path is
+   Colab T4 with `bench_llamacpp.py --rerun-locally`, which converts
+   the same `TinyLlama-1.1B-Chat-v1.0` checkpoint to GGUF via
+   `convert-hf-to-gguf.py`, quantizes with `llama-quantize`, and runs
+   `llama-perplexity --ppl-stride 512 -c 2048` — matching the SRD eval
+   exactly. Estimated ~8 min per quant on T4, ~35 min total. The
+   `notebooks/srd_benchmark.ipynb` notebook needs a Phase C2 cell added
+   for this. If SRD α=0 still beats Q4_K_M at matched stride and
+   matched model, the finding is citable.
 2. **Scale up.** Re-run on Llama-3-8B or Mistral-7B. If the per-block
    4-bit advantage holds at scale, SRD becomes Axiom's first real
    weight-quant kernel and `quant_map` widens from string to structured
