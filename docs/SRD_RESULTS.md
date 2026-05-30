@@ -91,11 +91,11 @@ Pinned in the unit test `tests/test_axiom_quant.py::test_bpw_group_64_is_13_0`.
 
 | # | Config | bpw | PPL | Δ vs FP16 |
 |---|---|---|---|---|
-| 1 | FP16 baseline | 16.00 | 7.0951 | — |
+| 1 | FP16 baseline | 16.00 | 7.0952 | — |
 | 2 | SRD α=0 (pure 4-bit, g=64, per-block) | 4.50 | 7.5389 | +0.44 |
 | 3 | SRD α=0.5, g=64, per-block | 13.00 | 7.1891 | +0.09 |
 | 4 | SRD α=1.0, g=64, per-block | 13.00 | 7.0950 | −0.0001 |
-| 5 | SRD α=1.0, per-tensor (spec §5 demo) | 12.25 | 7.0953 | +0.0002 |
+| 5 | SRD α=1.0, per-tensor (spec §5 demo) | 12.25 | 7.0952 | +0.0000 |
 | 6 | Q4_K_M *(cited)* | 4.85 | 9.05 | +1.95 |
 | 7 | Q5_K_M *(cited)* | 5.69 | 8.36 | +1.26 |
 | 8 | Q6_K *(cited)* | 6.56 | 7.82 | +0.72 |
@@ -178,8 +178,8 @@ recovers only 0.09 more. The residue has strong diminishing returns
 past the halfway point.
 
 **Per-block vs per-tensor is essentially indistinguishable.**
-Per-tensor at 12.25 bpw (PPL 7.0953) matches per-block at 13.0 bpw
-(PPL 7.0950) to within 0.0003 — inside measurement noise. The per-block
+Per-tensor at 12.25 bpw (PPL 7.0952) matches per-block at 13.0 bpw
+(PPL 7.0950) to within 0.0002 — inside measurement noise. The per-block
 overhead (0.75 bpw extra) buys nothing on TinyLlama-1.1B. Whether that
 changes on a wider model (Llama-3-8B has larger hidden dimensions, so
 per-block groups cover less of each row in relative terms) is an open
