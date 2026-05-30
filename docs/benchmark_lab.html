@@ -24,6 +24,13 @@
     .sample-label{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid rgba(253,230,138,.3);background:rgba(253,230,138,.07);color:var(--yellow);font-size:11px;font-weight:850;margin-left:10px;vertical-align:middle}
     .cors-warning{padding:14px;border-radius:14px;border:1px solid rgba(252,165,165,.3);background:rgba(252,165,165,.07);color:var(--red);font-size:13px;display:none;margin-top:10px}
     input[type="password"]{-webkit-text-security:disc}
+    .banner-chip{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:1px solid rgba(167,139,250,.3);background:rgba(167,139,250,.07);color:var(--violet);font-size:13px;font-weight:700;transition:background .15s,border-color .15s;margin-top:16px}.banner-chip:hover{background:rgba(167,139,250,.13);border-color:rgba(167,139,250,.55);color:#c4b5fd}
+    .key-note{margin-top:10px;padding:12px 14px;border-radius:13px;border:1px solid rgba(103,232,249,.18);background:rgba(103,232,249,.05);color:var(--muted);font-size:12px;line-height:1.55}.key-note strong{color:var(--soft);display:block;margin-bottom:3px}
+    .install-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}.install-box{border:1px solid var(--line);border-radius:22px;padding:26px;background:rgba(255,255,255,.045)}.install-box h3{margin:0 0 10px;font-size:20px}.install-box>p{color:var(--muted);font-size:14px;margin:0 0 18px}
+    .priv-point{display:flex;gap:14px;padding:16px;border-radius:16px;border:1px solid var(--line);background:rgba(0,0,0,.15)}.priv-point+.priv-point{margin-top:10px}.priv-icon{font-size:22px;flex-shrink:0;line-height:1.2}.priv-text strong{display:block;color:var(--soft);font-size:14px;margin-bottom:3px}.priv-text p{margin:0;color:var(--muted);font-size:13px}
+    .code-box{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:13px;color:var(--cyan);word-break:break-all;margin-bottom:10px}
+    .install-when{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.install-when-item{padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.035);color:var(--muted);font-size:13px}.install-when-item strong{display:block;color:var(--soft);font-size:13px;margin-bottom:2px}
+    @media(max-width:980px){.install-grid{grid-template-columns:1fr}.install-when{grid-template-columns:1fr}}
     @media(max-width:980px){.hero,.two-col,.pressure,.evidence{grid-template-columns:1fr}.stat-row,.packs,.export-row{grid-template-columns:repeat(2,1fr)}.lab-card{transform:none}}@media(max-width:720px){nav{display:none}.nav-actions .btn:not(.primary){display:none}.hero{padding-top:54px}.stat-row,.packs,.connector-grid,.export-row,.score-ring{grid-template-columns:1fr}.ring{margin:0 auto}.level{grid-template-columns:1fr auto}.level strong{grid-column:1}}
   </style>
 </head>
@@ -79,6 +86,7 @@
         <div class="section-head">
           <h2>Connect local or hosted models.</h2>
           <p>Runs entirely in your browser — your API key goes directly from your machine to your endpoint. Orivael never sees it. Works with Ollama, vLLM, LM Studio, NVIDIA NIM, Hugging Face TGI, or any OpenAI-compatible endpoint.</p>
+          <a href="#install" class="banner-chip">&#128274; How your API key is handled &amp; CLI install option ↓</a>
         </div>
         <div class="two-col">
           <div class="panel panel-pad">
@@ -97,6 +105,7 @@
               <div>
                 <label for="apikey">API Key <span style="color:var(--muted);font-weight:400">(optional — for hosted endpoints; blank for local)</span></label>
                 <input id="apikey" type="password" placeholder="sk-... or leave blank for Ollama / vLLM">
+                <div class="key-note"><strong>&#128274; Your key never leaves your browser.</strong>This page is static HTML with no backend. When you click Run, your browser sends the key directly to the endpoint URL you entered above — it never passes through Orivael's servers. The key is held in memory only for the duration of the run, then released. It is not saved to localStorage, cookies, or anywhere else. <a href="#install" style="color:var(--cyan)">Full details ↓</a></div>
               </div>
               <div id="cors-warning" class="cors-warning">
                 &#9888; This page is served over HTTPS but your endpoint is HTTP. Browsers block mixed-content requests. To test a local model, either: (a) open this file directly (file://) or serve it over HTTP, or (b) use an endpoint with HTTPS.
@@ -229,6 +238,60 @@
           <div class="export-card"><h3>Copy Results</h3><p>Copy the scored results table to your clipboard, formatted for Markdown or a plain text report.</p><button class="btn" style="margin-top:12px;width:100%" id="dl-md" onclick="copyMarkdown()" disabled>Copy Markdown</button></div>
           <div class="export-card"><h3>Share Run ID</h3><p>Each run gets a signed run ID derived from your endpoint and timestamp — reference it in reports without sharing raw data.</p><div id="run-id-display" style="font-family:monospace;margin-top:12px;color:var(--muted);font-size:12px">—</div></div>
           <div class="export-card"><h3>Model Comparison</h3><p>Run the same suite against multiple endpoints and compare scores. Coming in Lab v2.</p><span class="toggle" style="color:var(--muted);margin-top:12px;display:inline-flex">⧖ Coming soon</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>How your API key is handled. CLI install if you need it.</h2>
+          <p>Two questions that come up for every team evaluating production tooling: where does my key go, and can I run this in a pipeline?</p>
+        </div>
+        <div class="install-grid">
+
+          <!-- Privacy column -->
+          <div class="install-box">
+            <h3>&#128274; Your API key, explained.</h3>
+            <p>This page is a static HTML file hosted on a CDN. There is no Orivael server, no proxy, no request logger between your browser and your model.</p>
+            <div class="priv-point">
+              <div class="priv-icon">&#8594;</div>
+              <div class="priv-text"><strong>Direct browser → endpoint connection</strong><p>Every fetch() call goes to the URL you typed in the Endpoint field. Open DevTools → Network while running — every request domain will be yours, not orivael.dev.</p></div>
+            </div>
+            <div class="priv-point">
+              <div class="priv-icon">&#128247;</div>
+              <div class="priv-text"><strong>Memory-only, duration-scoped</strong><p>The key lives in a JS variable for the duration of the run. When the run finishes (or the tab closes), it's gone. It is never written to <code style="color:var(--cyan)">localStorage</code>, <code style="color:var(--cyan)">sessionStorage</code>, cookies, or any other persistent store.</p></div>
+            </div>
+            <div class="priv-point">
+              <div class="priv-icon">&#128065;</div>
+              <div class="priv-text"><strong>Verify it yourself</strong><p>Open DevTools → Network → filter by XHR/Fetch. You will see exactly one outbound domain: your endpoint. Refresh the page and the key field is blank — nothing was persisted.</p></div>
+            </div>
+            <div class="priv-point">
+              <div class="priv-icon">&#128274;</div>
+              <div class="priv-text"><strong>HTTPS pages + local models</strong><p>Browsers block HTTP endpoints from HTTPS pages (mixed content). If you're running a local model over HTTP, download this file and open it via <code style="color:var(--cyan)">file://</code> — your key never touches the internet at all in that case.</p></div>
+            </div>
+          </div>
+
+          <!-- CLI column -->
+          <div class="install-box">
+            <h3>&#128736; CLI install — for pipelines and automation.</h3>
+            <p>The browser runner is zero-friction for one-off evaluations. For CI/CD pipelines, scheduled model comparisons, or scripted runs across dozens of endpoints, the CLI gives you the same test suite with JSON output you can pipe into dashboards.</p>
+            <label>Install</label>
+            <div class="code-box">pip install axiom-constitutional</div>
+            <label>Endpoint</label>
+            <input id="cli-endpoint" value="http://localhost:11434/v1" placeholder="http://localhost:8000/v1" style="margin-bottom:10px">
+            <label>Model</label>
+            <input id="cli-model" value="llama3.2" placeholder="Qwen/Qwen2.5-7B-Instruct" style="margin-bottom:10px">
+            <label>Run command</label>
+            <div id="cli-cmd" class="code-box" style="color:var(--soft)">axiom-bench run --endpoint http://localhost:11434/v1 --model llama3.2</div>
+            <div class="install-when">
+              <div class="install-when-item"><strong>CI/CD pipelines</strong>Gate merges on governance score thresholds before deploying a new model version.</div>
+              <div class="install-when-item"><strong>Scheduled evaluation</strong>Cron the CLI nightly to catch governance drift as a model is fine-tuned or swapped.</div>
+              <div class="install-when-item"><strong>Air-gapped environments</strong>Run fully offline — the CLI connects only to your local endpoint, no outbound calls.</div>
+              <div class="install-when-item"><strong>Multi-model comparison</strong>Script the same suite against multiple endpoints and diff the JSON output programmatically.</div>
+            </div>
+          </div>
+
         </div>
       </div>
     </section>
@@ -694,6 +757,15 @@
       setTimeout(() => { btn.textContent = 'Copy Markdown'; }, 1800);
     });
   };
+
+  // CLI command builder
+  function updateCliCmd() {
+    const ep = document.getElementById('cli-endpoint').value || 'http://localhost:11434/v1';
+    const m  = document.getElementById('cli-model').value    || 'llama3.2';
+    document.getElementById('cli-cmd').textContent = 'axiom-bench run --endpoint ' + ep + ' --model ' + m;
+  }
+  document.getElementById('cli-endpoint').addEventListener('input', updateCliCmd);
+  document.getElementById('cli-model').addEventListener('input', updateCliCmd);
 
   // Mixed-content live check
   document.getElementById('endpoint').addEventListener('input', function () {
