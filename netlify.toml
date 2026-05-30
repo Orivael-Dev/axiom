@@ -1,7 +1,25 @@
 [build]
   publish = "docs"
 
+# Root → benchmark lab (301 overrides index.html static file)
 [[redirects]]
   from = "/"
+  to = "/benchmark_lab.html"
+  status = 301
+
+# Clean URLs for the benchmark lab
+[[redirects]]
+  from = "/benchmark-lab"
+  to = "/benchmark_lab.html"
+  status = 200
+
+[[redirects]]
+  from = "/lab"
+  to = "/benchmark_lab.html"
+  status = 200
+
+# Keep the console reachable
+[[redirects]]
+  from = "/console"
   to = "/axiom_console.html"
   status = 200
