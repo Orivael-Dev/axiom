@@ -34,7 +34,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 # Allow direct script execution
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -170,20 +170,29 @@ class PerplexityConfig:
     bpw_reported: float                      # honest bits-per-weight
 
 
-def _make_srd_apply(*, alpha: float, group_size: int,
-                    per_tensor: bool) -> Callable:
+def _make_srd_apply(
+    *,
+    alpha: float,
+    group_size: int,
+    per_tensor: bool,
+    top_k_pct: float = 1.0,
+    layer_alphas: Optional[Dict[str, float]] = None,
+) -> Callable:
     def _apply(model):
         quantize_hf_model_inplace(
             model, alpha=alpha, group_size=group_size,
             per_tensor=per_tensor, progress=False,
+            top_k_pct=top_k_pct, layer_alphas=layer_alphas,
         )
     return _apply
 
 
-def _bpw_srd_per_block(group_size: int) -> float:
+def _bpw_srd_per_block(group_size: int, top_k_pct: float = 1.0) -> float:
     """Honest per-block SRD bpw via the kernel's own accounting."""
     dummy = torch.randn(8, group_size * 4, dtype=torch.float32)
-    return srd_bits_per_weight(srd_quantize(dummy, group_size=group_size))
+    return srd_bits_per_weight(
+        srd_quantize(dummy, group_size=group_size, top_k_pct=top_k_pct)
+    )
 
 
 def _bpw_srd_per_tensor(in_features: int = 256) -> float:
@@ -229,6 +238,114 @@ def srd_sweep_configs(group_size: int = DEFAULT_GROUP_SIZE) -> List[PerplexityCo
             apply_quantization=_make_srd_apply(
                 alpha=1.0, group_size=DEFAULT_GROUP_SIZE, per_tensor=True),
             bpw_reported=bpw_tensor,
+        ),
+    ]
+
+
+def srd_sparse_sweep_configs(
+    group_size: int = DEFAULT_GROUP_SIZE,
+) -> List[PerplexityConfig]:
+    """Phase E2 sparse-residual sweep — fills the 5–12 bpw dead zone.
+
+    Each config retains a different fraction of D8 elements (by absolute
+    magnitude), zero-ing out the rest. The FP16 baseline is included so
+    the resulting JSON is self-contained for plotting.
+
+    Expected bpw range for G=64: ~5 (p=0) to 13 (p=1, same as dense).
+    """
+    bpw_dense = _bpw_srd_per_block(group_size, top_k_pct=1.0)
+    configs = [
+        PerplexityConfig(
+            name="fp16_baseline",
+            description="FP16 reference (no quantization).",
+            apply_quantization=None,
+            bpw_reported=16.0,
+        ),
+    ]
+    for p in (0.10, 0.25, 0.50, 0.75, 1.00):
+        bpw = _bpw_srd_per_block(group_size, top_k_pct=p)
+        configs.append(PerplexityConfig(
+            name=f"srd_sparse_{int(p * 100):03d}pct_g{group_size}",
+            description=(
+                f"SRD per-block g={group_size}, alpha=1, "
+                f"top_k_pct={p:.2f} ({int(p*100)}% of D8 retained). "
+                f"Fills dead zone at ~{bpw:.1f} bpw."
+            ),
+            apply_quantization=_make_srd_apply(
+                alpha=1.0, group_size=group_size,
+                per_tensor=False, top_k_pct=p,
+            ),
+            bpw_reported=bpw,
+        ))
+    return configs
+
+
+# Layer-type substrings for typical LLaMA-style architectures
+_ATTN_LAYERS = ("q_proj", "k_proj", "v_proj", "o_proj")
+_MLP_LAYERS  = ("gate_proj", "up_proj", "down_proj")
+
+
+def srd_selective_sweep_configs(
+    group_size: int = DEFAULT_GROUP_SIZE,
+) -> List[PerplexityConfig]:
+    """Phase E2 layer-selective sweep — MLP-only, attention-only, and alternating.
+
+    Uses layer_alphas to apply alpha=1 on targeted layer types and alpha=0
+    elsewhere. Bpw estimates are rough averages assuming LLaMA-style
+    architecture (MLP ~70% of weights, attention ~30%).
+    """
+    bpw_dense = _bpw_srd_per_block(group_size, top_k_pct=1.0)
+    bpw_base  = 4.0 + 32.0 / group_size  # alpha=0 cost
+
+    # Weighted estimates: MLP ≈ 70%, attention ≈ 30%
+    bpw_mlp_only  = round(0.70 * bpw_dense + 0.30 * bpw_base, 2)
+    bpw_attn_only = round(0.30 * bpw_dense + 0.70 * bpw_base, 2)
+
+    def _attn_alphas(a: float) -> Dict[str, float]:
+        return {k: a for k in _ATTN_LAYERS}
+
+    def _mlp_alphas(a: float) -> Dict[str, float]:
+        return {k: a for k in _MLP_LAYERS}
+
+    return [
+        PerplexityConfig(
+            name="fp16_baseline",
+            description="FP16 reference (no quantization).",
+            apply_quantization=None,
+            bpw_reported=16.0,
+        ),
+        PerplexityConfig(
+            name=f"srd_mlp_only_g{group_size}",
+            description=(
+                f"SRD g={group_size}: alpha=1 on MLP (gate/up/down), "
+                f"alpha=0 on attention. Rough bpw ~{bpw_mlp_only} "
+                f"(LLaMA-style weight distribution)."
+            ),
+            apply_quantization=_make_srd_apply(
+                alpha=0.0, group_size=group_size, per_tensor=False,
+                layer_alphas={**_mlp_alphas(1.0), **_attn_alphas(0.0)},
+            ),
+            bpw_reported=bpw_mlp_only,
+        ),
+        PerplexityConfig(
+            name=f"srd_attn_only_g{group_size}",
+            description=(
+                f"SRD g={group_size}: alpha=1 on attention (q/k/v/o), "
+                f"alpha=0 on MLP. Rough bpw ~{bpw_attn_only}."
+            ),
+            apply_quantization=_make_srd_apply(
+                alpha=0.0, group_size=group_size, per_tensor=False,
+                layer_alphas={**_attn_alphas(1.0), **_mlp_alphas(0.0)},
+            ),
+            bpw_reported=bpw_attn_only,
+        ),
+        PerplexityConfig(
+            name=f"srd_dense_g{group_size}",
+            description=f"SRD per-block g={group_size}, alpha=1 (full residue, reference).",
+            apply_quantization=_make_srd_apply(
+                alpha=1.0, group_size=group_size, per_tensor=False,
+            ),
+            bpw_reported=bpw_dense,
         ),
     ]
 
@@ -327,8 +444,17 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--model", default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
     p.add_argument("--revision", default=None,
                    help="HF revision to pin (recommended for reproducibility)")
-    p.add_argument("--sweep", choices=["srd"], default="srd",
-                   help="Named sweep to run (currently only 'srd' is defined)")
+    p.add_argument(
+        "--sweep",
+        choices=["srd", "srd_sparse", "srd_selective"],
+        default="srd",
+        help=(
+            "Named sweep to run. "
+            "'srd' = original 5-row sweep. "
+            "'srd_sparse' = Phase E2 sparse-residual sweep (fills bpw dead zone). "
+            "'srd_selective' = Phase E2 layer-selective sweep (MLP-only / attn-only)."
+        ),
+    )
     p.add_argument("--group-size", type=int, default=DEFAULT_GROUP_SIZE)
     p.add_argument("--stride", type=int, default=512)
     p.add_argument("--context", type=int, default=2048)
@@ -341,7 +467,12 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    configs = srd_sweep_configs(group_size=args.group_size)
+    sweep_fn = {
+        "srd":          srd_sweep_configs,
+        "srd_sparse":   srd_sparse_sweep_configs,
+        "srd_selective": srd_selective_sweep_configs,
+    }[args.sweep]
+    configs = sweep_fn(group_size=args.group_size)
     run_sweep(
         configs,
         model_name=args.model,

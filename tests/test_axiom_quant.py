@@ -228,6 +228,58 @@ def test_constant_weight_recovers_exactly_at_alpha_one():
     assert err < 1e-4
 
 
+# ── Top-k sparse residual ────────────────────────────────────────────
+
+
+def test_sparse_residual_zero_fraction():
+    """Exactly (1 - top_k_pct) fraction of D8 should be zero."""
+    W = _make_W(32, 128)
+    top_k_pct = 0.25
+    pack = srd_quantize(W, group_size=64, top_k_pct=top_k_pct)
+    n_zeros = (pack.D8 == 0).sum().item()
+    n_total = pack.D8.numel()
+    # At least (1 - top_k_pct) of elements should be zero.
+    # (Some non-top-k elements may already be 0 from quantization.)
+    zero_frac = n_zeros / n_total
+    assert zero_frac >= (1.0 - top_k_pct) - 0.01
+
+
+def test_sparse_bpw_interpolates():
+    """bpw at k=0.5 is strictly between bpw at k=0 and k=1."""
+    W = _make_W()
+    pack_dense = srd_quantize(W, group_size=64, top_k_pct=1.0)
+    pack_half  = srd_quantize(W, group_size=64, top_k_pct=0.5)
+    pack_zero  = srd_quantize(W, group_size=64, top_k_pct=0.0)
+    bpw_dense = srd_bits_per_weight(pack_dense)
+    bpw_half  = srd_bits_per_weight(pack_half)
+    bpw_zero  = srd_bits_per_weight(pack_zero)
+    assert bpw_zero < bpw_half < bpw_dense
+    # Specific values for G=64: dense=13, half=9, zero=5
+    assert math.isclose(bpw_dense, 13.0, abs_tol=0.01)
+    assert math.isclose(bpw_half,   9.0, abs_tol=0.01)
+    assert math.isclose(bpw_zero,   5.0, abs_tol=0.01)
+
+
+def test_sparse_mse_monotonic_with_k():
+    """MSE decreases (or stays flat) as top_k_pct increases."""
+    W = _make_W()
+    mse_10  = srd_round_trip_mse(W, alpha=1.0, group_size=64, top_k_pct=0.10)
+    mse_50  = srd_round_trip_mse(W, alpha=1.0, group_size=64, top_k_pct=0.50)
+    mse_100 = srd_round_trip_mse(W, alpha=1.0, group_size=64, top_k_pct=1.00)
+    assert mse_10 >= mse_50 >= mse_100
+
+
+def test_sparse_alpha_still_applies():
+    """alpha=0 with sparse D8 should equal alpha=0 with dense D8 (both drop residue)."""
+    W = _make_W()
+    pack_sparse = srd_quantize(W, group_size=64, top_k_pct=0.25)
+    pack_dense  = srd_quantize(W, group_size=64, top_k_pct=1.00)
+    out_sparse_a0 = srd_dequantize(pack_sparse, alpha=0.0)
+    out_dense_a0  = srd_dequantize(pack_dense,  alpha=0.0)
+    # alpha=0 ignores D8 entirely, so both should give the same base reconstruction
+    assert torch.allclose(out_sparse_a0, out_dense_a0)
+
+
 # ── HF-style model loader (research/quant/quantize_model.py) ─────────
 #
 # Tests exercise the loader's plumbing using plain nn.Module subclasses
