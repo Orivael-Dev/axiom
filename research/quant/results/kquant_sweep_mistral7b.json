@@ -1,0 +1,62 @@
+[
+  {
+    "name": "llama_cpp_Q4_K_M",
+    "description": "llama.cpp K-quant (M) baseline (published_cite).",
+    "bpw_reported": 4.85,
+    "perplexity": 5.15,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "mistralai/Mistral-7B-v0.1",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for Mistral-7B. Stride may differ slightly from our SRD harness — flagged in the write-up. Numbers approximate from community benchmarks; verify with --rerun-locally before citing externally."
+  },
+  {
+    "name": "llama_cpp_Q5_K_M",
+    "description": "llama.cpp K-quant (M) baseline (published_cite).",
+    "bpw_reported": 5.69,
+    "perplexity": 4.97,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "mistralai/Mistral-7B-v0.1",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for Mistral-7B. Stride may differ slightly from our SRD harness — flagged in the write-up. Numbers approximate from community benchmarks; verify with --rerun-locally before citing externally."
+  },
+  {
+    "name": "llama_cpp_Q6_K",
+    "description": "llama.cpp K-quant (K) baseline (published_cite).",
+    "bpw_reported": 6.59,
+    "perplexity": 4.87,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "mistralai/Mistral-7B-v0.1",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for Mistral-7B. Stride may differ slightly from our SRD harness — flagged in the write-up. Numbers approximate from community benchmarks; verify with --rerun-locally before citing externally."
+  },
+  {
+    "name": "llama_cpp_Q8_0",
+    "description": "llama.cpp K-quant (0) baseline (published_cite).",
+    "bpw_reported": 8.5,
+    "perplexity": 4.8,
+    "n_tokens": null,
+    "stride": null,
+    "context": 2048,
+    "wallclock_seconds": 0.0,
+    "model": "mistralai/Mistral-7B-v0.1",
+    "model_revision": null,
+    "dataset": "wikitext/wikitext-2-raw-v1/test",
+    "source": "published_cite",
+    "notes": "From llama.cpp upstream PPL table for Mistral-7B. Stride may differ slightly from our SRD harness — flagged in the write-up. Numbers approximate from community benchmarks; verify with --rerun-locally before citing externally."
+  }
+]
