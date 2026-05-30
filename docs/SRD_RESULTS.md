@@ -198,31 +198,29 @@ region where users actually operate. That finding is subject to the
 stride-fairness caveat and must be verified with `--rerun-locally`
 before being cited externally.
 
-## Recommended next step
+## Recommended next steps
 
 Three items, in priority order:
 
-1. **Lock in the 4-bit comparison via Colab.** A local GTX 1660 Ti
-   rerun confirmed the methodology gap: llama.cpp's default
-   stride=context gives PPL ~14.7 for Q4_K_M (vs cited 9.05) because
-   non-overlapping chunks have no prior context. The correct path is
-   Colab T4 with `bench_llamacpp.py --rerun-locally`, which converts
-   the same `TinyLlama-1.1B-Chat-v1.0` checkpoint to GGUF via
-   `convert-hf-to-gguf.py`, quantizes with `llama-quantize`, and runs
-   `llama-perplexity --ppl-stride 512 -c 2048` — matching the SRD eval
-   exactly. Estimated ~8 min per quant on T4, ~35 min total. The
-   `notebooks/srd_benchmark.ipynb` notebook needs a Phase C2 cell added
-   for this. If SRD α=0 still beats Q4_K_M at matched stride and
-   matched model, the finding is citable.
-2. **Scale up.** Re-run on Llama-3-8B or Mistral-7B. If the per-block
-   4-bit advantage holds at scale, SRD becomes Axiom's first real
-   weight-quant kernel and `quant_map` widens from string to structured
-   dict (Phase D is already scaffolded in `axiom_axm.py`).
+1. **Phase D (queued): Scale up to Mistral-7B.** Cells D1–D4 in
+   `notebooks/srd_benchmark.ipynb` are ready. Run on A100/H100
+   (T4 OOMs on 14 GB FP16 weights). Wall-clock ~20–40 min. Key
+   questions: (a) does SRD α=0 at 4.5 bpw still beat Q4_K_M at 4.85 bpw?
+   (b) does SRD α=1.0 vs Q6_K margin hold ≥0.05? Upload the resulting
+   `srd_sweep_mistral7b.json` and `kquant_sweep_mistral7b.json` to
+   confirm. K-quant numbers for Mistral-7B are approximate cited values
+   — same stride-mismatch caveat as TinyLlama K-quant rows applies.
+
+2. **Lock in the 4-bit comparison with a stride-matched rerun.** The
+   fairness gap (cited numbers use stride=context, ours use stride=512)
+   means the SRD α=0 vs Q4_K_M finding is conservative but not airtight.
+   Run `bench_llamacpp.py --rerun-locally` with `--ppl-stride 512` on
+   Colab T4 to close this. Estimated ~35 min total.
+
 3. **Move §2.2 to low priority.** The noise-shaping filter in the
    original spec is undefined and was skipped. Do not define it until
-   items 1 and 2 confirm there is real signal to refine. The "if real,
-   define §2.2" conditional is now pushed to after the scale-up
-   confirmation.
+   items 1 and 2 confirm real signal at 7B scale. The "if real, define
+   §2.2" conditional is pushed to after the scale-up confirmation.
 
 ## Prior art
 
@@ -264,6 +262,18 @@ python -m research.quant.bench_llamacpp \
 python -m research.quant.plot_results \
   --inputs research/quant/results/srd_sweep.json,research/quant/results/kquant_sweep.json \
   --output docs/srd_perplexity_vs_bpw.png
+
+# Phase D — Mistral-7B scale-up (A100/H100, ~14 GB model)
+python -m research.quant.bench_perplexity \
+  --model mistralai/Mistral-7B-v0.1 \
+  --group-size 64 \
+  --output research/quant/results/srd_sweep_mistral7b.json
+python -m research.quant.bench_llamacpp \
+  --model mistralai/Mistral-7B-v0.1 \
+  --output research/quant/results/kquant_sweep_mistral7b.json
+python -m research.quant.plot_results \
+  --inputs research/quant/results/srd_sweep_mistral7b.json,research/quant/results/kquant_sweep_mistral7b.json \
+  --output docs/srd_perplexity_vs_bpw_mistral7b.png
 ```
 
 Env: Python 3.x, torch 2.11.0+cu128, transformers 4.49.0, datasets 4.0.0.

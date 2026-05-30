@@ -51,14 +51,33 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
-# Published K-quant PPLs for TinyLlama-1.1B-Chat-v1.0 on WikiText-2
-# (raw, test split). Stride convention may differ slightly from ours.
-PUBLISHED = {
+# Published K-quant PPLs on WikiText-2 raw test split.
+# Stride convention in these sources (stride=context) differs from ours
+# (stride=512). Same fairness caveat applies to all entries.
+_PUBLISHED_TINYLLAMA = {
     "Q4_K_M": {"bpw": 4.85, "ppl": 9.05},
     "Q5_K_M": {"bpw": 5.69, "ppl": 8.36},
     "Q6_K":   {"bpw": 6.56, "ppl": 7.82},
     "Q8_0":   {"bpw": 8.50, "ppl": 7.71},
 }
+
+# Approximate: sourced from llama.cpp community benchmark tables for
+# Mistral-7B-v0.1. Stride convention likely differs — verify with
+# --rerun-locally before citing these as apples-to-apples.
+_PUBLISHED_MISTRAL7B = {
+    "Q4_K_M": {"bpw": 4.85, "ppl": 5.15},
+    "Q5_K_M": {"bpw": 5.69, "ppl": 4.97},
+    "Q6_K":   {"bpw": 6.59, "ppl": 4.87},
+    "Q8_0":   {"bpw": 8.50, "ppl": 4.80},
+}
+
+_PUBLISHED_BY_MODEL: dict[str, dict] = {
+    "TinyLlama": _PUBLISHED_TINYLLAMA,
+    "Mistral-7B": _PUBLISHED_MISTRAL7B,
+}
+
+# Default kept for backward-compat use in rerun_locally()
+PUBLISHED = _PUBLISHED_TINYLLAMA
 
 DEFAULT_QUANTS = ("Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
 
@@ -80,24 +99,37 @@ def cite_published(model_name: str, quants: tuple[str, ...]) -> list[dict]:
     """No binaries required — emit the published numbers with a clear
     'cited' source flag so the write-up doesn't misrepresent them as
     locally-measured."""
-    if "TinyLlama" not in model_name:
+    model_key = next(
+        (k for k in _PUBLISHED_BY_MODEL if k in model_name), None
+    )
+    if model_key is None:
         raise RuntimeError(
-            f"Published K-quant numbers are only catalogued for TinyLlama. "
-            f"For {model_name}, run --rerun-locally instead."
+            f"No published K-quant numbers catalogued for '{model_name}'. "
+            f"Supported models: {list(_PUBLISHED_BY_MODEL)}. "
+            f"Run --rerun-locally for other models."
+        )
+    pub = _PUBLISHED_BY_MODEL[model_key]
+    notes = (
+        f"From llama.cpp upstream PPL table for {model_key}. "
+        "Stride may differ slightly from our SRD harness — "
+        "flagged in the write-up."
+    )
+    if model_key == "Mistral-7B":
+        notes += (
+            " Numbers approximate from community benchmarks; "
+            "verify with --rerun-locally before citing externally."
         )
     rows = []
     for q in quants:
-        if q not in PUBLISHED:
-            raise ValueError(f"no published number for {q}")
+        if q not in pub:
+            raise ValueError(f"no published number for {q} on {model_key}")
         rows.append(_row_to_dict(KQuantRow(
             name=f"llama_cpp_{q}",
-            bpw_reported=PUBLISHED[q]["bpw"],
-            perplexity=PUBLISHED[q]["ppl"],
+            bpw_reported=pub[q]["bpw"],
+            perplexity=pub[q]["ppl"],
             source="published_cite",
             wallclock_seconds=0.0,
-            notes="From llama.cpp upstream PPL table for TinyLlama-1.1B. "
-                  "Stride may differ slightly from our SRD harness — "
-                  "flagged in the write-up.",
+            notes=notes,
         ), model_name=model_name))
     return rows
 
@@ -115,6 +147,13 @@ _HUB_GGUF_REPOS: dict[str, dict[str, str]] = {
         "Q5_K_M": "tinyllama-1.1b-chat-v1.0.Q5_K_M.gguf",
         "Q6_K":   "tinyllama-1.1b-chat-v1.0.Q6_K.gguf",
         "Q8_0":   "tinyllama-1.1b-chat-v1.0.Q8_0.gguf",
+    },
+    "Mistral-7B": {
+        "repo_id": "TheBloke/Mistral-7B-v0.1-GGUF",
+        "Q4_K_M": "mistral-7b-v0.1.Q4_K_M.gguf",
+        "Q5_K_M": "mistral-7b-v0.1.Q5_K_M.gguf",
+        "Q6_K":   "mistral-7b-v0.1.Q6_K.gguf",
+        "Q8_0":   "mistral-7b-v0.1.Q8_0.gguf",
     },
 }
 
@@ -263,9 +302,12 @@ def rerun_locally(
             wikitext_path=wikitext_path,
         )
         stride_note = f"--ppl-stride {ppl_stride}" if ppl_stride else "stride=context (default)"
+        _pub = _PUBLISHED_BY_MODEL.get(
+            next((k for k in _PUBLISHED_BY_MODEL if k in model_name), ""), {}
+        )
         rows.append(_row_to_dict(KQuantRow(
             name=f"llama_cpp_{q}",
-            bpw_reported=PUBLISHED.get(q, {}).get("bpw", float("nan")),
+            bpw_reported=_pub.get(q, {}).get("bpw", float("nan")),
             perplexity=ppl,
             source="rerun_local",
             wallclock_seconds=round(wall, 2),

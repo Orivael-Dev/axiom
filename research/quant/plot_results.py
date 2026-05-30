@@ -79,10 +79,12 @@ def make_plot(rows: List[dict], output: Path) -> None:
                    linewidth=0.8, alpha=0.6,
                    label=f"FP16 baseline (PPL={baseline_ppl:.2f})")
 
+    models = {r.get("model", "") for r in rows if r.get("model")}
+    model_label = next(iter(models), "").split("/")[-1] if models else "model"
+
     ax.set_xlabel("Bits per weight (honest, incl. scale storage)")
     ax.set_ylabel("WikiText-2 perplexity (lower = better)")
-    ax.set_title("SRD vs llama.cpp K-quants at matched bpw\n"
-                 "TinyLlama-1.1B, sliding-window PPL")
+    ax.set_title(f"SRD vs llama.cpp K-quants at matched bpw\n{model_label}, sliding-window PPL")
     ax.grid(True, alpha=0.25, linestyle=":")
     ax.legend(loc="upper right", framealpha=0.9)
     fig.tight_layout()
