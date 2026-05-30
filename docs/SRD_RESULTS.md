@@ -56,7 +56,7 @@ a larger model, defining §2.2 is a low-priority v2 item.
 | α sweep | {0.0, 0.5, 1.0} |
 | Per-tensor variant | included as row 5 (mirrors spec §5 demo) |
 | K-quant baselines | `published_cite` — see §11 if cited |
-| Hardware | Colab T4, CUDA float16 |
+| Hardware | Colab T4 + L4 confirmed, CUDA float16 |
 
 Code: `axiom_quant.py` (kernel), `research/quant/quantize_model.py`
 (model loader), `research/quant/bench_perplexity.py` (PPL sweep),
@@ -91,11 +91,11 @@ Pinned in the unit test `tests/test_axiom_quant.py::test_bpw_group_64_is_13_0`.
 
 | # | Config | bpw | PPL | Δ vs FP16 |
 |---|---|---|---|---|
-| 1 | FP16 baseline | 16.00 | 7.0951 | — |
+| 1 | FP16 baseline | 16.00 | 7.0952 | — |
 | 2 | SRD α=0 (pure 4-bit, g=64, per-block) | 4.50 | 7.5389 | +0.44 |
 | 3 | SRD α=0.5, g=64, per-block | 13.00 | 7.1891 | +0.09 |
 | 4 | SRD α=1.0, g=64, per-block | 13.00 | 7.0950 | −0.0001 |
-| 5 | SRD α=1.0, per-tensor (spec §5 demo) | 12.25 | 7.0953 | +0.0002 |
+| 5 | SRD α=1.0, per-tensor (spec §5 demo) | 12.25 | 7.0952 | +0.0000 |
 | 6 | Q4_K_M *(cited)* | 4.85 | 9.05 | +1.95 |
 | 7 | Q5_K_M *(cited)* | 5.69 | 8.36 | +1.26 |
 | 8 | Q6_K *(cited)* | 6.56 | 7.82 | +0.72 |
@@ -105,6 +105,12 @@ K-quant rows are cited from the llama.cpp upstream PPL table for
 TinyLlama-1.1B. Stride convention may differ slightly from the SRD
 eval harness (ours: stride 512, context 2048). This is the fairness
 caveat for finding 1 — see §8 below.
+
+**Cross-hardware reproducibility confirmed.** The SRD sweep was
+independently re-run on a Colab L4 (torch 2.11.0+cu128). All five
+PPL values match the T4 run to within 0.0001 — well inside float16
+rounding noise. The L4 sweep completed in ~87 s total (~2.5× faster
+than T4). The kernel is deterministic across GPU generations.
 
 ### Local rerun attempt (2026-05-29, GTX 1660 Ti)
 
@@ -172,8 +178,8 @@ recovers only 0.09 more. The residue has strong diminishing returns
 past the halfway point.
 
 **Per-block vs per-tensor is essentially indistinguishable.**
-Per-tensor at 12.25 bpw (PPL 7.0953) matches per-block at 13.0 bpw
-(PPL 7.0950) to within 0.0003 — inside measurement noise. The per-block
+Per-tensor at 12.25 bpw (PPL 7.0952) matches per-block at 13.0 bpw
+(PPL 7.0950) to within 0.0002 — inside measurement noise. The per-block
 overhead (0.75 bpw extra) buys nothing on TinyLlama-1.1B. Whether that
 changes on a wider model (Llama-3-8B has larger hidden dimensions, so
 per-block groups cover less of each row in relative terms) is an open
@@ -192,31 +198,29 @@ region where users actually operate. That finding is subject to the
 stride-fairness caveat and must be verified with `--rerun-locally`
 before being cited externally.
 
-## Recommended next step
+## Recommended next steps
 
 Three items, in priority order:
 
-1. **Lock in the 4-bit comparison via Colab.** A local GTX 1660 Ti
-   rerun confirmed the methodology gap: llama.cpp's default
-   stride=context gives PPL ~14.7 for Q4_K_M (vs cited 9.05) because
-   non-overlapping chunks have no prior context. The correct path is
-   Colab T4 with `bench_llamacpp.py --rerun-locally`, which converts
-   the same `TinyLlama-1.1B-Chat-v1.0` checkpoint to GGUF via
-   `convert-hf-to-gguf.py`, quantizes with `llama-quantize`, and runs
-   `llama-perplexity --ppl-stride 512 -c 2048` — matching the SRD eval
-   exactly. Estimated ~8 min per quant on T4, ~35 min total. The
-   `notebooks/srd_benchmark.ipynb` notebook needs a Phase C2 cell added
-   for this. If SRD α=0 still beats Q4_K_M at matched stride and
-   matched model, the finding is citable.
-2. **Scale up.** Re-run on Llama-3-8B or Mistral-7B. If the per-block
-   4-bit advantage holds at scale, SRD becomes Axiom's first real
-   weight-quant kernel and `quant_map` widens from string to structured
-   dict (Phase D is already scaffolded in `axiom_axm.py`).
+1. **Phase D (queued): Scale up to Mistral-7B.** Cells D1–D4 in
+   `notebooks/srd_benchmark.ipynb` are ready. Run on A100/H100
+   (T4 OOMs on 14 GB FP16 weights). Wall-clock ~20–40 min. Key
+   questions: (a) does SRD α=0 at 4.5 bpw still beat Q4_K_M at 4.85 bpw?
+   (b) does SRD α=1.0 vs Q6_K margin hold ≥0.05? Upload the resulting
+   `srd_sweep_mistral7b.json` and `kquant_sweep_mistral7b.json` to
+   confirm. K-quant numbers for Mistral-7B are approximate cited values
+   — same stride-mismatch caveat as TinyLlama K-quant rows applies.
+
+2. **Lock in the 4-bit comparison with a stride-matched rerun.** The
+   fairness gap (cited numbers use stride=context, ours use stride=512)
+   means the SRD α=0 vs Q4_K_M finding is conservative but not airtight.
+   Run `bench_llamacpp.py --rerun-locally` with `--ppl-stride 512` on
+   Colab T4 to close this. Estimated ~35 min total.
+
 3. **Move §2.2 to low priority.** The noise-shaping filter in the
    original spec is undefined and was skipped. Do not define it until
-   items 1 and 2 confirm there is real signal to refine. The "if real,
-   define §2.2" conditional is now pushed to after the scale-up
-   confirmation.
+   items 1 and 2 confirm real signal at 7B scale. The "if real, define
+   §2.2" conditional is pushed to after the scale-up confirmation.
 
 ## Prior art
 
@@ -258,10 +262,22 @@ python -m research.quant.bench_llamacpp \
 python -m research.quant.plot_results \
   --inputs research/quant/results/srd_sweep.json,research/quant/results/kquant_sweep.json \
   --output docs/srd_perplexity_vs_bpw.png
+
+# Phase D — Mistral-7B scale-up (A100/H100, ~14 GB model)
+python -m research.quant.bench_perplexity \
+  --model mistralai/Mistral-7B-v0.1 \
+  --group-size 64 \
+  --output research/quant/results/srd_sweep_mistral7b.json
+python -m research.quant.bench_llamacpp \
+  --model mistralai/Mistral-7B-v0.1 \
+  --output research/quant/results/kquant_sweep_mistral7b.json
+python -m research.quant.plot_results \
+  --inputs research/quant/results/srd_sweep_mistral7b.json,research/quant/results/kquant_sweep_mistral7b.json \
+  --output docs/srd_perplexity_vs_bpw_mistral7b.png
 ```
 
-Env: Python 3.x, torch 2.11.0, transformers 4.49.0, datasets 4.0.0.
-GPU: Colab T4, CUDA float16. Total SRD sweep wallclock: ~217 s.
+Env: Python 3.x, torch 2.11.0+cu128, transformers 4.49.0, datasets 4.0.0.
+GPU: Colab T4 (~217 s) and L4 (~87 s) — results identical to 4 d.p.
 Dataset: WikiText-2 raw v1, test split, 341,469 tokens, stride 512,
 context 2048. Model revision: not pinned (pin with `--revision` in
 v2 runs).

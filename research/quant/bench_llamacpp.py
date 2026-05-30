@@ -51,14 +51,33 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
-# Published K-quant PPLs for TinyLlama-1.1B-Chat-v1.0 on WikiText-2
-# (raw, test split). Stride convention may differ slightly from ours.
-PUBLISHED = {
+# Published K-quant PPLs on WikiText-2 raw test split.
+# Stride convention in these sources (stride=context) differs from ours
+# (stride=512). Same fairness caveat applies to all entries.
+_PUBLISHED_TINYLLAMA = {
     "Q4_K_M": {"bpw": 4.85, "ppl": 9.05},
     "Q5_K_M": {"bpw": 5.69, "ppl": 8.36},
     "Q6_K":   {"bpw": 6.56, "ppl": 7.82},
     "Q8_0":   {"bpw": 8.50, "ppl": 7.71},
 }
+
+# Approximate: sourced from llama.cpp community benchmark tables for
+# Mistral-7B-v0.1. Stride convention likely differs — verify with
+# --rerun-locally before citing these as apples-to-apples.
+_PUBLISHED_MISTRAL7B = {
+    "Q4_K_M": {"bpw": 4.85, "ppl": 5.15},
+    "Q5_K_M": {"bpw": 5.69, "ppl": 4.97},
+    "Q6_K":   {"bpw": 6.59, "ppl": 4.87},
+    "Q8_0":   {"bpw": 8.50, "ppl": 4.80},
+}
+
+_PUBLISHED_BY_MODEL: dict[str, dict] = {
+    "TinyLlama": _PUBLISHED_TINYLLAMA,
+    "Mistral-7B": _PUBLISHED_MISTRAL7B,
+}
+
+# Default kept for backward-compat use in rerun_locally()
+PUBLISHED = _PUBLISHED_TINYLLAMA
 
 DEFAULT_QUANTS = ("Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
 
@@ -80,29 +99,63 @@ def cite_published(model_name: str, quants: tuple[str, ...]) -> list[dict]:
     """No binaries required — emit the published numbers with a clear
     'cited' source flag so the write-up doesn't misrepresent them as
     locally-measured."""
-    if "TinyLlama" not in model_name:
+    model_key = next(
+        (k for k in _PUBLISHED_BY_MODEL if k in model_name), None
+    )
+    if model_key is None:
         raise RuntimeError(
-            f"Published K-quant numbers are only catalogued for TinyLlama. "
-            f"For {model_name}, run --rerun-locally instead."
+            f"No published K-quant numbers catalogued for '{model_name}'. "
+            f"Supported models: {list(_PUBLISHED_BY_MODEL)}. "
+            f"Run --rerun-locally for other models."
+        )
+    pub = _PUBLISHED_BY_MODEL[model_key]
+    notes = (
+        f"From llama.cpp upstream PPL table for {model_key}. "
+        "Stride may differ slightly from our SRD harness — "
+        "flagged in the write-up."
+    )
+    if model_key == "Mistral-7B":
+        notes += (
+            " Numbers approximate from community benchmarks; "
+            "verify with --rerun-locally before citing externally."
         )
     rows = []
     for q in quants:
-        if q not in PUBLISHED:
-            raise ValueError(f"no published number for {q}")
+        if q not in pub:
+            raise ValueError(f"no published number for {q} on {model_key}")
         rows.append(_row_to_dict(KQuantRow(
             name=f"llama_cpp_{q}",
-            bpw_reported=PUBLISHED[q]["bpw"],
-            perplexity=PUBLISHED[q]["ppl"],
+            bpw_reported=pub[q]["bpw"],
+            perplexity=pub[q]["ppl"],
             source="published_cite",
             wallclock_seconds=0.0,
-            notes="From llama.cpp upstream PPL table for TinyLlama-1.1B. "
-                  "Stride may differ slightly from our SRD harness — "
-                  "flagged in the write-up.",
+            notes=notes,
         ), model_name=model_name))
     return rows
 
 
 # ── Local re-run path ────────────────────────────────────────────────
+
+# Pre-quantized GGUF repos on HuggingFace Hub, keyed by model id fragment.
+# We download these directly instead of converting from HF weights, which
+# avoids needing convert-hf-to-gguf.py (whose name and location change
+# frequently across llama.cpp releases).
+_HUB_GGUF_REPOS: dict[str, dict[str, str]] = {
+    "TinyLlama": {
+        "repo_id": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+        "Q4_K_M": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+        "Q5_K_M": "tinyllama-1.1b-chat-v1.0.Q5_K_M.gguf",
+        "Q6_K":   "tinyllama-1.1b-chat-v1.0.Q6_K.gguf",
+        "Q8_0":   "tinyllama-1.1b-chat-v1.0.Q8_0.gguf",
+    },
+    "Mistral-7B": {
+        "repo_id": "TheBloke/Mistral-7B-v0.1-GGUF",
+        "Q4_K_M": "mistral-7b-v0.1.Q4_K_M.gguf",
+        "Q5_K_M": "mistral-7b-v0.1.Q5_K_M.gguf",
+        "Q6_K":   "mistral-7b-v0.1.Q6_K.gguf",
+        "Q8_0":   "mistral-7b-v0.1.Q8_0.gguf",
+    },
+}
 
 
 def _find_binary(name: str, hint_dir: Optional[Path]) -> Path:
@@ -120,58 +173,35 @@ def _find_binary(name: str, hint_dir: Optional[Path]) -> Path:
     )
 
 
-def convert_hf_to_gguf(
-    model_name: str,
-    model_revision: Optional[str],
-    out_dir: Path,
-    llama_bin: Optional[Path],
-) -> Path:
-    """Convert a HF model to GGUF F16. Skips if the output already exists."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = model_name.replace("/", "_")
-    f16_path = out_dir / f"{safe_name}-f16.gguf"
-    if f16_path.exists():
-        print(f"[gguf] reusing existing {f16_path.name}")
-        return f16_path
+def download_hub_gguf(model_name: str, quant: str, out_dir: Path) -> Optional[Path]:
+    """Download a pre-quantized GGUF from HuggingFace Hub.
 
-    # llama.cpp ships convert-hf-to-gguf.py at the repo root, not in build/.
-    # Hint dir usually points at build/bin so search the parent too.
-    candidates = []
-    if llama_bin is not None:
-        candidates.extend([
-            llama_bin / "convert-hf-to-gguf.py",
-            llama_bin.parent / "convert-hf-to-gguf.py",
-            llama_bin.parent.parent / "convert-hf-to-gguf.py",
-        ])
-    for c in candidates:
-        if c.exists():
-            convert_script = c
-            break
-    else:
-        raise FileNotFoundError(
-            "convert-hf-to-gguf.py not found. Pass --llama-bin <dir> "
-            "pointing at your llama.cpp build dir (the script lives "
-            "in the parent repo root)."
-        )
-
-    print(f"[gguf] converting {model_name} → {f16_path.name}...")
-    # The convert script expects a local model dir; let HF resolve it first.
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    local_dir = out_dir / safe_name
-    if not local_dir.exists():
-        AutoTokenizer.from_pretrained(
-            model_name, revision=model_revision
-        ).save_pretrained(local_dir)
-        AutoModelForCausalLM.from_pretrained(
-            model_name, revision=model_revision
-        ).save_pretrained(local_dir)
-
-    subprocess.run(
-        [sys.executable, str(convert_script), str(local_dir),
-         "--outfile", str(f16_path), "--outtype", "f16"],
-        check=True,
-    )
-    return f16_path
+    Returns the local path on success, None if no hub entry exists for
+    this model+quant combination.
+    """
+    for key, entry in _HUB_GGUF_REPOS.items():
+        if key in model_name and quant in entry:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            dest = out_dir / entry[quant]
+            if dest.exists():
+                print(f"[gguf] reusing cached {dest.name}")
+                return dest
+            try:
+                from huggingface_hub import hf_hub_download
+            except ImportError:
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-q", "huggingface_hub"],
+                    check=True,
+                )
+                from huggingface_hub import hf_hub_download
+            print(f"[gguf] downloading {entry['repo_id']} / {entry[quant]} ...")
+            local = hf_hub_download(
+                repo_id=entry["repo_id"],
+                filename=entry[quant],
+                local_dir=str(out_dir),
+            )
+            return Path(local)
+    return None
 
 
 def quantize_gguf(f16_path: Path, quant: str, llama_bin: Optional[Path]) -> Path:
@@ -252,20 +282,32 @@ def rerun_locally(
     ppl_stride: Optional[int],
     n_threads: Optional[int],
 ) -> list[dict]:
-    """Full local re-run: convert → quantize → perplexity for each K-quant."""
-    f16_gguf = convert_hf_to_gguf(model_name, model_revision, gguf_dir, llama_bin)
+    """Full local re-run: download or convert GGUF → perplexity for each K-quant.
+
+    Strategy (avoids convert-hf-to-gguf.py whose name changes across releases):
+    1. Try to download a pre-quantized GGUF from HuggingFace Hub.
+    2. If no hub entry exists, fall back to convert-from-scratch + quantize.
+    """
     rows = []
     for q in quants:
-        quant_gguf = quantize_gguf(f16_gguf, q, llama_bin)
+        # Try hub download first (no conversion script needed)
+        quant_gguf = download_hub_gguf(model_name, q, gguf_dir)
+        if quant_gguf is None:
+            # Fall back: convert HF weights → F16 GGUF → K-quant GGUF
+            f16_gguf = convert_hf_to_gguf(model_name, model_revision, gguf_dir, llama_bin)
+            quant_gguf = quantize_gguf(f16_gguf, q, llama_bin)
         ppl, wall = llama_perplexity(
             quant_gguf, llama_bin=llama_bin, context=context,
             ppl_stride=ppl_stride, n_threads=n_threads,
             wikitext_path=wikitext_path,
         )
         stride_note = f"--ppl-stride {ppl_stride}" if ppl_stride else "stride=context (default)"
+        _pub = _PUBLISHED_BY_MODEL.get(
+            next((k for k in _PUBLISHED_BY_MODEL if k in model_name), ""), {}
+        )
         rows.append(_row_to_dict(KQuantRow(
             name=f"llama_cpp_{q}",
-            bpw_reported=PUBLISHED.get(q, {}).get("bpw", float("nan")),
+            bpw_reported=_pub.get(q, {}).get("bpw", float("nan")),
             perplexity=ppl,
             source="rerun_local",
             wallclock_seconds=round(wall, 2),
