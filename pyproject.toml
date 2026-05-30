@@ -88,6 +88,7 @@ dev = [
 axiom          = "axiom_constitutional.cli:main"
 axiom-validate = "axiom_constitutional.cli:validate_cmd"
 axiom-certify  = "axiom_constitutional.cli:certify_cmd"
+axiom-bench    = "axiom_bench.cli:main"
 
 [project.urls]
 Homepage   = "https://orivael.dev"
@@ -96,7 +97,7 @@ PyPI       = "https://pypi.org/project/axiom-constitutional/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files*"]
+include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files*", "axiom_bench*"]
 
 [tool.setuptools.package-data]
 "axiom_files" = ["*.axiom", "core/*.axiom", "domains/*.axiom", "research/*.axiom"]
