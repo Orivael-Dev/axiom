@@ -5,3 +5,13 @@
   from = "/"
   to = "/axiom_console.html"
   status = 200
+
+[[redirects]]
+  from = "/benchmark-lab"
+  to = "/benchmark_lab.html"
+  status = 200
+
+[[redirects]]
+  from = "/lab"
+  to = "/benchmark_lab.html"
+  status = 200
