@@ -474,7 +474,8 @@ class AXMContainer:
     @classmethod
     def pack(cls, spec: Mapping[str, Any], output_path: str,
              *, archive: bool = False,
-             weights_source_dir: Optional[Path] = None) -> "AXMContainer":
+             weights_source_dir: Optional[Path] = None,
+             compresslevel: int = 1) -> "AXMContainer":
         """Build a fresh container under `output_path` from a dict spec.
 
         ``archive=False`` (default, backward-compatible) writes the
@@ -482,6 +483,13 @@ class AXMContainer:
         tempdir, zips it to ``output_path``, then loads the resulting
         archive — yielding a single-file shippable artifact instead of
         a directory tree.
+
+        ``compresslevel``: DEFLATE level (0–9) used when ``archive=True``.
+        Defaults to 1 (fast). Weight checkpoints are large and mostly
+        incompressible apart from sparse-SRD zero runs, so level 1 keeps
+        nearly all the size benefit at 3–5× the speed of the zip default
+        (level 6). Use 6–9 only when archive size matters more than pack
+        time. Ignored when ``archive=False``.
 
         ``weights_source_dir``: if supplied, every file under that
         directory is copied into ``weights/`` inside the container and
@@ -526,7 +534,8 @@ class AXMContainer:
                         f"archive output_path is a directory: {output_path}")
                 out_file.parent.mkdir(parents=True, exist_ok=True)
                 with zipfile.ZipFile(out_file, "w",
-                                       zipfile.ZIP_DEFLATED) as zf:
+                                       zipfile.ZIP_DEFLATED,
+                                       compresslevel=compresslevel) as zf:
                     src = work / "exploded.axm"
                     for f in src.rglob("*"):
                         if f.is_file():

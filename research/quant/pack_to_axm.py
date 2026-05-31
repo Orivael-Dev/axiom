@@ -72,6 +72,7 @@ def pack_model(
     group_size: int,
     model_revision: Optional[str],
     hardware_map: str,
+    compresslevel: int = 1,
 ) -> dict:
     """Quantize (if requested) and pack to .axm. Returns a stats dict."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -141,6 +142,7 @@ def pack_model(
             spec, output_path,
             archive=True,
             weights_source_dir=weights_dir,
+            compresslevel=compresslevel,
         )
         pack_s = time.monotonic() - t3
 
@@ -196,6 +198,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--group-size", type=int, default=DEFAULT_GROUP_SIZE)
     p.add_argument("--hardware-map", default="gpu",
                    choices=["cpu", "gpu", "npu", "fpga", "compile_on_load"])
+    p.add_argument("--compresslevel", type=int, default=1,
+                   choices=range(0, 10), metavar="[0-9]",
+                   help="zip DEFLATE level. 1 (default) = fast; 0 = store "
+                        "(no compression, fastest); 6-9 = smaller, slower.")
     p.add_argument("--output", type=str, required=True,
                    help="Output .axm archive path")
     p.add_argument("--stats-json", type=Path, default=None,
@@ -212,6 +218,7 @@ def main() -> int:
         group_size=args.group_size,
         model_revision=args.revision,
         hardware_map=args.hardware_map,
+        compresslevel=args.compresslevel,
     )
     if args.stats_json:
         args.stats_json.parent.mkdir(parents=True, exist_ok=True)
