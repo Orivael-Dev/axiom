@@ -75,12 +75,22 @@ def load_and_measure(
     print(f"[load] weights at {weights_path}")
 
     # ── Load model ─────────────────────────────────────────────────────
-    print(f"[load] loading model from weights/ ({scheme}, ~{bpw_theoretical:.1f} bpw)...")
+    is_packed = bool(qmap.get("packed", False)) if isinstance(qmap, dict) else False
+    from research.quant.srd_realpack import is_real_packed, load_real_packed
+    real = is_packed or is_real_packed(weights_path)
+    print(f"[load] loading model from weights/ ({scheme}, ~{bpw_theoretical:.1f} bpw"
+          f"{', E3 real-packed' if real else ''})...")
     t2 = time.monotonic()
-    tokenizer = AutoTokenizer.from_pretrained(str(weights_path))
-    model = AutoModelForCausalLM.from_pretrained(
-        str(weights_path), torch_dtype=dtype,
-    ).to(device)
+    if real:
+        # E3 real-packed: unpack W4 + sparse-D8 → FP16, reconstruct from config
+        model, tokenizer = load_real_packed(weights_path, device=device, dtype=dtype)
+        if tokenizer is None:
+            tokenizer = AutoTokenizer.from_pretrained(str(weights_path))
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(str(weights_path))
+        model = AutoModelForCausalLM.from_pretrained(
+            str(weights_path), torch_dtype=dtype,
+        ).to(device)
     model.eval()
     model_load_s = time.monotonic() - t2
     print(f"[load] model loaded in {model_load_s:.1f}s")

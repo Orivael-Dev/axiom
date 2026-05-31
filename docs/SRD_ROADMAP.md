@@ -54,27 +54,29 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
 
 ### E3 tasks
 
-1. **W4 bit-packing** — pack 2 int4 values into 1 uint8 byte in
-   `axiom_quant.py`. Add `srd_pack_w4()` / `srd_unpack_w4()` and a
-   `SRDPackedTensorPacked` variant. Halves W4 storage with no quality change.
+1. ✅ **W4 bit-packing** — `srd_pack_w4()` / `srd_unpack_w4()` in
+   `axiom_quant.py` pack 2 int4 values into 1 uint8 byte (bit-exact
+   round-trip, halves W4 storage).
 
-2. **Sparse D8 storage** — store only non-zero D8 values + a uint8 bitmask
-   (1 bit per element, packed). At `top_k_pct=0.25`, D8 storage drops from
-   1 byte/element to ~0.375 bytes/element (0.25 value + 0.125 mask).
+2. ✅ **Sparse D8 storage** — `srd_pack_d8_sparse()` /
+   `srd_unpack_d8_sparse()` store a 1-bit-per-element bitmask + tightly
+   packed non-zero int8 values. At `top_k_pct=0.25`, D8 drops to ~0.375
+   bytes/element.
 
-3. **`pack_to_axm.py` real-pack mode** — add `--real-pack` flag. When set,
-   calls the new pack/unpack functions before `save_pretrained()`, producing
-   an archive that is genuinely `theoretical_mb` in size.
+3. ✅ **`pack_to_axm.py --real-pack`** — `research/quant/srd_realpack.py`
+   `save_real_packed()` writes `srd_packed.pt` (W4 nibble + sparse-D8) +
+   `srd_dense.pt` (FP16 embeddings/norms/lm_head) + `srd_index.json`.
+   `quant_map["packed"]=true`. Archive is genuinely ~half FP16.
 
-4. **`load_from_axm.py` unpack on load** — detect `packed: true` in
-   `quant_map`, unpack W4+D8 to FP16 before handing weights to
-   `AutoModelForCausalLM.from_pretrained()`.
+4. ✅ **`load_from_axm.py` unpack on load** — detects `packed: true` (or
+   the on-disk `srd_index.json`) and calls `load_real_packed()`:
+   meta-init from config → load dense → unpack each layer to FP16 → assign.
 
-5. **Orin Nano benchmark** — run `load_from_axm.py` on the Orin Nano with
-   the real-packed TinyLlama archive. Target metrics: load time, TTFT, tok/s,
+5. ⬜ **Orin Nano benchmark** — run `axm run` on the Orin Nano with the
+   real-packed TinyLlama archive. Target metrics: load time, TTFT, tok/s,
    peak RSS. Compare FP16 vs SRD 7 bpw real-packed side-by-side.
 
-6. **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
+6. ⬜ **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
    validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
    so Ampere sparse Tensor Cores can accelerate the residual matmul directly.
 

@@ -48,16 +48,23 @@ from research.quant.quantize_model import (                     # noqa: E402
 
 
 def _srd_quant_map(top_k_pct: float, group_size: int,
-                   bpw: float) -> dict:
-    return {
+                   bpw: float, real_pack: bool = False) -> dict:
+    qmap = {
         "scheme":      "srd",
         "group_size":  group_size,
         "top_k_pct":   top_k_pct,
         "bpw":         round(bpw, 4),
         "alpha":       1.0,
-        "note":        "fake-quant — weights stored as FP16 on the SRD grid; "
-                       "real storage savings require packed W4+D8 kernel (Phase E3)",
+        "packed":      real_pack,
     }
+    qmap["note"] = (
+        "E3 real-packed — W4 nibble-packed + sparse-D8 bitmask; weights are "
+        "genuinely smaller than FP16 on disk"
+        if real_pack else
+        "fake-quant — weights stored as FP16 on the SRD grid; real storage "
+        "savings require packed W4+D8 kernel (use --real-pack)"
+    )
+    return qmap
 
 
 def _fp16_quant_map() -> dict:
@@ -73,6 +80,7 @@ def pack_model(
     model_revision: Optional[str],
     hardware_map: str,
     compresslevel: int = 1,
+    real_pack: bool = False,
 ) -> dict:
     """Quantize (if requested) and pack to .axm. Returns a stats dict."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -90,7 +98,12 @@ def pack_model(
     load_s = time.monotonic() - t0
     print(f"[pack] model loaded in {load_s:.1f}s")
 
+    if real_pack and srd_top_k_pct is None:
+        raise ValueError("--real-pack requires --srd-top-k-pct (FP16 has "
+                         "nothing to pack)")
+
     bpw = 16.0
+    packed = None
     if srd_top_k_pct is not None:
         print(f"[pack] SRD quantizing (top_k_pct={srd_top_k_pct}, g={group_size})...")
         t1 = time.monotonic()
@@ -108,16 +121,28 @@ def pack_model(
         quant_s = 0.0
 
     quant_map = (
-        _srd_quant_map(srd_top_k_pct, group_size, bpw)
+        _srd_quant_map(srd_top_k_pct, group_size, bpw, real_pack=real_pack)
         if srd_top_k_pct is not None else _fp16_quant_map()
     )
 
     with tempfile.TemporaryDirectory(prefix="axm_weights_") as tmp:
         weights_dir = Path(tmp)
-        print(f"[pack] saving checkpoint to temp dir...")
         t2 = time.monotonic()
-        model.save_pretrained(weights_dir)
-        tokenizer.save_pretrained(weights_dir)
+        if real_pack:
+            print(f"[pack] real-packing weights (W4 nibble + sparse-D8)...")
+            from research.quant.srd_realpack import save_real_packed
+            rp = save_real_packed(
+                model, packed, weights_dir,
+                alpha=1.0, group_size=group_size, top_k_pct=srd_top_k_pct,
+                config=model.config, tokenizer=tokenizer,
+            )
+            print(f"[pack] real-packed: dense={rp['dense_mb']:.0f} MB + "
+                  f"packed={rp['packed_mb']:.0f} MB "
+                  f"({rp['n_quantized_layers']} layers)")
+        else:
+            print(f"[pack] saving checkpoint to temp dir...")
+            model.save_pretrained(weights_dir)
+            tokenizer.save_pretrained(weights_dir)
         save_s = time.monotonic() - t2
 
         # Build the AXM spec
@@ -173,8 +198,15 @@ def pack_model(
             "theoretical_mb":   round(theoretical_mb, 1),
             "size_ratio":       round(archive_mb / theoretical_mb, 2)
                                 if theoretical_mb > 0 else None,
-            "note": "archive_mb = actual .axm on disk (FP16 fake-quant); "
-                    "theoretical_mb = what real packed W4+D8 kernel would produce",
+            "real_pack":        real_pack,
+            "note": (
+                "archive_mb = actual E3 real-packed .axm on disk; "
+                "theoretical_mb = ideal bit-cost (archive is slightly larger "
+                "due to FP16 dense params + zip overhead)"
+                if real_pack else
+                "archive_mb = actual .axm on disk (FP16 fake-quant); "
+                "theoretical_mb = what real packed W4+D8 kernel would produce"
+            ),
         },
     }
 
@@ -182,8 +214,12 @@ def pack_model(
     print(f"  output         : {output_path}")
     print(f"  fingerprint    : {container.fingerprint()}")
     print(f"  bpw theoretical: {bpw:.1f}")
-    print(f"  archive size   : {archive_mb:.0f} MB  "
-          f"(theoretical {theoretical_mb:.0f} MB at real packing)")
+    if real_pack:
+        print(f"  archive size   : {archive_mb:.0f} MB  "
+              f"(REAL-PACKED — genuine on-disk savings)")
+    else:
+        print(f"  archive size   : {archive_mb:.0f} MB  "
+              f"(theoretical {theoretical_mb:.0f} MB at real packing)")
     print(f"  total time     : {stats['timing']['total_s']:.1f}s")
     return stats
 
@@ -202,6 +238,10 @@ def _parse_args() -> argparse.Namespace:
                    choices=range(0, 10), metavar="[0-9]",
                    help="zip DEFLATE level. 1 (default) = fast; 0 = store "
                         "(no compression, fastest); 6-9 = smaller, slower.")
+    p.add_argument("--real-pack", action="store_true",
+                   help="E3: store W4-nibble + sparse-D8 packed weights "
+                        "(genuinely smaller on disk) instead of FP16 fake-quant. "
+                        "Requires --srd-top-k-pct.")
     p.add_argument("--output", type=str, required=True,
                    help="Output .axm archive path")
     p.add_argument("--stats-json", type=Path, default=None,
@@ -219,6 +259,7 @@ def main() -> int:
         model_revision=args.revision,
         hardware_map=args.hardware_map,
         compresslevel=args.compresslevel,
+        real_pack=args.real_pack,
     )
     if args.stats_json:
         args.stats_json.parent.mkdir(parents=True, exist_ok=True)
