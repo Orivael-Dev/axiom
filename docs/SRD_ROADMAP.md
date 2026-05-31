@@ -76,6 +76,13 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
    real-packed TinyLlama archive. Target metrics: load time, TTFT, tok/s,
    peak RSS. Compare FP16 vs SRD 7 bpw real-packed side-by-side.
 
+   *E3 real-pack validated on Colab T4 (2026-05-31):* 942 MB archive
+   (vs 1535 MB FP16 fake-quant, **39% smaller**), `packed=true`, proofs
+   verified, output identical to FP16, warm TTFT 50 ms, 34.6 tok/s. The
+   942 MB matches the ~918 MB estimate (gap = FP16 dense params + zip).
+   Remaining: re-run the same `axm run` on the actual Orin Nano hardware
+   and capture peak RSS to confirm the 8 GB fit with KV-cache headroom.
+
 6. ⬜ **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
    validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
    so Ampere sparse Tensor Cores can accelerate the residual matmul directly.

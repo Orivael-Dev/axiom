@@ -576,21 +576,24 @@ axm info   tinyllama_srd_7bpw.axm          # quant_map, bpw, real-packed size
 axm run    tinyllama_srd_7bpw.axm --prompt "Write a Python function..."
 ```
 
-**Early results (TinyLlama-1.1B, Colab T4):**
+**Results (TinyLlama-1.1B, Colab T4):**
 
-| Variant | bpw | Quality (vs FP16) | Archive (real-packed, est.) |
-|---------|-----|-------------------|-----------------------------|
-| FP16 baseline | 16.0 | reference | 2098 MB |
+| Variant | bpw | Quality (vs FP16) | Archive |
+|---------|-----|-------------------|---------|
+| FP16 baseline | 16.0 | reference | 1535 MB (fake-quant .axm) |
 | SRD α=0 | 4.5 | beats Q4_K_M by 1.51 PPL | — |
-| **SRD 7 bpw** (top_k=0.25) | 7.0 | **coherent, on par with FP16** | **918 MB** |
+| **SRD 7 bpw** fake-quant | 7.0 | **coherent, on par with FP16** | 1535 MB (FP16 on disk) |
+| **SRD 7 bpw** E3 real-packed | 7.0 | **identical output, verified** | **942 MB** ✅ |
 | SRD dense | 13.0 | PPL 7.095 vs Q6_K 7.82 | — |
 
 A/B generation (`research/quant/ab_compare.py`) confirms SRD at 7 bpw
-produces output indistinguishable in quality from FP16 on this model. The
-remaining work is **Phase E3 real bit-packing** — turning the proven
-quality into the 918 MB on-disk file (W4 nibble-packing + sparse-D8
-bitmask, no CUDA kernel required) so it fits an 8 GB **Jetson Orin Nano**
-with KV-cache headroom.
+produces output indistinguishable in quality from FP16 on this model.
+**Phase E3 real bit-packing is now working end-to-end** (validated via
+`research/quant/colab_realpack_validate.py`): the proven-quality model is
+stored as W4 nibble-packed + sparse-D8 bitmask weights (no CUDA kernel
+required), giving a **942 MB signed archive — 39% smaller than FP16** —
+that reconstructs to identical output and fits an 8 GB **Jetson Orin Nano**
+with KV-cache headroom. Pack it with `axm pack --real-pack`.
 
 **Positioning vs NVFP4:** NVFP4 (Blackwell/DGX Spark) delivers real 4-bit
 storage but is hardware-locked. SRD targets *any* CUDA device (T4, A10G,
