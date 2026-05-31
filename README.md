@@ -546,6 +546,68 @@ Also available via `POST /axm/{inspect,verify,route}` and the MCP tool `axiom_ax
 
 ---
 
+## SRD Quantization × .AXM — Signed Quantized Models (ORVL-024)
+
+> **Status: testing in progress.** The quality story is proven; the
+> real-packing (Phase E3) and on-device (Jetson Orin Nano) benchmarks are
+> still running. Numbers below are early and will move. ORVL-024-PROV.
+
+**Stochastic Residual Dithering (SRD)** is Axiom's weight-quantization
+scheme: a 4-bit base + sparse 8-bit residue per block, with a runtime
+mixing knob α and a `top_k_pct` sparsity control that fills the 5–12 bpw
+"dead zone" K-quants leave open. **The combined invention is SRD weights
+carried inside a signed `.AXM` container** — quantization and provenance
+in one shippable artifact:
+
+- the `quant_map` header is a structured dict
+  (`{"scheme":"srd","group_size":64,"top_k_pct":0.25,"bpw":7.0,"alpha":1.0}`)
+  describing exactly how the weights were quantized;
+- the weights live under `weights/` with a per-file `sha256` manifest in
+  the proof ledger, so `axm verify` proves the quantized weights are
+  untampered before they ever load.
+
+```bash
+# pack a model into a signed, SRD-quantized .axm
+axm pack --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+         --srd-top-k-pct 0.25 --output tinyllama_srd_7bpw.axm
+
+axm verify tinyllama_srd_7bpw.axm          # signatures + weight manifest
+axm info   tinyllama_srd_7bpw.axm          # quant_map, bpw, real-packed size
+axm run    tinyllama_srd_7bpw.axm --prompt "Write a Python function..."
+```
+
+**Early results (TinyLlama-1.1B, Colab T4):**
+
+| Variant | bpw | Quality (vs FP16) | Archive (real-packed, est.) |
+|---------|-----|-------------------|-----------------------------|
+| FP16 baseline | 16.0 | reference | 2098 MB |
+| SRD α=0 | 4.5 | beats Q4_K_M by 1.51 PPL | — |
+| **SRD 7 bpw** (top_k=0.25) | 7.0 | **coherent, on par with FP16** | **918 MB** |
+| SRD dense | 13.0 | PPL 7.095 vs Q6_K 7.82 | — |
+
+A/B generation (`research/quant/ab_compare.py`) confirms SRD at 7 bpw
+produces output indistinguishable in quality from FP16 on this model. The
+remaining work is **Phase E3 real bit-packing** — turning the proven
+quality into the 918 MB on-disk file (W4 nibble-packing + sparse-D8
+bitmask, no CUDA kernel required) so it fits an 8 GB **Jetson Orin Nano**
+with KV-cache headroom.
+
+**Positioning vs NVFP4:** NVFP4 (Blackwell/DGX Spark) delivers real 4-bit
+storage but is hardware-locked. SRD targets *any* CUDA device (T4, A10G,
+Orin) and ships as an open, signed `.AXM` format with a residual tier for
+quality.
+
+**Cross-patent wiring:**
+- ORVL-023 AXM — SRD weights are stored as an AXM `weights/` sub-module;
+  the `quant_map` header and proof ledger are reused verbatim.
+- ORVL-018 ANF — `axm verify` drives the governance coprocessor per proof,
+  so quantized-weight integrity is checked on the same path as governance.
+
+See `docs/SRD_RESULTS.md` (quality) and `docs/SRD_ROADMAP.md` (Phase E3 +
+Orin Nano plan) for the full write-up.
+
+---
+
 ## Constitutional Physical Intelligence (CPI v2.0)
 
 Constitutional governance applied to physical AI — humanoid robotics, prosthetics, autonomous vehicles, game-AI characters. The same trajectory geometry that detects manipulation in language detects instability in motion. ORVL-022.
@@ -692,6 +754,7 @@ python axiom_retrospect.py \
 | ORVL-021 | Constitutional Zero-Day Discovery | ✓ Implemented |
 | ORVL-022 | Constitutional Physical Intelligence | ◐ Emulated v2.0 (`axiom_cpi.py` + `axiom_developmental_curriculum.py` + `axiom_motion_examiner.py` — four-layer developmental: toddler reflex / dad supervisor / mom curriculum / teacher examiner) |
 | ORVL-023 | Axiom eXchange Model (.AXM) | ◐ Emulated (`axiom_axm.py` + `axiom_training_to_axm.py` — modular execution-graph container, hybrid trust model, signed corpus compiler) |
+| ORVL-024 | SRD Quantization × .AXM (Signed Quantized Models) | ⧗ Testing in progress (`axiom_quant.py` + `research/quant/` + `axm_cli.py` — SRD weights in a signed .AXM container; quality proven on TinyLlama, Phase E3 real-packing + Jetson Orin Nano benchmark underway) |
 
 ---
 
