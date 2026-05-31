@@ -247,6 +247,157 @@ def srd_bits_per_weight(pack: SRDPackedTensor) -> float:
     return w4_bpw + d8_bpw + s4_bpw + s8_bpw
 
 
+# ---------------------------------------------------------------------------
+# Phase E3 — real bit-packing (no CUDA kernel required)
+#
+# srd_pack_w4 / srd_unpack_w4  — pack two int4 values into one uint8 byte.
+#   W4 is int8 in [-8, 7]; we add 8 to shift into [0, 15] (unsigned nibble).
+#   Low nibble  = element at even column index.
+#   High nibble = element at odd  column index.
+#   Reduces W4 storage from 8 bits/weight to 4 bits/weight.
+#
+# srd_pack_d8_sparse / srd_unpack_d8_sparse — COO-lite sparse format for D8.
+#   At top_k_pct=0.25 only 25% of D8 bytes are non-zero.  Instead of storing
+#   all N bytes we store:
+#     - a 1-bit-per-element bitmask packed into ceil(N/8) uint8 bytes
+#     - the non-zero int8 values tightly packed (no padding)
+#   Memory per weight: 0.25 * 8 bits (values) + 1 bit (mask) = 3 bits
+#   vs 8 bits for dense D8 → 2.67× reduction at top_k_pct=0.25.
+# ---------------------------------------------------------------------------
+
+def srd_pack_w4(W4: torch.Tensor) -> torch.Tensor:
+    """Pack int8 W4 (values in [-8, 7]) into uint8 nibble pairs.
+
+    Input:  (out, in_features) int8 — in_features must be even.
+    Output: (out, in_features // 2) uint8 — each byte holds two nibbles.
+
+    Bit layout per byte (b):
+        b[3:0] = W4[:, 0::2] + 8    (even columns, low nibble)
+        b[7:4] = W4[:, 1::2] + 8    (odd  columns, high nibble)
+    """
+    if W4.shape[-1] % 2 != 0:
+        raise ValueError(
+            f"srd_pack_w4: last dim must be even, got {W4.shape[-1]}"
+        )
+    shifted = W4.to(torch.int32) + 8          # [0, 15]
+    lo = (shifted[:, 0::2] & 0xF).to(torch.uint8)
+    hi = (shifted[:, 1::2] & 0xF).to(torch.uint8)
+    return lo | (hi << 4)
+
+
+def srd_unpack_w4(packed: torch.Tensor, original_cols: int) -> torch.Tensor:
+    """Unpack uint8 nibble pairs back to int8 W4 in [-8, 7].
+
+    Input:  (out, in_features // 2) uint8
+    Output: (out, original_cols)    int8
+    """
+    lo = (packed & 0x0F).to(torch.int8) - 8
+    hi = ((packed >> 4) & 0x0F).to(torch.int8) - 8
+    out = torch.empty(packed.shape[0], original_cols,
+                      dtype=torch.int8, device=packed.device)
+    out[:, 0::2] = lo
+    out[:, 1::2] = hi
+    return out
+
+
+def srd_pack_d8_sparse(
+    D8: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Pack sparse int8 D8 into (bitmask, values) pair.
+
+    Input:  D8 (out, in_features) int8  — arbitrary sparsity pattern.
+    Output:
+        bitmask: (ceil(N/8),) uint8  — 1 bit per element, 1 = non-zero.
+        values:  (nnz,)       int8  — non-zero values in row-major order.
+
+    Flat layout (row-major, then packed into bytes, LSB first within each
+    byte) makes the unpack trivially vectorizable on CPU and ARM NEON.
+    """
+    flat = D8.reshape(-1)                       # (N,)
+    mask_bool = flat != 0                       # (N,) bool
+
+    # Pack bitmask: 8 bools → 1 uint8, LSB = first element in group of 8
+    N = flat.numel()
+    pad = (8 - N % 8) % 8
+    if pad:
+        mask_bool = torch.cat(
+            [mask_bool, mask_bool.new_zeros(pad)]
+        )
+    bitmask = mask_bool.view(-1, 8).to(torch.uint8)
+    weights = torch.tensor([1, 2, 4, 8, 16, 32, 64, 128],
+                           dtype=torch.uint8, device=D8.device)
+    bitmask = (bitmask * weights).sum(dim=1).to(torch.uint8)  # (ceil(N/8),)
+
+    values = flat[flat != 0]                    # (nnz,) int8
+    return bitmask, values
+
+
+def srd_unpack_d8_sparse(
+    bitmask: torch.Tensor,
+    values: torch.Tensor,
+    original_shape: Tuple[int, ...],
+) -> torch.Tensor:
+    """Reconstruct D8 from (bitmask, values) produced by srd_pack_d8_sparse.
+
+    Output: original_shape int8, zeros at masked positions.
+    """
+    N = 1
+    for s in original_shape:
+        N *= s
+
+    # Unpack bitmask bytes → 1 bit per element
+    weights = torch.tensor([1, 2, 4, 8, 16, 32, 64, 128],
+                           dtype=torch.uint8, device=bitmask.device)
+    bits = ((bitmask.unsqueeze(1) & weights) > 0)  # (ceil(N/8), 8)
+    mask_flat = bits.reshape(-1)[:N]                # (N,) bool
+
+    flat = torch.zeros(N, dtype=torch.int8, device=bitmask.device)
+    flat[mask_flat] = values
+    return flat.reshape(original_shape)
+
+
+def srd_packed_bytes(pack: SRDPackedTensor) -> dict:
+    """Compute the real on-disk byte count for each component if E3-packed.
+
+    Returns a dict with per-component byte counts and a total, plus the
+    achieved bpw (total_bits / n_weights). This is what pack_to_axm.py
+    reports as 'real_packed_mb' when --real-pack is used.
+
+    All counts are theoretical minima (no alignment padding, no file headers).
+    """
+    out_f, in_f = pack.W4.shape
+    G            = pack.group_size
+    n_groups     = in_f // G
+    N            = out_f * in_f
+
+    # W4: 4 bits each → ceil(N/2) bytes
+    w4_bytes = (N + 1) // 2
+
+    # D8: bitmask (ceil(N/8)) + nnz * 1 byte
+    nnz = int((pack.D8 != 0).sum().item())
+    mask_bytes = (N + 7) // 8
+    d8_bytes   = mask_bytes + nnz
+
+    # Scales: float32 each
+    n_scale_entries = out_f * n_groups
+    s4_bytes = n_scale_entries * 4
+    s8_bytes = n_scale_entries * 4
+
+    total_bytes = w4_bytes + d8_bytes + s4_bytes + s8_bytes
+    real_bpw    = (total_bytes * 8) / N
+
+    return {
+        "w4_bytes":    w4_bytes,
+        "d8_bytes":    d8_bytes,
+        "s4_bytes":    s4_bytes,
+        "s8_bytes":    s8_bytes,
+        "total_bytes": total_bytes,
+        "real_bpw":    round(real_bpw, 3),
+        "n_weights":   N,
+        "nnz_d8":      nnz,
+    }
+
+
 # --- Convenience helpers used by tests + the research harness ----------
 
 def srd_quantize_per_tensor(W: torch.Tensor) -> SRDPackedTensor:

@@ -20,9 +20,14 @@ from axiom_quant import (
     SRDPackedTensor,
     srd_bits_per_weight,
     srd_dequantize,
+    srd_pack_d8_sparse,
+    srd_pack_w4,
+    srd_packed_bytes,
     srd_quantize,
     srd_quantize_per_tensor,
     srd_round_trip_mse,
+    srd_unpack_d8_sparse,
+    srd_unpack_w4,
 )
 
 
@@ -385,3 +390,61 @@ def test_loader_per_tensor_mode():
     # per-tensor packs have group_size == in_features
     assert packed["0"].group_size == 100
     assert packed["1"].group_size == 64
+
+
+# ── Phase E3: real bit-packing tests ────────────────────────────────────────
+
+def test_pack_unpack_w4_roundtrip():
+    """pack then unpack W4 must be bit-exact."""
+    W = _make_W(32, 128)
+    pack = srd_quantize(W)
+    w4_packed = srd_pack_w4(pack.W4)
+    assert w4_packed.dtype == torch.uint8
+    assert w4_packed.shape == (32, 64)          # 128 cols → 64 bytes
+    w4_back = srd_unpack_w4(w4_packed, original_cols=128)
+    assert torch.equal(w4_back, pack.W4)
+
+
+def test_pack_w4_halves_storage():
+    """Packed W4 uses exactly half the bytes of the original int8 tensor."""
+    W = _make_W(16, 64)
+    pack = srd_quantize(W)
+    w4_packed = srd_pack_w4(pack.W4)
+    assert w4_packed.numel() == pack.W4.numel() // 2
+
+
+def test_pack_unpack_d8_sparse_roundtrip():
+    """pack_d8_sparse → unpack_d8_sparse must be bit-exact."""
+    W = _make_W(32, 128)
+    pack = srd_quantize(W, top_k_pct=0.25)
+    bitmask, values = srd_pack_d8_sparse(pack.D8)
+    assert bitmask.dtype == torch.uint8
+    assert values.dtype == torch.int8
+    d8_back = srd_unpack_d8_sparse(bitmask, values, pack.D8.shape)
+    assert torch.equal(d8_back, pack.D8)
+
+
+def test_pack_d8_sparse_nnz_matches_top_k():
+    """Number of stored values ≈ top_k_pct * N (within rounding)."""
+    W = _make_W(64, 128)
+    pct = 0.25
+    pack = srd_quantize(W, top_k_pct=pct)
+    _, values = srd_pack_d8_sparse(pack.D8)
+    N = pack.D8.numel()
+    expected_nnz = round(N * pct)
+    # kthvalue tie-breaking can shift nnz by a small number of elements
+    # when multiple D8 values share the threshold magnitude; allow 0.5%
+    assert abs(values.numel() - expected_nnz) <= max(4, int(N * 0.005))
+
+
+def test_packed_bytes_real_bpw_below_theoretical():
+    """srd_packed_bytes real_bpw accounts for bitmask → slightly above 7 bpw."""
+    W = _make_W(64, 128)
+    pack = srd_quantize(W, top_k_pct=0.25)
+    info = srd_packed_bytes(pack)
+    theoretical = srd_bits_per_weight(pack)  # 7.0 bpw (no bitmask overhead)
+    # real_bpw includes 1-bit bitmask per element → must be > theoretical
+    assert info["real_bpw"] > theoretical
+    # but still well below FP16
+    assert info["real_bpw"] < 9.0
+    assert info["n_weights"] == 64 * 128

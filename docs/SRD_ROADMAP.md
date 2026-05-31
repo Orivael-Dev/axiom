@@ -32,10 +32,65 @@ from "prototype" to "buildable."
 
 ---
 
-## Phase E3 candidates (after E2)
+## Phase E3 — Real packing (active)
 
-Once E2 produces a validated Pareto improvement, these are natural next steps
-within the LLM quality track:
+### Motivation
+
+**NVFP4 on DGX Spark (May 2026):** NVIDIA released NVFP4 quantization for
+Blackwell-gen hardware (B100/B200/DGX Spark). Community models (e.g.
+Step-3.7-Flash NVFP4) already show real 4× memory savings, but are
+**hardware-locked to Blackwell** — requires 2× DGX Sparks for large models
+and is unavailable on A10G, T4, or edge devices.
+
+**Jetson Orin Nano target:** The Orin Nano (8 GB unified memory, Ampere GPU,
+1024 CUDA cores) is an ideal SRD deployment target. TinyLlama at SRD 7 bpw
+real-packed (~918 MB) fits with headroom for KV cache. FP16 (~2.2 GB) also
+fits, but leaves no headroom for context. Quantization matters on this device.
+
+**E2 quality proof complete:** The Colab A/B run (`ab_compare.py`) confirmed
+that TinyLlama-1.1B at SRD 7 bpw produces coherent output matching FP16
+quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
+(1.5 GB actual vs 918 MB theoretical at 7 bpw). Phase E3 closes that gap.
+
+### E3 tasks
+
+1. **W4 bit-packing** — pack 2 int4 values into 1 uint8 byte in
+   `axiom_quant.py`. Add `srd_pack_w4()` / `srd_unpack_w4()` and a
+   `SRDPackedTensorPacked` variant. Halves W4 storage with no quality change.
+
+2. **Sparse D8 storage** — store only non-zero D8 values + a uint8 bitmask
+   (1 bit per element, packed). At `top_k_pct=0.25`, D8 storage drops from
+   1 byte/element to ~0.375 bytes/element (0.25 value + 0.125 mask).
+
+3. **`pack_to_axm.py` real-pack mode** — add `--real-pack` flag. When set,
+   calls the new pack/unpack functions before `save_pretrained()`, producing
+   an archive that is genuinely `theoretical_mb` in size.
+
+4. **`load_from_axm.py` unpack on load** — detect `packed: true` in
+   `quant_map`, unpack W4+D8 to FP16 before handing weights to
+   `AutoModelForCausalLM.from_pretrained()`.
+
+5. **Orin Nano benchmark** — run `load_from_axm.py` on the Orin Nano with
+   the real-packed TinyLlama archive. Target metrics: load time, TTFT, tok/s,
+   peak RSS. Compare FP16 vs SRD 7 bpw real-packed side-by-side.
+
+6. **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
+   validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
+   so Ampere sparse Tensor Cores can accelerate the residual matmul directly.
+
+### E3 vs NVFP4 positioning
+
+| | NVFP4 | SRD E3 |
+|---|---|---|
+| Hardware | Blackwell only | Any CUDA (Ampere, T4, Orin) |
+| Format | FP4 base, no residual | W4 + sparse D8 residual |
+| Quality | ~4 bpw, PPL TBD | 7 bpw, quality proven |
+| Edge (Orin Nano) | ✗ | ✓ |
+| Open format (.axm) | ✗ | ✓ |
+
+---
+
+## Other deferred candidates (post-E3)
 
 1. **Mixed-bitrate base** — use the layer sensitivity ranking from
    `bench_layer_sensitivity.py` to assign 3-bit base to low-sensitivity layers
