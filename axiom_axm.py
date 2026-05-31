@@ -299,6 +299,11 @@ class AXMContainer:
         return tuple(sorted(self._loaded.keys()))
     @property
     def verified(self) -> bool:           return self._verified
+    @property
+    def weights_path(self) -> Optional[Path]:
+        """Path to the weights/ directory inside this container, or None."""
+        p = self._path / "weights"
+        return p if p.is_dir() else None
 
     def fingerprint(self) -> str:
         """First 8 hex of HMAC(container_key, header signature). Safe
@@ -468,7 +473,8 @@ class AXMContainer:
     # ── factory: pack from a Python spec ──────────────────────────────
     @classmethod
     def pack(cls, spec: Mapping[str, Any], output_path: str,
-             *, archive: bool = False) -> "AXMContainer":
+             *, archive: bool = False,
+             weights_source_dir: Optional[Path] = None) -> "AXMContainer":
         """Build a fresh container under `output_path` from a dict spec.
 
         ``archive=False`` (default, backward-compatible) writes the
@@ -476,6 +482,13 @@ class AXMContainer:
         tempdir, zips it to ``output_path``, then loads the resulting
         archive — yielding a single-file shippable artifact instead of
         a directory tree.
+
+        ``weights_source_dir``: if supplied, every file under that
+        directory is copied into ``weights/`` inside the container and
+        a ``weights/manifest.json`` (sha256 per file) is written and
+        included in the proof ledger. This is the SRD weight-storage
+        extension — the ``quant_map`` dict in the spec describes the
+        quantization scheme; the actual tensors live in ``weights/``.
 
         Spec shape (all keys optional except `core_logic`):
             {
@@ -504,7 +517,8 @@ class AXMContainer:
             # archive origin and registers the weakref-based cleanup.
             work = Path(tempfile.mkdtemp(prefix="axm_pack_archive_"))
             try:
-                cls.pack(spec, str(work / "exploded.axm"), archive=False)
+                cls.pack(spec, str(work / "exploded.axm"), archive=False,
+                         weights_source_dir=weights_source_dir)
                 # Zip the exploded layout into the requested output path.
                 out_file = Path(output_path)
                 if out_file.exists() and out_file.is_dir():
@@ -617,6 +631,29 @@ class AXMContainer:
                 encoding="utf-8",
             )
 
+        # Weights — copy model checkpoint files and write manifest.json.
+        if weights_source_dir is not None:
+            weights_dir = root / "weights"
+            weights_dir.mkdir(exist_ok=True)
+            src = Path(weights_source_dir)
+            if not src.is_dir():
+                raise AXMError(f"weights_source_dir is not a directory: {src}")
+            for src_file in sorted(src.rglob("*")):
+                if not src_file.is_file():
+                    continue
+                dest = weights_dir / src_file.relative_to(src)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_file, dest)
+            # Manifest: relative_path -> sha256, sorted for determinism.
+            manifest: Dict[str, str] = {}
+            for wf in sorted(weights_dir.rglob("*")):
+                if wf.is_file() and wf.name != "manifest.json":
+                    manifest[str(wf.relative_to(weights_dir))] = _sha256_file(wf)
+            (weights_dir / "manifest.json").write_text(
+                json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=True),
+                encoding="utf-8",
+            )
+
         # Header — must come AFTER delegates so the delegate list is real.
         header = AXMHeader(
             format_version=spec.get("format_version", FORMAT_VERSION),
@@ -647,6 +684,8 @@ class AXMContainer:
                             root / "delegates" / name / "skill.json"))
         if (root / "vertices.json").exists():
             targets.append(("vertices", root / "vertices.json"))
+        if (root / "weights" / "manifest.json").exists():
+            targets.append(("weights_manifest", root / "weights" / "manifest.json"))
         for tname, tpath in targets:
             file_sha = _sha256_file(tpath)
             payload = {"subject": tname,
