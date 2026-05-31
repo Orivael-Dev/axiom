@@ -83,6 +83,17 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
    Remaining: re-run the same `axm run` on the actual Orin Nano hardware
    and capture peak RSS to confirm the 8 GB fit with KV-cache headroom.
 
+   > **⚠️ Key-portability requirement:** The `.axm` archive is signed with
+   > `AXIOM_MASTER_KEY`. The Orin Nano must use the **same key** that was
+   > set when packing — otherwise `axm run` fails proof verification.
+   > The Colab validation cell generates an ephemeral random key
+   > (`secrets.token_hex(32)`) that is lost when the session ends. Before
+   > running the Orin Nano benchmark, either:
+   > - Set a persistent `AXIOM_MASTER_KEY` (store in `.env` or your shell
+   >   profile) **before** packing in Colab, then `export` that same key on
+   >   the Orin Nano, or
+   > - Re-pack the model directly on the Orin Nano (avoids key transport).
+
 6. ⬜ **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
    validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
    so Ampere sparse Tensor Cores can accelerate the residual matmul directly.
