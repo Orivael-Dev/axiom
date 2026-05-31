@@ -146,6 +146,15 @@ def load_and_measure(
     avg_ttft   = sum(r["ttft_ms"]  for r in run_results) / len(run_results)
     avg_tps    = sum(r["tok_per_s"] for r in run_results) / len(run_results)
 
+    # ── Peak memory (high-water mark over the whole process: load + gen) ──
+    import resource
+    # ru_maxrss is KiB on Linux, bytes on macOS — normalize to MB.
+    ru = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    peak_rss_mb = round(ru / 1024 / (1024 if sys.platform == "darwin" else 1), 1)
+    cuda_peak_mb = None
+    if torch.cuda.is_available():
+        cuda_peak_mb = round(torch.cuda.max_memory_allocated() / (1024 ** 2), 1)
+
     stats = {
         "container":         container_path,
         "fingerprint":       container.fingerprint(),
@@ -159,6 +168,10 @@ def load_and_measure(
             "avg_ttft_ms":       round(avg_ttft, 1),
             "avg_tok_per_s":     round(avg_tps, 1),
         },
+        "memory": {
+            "peak_rss_mb":   peak_rss_mb,
+            "cuda_peak_mb":  cuda_peak_mb,
+        },
         "runs":              run_results,
         "prompt":            prompt,
         "generated_text":    text,
@@ -170,6 +183,8 @@ def load_and_measure(
     print(f"  model load     : {model_load_s:.1f}s")
     print(f"  avg TTFT       : {avg_ttft:.0f} ms")
     print(f"  avg throughput : {avg_tps:.1f} tok/s")
+    print(f"  peak RSS       : {peak_rss_mb:.0f} MB"
+          + (f"  | CUDA peak: {cuda_peak_mb:.0f} MB" if cuda_peak_mb else ""))
     print(f"\n── generated ──────────────────────────────────────────────")
     print(text)
     print("────────────────────────────────────────────────────────────")

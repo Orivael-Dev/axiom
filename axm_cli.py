@@ -183,7 +183,8 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument("container")
     pi.set_defaults(func=cmd_info)
 
-    pr = sub.add_parser("run", help="load weights, verify, and generate")
+    pr = sub.add_parser("run",
+                        help="load weights, verify, generate (prints peak RSS)")
     pr.add_argument("container")
     pr.add_argument("--prompt", default="Once upon a time,")
     pr.add_argument("--tokens", type=int, default=80)
