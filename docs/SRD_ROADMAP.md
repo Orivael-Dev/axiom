@@ -29,6 +29,7 @@ from "prototype" to "buildable."
 | **Edge audio DSP** — neural amp modeler, mastering plugin | Edge/audio agent; latency ≤2 ms budget; SNR metric | Independent domain; no shared eval infrastructure with LLM track |
 | **Multimodal / vision encoder SRD** | AXM format extension (add per-modality `quant_map` entry) | After LLM track is stable; encoder sensitivity profiles differ significantly |
 | **CXL memory pooling** | Defer until a CXL-aware backend ships in vLLM / tgi (see Theme 4 in CLAUDE.md) | No action until upstream hardware exists |
+| **NVIDIA Vera CPU** *(June 2026)* — 88-core "Olympus" server CPU, 1.2 TB/s BW, designed for agent orchestration (tool calls, sandboxing, code execution, RL). **Not a laptop/edge chip — not a quantization target.** Vera is the control plane around the model, not the model itself. The Axiom surface it touches is **Theme 1** (signed MCP envelope for Vera-hosted tool calls) and **Theme 3** (continuous eval + routing on Vera-class infra where latency budgets are measured in µs not ms). SRD / Theme 2 is irrelevant here — Vera operators run full FP8/FP4 on Blackwell GPUs, they have no VRAM budget constraint to solve. | Axiom MCP v2 envelope + `RouterPolicy.score()` (Themes 1 & 3) | After E3 hardware benchmarks; Vera clients won't sign up for 7 bpw edge quant |
 
 ---
 
