@@ -126,6 +126,29 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
    validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
    so Ampere sparse Tensor Cores can accelerate the residual matmul directly.
 
+6. ⬜ **Laptop (Blackwell / Ada) benchmark** — run the same
+   `axm extract` → GGUF → `bench_llamacpp_infer.py` pipeline on an
+   RTX 50-series (Blackwell SM 10.0) or RTX 40-series (Ada SM 8.9)
+   laptop GPU. Discrete VRAM means no NvMap constraint — both the
+   PyTorch `axm run` path and the llama.cpp path should work out of
+   the box. Expected outcome: TTFT ≤100 ms, ≥30 tok/s on Q4_K_M
+   TinyLlama. NVFP4 comparison on Blackwell laptops is also in scope
+   here (see table below).
+
+   **Setup differences from Orin Nano:**
+   - `pip install torch` from PyPI works (no Jetson index needed)
+   - Windows: use WSL2 (all shell tooling runs identically)
+   - CUDA arch for llama.cpp build:
+     ```bash
+     # detect SM version first
+     python3 -c "import torch; p=torch.cuda.get_device_properties(0); \
+       print(f'SM {p.major}.{p.minor}')"
+     # then pass to cmake — e.g. SM 10.0 → 100, SM 8.9 → 89
+     cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<N>
+     ```
+   - No per-layer device-streaming workaround needed; `load_real_packed`
+     works with default `device="cuda"` on discrete GPUs.
+
 ### E3 vs NVFP4 positioning
 
 | | NVFP4 | SRD E3 |
@@ -134,6 +157,8 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
 | Format | FP4 base, no residual | W4 + sparse D8 residual |
 | Quality | ~4 bpw, PPL TBD | 7 bpw, quality proven |
 | Edge (Orin Nano) | ✗ (Blackwell-locked) | ✓ runs + fits (CPU fp32 today; GPU fp16 path WIP — see task 5) |
+| Laptop (RTX 40 / Ada SM 8.9) | ✗ | ✓ standard CUDA path, no constraints |
+| Laptop (RTX 50 / Blackwell SM 10.0) | ✓ via TensorRT-LLM | ✓ + NVFP4 comparison possible |
 | Open format (.axm) | ✗ | ✓ |
 
 ---

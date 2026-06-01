@@ -182,6 +182,30 @@ def bench_gguf(
     return stats
 
 
+# ── GPU detect helper ────────────────────────────────────────────────────────
+
+def detect_cuda_arch() -> Optional[str]:
+    """Return the CMAKE_CUDA_ARCHITECTURES value for the current GPU.
+
+    Maps SM major.minor to the integer llama.cpp cmake expects:
+      SM 8.7  (Orin/Jetson Ampere)  → "87"
+      SM 8.9  (RTX 40-series Ada)   → "89"
+      SM 9.0  (H100 Hopper)         → "90"
+      SM 10.0 (RTX 50-series / B100 Blackwell) → "100"
+
+    Returns None if torch is unavailable or no CUDA device is present.
+    """
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return None
+        p = torch.cuda.get_device_properties(0)
+        arch = f"{p.major}{p.minor}"
+        return arch
+    except Exception:
+        return None
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def _parse_args() -> argparse.Namespace:
@@ -195,11 +219,25 @@ def _parse_args() -> argparse.Namespace:
                    help="GPU layers to offload (-ngl), default 99 = all")
     p.add_argument("--n-runs",     type=int, default=3)
     p.add_argument("--stats-json", type=Path, default=None)
+    p.add_argument("--detect-arch", action="store_true",
+                   help="print CMAKE_CUDA_ARCHITECTURES for current GPU and exit")
     return p.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
+
+    if args.detect_arch:
+        arch = detect_cuda_arch()
+        if arch:
+            print(f"CMAKE_CUDA_ARCHITECTURES={arch}")
+            print(f"cmake build command:")
+            print(f"  cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES={arch}")
+            print(f"  cmake --build build --config Release -j$(nproc)")
+        else:
+            print("No CUDA GPU detected (torch unavailable or no CUDA device).")
+        return 0
+
     stats = bench_gguf(
         args.gguf,
         llama_cli=args.llama_cli,
