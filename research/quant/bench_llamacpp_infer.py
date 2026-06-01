@@ -188,10 +188,12 @@ def detect_cuda_arch() -> Optional[str]:
     """Return the CMAKE_CUDA_ARCHITECTURES value for the current GPU.
 
     Maps SM major.minor to the integer llama.cpp cmake expects:
-      SM 8.7  (Orin/Jetson Ampere)  → "87"
-      SM 8.9  (RTX 40-series Ada)   → "89"
-      SM 9.0  (H100 Hopper)         → "90"
-      SM 10.0 (RTX 50-series / B100 Blackwell) → "100"
+      SM 7.5  (GTX 16xx / RTX 20-series Turing) → "75"
+      SM 8.6  (RTX 30-series Ampere)             → "86"
+      SM 8.7  (Orin/Jetson Ampere)               → "87"
+      SM 8.9  (RTX 40-series Ada)                → "89"
+      SM 9.0  (H100 Hopper)                      → "90"
+      SM 10.0 (RTX 50-series / B100 Blackwell)   → "100"
 
     Returns None if torch is unavailable or no CUDA device is present.
     """
