@@ -193,15 +193,23 @@ def load_real_packed(
     if is_cuda:
         torch.cuda.empty_cache()
 
-    # Move model skeleton to device before unpacking layers so that
-    # per-layer assignment lands directly on the target device.
-    # Use low_cpu_mem_usage pattern: move module by module to avoid one
-    # giant .to(device) allocation.
-    for name_mod, module in model.named_modules():
-        for pname, param in list(module.named_parameters(recurse=False)):
-            param.data = param.data.to(device)
-        if is_cuda:
-            torch.cuda.empty_cache()
+    # Move the already-materialized skeleton (dense params + buffers) to the
+    # device, one module at a time. CRITICAL: skip meta tensors — the
+    # quantized-layer weights are still meta here and only get materialized
+    # below (directly onto `device`). Calling .to(device) on a meta tensor
+    # raises "Cannot copy out of meta tensor". Buffers (rotary inv_freq,
+    # attention masks) must move too, or CUDA generation hits a device
+    # mismatch — named_parameters() alone is not enough.
+    if device != "cpu":
+        for module in model.modules():
+            for _, param in list(module.named_parameters(recurse=False)):
+                if not param.is_meta:
+                    param.data = param.data.to(device)
+            for bname, buf in list(module.named_buffers(recurse=False)):
+                if buf is not None and not buf.is_meta:
+                    module._buffers[bname] = buf.to(device)
+            if is_cuda:
+                torch.cuda.empty_cache()
 
     # Unpack each quantized layer on CPU, dequantize, then move to device
     # and assign — peak GPU == one dequantized weight matrix at a time.
