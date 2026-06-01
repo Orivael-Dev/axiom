@@ -447,9 +447,9 @@ python-dotenv==1.2.2 \
     # via
     #   -r requirements.in
     #   uvicorn
-python-multipart==0.0.29 \
-    --hash=sha256:2ddcc971cef266225f54f552d8fa10bcfbb1f14446caec199060daac59ff2d69 \
-    --hash=sha256:643e93849196645e2dbdd81a0f8829a23123ad7f797a84a364c6fb3563f18904
+python-multipart==0.0.30 \
+    --hash=sha256:0edfe0475c1f46ddd3ff7785a626f6118af32bdcf359bb21260367313bb32118 \
+    --hash=sha256:830964def8c90607ac5daa00514e3987815865713ade8d20febc9177ac0c3c5b
     # via -r requirements.in
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
@@ -534,9 +534,9 @@ starlette==1.0.1 \
     --hash=sha256:512399c5f1de7fac99c88572212ded9ddeddef2fb32afa82d724000e88b38f4f \
     --hash=sha256:7c0e69b2ee1c848bd54669d908500117a3ee13de603a21427e5c6fc1adf98dcd
     # via fastapi
-stripe==15.1.0 \
-    --hash=sha256:24bd3b6bd0969a4841bd4d7681556a9e35e46c414a07c8590a225fbd5a878450 \
-    --hash=sha256:bdfb556be08662a41833e6403607ebf12e0062cae4f9b93e2b89b6ba926d7c82
+stripe==15.2.0 \
+    --hash=sha256:e74d45bb07bb912fdc4ce81ffbdf184bcb92ce6e210cb7939966e537021c1842 \
+    --hash=sha256:f795d8a8ff27433e9ab03099afc0f5c4e992a8a6f92b9f839dc0048bb12f76f6
     # via -r requirements.in
 typing-extensions==4.15.0 \
     --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
