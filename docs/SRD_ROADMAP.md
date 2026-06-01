@@ -72,16 +72,42 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
    the on-disk `srd_index.json`) and calls `load_real_packed()`:
    meta-init from config → load dense → unpack each layer to FP16 → assign.
 
-5. ⬜ **Orin Nano benchmark** — run `axm run` on the Orin Nano with the
-   real-packed TinyLlama archive. Target metrics: load time, TTFT, tok/s,
-   peak RSS. Compare FP16 vs SRD 7 bpw real-packed side-by-side.
+5. 🟡 **Orin Nano benchmark** — `axm run` on the Orin Nano with the
+   real-packed TinyLlama archive. Runs end-to-end; GPU fast path still open.
 
    *E3 real-pack validated on Colab T4 (2026-05-31):* 942 MB archive
    (vs 1535 MB FP16 fake-quant, **39% smaller**), `packed=true`, proofs
    verified, output identical to FP16, warm TTFT 50 ms, 34.6 tok/s. The
    942 MB matches the ~918 MB estimate (gap = FP16 dense params + zip).
-   Remaining: re-run the same `axm run` on the actual Orin Nano hardware
-   and capture peak RSS to confirm the 8 GB fit with KV-cache headroom.
+
+   *On Orin Nano hardware (2026-06-01, JetPack 6.2 / L4T R36.4.7 / CUDA 12.6
+   / py3.10):* archive verified on-device (fp=97033471, proofs ✓ — the
+   Nano-generated key transported correctly), 4-step generation, trajectory
+   filter clean (0 dropped, no BLOCKED). **It runs and fits**, but on the
+   **CPU fp32 path**, not CUDA fp16:
+   - peak RSS **6.0 GB** (fp32 resident; under 8 GB, no OOM kill)
+   - container open+verify 17.7 s, model load 26.2 s
+   - avg TTFT 1338 ms, **1.4 tok/s** (CPU — expect 20-40× on the Ampere GPU)
+
+   > **GPU blocker — NvMap error 12 / CUDA OOM on load.** `torch.load(...,
+   > map_location="cuda")` in `srd_realpack.load_real_packed()` pulls the
+   > whole dense checkpoint **and** the full packed blob onto the GPU in two
+   > large allocations before freeing anything. On the Orin's unified-memory
+   > carveout that single oversized request trips NvMap 12 even with ~5.5 GB
+   > free + 19 GB swap (CUDA can't swap). **Fix (not yet applied):** load
+   > checkpoints on CPU, then stream to GPU **per layer** with
+   > `torch.cuda.empty_cache()` between, capping peak allocation to one
+   > layer. That unlocks the fp16 path (~2.2 GB, real RAM win + 20-40× tok/s).
+   > Until then the disk savings (942 MB) are real but the **RAM** savings
+   > are not — the CPU path unpacks W4+D8 back to fp16 then widens dense
+   > params to fp32, landing at 6 GB.
+
+   *Env notes from the bring-up:* CUDA torch must come from the Jetson index
+   (`pypi.jetson-ai-lab.io/jp6/cu126`, aarch64) — plain `pip install torch`
+   grabs the CPU-only wheel; that wheel needs NumPy 1.x (`numpy==1.26.4`);
+   the artifact's tokenizer needs `transformers>=5` (5.9.0 used), which
+   pulls `typer` below the `requirements.txt` pin (`>=0.26.1`) — cosmetic,
+   affects only the Streamlit/CLI app, not `axm run`.
 
    > **⚠️ Key-portability requirement:** The `.axm` archive is signed with
    > `AXIOM_MASTER_KEY`. The Orin Nano must use the **same key** that was
@@ -93,6 +119,8 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
    >   profile) **before** packing in Colab, then `export` that same key on
    >   the Orin Nano, or
    > - Re-pack the model directly on the Orin Nano (avoids key transport).
+   > *Confirmed working 2026-06-01:* a key generated on the Nano, pasted into
+   > Colab for packing, verified on the Nano (fp=97033471).
 
 6. ⬜ **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
    validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
@@ -105,7 +133,7 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
 | Hardware | Blackwell only | Any CUDA (Ampere, T4, Orin) |
 | Format | FP4 base, no residual | W4 + sparse D8 residual |
 | Quality | ~4 bpw, PPL TBD | 7 bpw, quality proven |
-| Edge (Orin Nano) | ✗ | ✓ |
+| Edge (Orin Nano) | ✗ (Blackwell-locked) | ✓ runs + fits (CPU fp32 today; GPU fp16 path WIP — see task 5) |
 | Open format (.axm) | ✗ | ✓ |
 
 ---
