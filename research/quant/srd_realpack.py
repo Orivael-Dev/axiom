@@ -153,12 +153,19 @@ def load_real_packed(
 
     Returns (model, tokenizer). tokenizer is None if no tokenizer files
     were saved.
+
+    GPU loading strategy: all checkpoints are loaded to CPU first, then
+    tensors are moved to `device` one layer at a time with
+    torch.cuda.empty_cache() between. This keeps peak GPU allocation at
+    one layer rather than the whole model, avoiding NvMap error 12 on
+    unified-memory devices like the Orin Nano.
     """
     from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
     weights_dir = Path(weights_dir)
     index = json.loads((weights_dir / INDEX_FILE).read_text())
     config = AutoConfig.from_pretrained(weights_dir)
+    is_cuda = device != "cpu" and device != "mps"
 
     # Meta-init avoids allocating a full random FP16 copy (matters on 8 GB
     # edge devices like the Orin Nano). Falls back to plain init if
@@ -172,8 +179,9 @@ def load_real_packed(
         model = AutoModelForCausalLM.from_config(config)
         meta_init = False
 
-    # Dense params first (assign=True replaces meta tensors in place).
-    dense_state = torch.load(weights_dir / DENSE_FILE, map_location=device,
+    # Always load dense checkpoint to CPU first — avoids one large
+    # map_location="cuda" allocation that trips NvMap 12 on the Orin.
+    dense_state = torch.load(weights_dir / DENSE_FILE, map_location="cpu",
                              weights_only=True)
     dense_state = {k: v.to(dtype) if v.is_floating_point() else v
                    for k, v in dense_state.items()}
@@ -181,30 +189,47 @@ def load_real_packed(
         model.load_state_dict(dense_state, strict=False, assign=True)
     else:
         model.load_state_dict(dense_state, strict=False)
+    del dense_state
+    if is_cuda:
+        torch.cuda.empty_cache()
 
-    # Unpack each quantized layer → FP16 → assign onto the module.
-    blob = torch.load(weights_dir / PACKED_FILE, map_location=device,
+    # Move model skeleton to device before unpacking layers so that
+    # per-layer assignment lands directly on the target device.
+    # Use low_cpu_mem_usage pattern: move module by module to avoid one
+    # giant .to(device) allocation.
+    for name_mod, module in model.named_modules():
+        for pname, param in list(module.named_parameters(recurse=False)):
+            param.data = param.data.to(device)
+        if is_cuda:
+            torch.cuda.empty_cache()
+
+    # Unpack each quantized layer on CPU, dequantize, then move to device
+    # and assign — peak GPU == one dequantized weight matrix at a time.
+    blob = torch.load(weights_dir / PACKED_FILE, map_location="cpu",
                       weights_only=True)
     for name, entry in blob.items():
-        W4 = srd_unpack_w4(
-            entry["w4_packed"].to(device), entry["orig_cols"],
-        )
+        W4 = srd_unpack_w4(entry["w4_packed"], entry["orig_cols"])
         D8 = srd_unpack_d8_sparse(
-            entry["d8_mask"].to(device), entry["d8_vals"].to(device),
+            entry["d8_mask"], entry["d8_vals"],
             tuple(entry["d8_shape"]),
         )
         pack = SRDPackedTensor(
             W4=W4, D8=D8,
-            S4=entry["s4"].to(device), S8=entry["s8"].to(device),
+            S4=entry["s4"], S8=entry["s8"],
             group_size=entry["group_size"],
             original_dtype=_str_to_dtype(entry["original_dtype"]),
             top_k_pct=entry["top_k_pct"],
         )
         W_hat = srd_dequantize(pack, alpha=index.get("alpha", 1.0)).to(dtype)
+        del pack, W4, D8
         module = model.get_submodule(name)
         module.weight = nn.Parameter(W_hat.to(device), requires_grad=False)
+        del W_hat
+        if is_cuda:
+            torch.cuda.empty_cache()
+    del blob
 
-    model.to(device).eval()
+    model.eval()
 
     tokenizer = None
     try:
