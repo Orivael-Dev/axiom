@@ -151,6 +151,21 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_extract(args: argparse.Namespace) -> int:
+    from research.quant.axm_to_gguf import convert_axm_to_gguf
+    stats = convert_axm_to_gguf(
+        args.container,
+        args.gguf_out,
+        llamacpp_dir=args.llamacpp,
+        quant_type=args.quant,
+        device=args.device,
+    )
+    if args.stats_json:
+        Path(args.stats_json).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.stats_json).write_text(json.dumps(stats, indent=2) + "\n")
+    return 0
+
+
 def cmd_pack(args: argparse.Namespace) -> int:
     from research.quant.pack_to_axm import pack_model
     stats = pack_model(
@@ -199,6 +214,22 @@ def build_parser() -> argparse.ArgumentParser:
                     help="with --clean, also drop UNCERTAIN filler steps")
     pr.add_argument("--stats-json", default=None)
     pr.set_defaults(func=cmd_run)
+
+    pe = sub.add_parser("extract",
+                        help="verify .axm, reconstruct weights, export to GGUF "
+                             "for llama.cpp inference")
+    pe.add_argument("container")
+    pe.add_argument("--gguf-out",  required=True, help="output .gguf path")
+    pe.add_argument("--llamacpp",  required=True,
+                    help="root of a llama.cpp checkout (needs build/bin/ + "
+                         "convert_hf_to_gguf.py)")
+    pe.add_argument("--quant", default="Q4_K_M",
+                    help="GGUF quant type: Q4_K_M / Q5_K_M / F16 / none "
+                         "(default: Q4_K_M)")
+    pe.add_argument("--device", default="cpu",
+                    help="device for weight reconstruction (cpu is safe on Orin)")
+    pe.add_argument("--stats-json", default=None)
+    pe.set_defaults(func=cmd_extract)
 
     pp = sub.add_parser("pack", help="quantize and pack a model into .axm")
     pp.add_argument("--model", required=True)
