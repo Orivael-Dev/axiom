@@ -142,6 +142,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         n_tokens=args.tokens,
         n_runs=args.n_runs,
         device=args.device,
+        clean=args.clean,
+        drop_uncertain=args.drop_uncertain,
     )
     if args.stats_json:
         Path(args.stats_json).parent.mkdir(parents=True, exist_ok=True)
@@ -190,6 +192,11 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--tokens", type=int, default=80)
     pr.add_argument("--n-runs", type=int, default=1)
     pr.add_argument("--device", default=None)
+    pr.add_argument("--clean", action="store_true",
+                    help="filter the generation through the ORVL-016 intent "
+                         "gate (drops repeats, blocked, and filler steps)")
+    pr.add_argument("--drop-uncertain", action="store_true",
+                    help="with --clean, also drop UNCERTAIN filler steps")
     pr.add_argument("--stats-json", default=None)
     pr.set_defaults(func=cmd_run)
 

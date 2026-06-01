@@ -37,6 +37,8 @@ def load_and_measure(
     n_tokens: int = 80,
     n_runs: int = 1,
     device: Optional[str] = None,
+    clean: bool = False,
+    drop_uncertain: bool = False,
 ) -> dict:
     """Load model from .axm, verify, generate, return latency stats."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -143,6 +145,21 @@ def load_and_measure(
 
     text = tokenizer.decode(output[0], skip_special_tokens=True)
 
+    # ── Optional: run the generation through the constitutional trajectory ──
+    # filter (ORVL-016 intent gate) to drop noise steps — looping repeats,
+    # blocked (HARM/DECEIVE), and UNCERTAIN filler.
+    clean_report = None
+    cleaned_text = None
+    if clean:
+        from research.quant.trajectory_filter import clean_generation
+        cr = clean_generation(text, drop_uncertain=drop_uncertain)
+        cleaned_text = cr.cleaned_text
+        clean_report = cr.to_dict()
+        print(f"[clean] trajectory filter: {cr.n_steps} steps → "
+              f"kept {cr.n_kept}, dropped {cr.n_dropped} "
+              f"{cr.dropped_reasons or ''}"
+              + ("  ⚠️ BLOCKED step present" if cr.blocked else ""))
+
     avg_ttft   = sum(r["ttft_ms"]  for r in run_results) / len(run_results)
     avg_tps    = sum(r["tok_per_s"] for r in run_results) / len(run_results)
 
@@ -175,6 +192,8 @@ def load_and_measure(
         "runs":              run_results,
         "prompt":            prompt,
         "generated_text":    text,
+        "cleaned_text":      cleaned_text,
+        "trajectory_filter": clean_report,
     }
 
     print(f"\n[load] ── summary ─────────────────────────────────────────")
@@ -187,6 +206,9 @@ def load_and_measure(
           + (f"  | CUDA peak: {cuda_peak_mb:.0f} MB" if cuda_peak_mb else ""))
     print(f"\n── generated ──────────────────────────────────────────────")
     print(text)
+    if cleaned_text is not None:
+        print(f"\n── cleaned (trajectory filter) ────────────────────────────")
+        print(cleaned_text)
     print("────────────────────────────────────────────────────────────")
     return stats
 
@@ -199,6 +221,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--n-runs", type=int, default=1,
                    help="Number of generation runs for averaging latency")
     p.add_argument("--device", default=None)
+    p.add_argument("--clean", action="store_true",
+                   help="filter generation through the ORVL-016 intent gate")
+    p.add_argument("--drop-uncertain", action="store_true",
+                   help="with --clean, also drop UNCERTAIN filler steps")
     p.add_argument("--stats-json", type=Path, default=None)
     return p.parse_args()
 
@@ -211,6 +237,8 @@ def main() -> int:
         n_tokens=args.tokens,
         n_runs=args.n_runs,
         device=args.device,
+        clean=args.clean,
+        drop_uncertain=args.drop_uncertain,
     )
     if args.stats_json:
         args.stats_json.parent.mkdir(parents=True, exist_ok=True)
