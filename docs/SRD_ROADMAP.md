@@ -145,10 +145,23 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
    - **8.9 tok/s** greedy, 80 tokens (gen 8.99 s); total wall 80 s
    - GGUF conversion: F16 **2.20 GB**, Q4_K_M **0.67 GB**
 
+   *GGUF (Q4_K_M) via llama.cpp on the same card* — the production path:
+
+   | Path | RSS (CPU RAM) | VRAM |
+   |---|---|---|
+   | PyTorch `.axm` loader (fp16) | 3959 MB | 2202 MB |
+   | GGUF via llama.cpp (Q4_K_M)  | **543 MB** | **884 MiB** |
+   | Reduction | **7.3× less RAM** | **2.4× less VRAM** |
+
    > The discrete 6 GB card holds fp16 weights (2.2 GB) with headroom —
    > no carveout/unified-memory ceiling, so no per-layer streaming needed.
    > 8.9 tok/s is entry-GPU-bound (the 1660 Ti has no Tensor Cores for fp16);
    > an RTX 40/50 laptop GPU should clear the ≥30 tok/s target easily.
+   >
+   > **The GGUF path is the deployment story.** It skips the 30 s CPU
+   > dequant entirely (weights are quantized on disk), drops RSS 7.3× and
+   > VRAM 2.4× — the `.axm` stays the signed delivery vehicle, llama.cpp is
+   > the runtime. This is what makes SRD viable on a 6 GB entry laptop GPU.
 
    **Setup notes (WSL2 + discrete NVIDIA):**
    - Use a real Ubuntu WSL distro — **not** the `docker-desktop` distro
@@ -171,6 +184,8 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
      `I:`) is minutes-slow.
    - Older CUDA + new glibc can hit a `cospi/sinpi` exception-spec conflict;
      CUDA ≥ 13.3 (driver ≥ 610) clears it on Turing.
+
+   Full bring-up runbook + pitfalls: **`docs/AXM_LAPTOP_INFERENCE.md`**.
 
 ### E3 vs NVFP4 positioning
 
