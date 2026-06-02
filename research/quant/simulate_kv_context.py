@@ -32,12 +32,13 @@ class ModelConfig:
     head_dim: int       # hidden_size / n_attn_heads
     weight_fp16_gb: float   # FP16 checkpoint size on disk (approximate)
     srd_7bpw_gb: float      # SRD real-packed size
+    q4km_gb: float = 0.0    # GGUF Q4_K_M on-disk size (0 = not measured)
 
 MODELS = [
-    ModelConfig("TinyLlama-1.1B",  n_layers=22, n_kv_heads=4,  head_dim=64,  weight_fp16_gb=2.2,  srd_7bpw_gb=0.94),
-    ModelConfig("Mistral-7B",      n_layers=32, n_kv_heads=8,  head_dim=128, weight_fp16_gb=13.5, srd_7bpw_gb=5.9),
-    ModelConfig("Llama-3-8B",      n_layers=32, n_kv_heads=8,  head_dim=128, weight_fp16_gb=15.0, srd_7bpw_gb=6.6),
-    ModelConfig("Llama-3-70B",     n_layers=80, n_kv_heads=8,  head_dim=128, weight_fp16_gb=130.,  srd_7bpw_gb=57.),
+    ModelConfig("TinyLlama-1.1B",  n_layers=22, n_kv_heads=4,  head_dim=64,  weight_fp16_gb=2.2,  srd_7bpw_gb=0.94, q4km_gb=0.67),
+    ModelConfig("Mistral-7B",      n_layers=32, n_kv_heads=8,  head_dim=128, weight_fp16_gb=13.5, srd_7bpw_gb=5.9,  q4km_gb=4.07),
+    ModelConfig("Llama-3-8B",      n_layers=32, n_kv_heads=8,  head_dim=128, weight_fp16_gb=15.0, srd_7bpw_gb=6.6,  q4km_gb=4.58),
+    ModelConfig("Llama-3-70B",     n_layers=80, n_kv_heads=8,  head_dim=128, weight_fp16_gb=130.,  srd_7bpw_gb=57., q4km_gb=40.),
 ]
 
 # ── Hardware scenarios ──────────────────────────────────────────────────────
@@ -89,6 +90,25 @@ def max_context_srd(m: ModelConfig, hw: Hardware,
     available  = hw.memory_gb * (1024 ** 3)
     kv_budget  = max(0.0, available - srd_bytes) * kv_fraction
     bpt        = kv_bytes_per_token(m, dtype_bytes)
+    return max(0, int(kv_budget / bpt))
+
+
+def max_context_q4km(m: ModelConfig, hw: Hardware,
+                     kv_fraction: float = 0.50) -> int:
+    """Max context with GGUF Q4_K_M weights loaded entirely on GPU.
+
+    Q4_K_M VRAM use approximates the file size closely since llama.cpp
+    maps all layers via --ngl 99 (no CPU offload). KV cache in llama.cpp
+    defaults to FP16 per layer, same formula as above. kv_fraction is
+    higher (0.50) because Q4_K_M weights are much smaller, leaving more
+    headroom and activations are lighter without dequant overhead.
+    """
+    if m.q4km_gb == 0.0:
+        return 0
+    q4_bytes  = m.q4km_gb * (1024 ** 3)
+    available = hw.memory_gb * (1024 ** 3)
+    kv_budget = max(0.0, available - q4_bytes) * kv_fraction
+    bpt       = kv_bytes_per_token(m)
     return max(0, int(kv_budget / bpt))
 
 
@@ -184,6 +204,19 @@ def report(models=MODELS, hardware=HARDWARE):
                 row += f" {'(OOM FP16)':>19}"
         print(row)
 
+    # ── Section 3b: Q4_K_M (GGUF) context window ───────────────────────
+    print("\n── Max context window with GGUF Q4_K_M weights (50% KV budget) ────")
+    print(f"  {'Model':<22} " + "".join(f" {hw.name[:18]:>19}" for hw in hardware))
+    print(f"  {'-'*22}" + "".join(f" {'-'*19}" for _ in hardware))
+    for m in models:
+        row = f"  {m.name:<22}"
+        for hw in hardware:
+            ctx_q4 = max_context_q4km(m, hw)
+            row += f" {_fmt_tokens(ctx_q4) if ctx_q4 > 0 else '(no q4km)':>19}"
+        print(row)
+    print("  Note: Q4_K_M runs via llama.cpp --ngl 99 (all layers on GPU)")
+    print("        KV cache stays FP16, same bytes/token formula as above.")
+
     # ── Section 4: Prefill compute saving ──────────────────────────────
     print("\n── Prefill compute saving from signed KV cache reuse ─────────────")
     print("  (% of prefill FLOPs skipped when past tokens are in the signed cache)")
@@ -228,6 +261,34 @@ def report(models=MODELS, hardware=HARDWARE):
               + (f"  (+{_fmt_tokens(ctx_srd-ctx_fp16)})" if ctx_fp16 > 0 else ""))
         print(f"    KV memory/token: {bpt:,} bytes  "
               f"(= {m.n_layers} layers × 2 × {m.n_kv_heads} KV heads × {m.head_dim} head_dim × 2 bytes)")
+
+    # ── Section 7: Mistral-7B focus — GTX 1660 Ti ──────────────────────
+    print("\n── Mistral-7B on GTX 1660 Ti 6GB — theoretical vs GGUF reality ─────")
+    gtx = next((hw for hw in hardware if "1660" in hw.name), None)
+    mistral = next((m for m in models if "Mistral" in m.name), None)
+    if gtx and mistral:
+        bpt = kv_bytes_per_token(mistral)
+        ctx_fp16 = max_context_tokens(mistral, gtx)
+        ctx_srd  = max_context_srd(mistral, gtx)
+        ctx_q4   = max_context_q4km(mistral, gtx)
+        print(f"  Hardware: {gtx.name} — {gtx.note}")
+        print(f"  Model:    {mistral.name}  "
+              f"(FP16: {mistral.weight_fp16_gb} GB | SRD: {mistral.srd_7bpw_gb} GB | Q4_K_M: {mistral.q4km_gb} GB)")
+        print(f"\n  KV cache bytes/token: {bpt:,} B = {bpt/1024:.0f} KB")
+        print(f"  (= {mistral.n_layers} layers × 2 × {mistral.n_kv_heads} KV heads"
+              f" × {mistral.head_dim} head_dim × 2 bytes FP16)")
+        print(f"\n  Predicted max context:")
+        if ctx_fp16 == 0:
+            print(f"    FP16  ({mistral.weight_fp16_gb:.1f} GB)  → OOM — model doesn't fit")
+        else:
+            print(f"    FP16  ({mistral.weight_fp16_gb:.1f} GB)  → {_fmt_tokens(ctx_fp16)} tokens")
+        if ctx_srd == 0:
+            print(f"    SRD   ({mistral.srd_7bpw_gb:.1f} GB)   → OOM — SRD > available VRAM")
+        else:
+            print(f"    SRD   ({mistral.srd_7bpw_gb:.1f} GB)   → {_fmt_tokens(ctx_srd)} tokens")
+        print(f"    Q4_K_M({mistral.q4km_gb:.2f} GB) → {_fmt_tokens(ctx_q4)} tokens  ← fits!")
+        print(f"\n  To validate: run bench_mistral_kv.py and compare VRAM delta/token")
+        print(f"  to the {bpt:,} B/token prediction above.")
 
     print("\n" + "=" * 72)
     print("Takeaway:")
