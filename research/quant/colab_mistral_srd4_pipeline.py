@@ -31,6 +31,8 @@ import time
 from pathlib import Path
 
 REPO      = Path("/content/axiom")
+REPO_URL  = "https://github.com/orivael-dev/axiom.git"
+REPO_BRANCH = "claude/srd-prototype-benchmark-JRtv1"   # files live on this branch, not main
 OUT_DIR   = Path("/content")
 AXM_PATH  = OUT_DIR / "mistral_srd4.axm"
 GGUF_PATH = OUT_DIR / "mistral_srd4_q4km.gguf"
@@ -66,12 +68,12 @@ def cell1_setup():
 
     if not REPO.is_dir():
         subprocess.run(
-            ["git", "clone", "--depth", "1",
-             "https://github.com/orivael-dev/axiom.git", str(REPO)],
+            ["git", "clone", "--depth", "1", "--branch", REPO_BRANCH,
+             REPO_URL, str(REPO)],
             check=True,
         )
     else:
-        subprocess.run(["git", "-C", str(REPO), "pull"], check=True)
+        subprocess.run(["git", "-C", str(REPO), "pull", "origin", REPO_BRANCH], check=True)
 
     if not os.environ.get("AXIOM_MASTER_KEY"):
         import secrets
@@ -293,7 +295,12 @@ def cell6_download():
 # ════════════════════════════════════════════════════════════════════════════
 CELL_SNIPPETS = """\
 # ── CELL 1: GPU check + clone repo (~30 s) ───────────────────────────────────
-import sys; sys.path.insert(0, "/content/axiom")
+# The pipeline files live on the feature branch, not main — clone that branch.
+import subprocess, sys
+subprocess.run(["git", "clone", "--depth", "1",
+    "--branch", "claude/srd-prototype-benchmark-JRtv1",
+    "https://github.com/orivael-dev/axiom.git", "/content/axiom"], check=True)
+sys.path.insert(0, "/content/axiom")
 from research.quant.colab_mistral_srd4_pipeline import *
 cell1_setup()
 

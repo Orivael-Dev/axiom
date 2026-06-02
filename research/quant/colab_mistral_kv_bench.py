@@ -59,14 +59,15 @@ def cell1_setup():
 
     # ── clone repo ──
     repo = Path("/content/axiom")
+    branch = "claude/srd-prototype-benchmark-JRtv1"   # files live on this branch, not main
     if not repo.is_dir():
         subprocess.run(
-            ["git", "clone", "--depth", "1",
+            ["git", "clone", "--depth", "1", "--branch", branch,
              "https://github.com/orivael-dev/axiom.git", str(repo)],
             check=True,
         )
     else:
-        subprocess.run(["git", "-C", str(repo), "pull"], check=True)
+        subprocess.run(["git", "-C", str(repo), "pull", "origin", branch], check=True)
 
     # ── master key ──
     if not os.environ.get("AXIOM_MASTER_KEY"):
@@ -304,7 +305,12 @@ def cell7_download():
 # ════════════════════════════════════════════════════════════════════════════
 CELL_SNIPPETS = """\
 # ─── CELL 1: setup ───────────────────────────────────────────────────────────
-import sys; sys.path.insert(0, "/content/axiom")
+# The pipeline files live on the feature branch, not main — clone that branch.
+import subprocess, sys
+subprocess.run(["git", "clone", "--depth", "1",
+    "--branch", "claude/srd-prototype-benchmark-JRtv1",
+    "https://github.com/orivael-dev/axiom.git", "/content/axiom"], check=True)
+sys.path.insert(0, "/content/axiom")
 from research.quant.colab_mistral_kv_bench import *
 cell1_setup()
 

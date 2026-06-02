@@ -28,8 +28,10 @@ import sys
 import time
 from pathlib import Path
 
-REPO       = Path("/content/axiom")
-OUT_DIR    = Path("/content")
+REPO        = Path("/content/axiom")
+REPO_URL    = "https://github.com/orivael-dev/axiom.git"
+REPO_BRANCH = "claude/srd-prototype-benchmark-JRtv1"   # files live on this branch, not main
+OUT_DIR     = Path("/content")
 DATA_DIR   = REPO / "autotrain_data"
 RESULTS    = REPO / "results"
 MODEL_ID   = "Qwen/Qwen2.5-Coder-1.5B"
@@ -66,12 +68,12 @@ def cell1_setup():
 
     if not REPO.is_dir():
         subprocess.run(
-            ["git", "clone", "--depth", "1",
-             "https://github.com/orivael-dev/axiom.git", str(REPO)],
+            ["git", "clone", "--depth", "1", "--branch", REPO_BRANCH,
+             REPO_URL, str(REPO)],
             check=True,
         )
     else:
-        subprocess.run(["git", "-C", str(REPO), "pull"], check=True)
+        subprocess.run(["git", "-C", str(REPO), "pull", "origin", REPO_BRANCH], check=True)
 
     subprocess.run([
         sys.executable, "-m", "pip", "install", "-q",
@@ -440,7 +442,12 @@ def cell8_push():
 # ════════════════════════════════════════════════════════════════════════════
 CELL_SNIPPETS = """\
 # ── CELL 1: GPU check + clone + install deps (~3 min) ──────────────────────────
-import sys; sys.path.insert(0, "/content/axiom")
+# The pipeline files live on the feature branch, not main — clone that branch.
+import subprocess, sys
+subprocess.run(["git", "clone", "--depth", "1",
+    "--branch", "claude/srd-prototype-benchmark-JRtv1",
+    "https://github.com/orivael-dev/axiom.git", "/content/axiom"], check=True)
+sys.path.insert(0, "/content/axiom")
 from research.finetune.colab_axiom_finetune import *
 cell1_setup()
 
