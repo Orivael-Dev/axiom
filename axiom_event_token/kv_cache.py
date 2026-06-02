@@ -346,6 +346,10 @@ class KVBlockKey:
     position_offset: int   # absolute position of the first token in this block
     dtype:           str   # "float16" | "bfloat16" | "float32"
     quant_scheme:    str   # "fp16" | "srd_7bpw" | "q4_k_m" | etc.
+    kv_compression:  str   # "none" | "sq_paper" | "sq_validated" | "sq_edge"
+                           # SpectralQuant preset applied to K/V tensors before
+                           # signing.  Different values → different block_id so
+                           # compressed and uncompressed caches can never mix.
 
     def hex(self) -> str:
         """Stable hex digest — use as cache lookup key / block_id."""
@@ -366,6 +370,7 @@ class KVBlockKey:
         position_offset: int = 0,
         dtype: str = "float16",
         quant_scheme: str = "fp16",
+        kv_compression: str = "none",
     ) -> "KVBlockKey":
         tid_hash = hashlib.sha256(
             json.dumps(token_ids, separators=(",", ":")).encode()
@@ -379,6 +384,7 @@ class KVBlockKey:
             position_offset=position_offset,
             dtype=dtype,
             quant_scheme=quant_scheme,
+            kv_compression=kv_compression,
         )
 
 

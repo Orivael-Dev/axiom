@@ -148,13 +148,15 @@ def test_invalid_layer_slot_rejected():
 
 # ── KV Cache DAG v2 tests ─────────────────────────────────────────────────────
 
-def _make_key(block_type: str, token_ids: list, position_offset: int = 0) -> KVBlockKey:
+def _make_key(block_type: str, token_ids: list, position_offset: int = 0,
+              kv_compression: str = "none") -> KVBlockKey:
     return KVBlockKey.from_token_ids(
         token_ids,
         model_id="test-model",
         axm_fingerprint="abc123",
         tokenizer_hash="tok_hash",
         position_offset=position_offset,
+        kv_compression=kv_compression,
     )
 
 

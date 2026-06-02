@@ -57,58 +57,68 @@ HARDWARE = [
     Hardware("DGX Spark / GB10 128GB",      memory_gb=120., note="~120 GB usable"),
 ]
 
+# ── SpectralQuant KV compression presets ────────────────────────────────────
+# Source: pip install spectralquant  (pypi.org/project/spectralquant)
+# Validated on Mistral 7B / Qwen 2.5 7B / Llama 3.1 8B with same output quality.
+# Integrates via HuggingFace DynamicCache — pure PyTorch, no custom kernels.
+SQ_PRESETS = {
+    "sq_paper":    5.95,   # paper-reproduction preset
+    "sq_validated": 6.55,  # validated quality preset
+    "sq_edge":     6.68,   # edge-optimised (highest compression)
+    "sq_6.62x":    6.62,   # Mistral-7B side-by-side benchmark value
+}
+
 # ── Core formulas ───────────────────────────────────────────────────────────
 
-def kv_bytes_per_token(m: ModelConfig, dtype_bytes: int = 2) -> int:
-    """Memory consumed by the KV cache per new token (K + V, all layers)."""
-    # Each layer caches one K matrix and one V matrix.
-    # Shape per layer: (batch=1, n_kv_heads, seq_len, head_dim)
-    # Per-token increment: n_kv_heads * head_dim * 2 (K and V) * dtype_bytes
-    return m.n_layers * 2 * m.n_kv_heads * m.head_dim * dtype_bytes
+def kv_bytes_per_token(m: ModelConfig, dtype_bytes: int = 2,
+                       sq_compression: float = 1.0) -> int:
+    """Memory consumed by the KV cache per new token (K + V, all layers).
+
+    sq_compression: SpectralQuant compression ratio (1.0 = no compression,
+    6.62 = 6.62× smaller KV cache). Does not affect weight memory.
+    """
+    raw = m.n_layers * 2 * m.n_kv_heads * m.head_dim * dtype_bytes
+    return max(1, int(raw / sq_compression))
 
 
 def max_context_tokens(m: ModelConfig, hw: Hardware,
                        dtype_bytes: int = 2,
-                       kv_fraction: float = 0.35) -> int:
-    """Max context length given the model weights + KV cache share memory.
-
-    kv_fraction: fraction of usable memory reserved for KV cache after
-    loading model weights. Default 35% leaves headroom for activations.
-    """
+                       kv_fraction: float = 0.35,
+                       sq_compression: float = 1.0) -> int:
+    """Max context length given the model weights + KV cache share memory."""
     weight_bytes = m.weight_fp16_gb * (1024 ** 3)
     available    = hw.memory_gb * (1024 ** 3)
     kv_budget    = max(0.0, available - weight_bytes) * kv_fraction
-    bpt          = kv_bytes_per_token(m, dtype_bytes)
+    bpt          = kv_bytes_per_token(m, dtype_bytes, sq_compression)
     return max(0, int(kv_budget / bpt))
 
 
 def max_context_srd(m: ModelConfig, hw: Hardware,
                     dtype_bytes: int = 2,
-                    kv_fraction: float = 0.35) -> int:
+                    kv_fraction: float = 0.35,
+                    sq_compression: float = 1.0) -> int:
     """Same but with SRD real-packed weights (smaller footprint → more KV budget)."""
     srd_bytes = m.srd_7bpw_gb * (1024 ** 3)
     available  = hw.memory_gb * (1024 ** 3)
     kv_budget  = max(0.0, available - srd_bytes) * kv_fraction
-    bpt        = kv_bytes_per_token(m, dtype_bytes)
+    bpt        = kv_bytes_per_token(m, dtype_bytes, sq_compression)
     return max(0, int(kv_budget / bpt))
 
 
 def max_context_q4km(m: ModelConfig, hw: Hardware,
-                     kv_fraction: float = 0.50) -> int:
+                     kv_fraction: float = 0.50,
+                     sq_compression: float = 1.0) -> int:
     """Max context with GGUF Q4_K_M weights loaded entirely on GPU.
 
-    Q4_K_M VRAM use approximates the file size closely since llama.cpp
-    maps all layers via --ngl 99 (no CPU offload). KV cache in llama.cpp
-    defaults to FP16 per layer, same formula as above. kv_fraction is
-    higher (0.50) because Q4_K_M weights are much smaller, leaving more
-    headroom and activations are lighter without dequant overhead.
+    sq_compression: apply SpectralQuant compression to the KV cache
+    (default 1.0 = no compression; pass 6.62 for Mistral-7B SQ edge preset).
     """
     if m.q4km_gb == 0.0:
         return 0
     q4_bytes  = m.q4km_gb * (1024 ** 3)
     available = hw.memory_gb * (1024 ** 3)
     kv_budget = max(0.0, available - q4_bytes) * kv_fraction
-    bpt       = kv_bytes_per_token(m)
+    bpt       = kv_bytes_per_token(m, sq_compression=sq_compression)
     return max(0, int(kv_budget / bpt))
 
 
@@ -261,6 +271,34 @@ def report(models=MODELS, hardware=HARDWARE):
               + (f"  (+{_fmt_tokens(ctx_srd-ctx_fp16)})" if ctx_fp16 > 0 else ""))
         print(f"    KV memory/token: {bpt:,} bytes  "
               f"(= {m.n_layers} layers × 2 × {m.n_kv_heads} KV heads × {m.head_dim} head_dim × 2 bytes)")
+
+    # ── Section 6b: SpectralQuant KV compression ───────────────────────
+    print("\n── SpectralQuant KV cache compression (pip install spectralquant) ──")
+    print("  Validated on Mistral-7B / Qwen-2.5-7B / Llama-3.1-8B.")
+    print("  Integrates via HuggingFace DynamicCache — pure PyTorch.")
+    print()
+    print(f"  {'Preset':<18} {'Ratio':>6}  {'Mistral-7B bpt':>16}  {'Orin Nano ctx':>14}  {'1660 Ti ctx':>12}")
+    print(f"  {'─'*18} {'─'*6}  {'─'*16}  {'─'*14}  {'─'*12}")
+    orin  = next(hw for hw in hardware if "Orin" in hw.name)
+    gtx   = next((hw for hw in hardware if "1660" in hw.name), None)
+    mis   = next(m  for m  in models  if "Mistral" in m.name)
+    bpt_raw = kv_bytes_per_token(mis, sq_compression=1.0)
+    row0 = f"  {'no compression':<18} {'1.0×':>6}  {bpt_raw:>16,}  "
+    row0 += f"{_fmt_tokens(max_context_q4km(mis, orin, sq_compression=1.0)):>14}"
+    if gtx:
+        row0 += f"  {_fmt_tokens(max_context_q4km(mis, gtx, sq_compression=1.0)):>12}"
+    print(row0)
+    for preset, ratio in SQ_PRESETS.items():
+        bpt_sq = kv_bytes_per_token(mis, sq_compression=ratio)
+        ctx_orin = max_context_q4km(mis, orin, sq_compression=ratio)
+        row = f"  {preset:<18} {ratio:>5.2f}×  {bpt_sq:>16,}  {_fmt_tokens(ctx_orin):>14}"
+        if gtx:
+            ctx_gtx = max_context_q4km(mis, gtx, sq_compression=ratio)
+            row += f"  {_fmt_tokens(ctx_gtx):>12}"
+        print(row)
+    print("  Note: SpectralQuant compresses KV tensors in-place — weight memory")
+    print("        is unchanged. Sign compressed tensors with KVCacheEntry as normal.")
+    print("        Add kv_compression='sq_edge' to KVBlockKey for cache-key isolation.")
 
     # ── Section 7: Mistral-7B focus — GTX 1660 Ti ──────────────────────
     print("\n── Mistral-7B on GTX 1660 Ti 6GB — theoretical vs GGUF reality ─────")

@@ -693,6 +693,30 @@ axm run model.axm --save-kv-cache /tmp/prefix.kvcache.pt
 axm run model.axm --kv-cache /tmp/prefix.kvcache.pt   # kv_hit: true
 ```
 
+**SpectralQuant integration (`pip install spectralquant`):**
+
+[SpectralQuant](https://pypi.org/project/spectralquant/) achieves 6.62× KV
+cache compression via `HuggingFace DynamicCache` (pure PyTorch, no custom
+kernels). It compresses the K/V tensors themselves — weight memory is
+unchanged. The ORVL-025 signing layer is fully compatible:
+
+```python
+# compressed tensors are signed exactly like uncompressed ones —
+# KVCacheEntry.from_past_key_values works on whatever DynamicCache returns.
+
+# Use kv_compression in KVBlockKey to isolate compressed vs uncompressed caches:
+key = KVBlockKey.from_token_ids(token_ids, ..., kv_compression="sq_edge")
+# different kv_compression value → different block_id → cache miss (safe)
+```
+
+Context window impact with Q4_K_M + SpectralQuant on edge hardware:
+
+| Hardware | Without SQ | sq_paper (5.95×) | sq_edge (6.68×) |
+|----------|-----------|-----------------|----------------|
+| Orin Nano 8GB | 6K | 35K | **39K** |
+| GTX 1660 Ti 6GB | 5K | 28K | **31K** |
+| RTX 4090 24GB | 73K | 434K | **487K** |
+
 **Cross-patent wiring:**
 - ORVL-023 AXM — `axm_fingerprint` is part of the deterministic `kv_key`, so
   the KV cache is invalidated automatically when the `.axm` archive changes.
