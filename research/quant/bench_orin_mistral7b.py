@@ -20,25 +20,34 @@ Two modes both fit and both produce useful results:
            On a discrete 6 GB card this would be painfully slow;
            on Orin it barely hurts.
 
+NVMe M.2 note
+-------------
+If the model is stored on an NVMe M.2 drive (250 GB recommended),
+mmap is fast (~3 GB/s read) — do NOT pass --no-mmap. llama.cpp will
+mmap the weight file and only page in what it needs, keeping cold-load
+time to ~1-2 s for a 4 GB model. Contrast with microSD (45 s) or
+the Windows 9p mount over WSL2 (minutes — always --no-mmap there).
+
 The benchmark measures:
-  - tok/s for each mode
+  - Cold load time (model file → GPU, incl. CUDA kernel init)
+  - tok/s for each mode at 1K and 4K/8K contexts
   - Actual KV bytes/token (compare to theoretical 131,072 B)
-  - Peak RSS and VRAM
-  - Context window test: does 8K actually load and generate?
+  - Storage bandwidth implied by the cold-load time
 
-Run on Orin Nano (SSH or terminal):
-    cd ~/axiom
-    python3 -m research.quant.bench_orin_mistral7b \
-        --llamacpp ~/llama.cpp/build/bin \
-        --gguf ~/models/mistral-7b-instruct-v0.3-Q4_K_M.gguf
+Run on Orin Nano with NVMe (SSH or terminal):
+    # store the model on the NVMe mount, e.g. /mnt/nvme/models/
+    python3 -m research.quant.bench_orin_mistral7b \\
+        --llamacpp ~/llama.cpp/build/bin \\
+        --gguf /mnt/nvme/models/mistral-7b-instruct-v0.3-Q4_K_M.gguf \\
+        --nvme    # enables mmap, measures cold-load time
 
-To get the GGUF on Orin:
-    pip3 install huggingface-hub
+Download the model directly to NVMe:
     huggingface-cli download bartowski/Mistral-7B-Instruct-v0.3-GGUF \\
-        Mistral-7B-Instruct-v0.3-Q4_K_M.gguf --local-dir ~/models/
+        Mistral-7B-Instruct-v0.3-Q4_K_M.gguf \\
+        --local-dir /mnt/nvme/models/
 
-Or scp from laptop if you already downloaded it:
-    scp ~/models/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf orin:~/models/
+Or scp from laptop:
+    scp ~/models/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf orin:/mnt/nvme/models/
 """
 from __future__ import annotations
 
@@ -125,21 +134,39 @@ def find_cli(llamacpp_bin: str) -> Path:
     )
 
 
-def run_llama(cli: Path, gguf: str, ctx: int, ngl: int, n_predict: int = 64) -> dict:
+def _storage_bw_gbps(file_bytes: int, load_s: float) -> Optional[float]:
+    if load_s <= 0:
+        return None
+    return (file_bytes / 1024**3) / load_s
+
+
+def run_llama(
+    cli: Path, gguf: str, ctx: int, ngl: int,
+    n_predict: int = 64, use_mmap: bool = False,
+) -> dict:
     cmd = [
         str(cli), "-m", gguf,
         "--ctx-size",  str(ctx),
         "--n-predict", str(n_predict),
         "--ngl",       str(ngl),
         "--threads",   "4",
-        "--no-mmap",
         "--log-disable",
         "--prompt",    PROMPT,
     ]
+    if not use_mmap:
+        cmd.append("--no-mmap")
+    # --mmap is default in llama.cpp; only need to suppress no-mmap
+
     t0 = time.perf_counter()
     r  = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     elapsed = time.perf_counter() - t0
     log = r.stdout + r.stderr
+
+    # Extract load time from log: "load_time =   1234.56 ms"
+    load_s = None
+    m2 = re.search(r"load_time\s*=\s*([\d.]+)\s*ms", log, re.IGNORECASE)
+    if m2:
+        load_s = float(m2.group(1)) / 1000.0
 
     # Parse tok/s from log: "llama_perf_sampler_print:        sampling time = ..."
     # or "eval time = X ms / Y runs ( Z ms per token, W tokens per second)"
@@ -159,8 +186,9 @@ def run_llama(cli: Path, gguf: str, ctx: int, ngl: int, n_predict: int = 64) -> 
         kv_mib = float(m.group(1))
 
     return {
-        "elapsed_s": round(elapsed, 2),
-        "tok_per_s": tps,
+        "elapsed_s":  round(elapsed, 2),
+        "load_s":     round(load_s, 3) if load_s is not None else None,
+        "tok_per_s":  tps,
         "kv_log_mib": kv_mib,
         "returncode": r.returncode,
         "output_snippet": log[-400:] if log else "",
@@ -169,22 +197,31 @@ def run_llama(cli: Path, gguf: str, ctx: int, ngl: int, n_predict: int = 64) -> 
 
 # ── Main benchmark ────────────────────────────────────────────────────────────
 
-def run_benchmark(llamacpp_bin: str, gguf_path: str, skip_8k: bool = False) -> dict:
+def run_benchmark(
+    llamacpp_bin: str,
+    gguf_path: str,
+    skip_8k: bool = False,
+    nvme: bool = False,
+) -> dict:
     cli  = find_cli(llamacpp_bin)
-    bpt  = theoretical_kv_bpt()
+    bpt       = theoretical_kv_bpt()
+    gguf_size = Path(gguf_path).stat().st_size if Path(gguf_path).exists() else 0
+    use_mmap  = nvme   # mmap safe on NVMe; avoid on microSD/9p/eMMC
 
     print(f"\n{'='*66}")
-    print("Mistral-7B on Orin Nano — modes that 'shouldn\'t work'")
+    print("Mistral-7B on Orin Nano — modes that 'shouldn't work'")
     print(f"{'='*66}")
-    print(f"Model: {gguf_path}")
+    print(f"Model:   {gguf_path}")
+    print(f"Storage: {'NVMe M.2 (mmap enabled)' if nvme else 'microSD/eMMC (--no-mmap)'}")
+    print(f"Size:    {gguf_size/1024**3:.2f} GB")
     print(f"Theoretical KV bytes/token: {bpt:,} B ({bpt/1024:.0f} KB)")
     print()
 
     modes = [
-        ("A: full GPU",      32,  1024),   # conservative ctx for first test
-        ("A: full GPU 4K",   32,  4096),
-        ("B: partial (ngl=22) 4K",  22,  4096),
-        ("B: partial (ngl=22) 8K",  22,  8192),
+        ("A: full GPU",           32,  1024),
+        ("A: full GPU 4K",        32,  4096),
+        ("B: partial (ngl=22) 4K", 22,  4096),
+        ("B: partial (ngl=22) 8K", 22,  8192),
     ]
     if skip_8k:
         modes = [m for m in modes if "8K" not in m[0]]
@@ -195,49 +232,62 @@ def run_benchmark(llamacpp_bin: str, gguf_path: str, skip_8k: bool = False) -> d
         over = " ← over budget" if ctx > pred else ""
         print(f"  Running {label}  ctx={ctx:,}  ngl={ngl}  (predicted max {pred:,}){over}")
 
-        vram_before = read_vram_mb()
-        row = run_llama(cli, gguf_path, ctx=ctx, ngl=ngl)
+        row = run_llama(cli, gguf_path, ctx=ctx, ngl=ngl, use_mmap=use_mmap)
         time.sleep(2)
 
         kv_mib  = row["kv_log_mib"]
         act_bpt = int(kv_mib * 1024 * 1024 / ctx) if kv_mib else None
         err_pct = abs(act_bpt - bpt) / bpt * 100 if act_bpt else None
 
-        tok_s = f"{row['tok_per_s']:.2f} tok/s" if row["tok_per_s"] else "N/A"
-        kv_s  = f"{kv_mib:.1f} MiB" if kv_mib else "N/A"
-        err_s = f"{err_pct:.1f}%" if err_pct is not None else "N/A"
+        tok_s  = f"{row['tok_per_s']:.2f} tok/s" if row["tok_per_s"] else "N/A"
+        kv_s   = f"{kv_mib:.1f} MiB" if kv_mib else "N/A"
+        err_s  = f"{err_pct:.1f}%" if err_pct is not None else "N/A"
+        load_s = row.get("load_s")
 
-        print(f"    tok/s: {tok_s}  KV: {kv_s}  actual B/tok: "
-              f"{act_bpt:,}" if act_bpt else f"    tok/s: {tok_s}  KV: {kv_s}")
+        if load_s and gguf_size:
+            bw_gbps = _storage_bw_gbps(gguf_size, load_s)
+            bw_s = f"  load={load_s:.2f}s ({bw_gbps:.2f} GB/s)" if bw_gbps else f"  load={load_s:.2f}s"
+        else:
+            bw_s = ""
+
+        print(f"    tok/s: {tok_s}  KV: {kv_s}{bw_s}")
         if err_pct is not None:
-            print(f"    simulation error: {err_s}  ({'✓ PASS' if err_pct < 5 else '~ close' if err_pct < 15 else '✗ check'})")
+            verdict = "✓ PASS" if err_pct < 5 else ("~ close" if err_pct < 15 else "✗ check")
+            print(f"    simulation error: {err_s}  ({verdict})")
         if row["returncode"] != 0:
             print(f"    ✗ OOM or error (returncode {row['returncode']})")
         print()
 
-        row.update({"label": label, "ngl": ngl, "ctx": ctx,
-                    "predicted_max_ctx": pred, "actual_bpt": act_bpt,
-                    "err_pct": round(err_pct, 2) if err_pct else None})
+        row.update({
+            "label": label, "ngl": ngl, "ctx": ctx,
+            "predicted_max_ctx": pred, "actual_bpt": act_bpt,
+            "err_pct": round(err_pct, 2) if err_pct else None,
+            "storage_bw_gbps": round(_storage_bw_gbps(gguf_size, load_s), 3)
+                if (load_s and gguf_size) else None,
+        })
         results[label] = row
 
-    _print_summary(results, bpt)
+    _print_summary(results, bpt, nvme=nvme, gguf_size=gguf_size)
     return results
 
 
-def _print_summary(results: dict, bpt: int):
+def _print_summary(results: dict, bpt: int, nvme: bool = False, gguf_size: int = 0):
     print(f"{'='*66}")
     print("SUMMARY")
     print(f"{'='*66}")
-    print(f"{'Mode':<28}  {'ctx':>6}  {'ngl':>4}  {'tok/s':>8}  {'KV MiB':>8}  "
-          f"{'err%':>6}  {'status':>7}")
-    print(f"{'─'*28}  {'─'*6}  {'─'*4}  {'─'*8}  {'─'*8}  {'─'*6}  {'─'*7}")
+    print(f"  {'Mode':<26}  {'ctx':>6}  {'ngl':>4}  {'tok/s':>7}  {'KV MiB':>7}  "
+          f"{'err%':>5}  {'load s':>6}  {'GB/s':>5}  status")
+    print(f"  {'─'*26}  {'─'*6}  {'─'*4}  {'─'*7}  {'─'*7}  "
+          f"{'─'*5}  {'─'*6}  {'─'*5}  {'─'*6}")
     for label, r in results.items():
-        tps = f"{r['tok_per_s']:.2f}" if r.get("tok_per_s") else "N/A"
-        kv  = f"{r['kv_log_mib']:.1f}" if r.get("kv_log_mib") else "N/A"
-        err = f"{r['err_pct']:.1f}" if r.get("err_pct") is not None else "N/A"
-        ok  = "✓ OK" if r["returncode"] == 0 else "✗ OOM"
-        print(f"  {label:<26}  {r['ctx']:>6,}  {r['ngl']:>4}  {tps:>8}  "
-              f"{kv:>8}  {err:>6}  {ok:>7}")
+        tps  = f"{r['tok_per_s']:.2f}"  if r.get("tok_per_s")   else "N/A"
+        kv   = f"{r['kv_log_mib']:.1f}" if r.get("kv_log_mib")  else "N/A"
+        err  = f"{r['err_pct']:.1f}"    if r.get("err_pct") is not None else "N/A"
+        ld   = f"{r['load_s']:.2f}"     if r.get("load_s")       else "N/A"
+        bw   = f"{r['storage_bw_gbps']:.2f}" if r.get("storage_bw_gbps") else "N/A"
+        ok   = "✓ OK" if r["returncode"] == 0 else "✗ OOM"
+        print(f"  {label:<26}  {r['ctx']:>6,}  {r['ngl']:>4}  {tps:>7}  "
+              f"{kv:>7}  {err:>5}  {ld:>6}  {bw:>5}  {ok}")
 
     # Unified memory verdict
     a_runs = [r for k, r in results.items() if "full GPU" in k and r.get("tok_per_s")]
@@ -252,11 +302,30 @@ def _print_summary(results: dict, bpt: int):
         print(f"    Partial  (ngl=22) avg:   {b_avg:.2f} tok/s")
         print(f"    Slowdown from offload:   {slowdown:.1f}%")
         if slowdown < 20:
-            print(f"    ✓ Unified memory: CPU offload costs < 20% — nearly free context doubling")
+            print("    ✓ Unified memory: CPU offload costs < 20% — nearly free context doubling")
         elif slowdown < 40:
-            print(f"    ~ Moderate cost — still worthwhile for 2× context gain")
+            print("    ~ Moderate cost — still worthwhile for 2× context gain")
         else:
-            print(f"    ~ Significant slowdown — but discrete GPU would be 5-10× worse here")
+            print("    ~ Significant — but a discrete 6 GB GPU would be 5-10× worse here")
+
+    # NVMe storage verdict
+    if nvme:
+        bw_samples = [r["storage_bw_gbps"] for r in results.values()
+                      if r.get("storage_bw_gbps") is not None]
+        if bw_samples:
+            avg_bw = sum(bw_samples) / len(bw_samples)
+            print()
+            print(f"  NVMe storage bandwidth (implied by load_time):")
+            print(f"    Measured:   {avg_bw:.2f} GB/s")
+            print(f"    microSD:    ~0.09 GB/s  ({avg_bw/0.09:.0f}× faster)")
+            print(f"    eMMC:       ~0.30 GB/s  ({avg_bw/0.30:.0f}× faster)")
+            if avg_bw >= 1.5:
+                print("    ✓ NVMe confirmed — cold load is no longer the bottleneck")
+            elif avg_bw >= 0.5:
+                print("    ~ PCIe Gen 2 speed — still 5× faster than eMMC")
+            else:
+                print("    ~ Lower than expected — check M.2 slot is PCIe, not SATA")
+
     print(f"{'='*66}\n")
 
 
@@ -268,12 +337,15 @@ def main():
     )
     p.add_argument("--llamacpp", required=True, help="path to llama.cpp build/bin/")
     p.add_argument("--gguf",     required=True, help="path to Mistral-7B Q4_K_M .gguf")
+    p.add_argument("--nvme",     action="store_true",
+                   help="model is on NVMe M.2 — enable mmap and measure storage bandwidth")
     p.add_argument("--skip-8k",  action="store_true",
                    help="skip the 8K context test (use if RAM is very tight)")
     p.add_argument("--stats-json", default=None)
     args = p.parse_args()
 
-    results = run_benchmark(args.llamacpp, args.gguf, skip_8k=args.skip_8k)
+    results = run_benchmark(args.llamacpp, args.gguf,
+                            skip_8k=args.skip_8k, nvme=args.nvme)
 
     if args.stats_json:
         Path(args.stats_json).parent.mkdir(parents=True, exist_ok=True)
