@@ -71,6 +71,29 @@ def _fp16_quant_map() -> dict:
     return {"scheme": "fp16", "bpw": 16.0}
 
 
+def _model_size_gb(model_name: str, revision=None) -> float:
+    """Estimate FP16 model size in GB from HF config without loading weights."""
+    try:
+        from transformers import AutoConfig
+        cfg = AutoConfig.from_pretrained(model_name, revision=revision)
+        vocab  = getattr(cfg, "vocab_size", 32000)
+        hidden = getattr(cfg, "hidden_size", 4096)
+        layers = getattr(cfg, "num_hidden_layers", 32)
+        inter  = getattr(cfg, "intermediate_size", hidden * 4)
+        heads  = getattr(cfg, "num_attention_heads", 32)
+        kv_h   = getattr(cfg, "num_key_value_heads", heads)
+        head_d = hidden // heads
+        # Rough param count: embed + (attn + mlp) × layers + lm_head
+        params = vocab * hidden * 2 + layers * (
+            hidden * (heads + kv_h + kv_h) * head_d   # q + k + v proj
+            + heads * head_d * hidden                   # o proj
+            + hidden * inter * 3                        # gate + up + down
+        )
+        return params * 2 / 1024**3   # FP16 bytes
+    except Exception:
+        return 0.0
+
+
 def pack_model(
     model_name: str,
     output_path: str,
@@ -84,15 +107,46 @@ def pack_model(
 ) -> dict:
     """Quantize (if requested) and pack to .axm. Returns a stats dict."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    import psutil
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype  = torch.float16 if device == "cuda" else torch.float32
+    # Auto-select device and whether to use device_map for large models.
+    # A model that exceeds 80% of available VRAM needs CPU help or device_map.
+    cuda_available = torch.cuda.is_available()
+    vram_gb  = torch.cuda.get_device_properties(0).total_memory / 1024**3 if cuda_available else 0
+    ram_gb   = psutil.virtual_memory().available / 1024**3
+    est_gb   = _model_size_gb(model_name, model_revision) or 2.0
+    big_model = est_gb > 8.0
 
-    print(f"[pack] loading {model_name}...")
+    if cuda_available and est_gb <= vram_gb * 0.80:
+        device     = "cuda"
+        dtype      = torch.float16
+        device_map = None
+        print(f"[pack] loading {model_name} on GPU (est {est_gb:.1f} GB, VRAM {vram_gb:.1f} GB)...")
+    elif cuda_available and (est_gb <= vram_gb + ram_gb * 0.60):
+        # Too big for VRAM alone — split across GPU + CPU RAM
+        device     = "cuda"
+        dtype      = torch.float16
+        device_map = "auto"
+        print(f"[pack] loading {model_name} with device_map=auto "
+              f"(est {est_gb:.1f} GB > VRAM {vram_gb:.1f} GB — splitting GPU+CPU)...")
+    else:
+        device     = "cpu"
+        dtype      = torch.float32
+        device_map = None
+        print(f"[pack] loading {model_name} on CPU "
+              f"(est {est_gb:.1f} GB, available RAM {ram_gb:.1f} GB)...")
+
     t0 = time.monotonic()
-    model     = AutoModelForCausalLM.from_pretrained(
-        model_name, revision=model_revision, torch_dtype=dtype,
-    ).to(device)
+    load_kwargs: dict = dict(
+        revision=model_revision,
+        torch_dtype=dtype,
+        low_cpu_mem_usage=True,
+    )
+    if device_map:
+        load_kwargs["device_map"] = device_map
+    model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+    if device_map is None:
+        model = model.to(device)
     tokenizer = AutoTokenizer.from_pretrained(model_name, revision=model_revision)
     model.eval()
     load_s = time.monotonic() - t0
@@ -229,8 +283,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct")
     p.add_argument("--revision", default=None)
     p.add_argument("--srd-top-k-pct", type=float, default=None,
-                   help="SRD sparsity fraction (e.g. 0.25 = 7 bpw). "
+                   help="SRD sparsity fraction (e.g. 0.25 = ~7 bpw, 0 = W4-only ~4.5 bpw). "
                         "Omit for FP16 baseline.")
+    p.add_argument("--srd4", action="store_true",
+                   help="Shorthand for --srd-top-k-pct 0 (pure W4, no D8 residual, ~4.5 bpw). "
+                        "Equivalent to the SRD-4 mode.")
     p.add_argument("--group-size", type=int, default=DEFAULT_GROUP_SIZE)
     p.add_argument("--hardware-map", default="gpu",
                    choices=["cpu", "gpu", "npu", "fpga", "compile_on_load"])
@@ -251,10 +308,15 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    top_k = args.srd_top_k_pct
+    if args.srd4:
+        if top_k is not None and top_k != 0.0:
+            raise SystemExit("--srd4 and --srd-top-k-pct are mutually exclusive")
+        top_k = 0.0
     stats = pack_model(
         model_name=args.model,
         output_path=args.output,
-        srd_top_k_pct=args.srd_top_k_pct,
+        srd_top_k_pct=top_k,
         group_size=args.group_size,
         model_revision=args.revision,
         hardware_map=args.hardware_map,

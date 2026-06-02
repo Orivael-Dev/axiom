@@ -171,10 +171,13 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 def cmd_pack(args: argparse.Namespace) -> int:
     from research.quant.pack_to_axm import pack_model
+    top_k = args.srd_top_k_pct
+    if getattr(args, "srd4", False):
+        top_k = 0.0
     stats = pack_model(
         model_name=args.model,
         output_path=args.output,
-        srd_top_k_pct=args.srd_top_k_pct,
+        srd_top_k_pct=top_k,
         group_size=args.group_size,
         model_revision=args.revision,
         hardware_map=args.hardware_map,
@@ -244,7 +247,9 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--model", required=True)
     pp.add_argument("--output", required=True)
     pp.add_argument("--srd-top-k-pct", type=float, default=None,
-                    help="SRD sparsity (0.25 = ~7 bpw); omit for FP16")
+                    help="SRD sparsity (0.25 = ~7 bpw, 0 = W4-only ~4.5 bpw); omit for FP16")
+    pp.add_argument("--srd4", action="store_true",
+                    help="shorthand for --srd-top-k-pct 0 (pure W4, no residual, ~4.5 bpw)")
     pp.add_argument("--group-size", type=int, default=64)
     pp.add_argument("--revision", default=None)
     pp.add_argument("--hardware-map", default="gpu",
