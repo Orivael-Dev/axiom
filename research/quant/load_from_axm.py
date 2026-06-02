@@ -39,8 +39,23 @@ def load_and_measure(
     device: Optional[str] = None,
     clean: bool = False,
     drop_uncertain: bool = False,
+    kv_cache_path: Optional[str] = None,
+    save_kv_cache: Optional[str] = None,
+    kv_token_id: Optional[str] = None,
 ) -> dict:
-    """Load model from .axm, verify, generate, return latency stats."""
+    """Load model from .axm, verify, generate, return latency stats.
+
+    KV cache params
+    ---------------
+    kv_cache_path   Path to a signed .kvcache.pt file produced by a prior
+                    run with save_kv_cache.  If provided, the prompt prefix
+                    KV state is loaded (and verified) before generation,
+                    skipping the prefill compute for the cached tokens.
+    save_kv_cache   Path to write a signed KVCacheEntry after the first
+                    forward pass.  Does not affect generation timing.
+    kv_token_id     EventToken.id to embed in the KVCacheEntry signature.
+                    Defaults to the container fingerprint.
+    """
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -101,35 +116,106 @@ def load_and_measure(
     inputs = tokenizer(prompt, return_tensors="pt").to(device)
     input_len = inputs.input_ids.shape[1]
 
+    # ── KV cache: save (build signed prefix cache for this prompt) ─────
+    kv_saved_path: Optional[str] = None
+    if save_kv_cache:
+        from axiom_event_token.kv_cache import KVCacheEntry
+        _tid = kv_token_id or container.fingerprint()
+        # Pre-fill covers prompt tokens [0..N-2] so generate() can process
+        # the last token as the continuation seed with full context.
+        _prefix_ids = inputs.input_ids[:, :-1]
+        if _prefix_ids.shape[1] > 0:
+            with torch.no_grad():
+                _kv_out = model(_prefix_ids, use_cache=True)
+            _entry = KVCacheEntry.from_past_key_values(
+                _kv_out.past_key_values, token_id=_tid, layer_slot="text",
+            )
+            _entry.save(Path(save_kv_cache), _kv_out.past_key_values)
+            kv_saved_path = save_kv_cache
+            print(f"[kv] signed KV cache saved → {save_kv_cache}  "
+                  f"({input_len - 1} prefix tokens, {_entry.n_layers} layers)")
+        else:
+            print("[kv] prompt too short to build a meaningful prefix cache (< 2 tokens) — skipped")
+
+    # ── KV cache: load (verify + restore prefix for fast prefill) ──────
+    _pkv: Optional[object] = None
+    kv_hit = False
+    kv_prefill_skipped_tokens = 0
+    if kv_cache_path:
+        from axiom_event_token.kv_cache import KVCacheEntry
+        _entry, _raw = KVCacheEntry.load(Path(kv_cache_path), verify=True)
+        _pkv = KVCacheEntry.to_past_key_values(_raw, device=device, dtype=dtype)
+        kv_hit = True
+        kv_prefill_skipped_tokens = _entry.seq_len
+        print(f"[kv] ✓ verified KV cache from {kv_cache_path}  "
+              f"({_entry.seq_len} cached tokens, skipping prefill)")
+
     run_results = []
     for i in range(n_runs):
         if torch.cuda.is_available():
             torch.cuda.synchronize()
 
-        # Time to first token (TTFT)
-        t_ttft = time.monotonic()
-        with torch.no_grad():
-            # Generate just 1 token for TTFT
-            first = model.generate(
-                **inputs, max_new_tokens=1, do_sample=False,
-                pad_token_id=tokenizer.eos_token_id,
+        if _pkv is not None:
+            # Fast-prefill path: past_key_values covers the prompt prefix
+            # [0..N-2]; generate() processes only the last prompt token
+            # (position N-1) as continuation seed, then generates new tokens.
+            _seed_ids = inputs.input_ids[:, -1:]
+            _attn_mask = torch.ones(
+                1, input_len, device=device, dtype=torch.long,
             )
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        ttft_s = time.monotonic() - t_ttft
 
-        # Full generation for throughput
-        t_gen = time.monotonic()
-        with torch.no_grad():
-            output = model.generate(
-                **inputs, max_new_tokens=n_tokens, do_sample=False,
-                pad_token_id=tokenizer.eos_token_id,
-            )
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        gen_s = time.monotonic() - t_gen
+            t_ttft = time.monotonic()
+            with torch.no_grad():
+                first = model.generate(
+                    input_ids=_seed_ids, past_key_values=_pkv,
+                    attention_mask=_attn_mask,
+                    max_new_tokens=1, do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            ttft_s = time.monotonic() - t_ttft
 
-        n_new = output.shape[1] - input_len
+            t_gen = time.monotonic()
+            with torch.no_grad():
+                output = model.generate(
+                    input_ids=_seed_ids, past_key_values=_pkv,
+                    attention_mask=_attn_mask,
+                    max_new_tokens=n_tokens, do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            gen_s = time.monotonic() - t_gen
+            # output = [seed_token, gen_token_1, ..., gen_token_N]
+            n_new = output.shape[1] - 1
+
+        else:
+            # Standard path: full prefill on every run.
+
+            # Time to first token (TTFT)
+            t_ttft = time.monotonic()
+            with torch.no_grad():
+                first = model.generate(
+                    **inputs, max_new_tokens=1, do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            ttft_s = time.monotonic() - t_ttft
+
+            # Full generation for throughput
+            t_gen = time.monotonic()
+            with torch.no_grad():
+                output = model.generate(
+                    **inputs, max_new_tokens=n_tokens, do_sample=False,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            gen_s = time.monotonic() - t_gen
+            n_new = output.shape[1] - input_len
+
         tok_per_s = n_new / gen_s if gen_s > 0 else 0.0
 
         run_results.append({
@@ -141,7 +227,8 @@ def load_and_measure(
         print(f"[load] run {i+1}/{n_runs}: "
               f"TTFT={ttft_s*1000:.0f}ms  "
               f"{n_new} tokens in {gen_s:.2f}s  "
-              f"({tok_per_s:.1f} tok/s)")
+              f"({tok_per_s:.1f} tok/s)"
+              + (" [kv cache hit]" if kv_hit else ""))
 
     text = tokenizer.decode(output[0], skip_special_tokens=True)
 
@@ -194,6 +281,11 @@ def load_and_measure(
         "generated_text":    text,
         "cleaned_text":      cleaned_text,
         "trajectory_filter": clean_report,
+        "kv_cache": {
+            "hit":                   kv_hit,
+            "prefill_skipped_tokens": kv_prefill_skipped_tokens,
+            "saved_path":            kv_saved_path,
+        },
     }
 
     print(f"\n[load] ── summary ─────────────────────────────────────────")
@@ -225,6 +317,13 @@ def _parse_args() -> argparse.Namespace:
                    help="filter generation through the ORVL-016 intent gate")
     p.add_argument("--drop-uncertain", action="store_true",
                    help="with --clean, also drop UNCERTAIN filler steps")
+    p.add_argument("--kv-cache", default=None,
+                   help="load a signed KV cache (.kvcache.pt) to skip prompt prefill")
+    p.add_argument("--save-kv-cache", default=None,
+                   help="sign and save the prompt KV cache to this path after loading")
+    p.add_argument("--kv-token-id", default=None,
+                   help="EventToken.id to bind into the KV cache signature "
+                        "(default: container fingerprint)")
     p.add_argument("--stats-json", type=Path, default=None)
     return p.parse_args()
 
@@ -239,6 +338,9 @@ def main() -> int:
         device=args.device,
         clean=args.clean,
         drop_uncertain=args.drop_uncertain,
+        kv_cache_path=args.kv_cache,
+        save_kv_cache=args.save_kv_cache,
+        kv_token_id=args.kv_token_id,
     )
     if args.stats_json:
         args.stats_json.parent.mkdir(parents=True, exist_ok=True)

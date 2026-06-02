@@ -144,6 +144,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         device=args.device,
         clean=args.clean,
         drop_uncertain=args.drop_uncertain,
+        kv_cache_path=getattr(args, "kv_cache", None),
+        save_kv_cache=getattr(args, "save_kv_cache", None),
+        kv_token_id=getattr(args, "kv_token_id", None),
     )
     if args.stats_json:
         Path(args.stats_json).parent.mkdir(parents=True, exist_ok=True)
@@ -212,6 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
                          "gate (drops repeats, blocked, and filler steps)")
     pr.add_argument("--drop-uncertain", action="store_true",
                     help="with --clean, also drop UNCERTAIN filler steps")
+    pr.add_argument("--kv-cache", default=None,
+                    help="path to a signed .kvcache.pt file — skips prompt prefill")
+    pr.add_argument("--save-kv-cache", default=None,
+                    help="sign and save the prompt KV cache to this path")
+    pr.add_argument("--kv-token-id", default=None,
+                    help="EventToken.id to embed in the KV cache signature")
     pr.add_argument("--stats-json", default=None)
     pr.set_defaults(func=cmd_run)
 

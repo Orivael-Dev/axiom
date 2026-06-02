@@ -31,6 +31,7 @@ from .backends import (
 )
 from .router import DelegateRouter, RoutingDecision
 from .delegate_runtime import DelegateAgent
+from .kv_cache import KVCacheEntry, KVCacheStore, LAYER_SLOTS
 
 __all__ = [
     "EventToken", "LayerReport", "Coordinator", "EventTokenChain",
@@ -39,5 +40,6 @@ __all__ = [
     "make_backend", "default_backend",
     "DelegateRouter", "RoutingDecision",
     "DelegateAgent",
+    "KVCacheEntry", "KVCacheStore", "LAYER_SLOTS",
     "__version__",
 ]
