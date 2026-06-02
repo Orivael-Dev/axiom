@@ -1,6 +1,6 @@
 """Axiom metric-targeted synthetic dataset generator.
 
-Produces ~4 700 ChatML training examples across 9 categories designed to hit
+Produces ~5 000 ChatML training examples across 10 categories designed to hit
 the 8 evaluation metric targets for orivael/axiom-qwen2.5-coder-1.5b.
 
 Ground truth for verdict classification is produced by running the live
@@ -645,6 +645,338 @@ def _format_examples(rng: random.Random, n: int) -> List[dict]:
     return [_msg(q, _j({"answer": a})) for q, a in pool[:n]]
 
 
+# ── Category 10: adapter block compression (300 examples) ────────────────────
+# Trains the model to produce AXIOM_BLOCK JSON from raw document input,
+# implementing Level 1 of the Token Adapter concept (pre-token semantic compression).
+
+_RAW_DOC_SAMPLES = [
+    {
+        "domain": "technical",
+        "text": (
+            "HMAC-SHA256 combines a secret key with the SHA-256 hash function to produce a "
+            "fixed-length 32-byte digest that verifies both data integrity and authenticity. "
+            "The key is first processed through a key derivation function to produce a "
+            "namespace-scoped secret. Axiom uses three HMAC layers: the layer signature covers "
+            "per-agent payloads, the coordinator signature covers all layer signatures, and the "
+            "outer token signature covers the canonical form of all fields. Each namespace is "
+            "derived via derive_key(namespace_bytes) from AXIOM_MASTER_KEY. Verification requires "
+            "re-computing the HMAC and comparing using hmac.compare_digest() to prevent timing attacks."
+        ),
+        "raw_est": 420, "compressed_est": 155, "has_pii": False,
+        "summary": "HMAC-SHA256 three-tier signing for Axiom event tokens.",
+        "facts": ["three signing layers: layer/coordinator/token", "namespace-scoped keys via derive_key", "timing-safe comparison via compare_digest"],
+        "events": [],
+        "entities": ["HMAC-SHA256", "derive_key", "AXIOM_MASTER_KEY", "compare_digest"],
+    },
+    {
+        "domain": "technical",
+        "text": (
+            "The Axiom KV Cache DAG (ORVL-025) organizes cached key-value tensors from transformer "
+            "attention layers into five named blocks: A (system_prompt), B (dev_tool_rules), "
+            "C (user_profile), D (rag_documents), and E (conversation_tail). Each block has a "
+            "deterministic SHA-256 content address called KVBlockKey. When content changes, only "
+            "the changed block and all downstream blocks need recomputation. If block C changes, "
+            "blocks A and B remain reusable but C, D, and E are invalidated. SpectralQuant "
+            "compression reduces KV memory by 6.62x, expanding an Orin Nano 6K context to 39K."
+        ),
+        "raw_est": 390, "compressed_est": 145, "has_pii": False,
+        "summary": "Axiom KV Cache DAG: 5-block hierarchy with SHA-256 content addressing.",
+        "facts": ["5 block types A-E", "SHA-256 content address per block", "downstream invalidation on change", "SpectralQuant 6.62x KV compression"],
+        "events": [],
+        "entities": ["KVCacheDAG", "ORVL-025", "KVBlockKey", "SpectralQuant"],
+    },
+    {
+        "domain": "security",
+        "text": (
+            "CVE-2024-44192: A remote code execution vulnerability in the JWT validation library "
+            "libauth v2.3.1 allows attackers to bypass signature verification by supplying 'none' "
+            "as the algorithm field in the JWT header. Affected versions: 2.0.0 through 2.3.1. "
+            "CVSS v3.1 Base Score: 9.8 (Critical). Attack vector: Network. Attack complexity: Low. "
+            "No privileges required. Fixed in libauth v2.3.2. "
+            "Mitigation: Reject tokens with 'none' algorithm; use an allowlist of permitted algorithms."
+        ),
+        "raw_est": 350, "compressed_est": 140, "has_pii": False,
+        "summary": "Critical RCE in JWT library via alg:none bypass, fixed in v2.3.2.",
+        "facts": ["CVE-2024-44192", "alg:none bypass in JWT", "CVSS 9.8 Critical", "fixed in v2.3.2"],
+        "events": ["vulnerability disclosed", "patch released"],
+        "entities": ["libauth", "JWT", "CVE-2024-44192"],
+    },
+    {
+        "domain": "security",
+        "text": (
+            "The Axiom Intent Classifier (ORVL-016) assigns one of six intent classes to incoming "
+            "text: INFORM, CLARIFY, REFUSE, HARM, DECEIVE, or UNCERTAIN. HARM and DECEIVE are "
+            "BLOCK_CLASSES — any tool call classified into these must be rejected before processing. "
+            "The classifier uses 16 harm patterns and 14 deceive patterns, checked in priority order. "
+            "Classification results include intent_class, confidence score, and matching signals. "
+            "The HMAC key is derived from 'axiom-intent-classifier-v1' via derive_key()."
+        ),
+        "raw_est": 340, "compressed_est": 130, "has_pii": False,
+        "summary": "Axiom intent classifier: 6 classes, HARM/DECEIVE blocked, HMAC-verified.",
+        "facts": ["6 intent classes", "HARM and DECEIVE are BLOCK_CLASSES", "16 harm + 14 deceive patterns"],
+        "events": [],
+        "entities": ["IntentClassifier", "ORVL-016", "BLOCK_CLASSES"],
+    },
+    {
+        "domain": "medical",
+        "text": (
+            "Patient: Adult, 58-year-old male. Chief complaint: acute chest pain radiating to left "
+            "arm, diaphoresis, and nausea for 90 minutes. Vitals: BP 145/92, HR 98 bpm, SpO2 96%. "
+            "ECG findings: 2mm ST-elevation in leads II, III, aVF. Troponin I: 0.48 ng/mL (elevated). "
+            "Assessment: Inferior STEMI. Plan: Activate cath lab, administer aspirin 325mg, "
+            "clopidogrel 600mg loading dose, heparin IV bolus. Target door-to-balloon under 90 min."
+        ),
+        "raw_est": 400, "compressed_est": 165, "has_pii": True,
+        "summary": "Inferior STEMI in 58yo male, primary PCI indicated.",
+        "facts": ["ST-elevation II/III/aVF", "troponin 0.48 elevated", "inferior STEMI diagnosis", "door-to-balloon target 90min"],
+        "events": ["chest pain onset", "ECG obtained", "STEMI diagnosis", "cath lab activated"],
+        "entities": ["troponin", "aspirin", "clopidogrel", "heparin", "primary PCI"],
+    },
+    {
+        "domain": "medical",
+        "text": (
+            "Drug: Metformin hydrochloride 500mg tablets. Indication: Type 2 diabetes mellitus, "
+            "as adjunct to diet and exercise. Mechanism: Decreases hepatic glucose production, "
+            "decreases intestinal glucose absorption, improves insulin sensitivity. "
+            "Contraindications: eGFR less than 30 mL/min, active hepatic disease, excessive alcohol. "
+            "Common side effects: GI upset especially if not taken with food. "
+            "Serious risk: lactic acidosis (rare, monitor renal function). Max dose: 2550mg/day."
+        ),
+        "raw_est": 360, "compressed_est": 138, "has_pii": False,
+        "summary": "Metformin: T2DM indication, mechanism, contraindications, max 2550mg/day.",
+        "facts": ["decreases hepatic glucose production", "contraindicated eGFR<30", "lactic acidosis risk", "max 2550mg/day"],
+        "events": [],
+        "entities": ["Metformin", "Type 2 diabetes", "lactic acidosis"],
+    },
+    {
+        "domain": "legal",
+        "text": (
+            "Section 12.4 — Limitation of Liability. In no event shall either party be liable for "
+            "any indirect, incidental, special, exemplary, or consequential damages arising out of "
+            "or in connection with this agreement, including but not limited to loss of revenue, "
+            "loss of profits, or loss of data, even if such party has been advised of the possibility "
+            "of such damages. The total cumulative liability of either party shall not exceed the fees "
+            "paid by the customer in the twelve months preceding the event giving rise to the claim."
+        ),
+        "raw_est": 370, "compressed_est": 105, "has_pii": False,
+        "summary": "Standard limitation of liability: no consequential damages, cap at 12-month fees.",
+        "facts": ["no indirect/consequential damages", "liability cap: 12-month fees paid", "both parties bound"],
+        "events": [],
+        "entities": ["limitation of liability", "consequential damages"],
+    },
+    {
+        "domain": "legal",
+        "text": (
+            "EU AI Act, Article 13 — Transparency and information to users. Providers of high-risk "
+            "AI systems shall ensure systems are designed so users can interpret output and use it "
+            "appropriately. Instructions must include: intended purpose, level of accuracy and "
+            "robustness, known limitations, human oversight measures, and expected system lifetime. "
+            "Phased enforcement: August 2024 for prohibited AI; 2025 for general-purpose AI; "
+            "2026 for high-risk AI systems."
+        ),
+        "raw_est": 380, "compressed_est": 135, "has_pii": False,
+        "summary": "EU AI Act Article 13: transparency requirements for high-risk AI, phased 2024-2026.",
+        "facts": ["high-risk AI must include instructions", "covers accuracy, limitations, human oversight", "phased enforcement 2024-2026"],
+        "events": ["Article 13 compliance deadline 2026"],
+        "entities": ["EU AI Act", "Article 13", "high-risk AI"],
+    },
+    {
+        "domain": "general",
+        "text": (
+            "Quantization reduces the memory footprint of neural network weights by representing "
+            "them with fewer bits. Common schemes: FP16 (16-bit float, negligible quality loss), "
+            "INT8 (8-bit integer, minor quality loss), Q4_K_M (4-bit mixed, approximately 1.5% "
+            "perplexity increase on WikiText-2). Lower bit-width reduces memory and increases "
+            "inference speed but can degrade quality on complex reasoning tasks. Quantization is "
+            "applied post-training using tools like llama.cpp or bitsandbytes without permanently "
+            "modifying model weights."
+        ),
+        "raw_est": 310, "compressed_est": 115, "has_pii": False,
+        "summary": "Neural network quantization: FP16/INT8/Q4 tradeoffs, memory vs. quality.",
+        "facts": ["FP16: negligible quality loss", "Q4_K_M: ~1.5% perplexity increase", "post-training, non-permanent"],
+        "events": [],
+        "entities": ["quantization", "FP16", "Q4_K_M", "llama.cpp", "bitsandbytes"],
+    },
+    {
+        "domain": "general",
+        "text": (
+            "LoRA (Low-Rank Adaptation) is a parameter-efficient fine-tuning technique that "
+            "freezes pretrained model weights and injects trainable rank-decomposition matrices "
+            "into each transformer layer. Instead of updating all parameters, LoRA trains two "
+            "small matrices A (d x r) and B (r x k) where r is much less than d. The adapted "
+            "weight is W' = W + alpha/r times BA. QLoRA combines LoRA with 4-bit quantized base "
+            "weights, reducing GPU memory by approximately 70% while retaining fine-tuning quality."
+        ),
+        "raw_est": 330, "compressed_est": 125, "has_pii": False,
+        "summary": "LoRA/QLoRA: low-rank adaptation for parameter-efficient fine-tuning.",
+        "facts": ["freezes pretrained weights", "trains A and B matrices of rank r", "QLoRA: ~70% less GPU memory"],
+        "events": [],
+        "entities": ["LoRA", "QLoRA", "rank decomposition"],
+    },
+    {
+        "domain": "technical",
+        "text": (
+            "The AXM container format (Axiom Executable Model) wraps quantized model weights in a "
+            "signed, verifiable package. An AXM file contains an AXMHeader (format_version, "
+            "model_id, quant_map, hardware_map, layer_sigs, coordinator_sig, axm_fingerprint) "
+            "followed by weight blobs. The axm_fingerprint is the SHA-256 of all serialized tensors. "
+            "CLI commands: axm pack creates an AXM from a HuggingFace model, axm verify checks all "
+            "signatures, axm info shows the header, axm run performs inference, axm extract converts "
+            "to GGUF for llama.cpp compatibility."
+        ),
+        "raw_est": 360, "compressed_est": 138, "has_pii": False,
+        "summary": "AXM container: signed model package, SHA-256 fingerprint, 5 CLI commands.",
+        "facts": ["AXMHeader contains quant_map, coordinator_sig, axm_fingerprint", "SHA-256 fingerprint of all tensors", "5 CLI commands: pack/verify/info/run/extract"],
+        "events": [],
+        "entities": ["AXMHeader", "axm_fingerprint", "coordinator_sig", "GGUF"],
+    },
+    {
+        "domain": "security",
+        "text": (
+            "Prompt injection attacks attempt to override an AI system's instructions by embedding "
+            "malicious directives in user inputs. Common patterns: 'ignore previous instructions', "
+            "'you are now DAN', 'pretend you have no restrictions', or injecting instructions in "
+            "retrieved documents (indirect prompt injection via RAG). Defenses include: input "
+            "classification before processing, instruction hierarchy where system overrides user, "
+            "sandboxed tool execution, and output verification against constitutional rules. "
+            "Axiom's IntentClassifier detects DECEIVE-class prompts and blocks them before routing."
+        ),
+        "raw_est": 370, "compressed_est": 145, "has_pii": False,
+        "summary": "Prompt injection patterns and defenses including Axiom IntentClassifier.",
+        "facts": ["common patterns: DAN/ignore instructions", "indirect injection via RAG docs", "defenses: input classification, instruction hierarchy"],
+        "events": [],
+        "entities": ["prompt injection", "DAN", "IntentClassifier", "DECEIVE"],
+    },
+    {
+        "domain": "general",
+        "text": (
+            "Retrieval-Augmented Generation (RAG) combines a language model with a vector database. "
+            "At query time: the query is embedded using an embedding model, the top-k most similar "
+            "document chunks are retrieved from the vector store, the retrieved chunks are injected "
+            "into the prompt context, and the LLM generates an answer grounded in retrieved evidence. "
+            "RAG reduces hallucination for factual queries and allows updating knowledge without "
+            "retraining. Common vector stores include FAISS, Pinecone, and ChromaDB."
+        ),
+        "raw_est": 310, "compressed_est": 115, "has_pii": False,
+        "summary": "RAG: query embedding + vector retrieval + grounded LLM generation.",
+        "facts": ["top-k retrieval at query time", "reduces hallucination", "no retraining needed for knowledge updates"],
+        "events": [],
+        "entities": ["RAG", "FAISS", "Pinecone", "ChromaDB", "embedding"],
+    },
+    {
+        "domain": "technical",
+        "text": (
+            "BondedToken pairs in Axiom represent a bilateral authorization link between two agents. "
+            "Each pair has a shared pair_id and two roles: primary and counterpart. "
+            "States: ACTIVE_VALIDATED (authorized and verified), ACTIVE_PENDING (authorized but not "
+            "yet verified), SUSPENDED (temporarily blocked, awaiting review), REVOKED (terminal, "
+            "permanently invalid), EXPIRED (terminal, past validity window). "
+            "Only ACTIVE_VALIDATED tokens should be honored for privileged operations. "
+            "REVOKED and EXPIRED tokens must never be used regardless of caller claims."
+        ),
+        "raw_est": 355, "compressed_est": 132, "has_pii": False,
+        "summary": "BondedToken: bilateral agent authorization, 5 states, REVOKED/EXPIRED terminal.",
+        "facts": ["5 states: ACTIVE_VALIDATED/ACTIVE_PENDING/SUSPENDED/REVOKED/EXPIRED", "REVOKED+EXPIRED are terminal", "only ACTIVE_VALIDATED for privileged ops"],
+        "events": [],
+        "entities": ["BondedToken", "pair_id", "REVOKED", "EXPIRED"],
+    },
+    {
+        "domain": "general",
+        "text": (
+            "Perplexity measures how well a language model predicts a text sample. Lower perplexity "
+            "means better prediction. It is computed as the exponent of the average negative "
+            "log-likelihood per token. WikiText-2 is a standard benchmark: GPT-2 scores around 29, "
+            "LLaMA-2-7B scores around 5.7, Mistral-7B scores around 5.25. Quantization typically "
+            "increases perplexity by 0.5 to 3 points depending on the scheme and model size. "
+            "A 1-2 point increase in perplexity usually corresponds to a small but noticeable "
+            "degradation in generation quality on complex reasoning tasks."
+        ),
+        "raw_est": 295, "compressed_est": 108, "has_pii": False,
+        "summary": "Perplexity: LLM quality metric; WikiText-2 benchmarks and quantization impact.",
+        "facts": ["lower perplexity is better", "WikiText-2: GPT-2=29, LLaMA-2-7B=5.7, Mistral-7B=5.25", "quantization adds 0.5-3 PPL points"],
+        "events": [],
+        "entities": ["perplexity", "WikiText-2", "log-likelihood"],
+    },
+]
+
+_ADAPTER_PROMPTS = [
+    "Convert this document into an Axiom adapter block:",
+    "Analyze and compress this text into AXIOM_BLOCK format:",
+    "Run the Axiom adapter on this document and return the structured block:",
+    "Process this content through the Axiom token adapter:",
+    "What is the AXIOM_BLOCK representation of this document?",
+    "Compress this document into a governed Axiom block with routing metadata:",
+]
+
+
+def _adapter_block_examples(rng: random.Random, n: int) -> List[dict]:
+    from axiom_intent_classifier import IntentClassifier
+    from axiom_signing import derive_key
+
+    key = derive_key(b"axiom-intent-classifier-v1")
+    ic  = IntentClassifier(hmac_key=key)
+    examples = []
+
+    pool = _RAW_DOC_SAMPLES * (n // len(_RAW_DOC_SAMPLES) + 2)
+    rng.shuffle(pool)
+
+    for doc in pool[:n]:
+        result   = ic.classify(doc["text"][:400])
+        is_risky = result.intent_class in ("HARM", "DECEIVE")
+        domain   = doc["domain"]
+        has_pii  = doc["has_pii"]
+
+        if is_risky:
+            route, risk = "quarantine", "high"
+        elif domain == "medical" or has_pii:
+            route, risk = "retrieval", "high"
+        elif domain == "legal":
+            route, risk = "retrieval", "medium"
+        elif domain == "security":
+            route, risk = "fine_tune", "medium"
+        else:
+            route, risk = "train", "low"
+
+        raw_est        = doc["raw_est"]
+        compressed_est = doc["compressed_est"]
+        ratio          = round(1.0 - compressed_est / raw_est, 4)
+        doc_id         = uuid.uuid4().hex[:8]
+        confidence     = round(rng.uniform(0.82, 0.96), 2)
+
+        block = {
+            "axiom_block_version": "0.1",
+            "source": {
+                "id":             "doc_" + doc_id,
+                "type":           "text",
+                "verified":       not is_risky,
+                "license_status": "restricted" if has_pii else "allowed",
+            },
+            "governance": {
+                "risk_level":        risk,
+                "privacy_flag":      has_pii,
+                "recommended_route": route,
+            },
+            "content": {
+                "domain":   domain,
+                "summary":  doc["summary"],
+                "facts":    doc["facts"],
+                "events":   doc["events"],
+                "entities": doc["entities"],
+            },
+            "metrics": {
+                "raw_tokens_estimate":        raw_est,
+                "compressed_tokens_estimate": compressed_est,
+                "compression_ratio":          ratio,
+                "confidence":                 confidence,
+            },
+        }
+
+        prompt = rng.choice(_ADAPTER_PROMPTS) + "\n\n" + doc["text"]
+        examples.append(_msg(prompt, _j(block)))
+
+    return examples
+
+
 # ── Main entry ────────────────────────────────────────────────────────────────
 
 CATEGORY_SIZES = {
@@ -657,6 +989,7 @@ CATEGORY_SIZES = {
     "cli":        450,
     "kv_dag":     350,
     "format":     300,
+    "adapter_block": 300,
 }
 
 
@@ -679,15 +1012,16 @@ def generate(total: int = 4700, seed: int = 42) -> List[dict]:
         examples.extend(exs)
         print(f"  done ({time.perf_counter()-t0:.1f}s)")
 
-    _add("verdict",      _verdict_examples,   sizes["verdict"])
-    _add("json_struct",  _json_structure_examples, sizes["json_struct"])
-    _add("tamper",       _tamper_examples,    sizes["tamper"])
-    _add("revocation",   _revocation_examples, sizes["revocation"])
-    _add("tool_refusal", _tool_refusal_examples, sizes["tool_refusal"])
-    _add("no_fake_sig",  _no_fake_sig_examples, sizes["no_fake_sig"])
-    _add("cli",          _cli_examples,       sizes["cli"])
-    _add("kv_dag",       _kv_dag_examples,    sizes["kv_dag"])
-    _add("format",       _format_examples,    sizes["format"])
+    _add("verdict",       _verdict_examples,        sizes["verdict"])
+    _add("json_struct",   _json_structure_examples, sizes["json_struct"])
+    _add("tamper",        _tamper_examples,         sizes["tamper"])
+    _add("revocation",    _revocation_examples,     sizes["revocation"])
+    _add("tool_refusal",  _tool_refusal_examples,   sizes["tool_refusal"])
+    _add("no_fake_sig",   _no_fake_sig_examples,    sizes["no_fake_sig"])
+    _add("cli",           _cli_examples,            sizes["cli"])
+    _add("kv_dag",        _kv_dag_examples,         sizes["kv_dag"])
+    _add("format",        _format_examples,         sizes["format"])
+    _add("adapter_block", _adapter_block_examples,  sizes["adapter_block"])
 
     rng.shuffle(examples)
     return examples

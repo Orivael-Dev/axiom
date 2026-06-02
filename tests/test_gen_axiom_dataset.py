@@ -23,6 +23,7 @@ from research.finetune.gen_axiom_dataset import (
     _cli_examples,
     _kv_dag_examples,
     _format_examples,
+    _adapter_block_examples,
     generate,
     CATEGORY_SIZES,
 )
@@ -210,3 +211,58 @@ class TestSystemPrompt:
         exs = generate(total=100, seed=7)
         invalid = [ex for ex in exs if not _valid_example(ex)]
         assert len(invalid) == 0, f"{len(invalid)} examples have invalid JSON outputs"
+
+    def test_category_sizes_includes_adapter_block(self):
+        assert "adapter_block" in CATEGORY_SIZES
+        assert CATEGORY_SIZES["adapter_block"] >= 300
+
+
+class TestAdapterBlockExamples:
+    def test_adapter_block_structure(self):
+        exs = _adapter_block_examples(_rng(), 20)
+        assert len(exs) == 20
+        assert all(_valid_example(e) for e in exs)
+
+    def test_adapter_block_has_version_field(self):
+        exs = _adapter_block_examples(_rng(), 20)
+        for ex in exs:
+            parsed = json.loads(ex["messages"][2]["content"])
+            assert parsed.get("axiom_block_version") == "0.1"
+
+    def test_adapter_block_has_all_sections(self):
+        exs = _adapter_block_examples(_rng(), 20)
+        for ex in exs:
+            parsed = json.loads(ex["messages"][2]["content"])
+            assert "source" in parsed
+            assert "governance" in parsed
+            assert "content" in parsed
+            assert "metrics" in parsed
+
+    def test_adapter_block_route_is_valid(self):
+        valid_routes = {"train", "fine_tune", "retrieval", "eval", "quarantine"}
+        exs = _adapter_block_examples(_rng(), 30)
+        for ex in exs:
+            parsed = json.loads(ex["messages"][2]["content"])
+            route = parsed["governance"]["recommended_route"]
+            assert route in valid_routes, f"Invalid route: {route}"
+
+    def test_adapter_block_compression_ratio_lt_one(self):
+        exs = _adapter_block_examples(_rng(), 20)
+        for ex in exs:
+            parsed = json.loads(ex["messages"][2]["content"])
+            ratio = parsed["metrics"]["compression_ratio"]
+            assert 0.0 < ratio < 1.0, f"Compression ratio out of range: {ratio}"
+
+    def test_adapter_block_risk_level_valid(self):
+        exs = _adapter_block_examples(_rng(), 30)
+        for ex in exs:
+            parsed = json.loads(ex["messages"][2]["content"])
+            assert parsed["governance"]["risk_level"] in ("low", "medium", "high")
+
+    def test_medical_domain_routes_to_retrieval(self):
+        exs = _adapter_block_examples(_rng(), 60)
+        for ex in exs:
+            parsed = json.loads(ex["messages"][2]["content"])
+            if parsed["content"]["domain"] == "medical":
+                assert parsed["governance"]["recommended_route"] == "retrieval", \
+                    "Medical domain should route to retrieval"
