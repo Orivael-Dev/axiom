@@ -334,6 +334,7 @@ python examples/axiom_guard_api.py  # port 8001
 | **ORVL-019** Sovereign Phone | `POST /phone/outbound` · `POST /phone/inbound` · `GET /phone/status` |
 | **ORVL-022** CPI | `POST /cpi/stability` · `POST /cpi/classify` · `POST /cpi/simulate` · `POST /cpi/pickup` · `GET /cpi/status` |
 | **ORVL-023** AXM | `POST /axm/inspect` · `POST /axm/verify` · `POST /axm/route` |
+| **ORVL-025** Event Token | `POST /event-token/mint` · `POST /event-token/verify` · `GET /event-token/chain` · `POST /kv/bind` · `GET /kv/verify` |
 
 ---
 
@@ -403,8 +404,9 @@ curl -s https://orivael-dev.github.io/axiom/mcp.json | jq .install.claude_code.s
 | `axiom_phone_gate` | ORVL-019 | Run text through the Sovereign Phone coprocessor (`out` / `in`) |
 | `axiom_axm` | ORVL-023 | Operate an `.AXM` container (`inspect` / `verify` / `route`) |
 | `axiom_cpi` | ORVL-022 | Drive the physical-intelligence agent (`stability` / `classify` / `simulate` / `pickup` / `status`) |
+| `axiom_event_token` | ORVL-025 | Mint / verify a 3D multimodal EventToken; bind and verify its signed KV cache DAG (`mint` / `verify` / `chain` / `kv_bind` / `kv_verify`) |
 
-All 13 tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
+All 14 tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
 
 ---
 
@@ -543,6 +545,188 @@ anf_cores=20  anf_distance=0.000                  ← ANF coprocessor driven per
 - ORVL-019 Mobile — `NeuralComputeBlock.__init__` accepts an optional `axm_container=…`; lazy-load runs on each `pre_classify()`.
 
 Also available via `POST /axm/{inspect,verify,route}` and the MCP tool `axiom_axm` with `action: inspect|verify|route`.
+
+---
+
+## SRD Quantization × .AXM — Signed Quantized Models (ORVL-024)
+
+> **Status: testing in progress.** The quality story is proven; the
+> real-packing (Phase E3) and on-device (Jetson Orin Nano) benchmarks are
+> still running. Numbers below are early and will move. ORVL-024-PROV.
+
+**Stochastic Residual Dithering (SRD)** is Axiom's weight-quantization
+scheme: a 4-bit base + sparse 8-bit residue per block, with a runtime
+mixing knob α and a `top_k_pct` sparsity control that fills the 5–12 bpw
+"dead zone" K-quants leave open. **The combined invention is SRD weights
+carried inside a signed `.AXM` container** — quantization and provenance
+in one shippable artifact:
+
+- the `quant_map` header is a structured dict
+  (`{"scheme":"srd","group_size":64,"top_k_pct":0.25,"bpw":7.0,"alpha":1.0}`)
+  describing exactly how the weights were quantized;
+- the weights live under `weights/` with a per-file `sha256` manifest in
+  the proof ledger, so `axm verify` proves the quantized weights are
+  untampered before they ever load.
+
+```bash
+# pack a model into a signed, SRD-quantized .axm
+axm pack --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+         --srd-top-k-pct 0.25 --output tinyllama_srd_7bpw.axm
+
+axm verify tinyllama_srd_7bpw.axm          # signatures + weight manifest
+axm info   tinyllama_srd_7bpw.axm          # quant_map, bpw, real-packed size
+axm run    tinyllama_srd_7bpw.axm --prompt "Write a Python function..."
+```
+
+**Results (TinyLlama-1.1B, Colab T4):**
+
+| Variant | bpw | Quality (vs FP16) | Archive |
+|---------|-----|-------------------|---------|
+| FP16 baseline | 16.0 | reference | 1535 MB (fake-quant .axm) |
+| SRD α=0 | 4.5 | beats Q4_K_M by 1.51 PPL | — |
+| **SRD 7 bpw** fake-quant | 7.0 | **coherent, on par with FP16** | 1535 MB (FP16 on disk) |
+| **SRD 7 bpw** E3 real-packed | 7.0 | **identical output, verified** | **942 MB** ✅ |
+| SRD dense | 13.0 | PPL 7.095 vs Q6_K 7.82 | — |
+
+A/B generation (`research/quant/ab_compare.py`) confirms SRD at 7 bpw
+produces output indistinguishable in quality from FP16 on this model.
+**Phase E3 real bit-packing is now working end-to-end** (validated via
+`research/quant/colab_realpack_validate.py`): the proven-quality model is
+stored as W4 nibble-packed + sparse-D8 bitmask weights (no CUDA kernel
+required), giving a **942 MB signed archive — 39% smaller than FP16** —
+that reconstructs to identical output and fits an 8 GB **Jetson Orin Nano**
+with KV-cache headroom. Pack it with `axm pack --real-pack`.
+
+**Positioning vs NVFP4:** NVFP4 (Blackwell/DGX Spark) delivers real 4-bit
+storage but is hardware-locked. SRD targets *any* CUDA device (T4, A10G,
+Orin) and ships as an open, signed `.AXM` format with a residual tier for
+quality.
+
+**Cross-patent wiring:**
+- ORVL-023 AXM — SRD weights are stored as an AXM `weights/` sub-module;
+  the `quant_map` header and proof ledger are reused verbatim.
+- ORVL-018 ANF — `axm verify` drives the governance coprocessor per proof,
+  so quantized-weight integrity is checked on the same path as governance.
+
+See `docs/SRD_RESULTS.md` (quality) and `docs/SRD_ROADMAP.md` (Phase E3 +
+Orin Nano plan) for the full write-up.
+
+---
+
+## Axiom Event Token — 3D Multimodal Token + KV Cache DAG (ORVL-025)
+
+> **Status: prototype implemented.** Core container + three-tier signing proven;
+> KV Cache DAG v2 (named-block system) implemented and tested.
+> ORVL-025-PROV.
+
+A single **EventToken** represents a layered concept-or-event with sub-reports
+from specialist agents (Text, Audio, Video, Physics, Governance) fused by a
+Coordinator — the "3D multimodal token" of the whitepaper. The novelty is
+treating the token not as a flat JSON blob but as a cryptographically bound
+multi-layer state machine:
+
+- **Three-tier HMAC signing** (`LAYER_KEY_NS` per agent → `COORD_KEY_NS` for
+  the fusion → `TOKEN_KEY_NS` for the outer token), matching the trust
+  hierarchy of the framework.
+- **Signed KV cache binding** — the Transformer `past_key_values` heap (opaque
+  FP16 tensors) is bound to the EventToken by hashing all K/V bytes into a
+  `cache_hash` and covering it with the outer HMAC. Tampering with any float in
+  the cache breaks the token signature immediately.
+
+### KV Cache DAG v2 — "Git commits for model context"
+
+The DAG extends the flat KV cache into a content-addressed block graph, where
+each logical segment of the context window is a separately cached, independently
+reusable unit:
+
+| Block | Segment | Reuse pattern |
+|-------|---------|---------------|
+| **A** | System prompt | Rarely changes — highest reuse across all sessions |
+| **B** | Dev / tool rules | Changes per repo or tool-set loaded |
+| **C** | User profile / project context | Changes per user-context load |
+| **D** | RAG documents | Changes per retrieval batch |
+| **E** | Conversation tail | Changes every turn |
+
+**Deterministic key (content-addressed, like a Git tree hash):**
+
+```python
+kv_key = SHA-256(
+    model_id | axm_fingerprint | tokenizer_hash |
+    rope_config | block_token_ids | position_offset |
+    dtype | quant_scheme
+)
+```
+
+Same inputs → same `block_id` → cache hit, skip prefill.
+Changed input anywhere in the chain → new `block_id` → only that block and
+its downstream children recompute.
+
+**EventToken binding:**
+
+```python
+event_token = {
+    "block_id":        "sha256-of-kv-key",
+    "parent_block_id": "predecessor-block-id",   # "" for block A
+    "kv_fingerprint":  "sha256(block_id|parent|cache_hash)",
+    "prompt_hash":     "sha256-of-prompt-text",
+    "signature":       "HMAC-SHA256(KV_BLOCK_NS+block_type, all fields)"
+}
+```
+
+**Prefill savings:**
+
+| Cached prefix | Total context | FLOPs saved |
+|--------------|---------------|-------------|
+| Blocks A–C (user profile loaded) | 2048 tokens | ~56% |
+| Blocks A–D (RAG cached) | 4096 tokens | ~75% |
+| Blocks A–D in 32k window | 32k tokens | ~94% |
+
+Formula: `1 − (uncached_len / total_len)²` — quadratic saving because attention
+is O(n²) in the uncached prefix.
+
+```bash
+# Verify event token chain
+python -c "from axiom_event_token import KVCacheDAG, KVBlockKey; ..."
+
+# Run with KV cache (skips prefill on second run)
+axm run model.axm --save-kv-cache /tmp/prefix.kvcache.pt
+axm run model.axm --kv-cache /tmp/prefix.kvcache.pt   # kv_hit: true
+```
+
+**SpectralQuant integration (`pip install spectralquant`):**
+
+[SpectralQuant](https://pypi.org/project/spectralquant/) achieves 6.62× KV
+cache compression via `HuggingFace DynamicCache` (pure PyTorch, no custom
+kernels). It compresses the K/V tensors themselves — weight memory is
+unchanged. The ORVL-025 signing layer is fully compatible:
+
+```python
+# compressed tensors are signed exactly like uncompressed ones —
+# KVCacheEntry.from_past_key_values works on whatever DynamicCache returns.
+
+# Use kv_compression in KVBlockKey to isolate compressed vs uncompressed caches:
+key = KVBlockKey.from_token_ids(token_ids, ..., kv_compression="sq_edge")
+# different kv_compression value → different block_id → cache miss (safe)
+```
+
+Context window impact with Q4_K_M + SpectralQuant on edge hardware:
+
+| Hardware | Without SQ | sq_paper (5.95×) | sq_edge (6.68×) |
+|----------|-----------|-----------------|----------------|
+| Orin Nano 8GB | 6K | 35K | **39K** |
+| GTX 1660 Ti 6GB | 5K | 28K | **31K** |
+| RTX 4090 24GB | 73K | 434K | **487K** |
+
+**Cross-patent wiring:**
+- ORVL-023 AXM — `axm_fingerprint` is part of the deterministic `kv_key`, so
+  the KV cache is invalidated automatically when the `.axm` archive changes.
+- ORVL-024 SRD — `quant_scheme` in the key means SRD and FP16 caches are never
+  mixed; quantization-induced precision differences cannot corrupt a cache hit.
+- ORVL-015 Memory Architecture — `KVCacheDAG` is the KV-layer implementation of
+  the memory architecture's "selective activation" concept.
+
+See `axiom_event_token/kv_cache.py` (implementation) and
+`tests/test_kv_cache.py` (15 tests, no transformers dependency) for details.
 
 ---
 
@@ -692,6 +876,8 @@ python axiom_retrospect.py \
 | ORVL-021 | Constitutional Zero-Day Discovery | ✓ Implemented |
 | ORVL-022 | Constitutional Physical Intelligence | ◐ Emulated v2.0 (`axiom_cpi.py` + `axiom_developmental_curriculum.py` + `axiom_motion_examiner.py` — four-layer developmental: toddler reflex / dad supervisor / mom curriculum / teacher examiner) |
 | ORVL-023 | Axiom eXchange Model (.AXM) | ◐ Emulated (`axiom_axm.py` + `axiom_training_to_axm.py` — modular execution-graph container, hybrid trust model, signed corpus compiler) |
+| ORVL-024 | SRD Quantization × .AXM (Signed Quantized Models) | ⧗ Testing in progress (`axiom_quant.py` + `research/quant/` + `axm_cli.py` — SRD weights in a signed .AXM container; quality proven on TinyLlama, Phase E3 real-packing + Jetson Orin Nano benchmark underway) |
+| ORVL-025 | Axiom Event Token — 3D Multimodal Token + KV Cache DAG | ◐ Prototype (`axiom_event_token/` — layered concept-or-event container with three-tier HMAC signing; KV Cache DAG v2 with named blocks A–E, deterministic content-addressed keys, and parent-binding signatures) |
 
 ---
 

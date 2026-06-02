@@ -121,6 +121,11 @@ class EventToken:
 
     parent_signature: str = ""
     coordinator_sig: str = ""
+    # kv_sig is the SHA-256 of a KVCacheStore's JSON metadata (not raw
+    # tensors — those are a separate sidecar .pt file).  Empty string
+    # means no KV cache is attached; covered by the outer signature so
+    # tampering with the attached cache also breaks the token.
+    kv_sig: str = ""
     signature: str = ""
 
     # ─── Serialization ──────────────────────────────────────────────
@@ -143,11 +148,12 @@ class EventToken:
             "coordinator_sig": self.coordinator_sig,
             "signature":       self.signature,
         }
-        # parent_signature is omitted when empty so tokens not part of
-        # a chain serialize byte-identical to the pre-chaining format
-        # — pre-existing signed tokens on disk still verify.
+        # Omit empty optional fields so legacy tokens (without these
+        # fields) remain byte-identical and still verify on load.
         if self.parent_signature:
             d["parent_signature"] = self.parent_signature
+        if self.kv_sig:
+            d["kv_sig"] = self.kv_sig
         return d
 
     @classmethod
@@ -168,6 +174,7 @@ class EventToken:
             governance= LayerReport.from_dict(d["governance"]) if d.get("governance") else None,
             parent_signature=d.get("parent_signature", ""),
             coordinator_sig=d.get("coordinator_sig", ""),
+            kv_sig=d.get("kv_sig", ""),
             signature=d.get("signature", ""),
         )
 

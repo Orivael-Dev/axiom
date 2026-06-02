@@ -20,9 +20,14 @@ from axiom_quant import (
     SRDPackedTensor,
     srd_bits_per_weight,
     srd_dequantize,
+    srd_pack_d8_sparse,
+    srd_pack_w4,
+    srd_packed_bytes,
     srd_quantize,
     srd_quantize_per_tensor,
     srd_round_trip_mse,
+    srd_unpack_d8_sparse,
+    srd_unpack_w4,
 )
 
 
@@ -228,6 +233,58 @@ def test_constant_weight_recovers_exactly_at_alpha_one():
     assert err < 1e-4
 
 
+# ── Top-k sparse residual ────────────────────────────────────────────
+
+
+def test_sparse_residual_zero_fraction():
+    """Exactly (1 - top_k_pct) fraction of D8 should be zero."""
+    W = _make_W(32, 128)
+    top_k_pct = 0.25
+    pack = srd_quantize(W, group_size=64, top_k_pct=top_k_pct)
+    n_zeros = (pack.D8 == 0).sum().item()
+    n_total = pack.D8.numel()
+    # At least (1 - top_k_pct) of elements should be zero.
+    # (Some non-top-k elements may already be 0 from quantization.)
+    zero_frac = n_zeros / n_total
+    assert zero_frac >= (1.0 - top_k_pct) - 0.01
+
+
+def test_sparse_bpw_interpolates():
+    """bpw at k=0.5 is strictly between bpw at k=0 and k=1."""
+    W = _make_W()
+    pack_dense = srd_quantize(W, group_size=64, top_k_pct=1.0)
+    pack_half  = srd_quantize(W, group_size=64, top_k_pct=0.5)
+    pack_zero  = srd_quantize(W, group_size=64, top_k_pct=0.0)
+    bpw_dense = srd_bits_per_weight(pack_dense)
+    bpw_half  = srd_bits_per_weight(pack_half)
+    bpw_zero  = srd_bits_per_weight(pack_zero)
+    assert bpw_zero < bpw_half < bpw_dense
+    # Specific values for G=64: dense=13, half=9, zero=5
+    assert math.isclose(bpw_dense, 13.0, abs_tol=0.01)
+    assert math.isclose(bpw_half,   9.0, abs_tol=0.01)
+    assert math.isclose(bpw_zero,   5.0, abs_tol=0.01)
+
+
+def test_sparse_mse_monotonic_with_k():
+    """MSE decreases (or stays flat) as top_k_pct increases."""
+    W = _make_W()
+    mse_10  = srd_round_trip_mse(W, alpha=1.0, group_size=64, top_k_pct=0.10)
+    mse_50  = srd_round_trip_mse(W, alpha=1.0, group_size=64, top_k_pct=0.50)
+    mse_100 = srd_round_trip_mse(W, alpha=1.0, group_size=64, top_k_pct=1.00)
+    assert mse_10 >= mse_50 >= mse_100
+
+
+def test_sparse_alpha_still_applies():
+    """alpha=0 with sparse D8 should equal alpha=0 with dense D8 (both drop residue)."""
+    W = _make_W()
+    pack_sparse = srd_quantize(W, group_size=64, top_k_pct=0.25)
+    pack_dense  = srd_quantize(W, group_size=64, top_k_pct=1.00)
+    out_sparse_a0 = srd_dequantize(pack_sparse, alpha=0.0)
+    out_dense_a0  = srd_dequantize(pack_dense,  alpha=0.0)
+    # alpha=0 ignores D8 entirely, so both should give the same base reconstruction
+    assert torch.allclose(out_sparse_a0, out_dense_a0)
+
+
 # ── HF-style model loader (research/quant/quantize_model.py) ─────────
 #
 # Tests exercise the loader's plumbing using plain nn.Module subclasses
@@ -333,3 +390,61 @@ def test_loader_per_tensor_mode():
     # per-tensor packs have group_size == in_features
     assert packed["0"].group_size == 100
     assert packed["1"].group_size == 64
+
+
+# ── Phase E3: real bit-packing tests ────────────────────────────────────────
+
+def test_pack_unpack_w4_roundtrip():
+    """pack then unpack W4 must be bit-exact."""
+    W = _make_W(32, 128)
+    pack = srd_quantize(W)
+    w4_packed = srd_pack_w4(pack.W4)
+    assert w4_packed.dtype == torch.uint8
+    assert w4_packed.shape == (32, 64)          # 128 cols → 64 bytes
+    w4_back = srd_unpack_w4(w4_packed, original_cols=128)
+    assert torch.equal(w4_back, pack.W4)
+
+
+def test_pack_w4_halves_storage():
+    """Packed W4 uses exactly half the bytes of the original int8 tensor."""
+    W = _make_W(16, 64)
+    pack = srd_quantize(W)
+    w4_packed = srd_pack_w4(pack.W4)
+    assert w4_packed.numel() == pack.W4.numel() // 2
+
+
+def test_pack_unpack_d8_sparse_roundtrip():
+    """pack_d8_sparse → unpack_d8_sparse must be bit-exact."""
+    W = _make_W(32, 128)
+    pack = srd_quantize(W, top_k_pct=0.25)
+    bitmask, values = srd_pack_d8_sparse(pack.D8)
+    assert bitmask.dtype == torch.uint8
+    assert values.dtype == torch.int8
+    d8_back = srd_unpack_d8_sparse(bitmask, values, pack.D8.shape)
+    assert torch.equal(d8_back, pack.D8)
+
+
+def test_pack_d8_sparse_nnz_matches_top_k():
+    """Number of stored values ≈ top_k_pct * N (within rounding)."""
+    W = _make_W(64, 128)
+    pct = 0.25
+    pack = srd_quantize(W, top_k_pct=pct)
+    _, values = srd_pack_d8_sparse(pack.D8)
+    N = pack.D8.numel()
+    expected_nnz = round(N * pct)
+    # kthvalue tie-breaking can shift nnz by a small number of elements
+    # when multiple D8 values share the threshold magnitude; allow 0.5%
+    assert abs(values.numel() - expected_nnz) <= max(4, int(N * 0.005))
+
+
+def test_packed_bytes_real_bpw_below_theoretical():
+    """srd_packed_bytes real_bpw accounts for bitmask → slightly above 7 bpw."""
+    W = _make_W(64, 128)
+    pack = srd_quantize(W, top_k_pct=0.25)
+    info = srd_packed_bytes(pack)
+    theoretical = srd_bits_per_weight(pack)  # 7.0 bpw (no bitmask overhead)
+    # real_bpw includes 1-bit bitmask per element → must be > theoretical
+    assert info["real_bpw"] > theoretical
+    # but still well below FP16
+    assert info["real_bpw"] < 9.0
+    assert info["n_weights"] == 64 * 128

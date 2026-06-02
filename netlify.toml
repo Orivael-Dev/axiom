@@ -18,8 +18,8 @@
   to = "/benchmark_lab.html"
   status = 200
 
-# Keep the console reachable
+# Keep the constitutional AI page reachable at a clean URL
 [[redirects]]
-  from = "/console"
-  to = "/axiom_console.html"
+  from = "/constitutional-ai"
+  to = "/constitutional_ai.html"
   status = 200

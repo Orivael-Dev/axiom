@@ -60,6 +60,20 @@ def _iter_linears(model: nn.Module,
         yield name, module
 
 
+def _resolve_layer_alpha(
+    name: str,
+    layer_alphas: Optional[Dict[str, float]],
+    default_alpha: float,
+) -> float:
+    """Look up per-layer alpha override; fall back to default_alpha."""
+    if layer_alphas is None:
+        return default_alpha
+    for key, val in layer_alphas.items():
+        if key in name:
+            return val
+    return default_alpha
+
+
 def quantize_hf_model_inplace(
     model: nn.Module,
     *,
@@ -67,6 +81,8 @@ def quantize_hf_model_inplace(
     group_size: int = DEFAULT_GROUP_SIZE,
     skip_modules: Tuple[str, ...] = DEFAULT_SKIP_MODULES,
     per_tensor: bool = False,
+    top_k_pct: float = 1.0,
+    layer_alphas: Optional[Dict[str, float]] = None,
     progress: bool = True,
 ) -> Dict[str, SRDPackedTensor]:
     """Walk `model`, replace each Linear.weight with its SRD
@@ -80,6 +96,12 @@ def quantize_hf_model_inplace(
       skip_modules: substrings — Linears whose names contain any of
                     these are left untouched (default: lm_head + embed)
       per_tensor: if True, use single per-row scale instead of per-block
+      top_k_pct: fraction of D8 residual elements to retain (1.0 = dense).
+                 Fills the 5–12 bpw dead zone on the Pareto curve.
+      layer_alphas: optional {substring: alpha} dict to override alpha
+                    per layer. Keys are matched as substrings of layer names
+                    (e.g. "down_proj" matches any layer whose name contains
+                    that string). Unmatched layers use the global `alpha`.
       progress: print a one-line summary at the end
 
     Bug-bait guard: if `lm_head` appears in the model's modules and
@@ -101,7 +123,7 @@ def quantize_hf_model_inplace(
     total_layers = 0
     skipped = 0
     quantize_fn = srd_quantize_per_tensor if per_tensor else (
-        lambda W: srd_quantize(W, group_size=group_size)
+        lambda W: srd_quantize(W, group_size=group_size, top_k_pct=top_k_pct)
     )
 
     for name, layer in _iter_linears(model, skip_modules):
@@ -111,9 +133,10 @@ def quantize_hf_model_inplace(
             # in_features. Skip them cleanly rather than padding.
             skipped += 1
             continue
+        effective_alpha = _resolve_layer_alpha(name, layer_alphas, alpha)
         with torch.no_grad():
             pack = quantize_fn(layer.weight.detach())
-            W_hat = srd_dequantize(pack, alpha=alpha)
+            W_hat = srd_dequantize(pack, alpha=effective_alpha)
             layer.weight.copy_(W_hat.to(layer.weight.dtype))
         packed[name] = pack
         total_layers += 1
@@ -121,7 +144,8 @@ def quantize_hf_model_inplace(
     if progress:
         print(f"[srd] quantized {total_layers} Linears "
               f"(alpha={alpha}, group_size={group_size}, "
-              f"per_tensor={per_tensor}, skipped_non_divisible={skipped})")
+              f"per_tensor={per_tensor}, top_k_pct={top_k_pct}, "
+              f"skipped_non_divisible={skipped})")
     return packed
 
 

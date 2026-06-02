@@ -1,0 +1,216 @@
+# SRD Research Roadmap — Future Domains & Follow-ons
+
+This document maps ideas that surfaced during the SRD prototype phases to their
+appropriate domain agents or engineering tracks. Items here are deliberately
+**not implemented** — they either require results from Phase E2 first, belong to
+a different product domain, or need hardware/kernel infrastructure that doesn't
+exist yet.
+
+## Phase E2 is the prerequisite
+
+The sparse-residual and layer-selective experiments (Phase E2) must complete
+before anything below is worth touching. The Pareto curve needs at least one
+operating point in the 6–11 bpw range beating K-quants before SRD graduates
+from "prototype" to "buildable."
+
+---
+
+## Deferred ideas and their right contexts
+
+| Idea | Right context | Gate |
+|------|--------------|------|
+| **Fused Triton / CUDA sparse kernel** — real memory savings, not fake-quant | Inference-engineering track (separate from quality research) | After E2 Pareto curve is complete; one kernel per operating point |
+| **NVIDIA 2:4 structured sparsity** — hardware-accelerated D8 sparsity on Ampere+ | Same inference-engineering track | Requires fixed 50% sparsity; may need `top_k_pct=0.50` as the design target from E2 |
+| **Speculative decoding with 4-bit base as drafter** | Speculative-decoding track, not SRD-specific | Needs real inference kernel first; the fake-quant base generates too slowly to measure |
+| **Adaptive α controller** — battery/latency/entropy-gated alpha at runtime | Axiom runtime — wire into `axiom_event_token/router.py` via `RouterPolicy.score()` (Theme 3) | After kernels exist; alpha switching at token-level needs sub-ms overhead |
+| **Learned residual adapters** — replace D8 with a small trained network | Follow-on after sparse residuals are validated; natural paper candidate | Needs E2 baseline; training loop via LoRA-style adapter |
+| **Mixed-bitrate base** — 3-bit W4 for insensitive layers, 5-bit for sensitive | Phase E3 using the sensitivity map from `bench_layer_sensitivity.py` | Requires E2 layer sensitivity data to decide which layers tolerate 3-bit |
+| **Diffusion / DiT domain SRD** — quantize UNet / transformer DiT weights | Video-generation agent; needs FID/CLIP metric, not PPL | Entirely different evaluation pipeline; start fresh |
+| **Edge audio DSP** — neural amp modeler, mastering plugin | Edge/audio agent; latency ≤2 ms budget; SNR metric | Independent domain; no shared eval infrastructure with LLM track |
+| **Multimodal / vision encoder SRD** | AXM format extension (add per-modality `quant_map` entry) | After LLM track is stable; encoder sensitivity profiles differ significantly |
+| **CXL memory pooling** | Defer until a CXL-aware backend ships in vLLM / tgi (see Theme 4 in CLAUDE.md) | No action until upstream hardware exists |
+| **NVIDIA Vera CPU** *(June 2026)* — 88-core "Olympus" server CPU, 1.2 TB/s BW, designed for agent orchestration (tool calls, sandboxing, code execution, RL). **Not a laptop/edge chip — not a quantization target.** Vera is the control plane around the model, not the model itself. The Axiom surface it touches is **Theme 1** (signed MCP envelope for Vera-hosted tool calls) and **Theme 3** (continuous eval + routing on Vera-class infra where latency budgets are measured in µs not ms). SRD / Theme 2 is irrelevant here — Vera operators run full FP8/FP4 on Blackwell GPUs, they have no VRAM budget constraint to solve. | Axiom MCP v2 envelope + `RouterPolicy.score()` (Themes 1 & 3) | After E3 hardware benchmarks; Vera clients won't sign up for 7 bpw edge quant |
+
+---
+
+## Phase E3 — Real packing (active)
+
+### Motivation
+
+**NVFP4 on DGX Spark (May 2026):** NVIDIA released NVFP4 quantization for
+Blackwell-gen hardware (B100/B200/DGX Spark). Community models (e.g.
+Step-3.7-Flash NVFP4) already show real 4× memory savings, but are
+**hardware-locked to Blackwell** — requires 2× DGX Sparks for large models
+and is unavailable on A10G, T4, or edge devices.
+
+**Jetson Orin Nano target:** The Orin Nano (8 GB unified memory, Ampere GPU,
+1024 CUDA cores) is an ideal SRD deployment target. TinyLlama at SRD 7 bpw
+real-packed (~918 MB) fits with headroom for KV cache. FP16 (~2.2 GB) also
+fits, but leaves no headroom for context. Quantization matters on this device.
+
+**E2 quality proof complete:** The Colab A/B run (`ab_compare.py`) confirmed
+that TinyLlama-1.1B at SRD 7 bpw produces coherent output matching FP16
+quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
+(1.5 GB actual vs 918 MB theoretical at 7 bpw). Phase E3 closes that gap.
+
+### E3 tasks
+
+1. ✅ **W4 bit-packing** — `srd_pack_w4()` / `srd_unpack_w4()` in
+   `axiom_quant.py` pack 2 int4 values into 1 uint8 byte (bit-exact
+   round-trip, halves W4 storage).
+
+2. ✅ **Sparse D8 storage** — `srd_pack_d8_sparse()` /
+   `srd_unpack_d8_sparse()` store a 1-bit-per-element bitmask + tightly
+   packed non-zero int8 values. At `top_k_pct=0.25`, D8 drops to ~0.375
+   bytes/element.
+
+3. ✅ **`pack_to_axm.py --real-pack`** — `research/quant/srd_realpack.py`
+   `save_real_packed()` writes `srd_packed.pt` (W4 nibble + sparse-D8) +
+   `srd_dense.pt` (FP16 embeddings/norms/lm_head) + `srd_index.json`.
+   `quant_map["packed"]=true`. Archive is genuinely ~half FP16.
+
+4. ✅ **`load_from_axm.py` unpack on load** — detects `packed: true` (or
+   the on-disk `srd_index.json`) and calls `load_real_packed()`:
+   meta-init from config → load dense → unpack each layer to FP16 → assign.
+
+5. 🟡 **Orin Nano benchmark** — `axm run` on the Orin Nano with the
+   real-packed TinyLlama archive. Runs end-to-end; GPU fast path still open.
+
+   *E3 real-pack validated on Colab T4 (2026-05-31):* 942 MB archive
+   (vs 1535 MB FP16 fake-quant, **39% smaller**), `packed=true`, proofs
+   verified, output identical to FP16, warm TTFT 50 ms, 34.6 tok/s. The
+   942 MB matches the ~918 MB estimate (gap = FP16 dense params + zip).
+
+   *On Orin Nano hardware (2026-06-01, JetPack 6.2 / L4T R36.4.7 / CUDA 12.6
+   / py3.10):* archive verified on-device (fp=97033471, proofs ✓ — the
+   Nano-generated key transported correctly), 4-step generation, trajectory
+   filter clean (0 dropped, no BLOCKED). **It runs and fits**, but on the
+   **CPU fp32 path**, not CUDA fp16:
+   - peak RSS **6.0 GB** (fp32 resident; under 8 GB, no OOM kill)
+   - container open+verify 17.7 s, model load 26.2 s
+   - avg TTFT 1338 ms, **1.4 tok/s** (CPU — expect 20-40× on the Ampere GPU)
+
+   > **GPU blocker — NvMap error 12 / CUDA OOM on load.** `torch.load(...,
+   > map_location="cuda")` in `srd_realpack.load_real_packed()` pulls the
+   > whole dense checkpoint **and** the full packed blob onto the GPU in two
+   > large allocations before freeing anything. On the Orin's unified-memory
+   > carveout that single oversized request trips NvMap 12 even with ~5.5 GB
+   > free + 19 GB swap (CUDA can't swap). **Fix (not yet applied):** load
+   > checkpoints on CPU, then stream to GPU **per layer** with
+   > `torch.cuda.empty_cache()` between, capping peak allocation to one
+   > layer. That unlocks the fp16 path (~2.2 GB, real RAM win + 20-40× tok/s).
+   > Until then the disk savings (942 MB) are real but the **RAM** savings
+   > are not — the CPU path unpacks W4+D8 back to fp16 then widens dense
+   > params to fp32, landing at 6 GB.
+
+   *Env notes from the bring-up:* CUDA torch must come from the Jetson index
+   (`pypi.jetson-ai-lab.io/jp6/cu126`, aarch64) — plain `pip install torch`
+   grabs the CPU-only wheel; that wheel needs NumPy 1.x (`numpy==1.26.4`);
+   the artifact's tokenizer needs `transformers>=5` (5.9.0 used), which
+   pulls `typer` below the `requirements.txt` pin (`>=0.26.1`) — cosmetic,
+   affects only the Streamlit/CLI app, not `axm run`.
+
+   > **⚠️ Key-portability requirement:** The `.axm` archive is signed with
+   > `AXIOM_MASTER_KEY`. The Orin Nano must use the **same key** that was
+   > set when packing — otherwise `axm run` fails proof verification.
+   > The Colab validation cell generates an ephemeral random key
+   > (`secrets.token_hex(32)`) that is lost when the session ends. Before
+   > running the Orin Nano benchmark, either:
+   > - Set a persistent `AXIOM_MASTER_KEY` (store in `.env` or your shell
+   >   profile) **before** packing in Colab, then `export` that same key on
+   >   the Orin Nano, or
+   > - Re-pack the model directly on the Orin Nano (avoids key transport).
+   > *Confirmed working 2026-06-01:* a key generated on the Nano, pasted into
+   > Colab for packing, verified on the Nano (fp=97033471).
+
+7. ⬜ **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
+   validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
+   so Ampere sparse Tensor Cores can accelerate the residual matmul directly.
+
+8. 🟡 **Laptop (discrete-GPU) benchmark** — run the same
+   `axm run` (PyTorch) and `axm extract` → GGUF → `bench_llamacpp_infer.py`
+   pipeline on a laptop discrete GPU. Discrete VRAM means **no NvMap
+   constraint** — the GPU fp16 path that's blocked on the Orin Nano (task 5)
+   works out of the box here. NVFP4 comparison on Blackwell laptops is also
+   in scope (see table below).
+
+   *On GTX 1660 Ti (Turing SM 7.5, 6 GB VRAM) — WSL2 Ubuntu, CUDA 13.3 /
+   driver 610.47, torch 2.6.0+cu124, 2026-06-02:* the **GPU fp16 path runs
+   end-to-end** with the 942 MB real-packed TinyLlama archive — the exact
+   path NvMap error 12 blocks on the Orin. Coherent narrative output.
+   - dequantize (CPU, 154 layers): **30.7 s** (W4 unpack + sparse-D8 expand)
+   - GPU transfer: 1.8 s
+   - **VRAM at inference: 2202 MB** (fp16 weights + KV cache + activations)
+   - peak RSS: 3960 MB during dequant → 3678 MB after fp16 copy freed
+   - **8.9 tok/s** greedy, 80 tokens (gen 8.99 s); total wall 80 s
+   - GGUF conversion: F16 **2.20 GB**, Q4_K_M **0.67 GB**
+
+   *GGUF (Q4_K_M) via llama.cpp on the same card* — the production path:
+
+   | Path | RSS (CPU RAM) | VRAM |
+   |---|---|---|
+   | PyTorch `.axm` loader (fp16) | 3959 MB | 2202 MB |
+   | GGUF via llama.cpp (Q4_K_M)  | **543 MB** | **884 MiB** |
+   | Reduction | **7.3× less RAM** | **2.4× less VRAM** |
+
+   > The discrete 6 GB card holds fp16 weights (2.2 GB) with headroom —
+   > no carveout/unified-memory ceiling, so no per-layer streaming needed.
+   > 8.9 tok/s is entry-GPU-bound (the 1660 Ti has no Tensor Cores for fp16);
+   > an RTX 40/50 laptop GPU should clear the ≥30 tok/s target easily.
+   >
+   > **The GGUF path is the deployment story.** It skips the 30 s CPU
+   > dequant entirely (weights are quantized on disk), drops RSS 7.3× and
+   > VRAM 2.4× — the `.axm` stays the signed delivery vehicle, llama.cpp is
+   > the runtime. This is what makes SRD viable on a 6 GB entry laptop GPU.
+
+   **Setup notes (WSL2 + discrete NVIDIA):**
+   - Use a real Ubuntu WSL distro — **not** the `docker-desktop` distro
+     (it's a minimal LinuxKit VM with no glibc loader; `nvidia-smi` and the
+     torch CUDA wheels fail there with a misleading "not found").
+   - GPU passthrough libs live at `/usr/lib/wsl/lib` (driver-provided);
+     `nvidia-smi` works from Ubuntu automatically.
+   - `pip install torch` from PyPI works (no Jetson index needed); match the
+     cu-wheel to the driver's CUDA runtime (`nvidia-smi` top-right).
+   - CUDA arch for the llama.cpp build — detect, then pass to cmake:
+     ```bash
+     python3 -m research.quant.bench_llamacpp_infer --detect-arch
+     # SM 7.5 → 75, SM 8.9 → 89, SM 10.0 → 100
+     cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<N>
+     ```
+   - No per-layer device-streaming workaround needed; `load_real_packed`
+     works with default `device="cuda"` on discrete GPUs.
+   - **Copy the `.axm` to a native Linux path (`/tmp`)** before loading — an
+     `mmap` of large `.pt` files over the 9p Windows-drive mount (`/mnt/c`,
+     `I:`) is minutes-slow.
+   - Older CUDA + new glibc can hit a `cospi/sinpi` exception-spec conflict;
+     CUDA ≥ 13.3 (driver ≥ 610) clears it on Turing.
+
+   Full bring-up runbook + pitfalls: **`docs/AXM_LAPTOP_INFERENCE.md`**.
+
+### E3 vs NVFP4 positioning
+
+| | NVFP4 | SRD E3 |
+|---|---|---|
+| Hardware | Blackwell only | Any CUDA (Ampere, T4, Turing, Orin) |
+| Format | FP4 base, no residual | W4 + sparse D8 residual |
+| Quality | ~4 bpw, PPL TBD | 7 bpw, quality proven |
+| Edge (Orin Nano) | ✗ (Blackwell-locked) | ✓ runs + fits (CPU fp32 today; GPU fp16 path WIP — see task 5) |
+| Laptop (GTX 1660 Ti / Turing SM 7.5) | ✗ | ✓ **GPU fp16 confirmed** — 8.9 tok/s, 2.2 GB VRAM (task 8) |
+| Laptop (RTX 40 / Ada SM 8.9) | ✗ | ✓ standard CUDA path, no constraints |
+| Laptop (RTX 50 / Blackwell SM 10.0) | ✓ via TensorRT-LLM | ✓ + NVFP4 comparison possible |
+| Open format (.axm) | ✗ | ✓ |
+
+---
+
+## Other deferred candidates (post-E3)
+
+1. **Mixed-bitrate base** — use the layer sensitivity ranking from
+   `bench_layer_sensitivity.py` to assign 3-bit base to low-sensitivity layers
+   and 5-bit to high-sensitivity ones. Target: match E2 PPL at lower bpw.
+
+2. **Larger model validation** — run the sparse sweep on Mistral-7B (A100
+   required) to confirm the Pareto improvement generalizes beyond TinyLlama.
+
+3. **Group size sensitivity** — sweep `group_size ∈ {32, 64, 128, 256}` at
+   fixed `top_k_pct=0.25` to understand the scale-overhead vs quality trade-off
+   at the most interesting operating point (~7 bpw).
