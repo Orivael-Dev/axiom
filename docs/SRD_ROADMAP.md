@@ -123,41 +123,64 @@ quality. The remaining gap is storage — the `.axm` archive is still FP16-sized
    > *Confirmed working 2026-06-01:* a key generated on the Nano, pasted into
    > Colab for packing, verified on the Nano (fp=97033471).
 
-6. ⬜ **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
+7. ⬜ **NVIDIA 2:4 structured sparsity path** — once `top_k_pct=0.50` is
    validated in E2, wire the D8 mask into `torch.nn.utils.prune` 2:4 format
    so Ampere sparse Tensor Cores can accelerate the residual matmul directly.
 
-6. ⬜ **Laptop (Blackwell / Ada) benchmark** — run the same
-   `axm extract` → GGUF → `bench_llamacpp_infer.py` pipeline on an
-   RTX 50-series (Blackwell SM 10.0) or RTX 40-series (Ada SM 8.9)
-   laptop GPU. Discrete VRAM means no NvMap constraint — both the
-   PyTorch `axm run` path and the llama.cpp path should work out of
-   the box. Expected outcome: TTFT ≤100 ms, ≥30 tok/s on Q4_K_M
-   TinyLlama. NVFP4 comparison on Blackwell laptops is also in scope
-   here (see table below).
+8. 🟡 **Laptop (discrete-GPU) benchmark** — run the same
+   `axm run` (PyTorch) and `axm extract` → GGUF → `bench_llamacpp_infer.py`
+   pipeline on a laptop discrete GPU. Discrete VRAM means **no NvMap
+   constraint** — the GPU fp16 path that's blocked on the Orin Nano (task 5)
+   works out of the box here. NVFP4 comparison on Blackwell laptops is also
+   in scope (see table below).
 
-   **Setup differences from Orin Nano:**
-   - `pip install torch` from PyPI works (no Jetson index needed)
-   - Windows: use WSL2 (all shell tooling runs identically)
-   - CUDA arch for llama.cpp build:
+   *On GTX 1660 Ti (Turing SM 7.5, 6 GB VRAM) — WSL2 Ubuntu, CUDA 13.3 /
+   driver 610.47, torch 2.6.0+cu124, 2026-06-02:* the **GPU fp16 path runs
+   end-to-end** with the 942 MB real-packed TinyLlama archive — the exact
+   path NvMap error 12 blocks on the Orin. Coherent narrative output.
+   - dequantize (CPU, 154 layers): **30.7 s** (W4 unpack + sparse-D8 expand)
+   - GPU transfer: 1.8 s
+   - **VRAM at inference: 2202 MB** (fp16 weights + KV cache + activations)
+   - peak RSS: 3960 MB during dequant → 3678 MB after fp16 copy freed
+   - **8.9 tok/s** greedy, 80 tokens (gen 8.99 s); total wall 80 s
+   - GGUF conversion: F16 **2.20 GB**, Q4_K_M **0.67 GB**
+
+   > The discrete 6 GB card holds fp16 weights (2.2 GB) with headroom —
+   > no carveout/unified-memory ceiling, so no per-layer streaming needed.
+   > 8.9 tok/s is entry-GPU-bound (the 1660 Ti has no Tensor Cores for fp16);
+   > an RTX 40/50 laptop GPU should clear the ≥30 tok/s target easily.
+
+   **Setup notes (WSL2 + discrete NVIDIA):**
+   - Use a real Ubuntu WSL distro — **not** the `docker-desktop` distro
+     (it's a minimal LinuxKit VM with no glibc loader; `nvidia-smi` and the
+     torch CUDA wheels fail there with a misleading "not found").
+   - GPU passthrough libs live at `/usr/lib/wsl/lib` (driver-provided);
+     `nvidia-smi` works from Ubuntu automatically.
+   - `pip install torch` from PyPI works (no Jetson index needed); match the
+     cu-wheel to the driver's CUDA runtime (`nvidia-smi` top-right).
+   - CUDA arch for the llama.cpp build — detect, then pass to cmake:
      ```bash
-     # detect SM version first
-     python3 -c "import torch; p=torch.cuda.get_device_properties(0); \
-       print(f'SM {p.major}.{p.minor}')"
-     # then pass to cmake — e.g. SM 10.0 → 100, SM 8.9 → 89
+     python3 -m research.quant.bench_llamacpp_infer --detect-arch
+     # SM 7.5 → 75, SM 8.9 → 89, SM 10.0 → 100
      cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<N>
      ```
    - No per-layer device-streaming workaround needed; `load_real_packed`
      works with default `device="cuda"` on discrete GPUs.
+   - **Copy the `.axm` to a native Linux path (`/tmp`)** before loading — an
+     `mmap` of large `.pt` files over the 9p Windows-drive mount (`/mnt/c`,
+     `I:`) is minutes-slow.
+   - Older CUDA + new glibc can hit a `cospi/sinpi` exception-spec conflict;
+     CUDA ≥ 13.3 (driver ≥ 610) clears it on Turing.
 
 ### E3 vs NVFP4 positioning
 
 | | NVFP4 | SRD E3 |
 |---|---|---|
-| Hardware | Blackwell only | Any CUDA (Ampere, T4, Orin) |
+| Hardware | Blackwell only | Any CUDA (Ampere, T4, Turing, Orin) |
 | Format | FP4 base, no residual | W4 + sparse D8 residual |
 | Quality | ~4 bpw, PPL TBD | 7 bpw, quality proven |
 | Edge (Orin Nano) | ✗ (Blackwell-locked) | ✓ runs + fits (CPU fp32 today; GPU fp16 path WIP — see task 5) |
+| Laptop (GTX 1660 Ti / Turing SM 7.5) | ✗ | ✓ **GPU fp16 confirmed** — 8.9 tok/s, 2.2 GB VRAM (task 8) |
 | Laptop (RTX 40 / Ada SM 8.9) | ✗ | ✓ standard CUDA path, no constraints |
 | Laptop (RTX 50 / Blackwell SM 10.0) | ✓ via TensorRT-LLM | ✓ + NVFP4 comparison possible |
 | Open format (.axm) | ✗ | ✓ |
