@@ -113,7 +113,7 @@ def cell2_generate_data():
     subprocess.run(
         [sys.executable, "research/finetune/gen_axiom_dataset.py",
          "--output", str(targeted_path),
-         "--count",  "4700",
+         "--count",  "5000",
          "--seed",   "42",
          "--no-dedup"],
         cwd=REPO, check=True,
@@ -122,6 +122,8 @@ def cell2_generate_data():
     count = sum(1 for _ in open(targeted_path))
     print(f"\n✓ Generated {count:,} metric-targeted examples in {elapsed:.1f}s")
     print(f"  Output: {targeted_path}")
+    print("  Categories: verdict, json_struct, tamper, revocation, tool_refusal,")
+    print("              no_fake_sig, cli, kv_dag, format, adapter_block (10 total)")
     return targeted_path
 
 
