@@ -104,3 +104,7 @@ tests/_tmp_bonded_pair_server_logs/
 # deploys point this at /data/tenants via env; this directory only ever
 # exists when tests/imports run from the repo root.
 tenants/
+
+# Constitutional memory runtime store (ORVL-015) — created when the
+# axiom_memory MCP tool runs; real deploys point AXIOM_MEMORY_STORE elsewhere.
+axiom_memory_store.jsonl

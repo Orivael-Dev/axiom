@@ -221,6 +221,33 @@ TOOLS = [
              "strict":       {"type": "boolean", "description": "Enable strict mode"},
          },
          "required": ["spec_content"]}},
+    # ── ORVL-015 — Constitutional Memory (local-first recall) ────
+    {"name": "axiom_memory",
+     "description": "Constitutional memory (ORVL-015) — local-first recall over "
+                    "signed, compressed memory packets. action='remember' "
+                    "compresses a conversation into a signed ConstitutionalPacket "
+                    "(lossless for governance: domain / constraints / resolution; "
+                    "lossy for language) and stores it. action='recall' returns "
+                    "the closest authentic packet for a query above the 0.75 "
+                    "similarity threshold, or a miss. action='stats' reports the "
+                    "store. Pass 'text' / 'query' to use the built-in "
+                    "deterministic embedding, or supply your own 'vector' for "
+                    "semantic recall.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":      {"type": "string", "enum": ["remember", "recall", "stats"]},
+             "text":        {"type": "string", "description": "conversation text to remember (action=remember)"},
+             "query":       {"type": "string", "description": "query text to recall against (action=recall)"},
+             "vector":      {"type": "array", "items": {"type": "number"},
+                              "description": "optional explicit embedding; overrides built-in text embedding"},
+             "domain":      {"type": "string", "description": "domain cluster, e.g. general / medical / financial / os_security"},
+             "constraints": {"type": "array", "items": {"type": "string"},
+                              "description": "active constitutional constraints (action=remember)"},
+             "resolution":  {"type": "string", "description": "how the conversation resolved (action=remember)"},
+             "history":     {"type": "array", "items": {"type": "string"},
+                              "description": "sovereign decision history (action=remember)"},
+         },
+         "required": ["action"]}},
 ]
 
 
@@ -739,6 +766,117 @@ def _handle_validate(args: dict) -> dict:
     return out
 
 
+# ── ORVL-015 — Constitutional Memory handler ─────────────────
+_memory_singleton = None
+_memory_store_path = None
+
+
+def _get_memory():
+    """Lazy ConstitutionalMemoryEngine.
+
+    Resolves the store path from AXIOM_MEMORY_STORE (default: a JSONL file
+    in the project root) and rebuilds the in-memory LSH index from it on
+    first build, so recall survives MCP-server restarts."""
+    global _memory_singleton, _memory_store_path
+    if _memory_singleton is None:
+        from axiom_memory_engine import ConstitutionalMemoryEngine, LSHIndex, load_store
+        _memory_store_path = os.environ.get(
+            "AXIOM_MEMORY_STORE",
+            str(Path(__file__).resolve().parent / "axiom_memory_store.jsonl"),
+        )
+        lsh = LSHIndex()
+        load_store(_memory_store_path, lsh)
+        _memory_singleton = ConstitutionalMemoryEngine(_memory_store_path, lsh)
+    return _memory_singleton
+
+
+def _memory_vector(args: dict):
+    """Resolve the working vector: an explicit 'vector' wins, else embed text."""
+    vec = args.get("vector")
+    if isinstance(vec, list) and vec:
+        return [float(x) for x in vec]
+    from axiom_memory_engine import embed_text
+    return embed_text(args.get("text") or args.get("query") or "")
+
+
+def _handle_memory(args: dict) -> dict:
+    """ORVL-015 — remember / recall over signed constitutional memory."""
+    action = args.get("action")
+    if action not in ("remember", "recall", "stats"):
+        out = {"error": "action must be one of: remember, recall, stats"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    engine = _get_memory()
+
+    if action == "stats":
+        from axiom_memory_engine import (SIMILARITY_THRESHOLD, VECTOR_DIMENSIONS,
+                                         count_verified)
+        # Count only authentic packets — the same rows load_store indexes
+        # and recall can serve. Counting raw lines would over-report
+        # tampered/corrupt rows the engine has deliberately rejected.
+        count = count_verified(_memory_store_path) if _memory_store_path else 0
+        out = {"action": "stats", "store_path": _memory_store_path,
+               "packet_count": count,
+               "similarity_threshold": SIMILARITY_THRESHOLD,
+               "vector_dimensions": VECTOR_DIMENSIONS}
+        out["hmac_signature"] = _sign({"action": "stats", "count": count})
+        return out
+
+    if action == "remember":
+        text = args.get("text", "")
+        if not isinstance(text, str) or not text.strip():
+            out = {"error": "text must be a non-empty string for action=remember"}
+            out["hmac_signature"] = _sign(out)
+            return out
+        try:
+            packet = engine.remember(
+                conversation_text=text,
+                final_synthesis_vec=_memory_vector(args),
+                domain=args.get("domain", "general"),
+                active_constraints=list(args.get("constraints") or ()),
+                resolution=args.get("resolution", ""),
+                sovereign_history=list(args.get("history") or ()),
+            )
+        except Exception as e:
+            out = {"action": "remember", "error": f"{type(e).__name__}: {e}"}
+            out["hmac_signature"] = _sign(out)
+            return out
+        out = {"action": "remember", "stored": True,
+               "domain": packet.domain_cluster,
+               "compression_ratio": packet.compression_ratio,
+               "token_count_original": packet.token_count_original,
+               "token_count_packet": packet.token_count_packet,
+               "timestamp": packet.timestamp,
+               "packet_signature": packet.hmac_signature}
+        out["hmac_signature"] = _sign({"action": "remember",
+                                       "domain": packet.domain_cluster,
+                                       "packet_signature": packet.hmac_signature})
+        return out
+
+    # recall
+    try:
+        packet = engine.recall(_memory_vector(args), domain=args.get("domain"))
+    except Exception as e:
+        out = {"action": "recall", "error": f"{type(e).__name__}: {e}"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    if packet is None:
+        out = {"action": "recall", "hit": False}
+        out["hmac_signature"] = _sign({"action": "recall", "hit": False})
+        return out
+    out = {"action": "recall", "hit": True,
+           "domain": packet.domain_cluster,
+           "active_constraints": list(packet.active_constraints),
+           "resolution": packet.resolution,
+           "sovereign_history": list(packet.sovereign_history),
+           "compression_ratio": packet.compression_ratio,
+           "timestamp": packet.timestamp,
+           "packet_signature": packet.hmac_signature}
+    out["hmac_signature"] = _sign({"action": "recall", "hit": True,
+                                   "packet_signature": packet.hmac_signature})
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -749,7 +887,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_phone_gate": _handle_phone_gate,
              "axiom_shield": _handle_shield,
              "axiom_axm": _handle_axm,
-             "axiom_cpi": _handle_cpi}
+             "axiom_cpi": _handle_cpi,
+             "axiom_memory": _handle_memory}
 
 
 class AxiomMCPServer:
