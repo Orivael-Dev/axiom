@@ -141,9 +141,27 @@ class TestInvariants:
         rec["resolution"] = "TAMPERED — signature no longer matches"
         store.write_text(json.dumps(rec) + "\n", encoding="utf-8")
 
-        from axiom_memory_engine import LSHIndex, load_store
+        from axiom_memory_engine import LSHIndex, load_store, count_verified
         lsh = LSHIndex()
         assert load_store(str(store), lsh) == 0  # tampered row not indexed
+        assert count_verified(str(store)) == 0  # ...and not counted
+
+    def test_stats_excludes_tampered_rows(self, server, monkeypatch):
+        """stats.packet_count reflects only authentic packets, matching what
+        recall can serve — not raw lines (Codex review #61)."""
+        import axiom_mcp_server as m
+        _call(server, "axiom_memory",
+              {"action": "remember", "text": "authentic packet for stats"})
+        store = Path(os.environ["AXIOM_MEMORY_STORE"])
+        rec = json.loads(store.read_text(encoding="utf-8").splitlines()[0])
+        rec["resolution"] = "TAMPERED"
+        store.write_text(json.dumps(rec) + "\n", encoding="utf-8")
+
+        m._memory_singleton = None  # simulate restart
+        m._memory_store_path = None
+        fresh = m.AxiomMCPServer()
+        stats = _call(fresh, "axiom_memory", {"action": "stats"})
+        assert stats["packet_count"] == 0
 
     def test_embed_text_is_deterministic(self):
         from axiom_memory_engine import embed_text, VECTOR_DIMENSIONS

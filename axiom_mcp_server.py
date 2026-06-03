@@ -809,12 +809,12 @@ def _handle_memory(args: dict) -> dict:
     engine = _get_memory()
 
     if action == "stats":
-        from axiom_memory_engine import SIMILARITY_THRESHOLD, VECTOR_DIMENSIONS
-        count = 0
-        p = Path(_memory_store_path) if _memory_store_path else None
-        if p and p.exists():
-            with p.open(encoding="utf-8") as f:
-                count = sum(1 for line in f if line.strip())
+        from axiom_memory_engine import (SIMILARITY_THRESHOLD, VECTOR_DIMENSIONS,
+                                         count_verified)
+        # Count only authentic packets — the same rows load_store indexes
+        # and recall can serve. Counting raw lines would over-report
+        # tampered/corrupt rows the engine has deliberately rejected.
+        count = count_verified(_memory_store_path) if _memory_store_path else 0
         out = {"action": "stats", "store_path": _memory_store_path,
                "packet_count": count,
                "similarity_threshold": SIMILARITY_THRESHOLD,

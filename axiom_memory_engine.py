@@ -287,20 +287,16 @@ def packet_from_dict(d):
         hmac_signature=d.get("hmac_signature", ""),
     )
 
-def load_store(store_path, lsh_index):
-    """Rebuild the in-memory LSH index from a persisted store.
+def _iter_store_packets(store_path):
+    """Yield ``(packet, authentic)`` for each parseable row in the store.
 
-    The LSH index lives only in memory; just the packets are persisted to
-    JSONL. A fresh process (e.g. an MCP-server restart) therefore recalls
-    nothing until the store is replayed. This reads each row, verifies its
-    HMAC, and indexes only the authentic ones — tampered or corrupt rows
-    are skipped so recall never serves unsigned memory. Returns the number
-    of packets indexed.
+    Unparseable rows are skipped entirely; ``authentic`` is the result of
+    the packet's HMAC verification. Shared by ``load_store`` and
+    ``count_verified`` so both agree on exactly which rows count.
     """
     p = Path(store_path)
     if not p.exists():
-        return 0
-    loaded = 0
+        return
     with p.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -310,10 +306,32 @@ def load_store(store_path, lsh_index):
                 packet = packet_from_dict(json.loads(line))
             except (json.JSONDecodeError, KeyError, TypeError):
                 continue
-            if _verify_packet(packet):
-                lsh_index.index(packet)
-                loaded += 1
+            yield packet, _verify_packet(packet)
+
+def load_store(store_path, lsh_index):
+    """Rebuild the in-memory LSH index from a persisted store.
+
+    The LSH index lives only in memory; just the packets are persisted to
+    JSONL. A fresh process (e.g. an MCP-server restart) therefore recalls
+    nothing until the store is replayed. This indexes only HMAC-authentic
+    rows — tampered or corrupt rows are skipped so recall never serves
+    unsigned memory. Returns the number of packets indexed.
+    """
+    loaded = 0
+    for packet, authentic in _iter_store_packets(store_path):
+        if authentic:
+            lsh_index.index(packet)
+            loaded += 1
     return loaded
+
+def count_verified(store_path):
+    """Count only HMAC-authentic packets in the store.
+
+    Matches exactly what ``load_store`` would index (and therefore what
+    ``recall`` can serve), so callers don't over-report tampered/corrupt
+    rows the engine has deliberately rejected.
+    """
+    return sum(1 for _, authentic in _iter_store_packets(store_path) if authentic)
 
 if __name__ == "__main__":
     print("AXIOM Memory Engine v1.0 — ORVL-015")
