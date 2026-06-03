@@ -5,7 +5,12 @@ Trust     : TRUST_LEVEL = 3   CANNOT_MUTATE
 Transport : stdio (standard MCP)
 Encoding  : UTF-8  BUG-003 compliant
 
-5 tools: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf, axiom_status.
+17 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
+axiom_status. Plus ORVL patent-emulator + AX OS building-block tools
+(intent gate, CMAA, CPI, AXM, OS shield, phone gate, validate, memory,
+workspace, ledger, marketplace). VERSION is bumped whenever the tool
+surface changes, so `tools/list` and VERSION stay in sync — a client
+seeing an older VERSION is talking to a stale build.
 
 BUG-003 : UTF-8 stdout/stderr
 BUG-007 : .hexdigest()
@@ -32,7 +37,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from axiom_signing import derive_key
 
 SIGNING_KEY = derive_key(b"axiom-mcp-v1")
-VERSION: str = "1.8.8"
+VERSION: str = "1.9.0"
 TRUST_LEVEL: int = 3
 
 _FROZEN = frozenset({"VERSION", "TRUST_LEVEL"})
