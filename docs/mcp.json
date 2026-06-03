@@ -112,6 +112,13 @@
       "patent": "ORVL-015",
       "description": "Constitutional memory — local-first recall over signed, compressed memory packets (lossless for governance, lossy for language). remember stores a signed packet; recall returns the closest authentic packet above the similarity threshold.",
       "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["remember", "recall", "stats"] }, "text": { "type": "string" }, "query": { "type": "string" }, "vector": { "type": "array", "items": { "type": "number" } }, "domain": { "type": "string" }, "constraints": { "type": "array", "items": { "type": "string" } }, "resolution": { "type": "string" }, "history": { "type": "array", "items": { "type": "string" } } }, "required": ["action"] }
+    },
+    {
+      "name": "axiom_workspace",
+      "category": "patent_emulator",
+      "patent": "ORVL-016",
+      "description": "Assemble an adaptive workspace from a goal — runs the goal through the intent gate as a pre-flight safety check (HARM/DECEIVE refused before any context is gathered), then recalls the closest authentic memory packet for it. Returns a signed WorkspaceContext. Shares the axiom_memory store.",
+      "input_schema": { "type": "object", "properties": { "goal": { "type": "string" }, "domain": { "type": "string" } }, "required": ["goal"] }
     }
   ],
 
