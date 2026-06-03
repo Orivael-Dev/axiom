@@ -79,6 +79,26 @@ class TestAssembler:
         with pytest.raises(ValueError):
             ws.assemble("   ")
 
+    def test_signature_covers_full_payload(self, tmp_path):
+        """hmac_signature must cover every field except itself (Codex #63),
+        so a client trusting it can't receive altered domain/intent/etc."""
+        from axiom_workspace import WorkspaceAssembler, _sign
+        ws = WorkspaceAssembler.from_store(str(tmp_path / "mem.jsonl"))
+        ctx = ws.assemble("assemble a workspace for the launch demo",
+                          domain="general")
+        body = ctx.to_dict()
+        sig = body.pop("hmac_signature")
+        assert _sign(body) == sig  # authentic payload verifies
+        for field_, bad in (("domain", "financial"),
+                            ("intent_class", "HARM"),
+                            ("blocked_reason", "tampered"),
+                            ("intent_confidence", 0.0),
+                            ("timestamp", "1970-01-01T00:00:00Z"),
+                            ("recall_hit", not body["recall_hit"])):
+            tampered = dict(body)
+            tampered[field_] = bad
+            assert _sign(tampered) != sig, f"signature ignored {field_}"
+
 
 # ===========================================================================
 # MCP tool — axiom_workspace

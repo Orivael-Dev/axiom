@@ -128,25 +128,22 @@ class WorkspaceAssembler:
     def _build(self, goal, *, allowed, intent, blocked_reason, domain, packet) -> WorkspaceContext:
         recalled = _packet_summary(packet) if packet is not None else None
         ts = datetime.now(timezone.utc).isoformat() + "Z"
-        sig = _sign({
-            "goal": goal[:200],
+        # Sign the full canonical payload (every field except the signature
+        # itself) so a client trusting hmac_signature cannot be handed a
+        # response with an altered domain, confidence, blocked_reason,
+        # timestamp, recalled summary, or goal suffix.
+        payload = {
+            "goal": goal,
             "allowed": allowed,
             "intent_class": intent.intent_class,
+            "intent_confidence": round(intent.confidence, 4),
+            "blocked_reason": blocked_reason,
+            "domain": domain,
             "recall_hit": packet is not None,
-            "packet_signature": packet.hmac_signature if packet is not None else "",
-        })
-        return WorkspaceContext(
-            goal=goal,
-            allowed=allowed,
-            intent_class=intent.intent_class,
-            intent_confidence=round(intent.confidence, 4),
-            blocked_reason=blocked_reason,
-            domain=domain,
-            recall_hit=packet is not None,
-            recalled=recalled,
-            timestamp=ts,
-            hmac_signature=sig,
-        )
+            "recalled": recalled,
+            "timestamp": ts,
+        }
+        return WorkspaceContext(**payload, hmac_signature=_sign(payload))
 
 
 if __name__ == "__main__":
