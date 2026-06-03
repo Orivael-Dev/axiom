@@ -2,7 +2,7 @@
   "name": "axiom",
   "title": "AXIOM — Constitutional & Runtime Authority Tools",
   "description": "Constitutional AI governance + runtime authority control as MCP tools. Includes the bonded paired-token gate, intent classifier, constitutional reasoning trace, language validator, multi-agent orchestrator, OS shield, sovereign phone coprocessor, physical-intelligence agent, and AXM container runtime. Every tool result is HMAC-SHA256 signed under axiom-mcp-v1 so the client can re-verify with axiom_signing.verify and detect any tampering between server and client.",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "homepage": "https://github.com/Orivael-Dev/axiom",
   "documentation": "https://github.com/Orivael-Dev/axiom#mcp-server",
   "license": "Apache-2.0",
