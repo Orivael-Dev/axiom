@@ -119,6 +119,13 @@
       "patent": "ORVL-016",
       "description": "Assemble an adaptive workspace from a goal — runs the goal through the intent gate as a pre-flight safety check (HARM/DECEIVE refused before any context is gathered), then recalls the closest authentic memory packet for it. Returns a signed WorkspaceContext. Shares the axiom_memory store.",
       "input_schema": { "type": "object", "properties": { "goal": { "type": "string" }, "domain": { "type": "string" } }, "required": ["goal"] }
+    },
+    {
+      "name": "axiom_ledger",
+      "category": "patent_emulator",
+      "patent": "ORVL-001",
+      "description": "Append-only signed audit log — record every action, denial, state change, and permission decision. log appends an HMAC-signed event; list returns events (filterable) with an all_verified flag; verify re-checks every row and reports tampered entries.",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["log", "list", "verify"] }, "event_type": { "type": "string" }, "actor": { "type": "string" }, "subject": { "type": "string" }, "outcome": { "type": "string" }, "attributes": { "type": "object" }, "since": { "type": "string" }, "limit": { "type": "integer" } }, "required": ["action"] }
     }
   ],
 

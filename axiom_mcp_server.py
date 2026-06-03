@@ -264,6 +264,28 @@ TOOLS = [
              "domain": {"type": "string", "description": "optional domain filter for recall"},
          },
          "required": ["goal"]}},
+    # ── AX OS — signed audit event logging ───────────────────────
+    {"name": "axiom_ledger",
+     "description": "Append-only signed audit log. action='log' records a "
+                    "governance event (event_type + actor/subject/outcome/"
+                    "attributes), HMAC-signs it, and appends it to the ledger. "
+                    "action='list' returns events (optionally filtered by "
+                    "event_type / since / limit) with an all_verified flag. "
+                    "action='verify' re-verifies every row and reports any "
+                    "tampered entries. The 'record every action, denial, state "
+                    "change, and permission decision' building block.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":     {"type": "string", "enum": ["log", "list", "verify"]},
+             "event_type": {"type": "string", "description": "event name (action=log)"},
+             "actor":      {"type": "string", "description": "who/what acted"},
+             "subject":    {"type": "string", "description": "what the event is about"},
+             "outcome":    {"type": "string", "description": "result, e.g. allowed / refused"},
+             "attributes": {"type": "object", "description": "arbitrary signed key/values"},
+             "since":      {"type": "string", "description": "ISO-8601 lower bound (action=list)"},
+             "limit":      {"type": "integer", "description": "max events returned (action=list)"},
+         },
+         "required": ["action"]}},
 ]
 
 
@@ -928,6 +950,80 @@ def _handle_workspace(args: dict) -> dict:
     return ctx.to_dict()
 
 
+# ── AX OS — signed audit ledger handler ──────────────────────
+_ledger_singleton = None
+_ledger_path = None
+
+
+def _get_ledger():
+    """Lazy AuditLedger bound to AXIOM_AUDIT_LEDGER (default: project root)."""
+    global _ledger_singleton, _ledger_path
+    if _ledger_singleton is None:
+        from axiom_audit_ledger import AuditLedger
+        _ledger_path = os.environ.get(
+            "AXIOM_AUDIT_LEDGER",
+            str(Path(__file__).resolve().parent / "axiom_audit_ledger.jsonl"),
+        )
+        _ledger_singleton = AuditLedger(_ledger_path)
+    return _ledger_singleton
+
+
+def _handle_ledger(args: dict) -> dict:
+    """AX OS — append-only signed audit event logging."""
+    action = args.get("action")
+    if action not in ("log", "list", "verify"):
+        out = {"error": "action must be one of: log, list, verify"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    ledger = _get_ledger()
+
+    if action == "log":
+        event_type = args.get("event_type", "")
+        if not isinstance(event_type, str) or not event_type.strip():
+            out = {"error": "event_type must be a non-empty string for action=log"}
+            out["hmac_signature"] = _sign(out)
+            return out
+        attrs = args.get("attributes")
+        try:
+            ev = ledger.append(
+                event_type, actor=args.get("actor", ""),
+                subject=args.get("subject", ""), outcome=args.get("outcome", ""),
+                attributes=attrs if isinstance(attrs, dict) else None,
+            )
+        except Exception as e:
+            out = {"action": "log", "error": f"{type(e).__name__}: {e}"}
+            out["hmac_signature"] = _sign(out)
+            return out
+        out = {"action": "log", "logged": True, **ev.to_dict()}
+        # 'signature' is the ledger entry's own HMAC; add the MCP envelope sig.
+        out["hmac_signature"] = _sign({"action": "log",
+                                       "event_type": ev.event_type,
+                                       "entry_signature": ev.signature})
+        return out
+
+    if action == "list":
+        limit = args.get("limit")
+        events = ledger.query(event_type=args.get("event_type"),
+                              since=args.get("since"),
+                              limit=int(limit) if isinstance(limit, int) else None)
+        out = {"action": "list", "count": len(events),
+               "events": [e.to_dict() for e in events],
+               "all_verified": all(e.verify() for e in events)}
+        out["hmac_signature"] = _sign({"action": "list", "count": len(events)})
+        return out
+
+    # verify
+    events = ledger.read()
+    tampered = [i for i, e in enumerate(events) if not e.verify()]
+    out = {"action": "verify", "count": len(events),
+           "verified_count": len(events) - len(tampered),
+           "tampered_indices": tampered,
+           "all_verified": not tampered}
+    out["hmac_signature"] = _sign({"action": "verify", "count": len(events),
+                                   "tampered": len(tampered)})
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -940,7 +1036,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_axm": _handle_axm,
              "axiom_cpi": _handle_cpi,
              "axiom_memory": _handle_memory,
-             "axiom_workspace": _handle_workspace}
+             "axiom_workspace": _handle_workspace,
+             "axiom_ledger": _handle_ledger}
 
 
 class AxiomMCPServer:
