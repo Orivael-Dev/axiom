@@ -108,3 +108,7 @@ tenants/
 # Constitutional memory runtime store (ORVL-015) — created when the
 # axiom_memory MCP tool runs; real deploys point AXIOM_MEMORY_STORE elsewhere.
 axiom_memory_store.jsonl
+
+# Audit ledger runtime store (created when the axiom_ledger MCP tool runs;
+# real deploys point AXIOM_AUDIT_LEDGER elsewhere).
+axiom_audit_ledger.jsonl
