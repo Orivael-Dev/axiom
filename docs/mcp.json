@@ -126,6 +126,13 @@
       "patent": "ORVL-001",
       "description": "Append-only signed audit log — record every action, denial, state change, and permission decision. log appends an HMAC-signed event; list returns events (filterable) with an all_verified flag; verify re-checks every row and reports tampered entries.",
       "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["log", "list", "verify"] }, "event_type": { "type": "string" }, "actor": { "type": "string" }, "subject": { "type": "string" }, "outcome": { "type": "string" }, "attributes": { "type": "object" }, "since": { "type": "string" }, "limit": { "type": "integer" } }, "required": ["action"] }
+    },
+    {
+      "name": "axiom_marketplace",
+      "category": "patent_emulator",
+      "patent": "ORVL-001",
+      "description": "Signed-agent marketplace with live-revocable bonded authority. verify checks a SkillPackManifest signature; sandbox_install mints a bonded pair parked in the sandbox state (installed, not authorized); review returns an access report; approve grants scoped authority; revoke cuts it instantly (terminal); authority is the gate before an agent acts.",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["verify", "sandbox_install", "review", "approve", "revoke", "authority"] }, "manifest": { "type": "object" }, "pair_id": { "type": "string" }, "actor": { "type": "string" } }, "required": ["action"] }
     }
   ],
 
