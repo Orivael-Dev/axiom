@@ -286,6 +286,29 @@ TOOLS = [
              "limit":      {"type": "integer", "description": "max events returned (action=list)"},
          },
          "required": ["action"]}},
+    # ── AX OS — signed-agent marketplace (bonded authority) ──────
+    {"name": "axiom_marketplace",
+     "description": "Signed-agent marketplace with live-revocable bonded "
+                    "authority. action='verify' checks a SkillPackManifest "
+                    "signature; action='sandbox_install' verifies then mints a "
+                    "bonded pair parked in the sandbox state (installed but NOT "
+                    "authorized); action='review' returns a human-readable "
+                    "access report; action='approve' grants scoped authority "
+                    "(ACTIVE_VALIDATED); action='revoke' cuts it instantly "
+                    "(terminal REVOKED); action='authority' is the gate AX OS "
+                    "calls before letting an agent act.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":   {"type": "string",
+                          "enum": ["verify", "sandbox_install", "review",
+                                   "approve", "revoke", "authority"]},
+             "manifest": {"type": "object",
+                          "description": "SkillPackManifest dict (verify / sandbox_install / review)"},
+             "pair_id":  {"type": "string",
+                          "description": "bonded pair id (review / approve / revoke / authority)"},
+             "actor":    {"type": "string", "description": "who approved/revoked"},
+         },
+         "required": ["action"]}},
 ]
 
 
@@ -1024,6 +1047,74 @@ def _handle_ledger(args: dict) -> dict:
     return out
 
 
+# ── AX OS — signed-agent marketplace handler ─────────────────
+_marketplace_singleton = None
+
+
+def _get_marketplace():
+    """Lazy Marketplace bound to AXIOM_MARKETPLACE_LEDGER (default: project root)."""
+    global _marketplace_singleton
+    if _marketplace_singleton is None:
+        from axiom_marketplace import Marketplace
+        path = os.environ.get(
+            "AXIOM_MARKETPLACE_LEDGER",
+            str(Path(__file__).resolve().parent / "axiom_marketplace_ledger.jsonl"),
+        )
+        _marketplace_singleton = Marketplace(path)
+    return _marketplace_singleton
+
+
+def _handle_marketplace(args: dict) -> dict:
+    """AX OS — signed-agent install + bonded authority lifecycle."""
+    from axiom_marketplace import MarketplaceError
+    action = args.get("action")
+    valid_actions = ("verify", "sandbox_install", "review", "approve",
+                     "revoke", "authority")
+    if action not in valid_actions:
+        out = {"error": f"action must be one of: {', '.join(valid_actions)}"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    mkt = _get_marketplace()
+
+    def _need(field_, kind):
+        v = args.get(field_)
+        return v if isinstance(v, kind) and v else None
+
+    try:
+        if action in ("verify", "sandbox_install", "review"):
+            manifest = args.get("manifest")
+            if not isinstance(manifest, dict) or not manifest:
+                raise MarketplaceError(f"manifest (object) required for action={action}")
+            if action == "verify":
+                out = {"action": action, **mkt.verify(manifest)}
+            elif action == "sandbox_install":
+                out = {"action": action, **mkt.sandbox_install(manifest)}
+            else:  # review
+                pair_id = _need("pair_id", str)
+                if not pair_id:
+                    raise MarketplaceError("pair_id required for action=review")
+                out = {"action": action, **mkt.review(manifest, pair_id)}
+        else:  # approve / revoke / authority — need pair_id
+            pair_id = _need("pair_id", str)
+            if not pair_id:
+                raise MarketplaceError(f"pair_id required for action={action}")
+            actor = args.get("actor", "human")
+            if action == "approve":
+                out = {"action": action, **mkt.approve(pair_id, actor=actor)}
+            elif action == "revoke":
+                out = {"action": action, **mkt.revoke(pair_id, actor=actor)}
+            else:  # authority
+                out = {"action": action, **mkt.authority(pair_id)}
+    except MarketplaceError as e:
+        out = {"action": action, "error": str(e)}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"action": action,
+                                   "pair_id": out.get("pair_id", ""),
+                                   "authorized": out.get("authorized", "")})
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -1037,7 +1128,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_cpi": _handle_cpi,
              "axiom_memory": _handle_memory,
              "axiom_workspace": _handle_workspace,
-             "axiom_ledger": _handle_ledger}
+             "axiom_ledger": _handle_ledger,
+             "axiom_marketplace": _handle_marketplace}
 
 
 class AxiomMCPServer:

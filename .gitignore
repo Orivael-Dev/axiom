@@ -112,3 +112,7 @@ axiom_memory_store.jsonl
 # Audit ledger runtime store (created when the axiom_ledger MCP tool runs;
 # real deploys point AXIOM_AUDIT_LEDGER elsewhere).
 axiom_audit_ledger.jsonl
+
+# Marketplace bonded-authority ledger (created when axiom_marketplace runs;
+# real deploys point AXIOM_MARKETPLACE_LEDGER elsewhere).
+axiom_marketplace_ledger.jsonl
