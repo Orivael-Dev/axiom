@@ -94,7 +94,7 @@ value of every product to come.
 
 Skill Pack Builder is the foundation: every other Axiom product becomes
 configurable via Packs. MCP is the distribution surface: developers
-discover Axiom through their existing Cursor / Claude Code / Codex
+discover Axiom through their existing Claude Code / Cursor / Codex
 workflow. They reinforce each other — a developer installs the MCP
 server, sees Skill Packs in the registry, adopts one, then realizes
 the Firewall in their prod app can use the same pack.

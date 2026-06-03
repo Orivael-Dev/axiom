@@ -340,7 +340,7 @@ python examples/axiom_guard_api.py  # port 8001
 
 ## MCP Server
 
-AXIOM runs as an MCP server — any MCP client (Claude Desktop, Claude Code, Cursor, etc.) gets constitutional governance tools natively.
+AXIOM runs as an MCP server — any MCP client (Claude Code, Claude Desktop, Cursor, etc.) gets constitutional governance tools natively. Claude Code is this project's primary agent harness (see `CLAUDE.md` and `.mcp.json` in the repo root); any other MCP-aware agent works too.
 
 ```bash
 python axiom_mcp_server.py

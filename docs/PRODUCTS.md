@@ -25,7 +25,7 @@ product is its own SKU.
   prompt injection, harmful instructions, PII leakage, and deceptive
   outputs in-flight on any LLM call
 - **Axiom MCP** — local MCP server giving AI coding tools (Claude
-  Desktop, Claude Code, Cursor, Codex) a governance copilot that
+  Code, Claude Desktop, Cursor, Codex) a governance copilot that
   checks plans, actions, and code diffs before execution
 - **Axiom CallGuard** — call-center agent compliance auditing for
   regulated industries (debt collection, banking, insurance,
@@ -572,7 +572,7 @@ soft-launch items.
 ## Axiom MCP
 
 **Tagline:** Safety rails for AI coding agents. A local MCP server
-that gives Claude / Cursor / Codex a governance copilot — checks
+that gives Claude Code / Cursor / Codex a governance copilot — checks
 plans, actions, and code diffs before execution.
 
 **Status:** near-shippable
@@ -771,7 +771,7 @@ refusal) is the largest single piece; the others are smaller.
   customer's agent runs an axiom_* tool. Costs us data; protects
   the trust narrative.
 - **Open question — VS Code / JetBrains support:** MCP is currently
-  Claude/Cursor/Codex-flavored. VS Code's AI features and
+  Claude Code/Cursor/Codex-flavored. VS Code's AI features and
   JetBrains AI Assistant don't natively speak MCP yet but
   probably will within 12 months. Plan for the second-wave editor
   integrations rather than ignoring them.
