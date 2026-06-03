@@ -240,6 +240,81 @@ class ConstitutionalMemoryEngine:
     def token_savings(packet):
         return packet.compression_ratio
 
+# ── Text embedding (shared by remember + recall) ─────────────────
+def _tokenize(text):
+    out, cur = [], []
+    for ch in (text or "").lower():
+        if ch.isalnum():
+            cur.append(ch)
+        elif cur:
+            out.append("".join(cur)); cur = []
+    if cur:
+        out.append("".join(cur))
+    return out
+
+def embed_text(text, dim=_VECTOR_DIMENSIONS):
+    """Map text to a stable ``dim``-length vector via signed feature hashing.
+
+    Deterministic and dependency-free: identical text always yields the
+    same vector, and texts sharing tokens land near each other under
+    cosine similarity. Callers holding a real semantic embedding can pass
+    their own vector instead — this is the zero-dependency default so the
+    memory engine is usable from text alone. ``remember`` and ``recall``
+    MUST use the same embedding for cosine recall to work. The engine
+    quantizes and L2-normalizes downstream, so the raw accumulator is
+    returned here.
+    """
+    vec = [0.0] * dim
+    for tok in _tokenize(text):
+        h = hashlib.sha256(tok.encode("utf-8")).digest()
+        vec[h[0] % dim] += 1.0 if (h[1] & 1) else -1.0
+    return vec
+
+# ── Store replay (rebuild the in-memory LSH index) ───────────────
+def packet_from_dict(d):
+    """Reconstruct a frozen ConstitutionalPacket from a stored JSONL row."""
+    return ConstitutionalPacket(
+        domain_cluster=d["domain_cluster"],
+        active_constraints=tuple(d.get("active_constraints", [])),
+        boundary_proximity=d["boundary_proximity"],
+        resolution=d.get("resolution", ""),
+        compressed_vec=tuple(d.get("compressed_vec", [])),
+        sovereign_history=tuple(d.get("sovereign_history", [])),
+        token_count_original=d.get("token_count_original", 0),
+        token_count_packet=d.get("token_count_packet", 0),
+        compression_ratio=d.get("compression_ratio", 1.0),
+        timestamp=d.get("timestamp", ""),
+        hmac_signature=d.get("hmac_signature", ""),
+    )
+
+def load_store(store_path, lsh_index):
+    """Rebuild the in-memory LSH index from a persisted store.
+
+    The LSH index lives only in memory; just the packets are persisted to
+    JSONL. A fresh process (e.g. an MCP-server restart) therefore recalls
+    nothing until the store is replayed. This reads each row, verifies its
+    HMAC, and indexes only the authentic ones — tampered or corrupt rows
+    are skipped so recall never serves unsigned memory. Returns the number
+    of packets indexed.
+    """
+    p = Path(store_path)
+    if not p.exists():
+        return 0
+    loaded = 0
+    with p.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                packet = packet_from_dict(json.loads(line))
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+            if _verify_packet(packet):
+                lsh_index.index(packet)
+                loaded += 1
+    return loaded
+
 if __name__ == "__main__":
     print("AXIOM Memory Engine v1.0 — ORVL-015")
     print("Import and use programmatically.")
