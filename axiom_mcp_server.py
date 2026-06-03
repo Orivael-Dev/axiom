@@ -248,6 +248,22 @@ TOOLS = [
                               "description": "sovereign decision history (action=remember)"},
          },
          "required": ["action"]}},
+    # ── AX OS — intent-driven workspace assembly ─────────────────
+    {"name": "axiom_workspace",
+     "description": "Assemble an adaptive workspace from a goal. Runs the goal "
+                    "through the ORVL-016 intent gate as a pre-flight safety "
+                    "check (HARM / DECEIVE goals are refused before any context "
+                    "is gathered), then recalls the closest authentic "
+                    "constitutional memory packet (ORVL-015) for the goal. "
+                    "Returns a signed WorkspaceContext — the 'state a goal, get "
+                    "the right context, safety checked first' building block. "
+                    "Shares the same memory store as axiom_memory.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "goal":   {"type": "string", "description": "what the user wants to work on"},
+             "domain": {"type": "string", "description": "optional domain filter for recall"},
+         },
+         "required": ["goal"]}},
 ]
 
 
@@ -877,6 +893,41 @@ def _handle_memory(args: dict) -> dict:
     return out
 
 
+# ── AX OS — workspace assembly handler ───────────────────────
+_workspace_singleton = None
+
+
+def _get_workspace():
+    """Lazy WorkspaceAssembler sharing the live memory engine.
+
+    Reusing _get_memory()'s engine means workspace recall sees packets the
+    axiom_memory tool just remembered (same in-memory LSH), with no second
+    store read or divergent index."""
+    global _workspace_singleton
+    if _workspace_singleton is None:
+        from axiom_workspace import WorkspaceAssembler
+        from axiom_intent_classifier import IntentClassifier
+        classifier = IntentClassifier(derive_key(b"axiom-workspace-intent-v1"))
+        _workspace_singleton = WorkspaceAssembler(_get_memory(), classifier)
+    return _workspace_singleton
+
+
+def _handle_workspace(args: dict) -> dict:
+    """AX OS — assemble a workspace from a goal (intent gate + local recall)."""
+    goal = args.get("goal", "")
+    if not isinstance(goal, str) or not goal.strip():
+        out = {"error": "goal must be a non-empty string"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    try:
+        ctx = _get_workspace().assemble(goal, domain=args.get("domain"))
+    except Exception as e:
+        out = {"error": f"{type(e).__name__}: {e}"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    return ctx.to_dict()
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -888,7 +939,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_shield": _handle_shield,
              "axiom_axm": _handle_axm,
              "axiom_cpi": _handle_cpi,
-             "axiom_memory": _handle_memory}
+             "axiom_memory": _handle_memory,
+             "axiom_workspace": _handle_workspace}
 
 
 class AxiomMCPServer:
