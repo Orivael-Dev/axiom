@@ -2,7 +2,7 @@
   "name": "axiom",
   "title": "AXIOM — Constitutional & Runtime Authority Tools",
   "description": "Constitutional AI governance + runtime authority control as MCP tools. Includes the bonded paired-token gate, intent classifier, constitutional reasoning trace, language validator, multi-agent orchestrator, OS shield, sovereign phone coprocessor, physical-intelligence agent, and AXM container runtime. Every tool result is HMAC-SHA256 signed under axiom-mcp-v1 so the client can re-verify with axiom_signing.verify and detect any tampering between server and client.",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "homepage": "https://github.com/Orivael-Dev/axiom",
   "documentation": "https://github.com/Orivael-Dev/axiom#mcp-server",
   "license": "Apache-2.0",
@@ -133,6 +133,34 @@
       "patent": "ORVL-001",
       "description": "Signed-agent marketplace with live-revocable bonded authority. verify checks a SkillPackManifest signature; sandbox_install mints a bonded pair parked in the sandbox state (installed, not authorized); review returns an access report; approve grants scoped authority; revoke cuts it instantly (terminal); authority is the gate before an agent acts.",
       "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["verify", "sandbox_install", "review", "approve", "revoke", "authority"] }, "manifest": { "type": "object" }, "pair_id": { "type": "string" }, "actor": { "type": "string" } }, "required": ["action"] }
+    },
+    {
+      "name": "axiom_mkb",
+      "category": "patent_emulator",
+      "patent": "ORVL-004",
+      "description": "Modular Constitutional Knowledge Blocks. register parses a .axiom spec into a typed HMAC-signed KnowledgeBlock and appends it to the registry; find looks one up by name (+ optional version); list returns blocks, optionally filtered by block_type (GUARD/AGENT/SPEC/REWARD/SOVEREIGN/VALIDATOR).",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["register", "find", "list"] }, "spec_content": { "type": "string" }, "name": { "type": "string" }, "version": { "type": "string" }, "block_type": { "type": "string" } }, "required": ["action"] }
+    },
+    {
+      "name": "axiom_cas",
+      "category": "patent_emulator",
+      "patent": "ORVL-008",
+      "description": "Constitutional Adversarial Sandbox. defend runs the blue-team detectors over a corpus of attack payloads and reports detected vs missed (red_wins), weak regions and signed fix proposals; report summarises the signed CAS round log. The stateless evaluation + inspection surface for the red-vs-blue loop.",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["defend", "report"] }, "attacks": { "type": "array", "items": { "type": ["string", "object"] } } }, "required": ["action"] }
+    },
+    {
+      "name": "axiom_crl",
+      "category": "patent_emulator",
+      "patent": "ORVL-011",
+      "description": "Constitutional Reinforcement Learning reward. compute turns governance scores (constitutional_distance, monotonic_pass, cas_blue_win, cbv_validity) into a clipped, signed scalar reward with weighted components; score evaluates a prompt/response pair against the ACB modules (no LLM) and returns total_reward, per-module scores, violations and positive signals.",
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["compute", "score"] }, "scores": { "type": "object" }, "prompt": { "type": "string" }, "response": { "type": "string" }, "module": { "type": "string" }, "context": { "type": "string" } }, "required": ["action"] }
+    },
+    {
+      "name": "axiom_immune",
+      "category": "patent_emulator",
+      "patent": "ORVL-012",
+      "description": "Constitutional Immune System. Runs the blue-team antibody detectors (guard-pattern, manifold-distance, HMAC violation, CANNOT_MUTATE, semantic-similarity) over a presented payload (the antigen) and returns a signed immune response: detected, which detector fired, confidence, weak-region cluster and a fix proposal.",
+      "input_schema": { "type": "object", "properties": { "payload": { "type": "string" }, "vector": { "type": "string" } }, "required": ["payload"] }
     }
   ],
 

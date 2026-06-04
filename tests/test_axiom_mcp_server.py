@@ -47,7 +47,7 @@ class TestBlocked:
     def test_blocked_version_cannot_mutate(self):
         """BLOCKED: VERSION reassignment must raise AttributeError."""
         import axiom_mcp_server as m
-        assert m.VERSION == "1.9.0"
+        assert m.VERSION == "1.10.0"
         with pytest.raises(AttributeError):
             m.VERSION = "0.0.0"
 
