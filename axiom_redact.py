@@ -162,6 +162,52 @@ FINANCIAL_PATTERNS = [
                                                 "ROUTING",      "[ROUTING REDACTED]", "FIN"),
 ]
 
+# GDPR Article 9 — Special Category Data
+GDPR_PATTERNS = [
+    (r"\b(?:race|racial|ethnicity|ethnic)\s*[:]\s*[A-Za-z\s]{2,30}",
+     "RACE_ETHNICITY",  "[RACE/ETHNICITY REDACTED]",    "GDPR-9"),
+    (r"\b(?:religion|religious|faith|belief|denomination)\s*[:]\s*[A-Za-z\s]{2,30}",
+     "RELIGION",        "[RELIGION REDACTED]",           "GDPR-9"),
+    (r"\b(?:trade union|labor union|labour union|union membership)\b",
+     "TRADE_UNION",     "[TRADE UNION REDACTED]",        "GDPR-9"),
+    (r"\b(?:HIV|AIDS|cancer|diabetes|mental health|depression|anxiety|psychiatric disorder|disability status)\b",
+     "HEALTH_CONDITION","[HEALTH CONDITION REDACTED]",   "GDPR-9"),
+    (r"\b(?:DNA|genome|genetic|genotype|chromosome)\s*(?:data|test|result|sequence|profile)\b",
+     "GENETIC_DATA",    "[GENETIC DATA REDACTED]",       "GDPR-9"),
+    (r"\b(?:facial recognition|gait analysis|keystroke dynamics|palm print|ear shape)\s*(?:data|template|profile)\b",
+     "BIOMETRIC_DATA",  "[BIOMETRIC DATA REDACTED]",     "GDPR-9"),
+    (r"\b(?:sexual orientation|gay|lesbian|bisexual|transgender|sex life|gender identity)\b",
+     "SEXUAL_ORIENTATION","[SENSITIVE DATA REDACTED]",   "GDPR-9"),
+    (r"\b(?:criminal record|prior conviction|convicted of|arrested for|probation|parole status)\b",
+     "CRIMINAL_RECORD", "[CRIMINAL RECORD REDACTED]",    "GDPR-9"),
+    (r"\b(?:political opinion|political view|party affiliation|voted for|voting record)\b",
+     "POLITICAL_OPINION","[POLITICAL OPINION REDACTED]", "GDPR-9"),
+]
+
+# PCI DSS — Payment Card Industry Data Security Standard
+PCI_PATTERNS = [
+    # Primary Account Number — Visa/MC/Amex/Discover/JCB/Diners with Luhn-passable ranges
+    (r"\b(?:4[0-9]{12}(?:[0-9]{3,6})?|5[1-5][0-9]{14}|2[2-7][0-9]{14}|3[47][0-9]{13}"
+     r"|3(?:0[0-5]|[68][0-9])[0-9]{11}|6(?:011|5[0-9]{2})[0-9]{12,15}"
+     r"|(?:2131|1800|35\d{3})\d{11})\b",
+     "PAN",             "[PAN REDACTED]",                "PCI"),
+    # CVV / CVC / security code (must NOT be stored post-auth per PCI DSS req 3.2.1)
+    (r"\b(?:CVV2?|CVC2?|CID|security code)\s*[:]\s*\d{3,4}\b",
+     "CVV",             "[CVV REDACTED]",                "PCI"),
+    # Card expiration date — labeled
+    (r"\b(?:expir(?:ation|y)|exp(?:\s*date)?)\s*[:]\s*(?:0?[1-9]|1[0-2])[\/\-]\d{2,4}\b",
+     "CARD_EXPIRY",     "[CARD EXPIRY REDACTED]",        "PCI"),
+    # Magnetic stripe track data (ISO/IEC 7813 format)
+    (r"(?:%B\d{13,19}\^[^\^]{2,26}\^\d{12}[0-9 ]+|;\d{13,19}=\d{12,})",
+     "TRACK_DATA",      "[TRACK DATA REDACTED]",         "PCI"),
+    # PIN / PIN block
+    (r"\b(?:PIN|pin block)\s*[:]\s*\d{4,8}\b",
+     "PIN_DATA",        "[PIN REDACTED]",                "PCI"),
+    # Cardholder name on card (labeled)
+    (r"\b(?:cardholder|card holder|name on card)\s*[:]\s*[A-Z][A-Za-z\s\-]{2,30}",
+     "CARDHOLDER_NAME", "[CARDHOLDER NAME REDACTED]",   "PCI"),
+]
+
 # Credential PII
 CREDENTIAL_PATTERNS = [
     (r"\bsk-ant-[a-zA-Z0-9_\-]{20,}\b",        "ANTHROPIC_KEY","[API_KEY REDACTED]", "CRED"),
@@ -174,7 +220,7 @@ CREDENTIAL_PATTERNS = [
                                                 "PASSWORD",     "password=[REDACTED]","CRED"),
 ]
 
-ALL_PATTERNS = SAFE_HARBOR_PATTERNS + FINANCIAL_PATTERNS + CREDENTIAL_PATTERNS
+ALL_PATTERNS = SAFE_HARBOR_PATTERNS + FINANCIAL_PATTERNS + GDPR_PATTERNS + PCI_PATTERNS + CREDENTIAL_PATTERNS
 
 _COMPILED = [
     (re.compile(pattern, re.IGNORECASE | re.MULTILINE), code, replacement, category)

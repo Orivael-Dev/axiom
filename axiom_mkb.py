@@ -272,11 +272,20 @@ class BlockRegistry:
 
     TRUST_LEVEL = 3 (CANNOT_MUTATE)
     ISOLATION = True (CANNOT_MUTATE)
+
+    Optional gate_fn signature:
+        gate_fn(agent_id: str, action: str, data_class: str) -> bool
+
+    When supplied, register() calls gate_fn(agent_id, "write", block_type)
+    and find() calls gate_fn(agent_id, "read", block_type) before returning.
+    Pass agent_id via the optional parameter on those methods.
     """
 
     def __init__(self, hmac_key: bytes,
-                 registry_path: str = "axiom_mkb_registry.jsonl"):
+                 registry_path: str = "axiom_mkb_registry.jsonl",
+                 gate_fn: Optional[Any] = None):
         self._hmac_key = hmac_key
+        self._gate_fn = gate_fn
         self._registry_path = registry_path
         self._blocks: dict[str, KnowledgeBlock] = {}  # entry_id -> block
         self._load_existing()
@@ -308,8 +317,18 @@ class BlockRegistry:
         except (json.JSONDecodeError, KeyError) as exc:
             LOG.warning("Failed to load registry entry: %s", exc)
 
-    def register(self, block: KnowledgeBlock) -> str:
-        """Append block to registry. Returns entry_id."""
+    def register(self, block: KnowledgeBlock, agent_id: str = "") -> str:
+        """Append block to registry. Returns entry_id.
+
+        If a gate_fn is configured and agent_id is provided, the gate
+        is checked before writing.  Raises PermissionError on denial.
+        """
+        if self._gate_fn and agent_id:
+            if not self._gate_fn(agent_id, "write", block.block_type):
+                raise PermissionError(
+                    f"Data gate denied: agent={agent_id!r} "
+                    f"action=write data_class={block.block_type!r}"
+                )
         eid = _entry_id(block.name, block.version)
         if eid in self._blocks:
             raise ValueError(
@@ -337,11 +356,19 @@ class BlockRegistry:
         self._blocks[eid] = block
         return eid
 
-    def find(self, name: str, version: str | None = None) -> Optional[KnowledgeBlock]:
-        """Find a registered block by name, optionally filtered by version."""
+    def find(self, name: str, version: str | None = None,
+             agent_id: str = "") -> Optional[KnowledgeBlock]:
+        """Find a registered block by name, optionally filtered by version.
+
+        If a gate_fn is configured and agent_id is provided, blocks that
+        fail the gate are hidden (returns None rather than raising).
+        """
         for block in self._blocks.values():
             if block.name == name:
                 if version is None or block.version == version:
+                    if self._gate_fn and agent_id:
+                        if not self._gate_fn(agent_id, "read", block.block_type):
+                            return None
                     return block
         return None
 
