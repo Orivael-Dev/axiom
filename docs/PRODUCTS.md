@@ -65,11 +65,11 @@ positioning differs:
 | Product | Family | Status | First customer ETA |
 |---|---|---|---|
 | [Axiom Certify · Agent Audit](#axiom-certify--agent-audit) | Certify | partial-implementation | 1-2 weeks of build |
-| [Axiom Flight Recorder](#axiom-flight-recorder) | standalone | partial-implementation | 2-3 weeks of build |
+| [Axiom Flight Recorder](#axiom-flight-recorder) | standalone | **shippable** | Core shipped *(multi-tenant decisions table, search/filter, replay endpoint, CSV/JSON/Splunk/Datadog export, webhook/email/Slack alerts shipped; remaining gap: time-series dashboard UI, tenant onboarding flow)* |
 | [Axiom Intent Firewall](#axiom-intent-firewall) | standalone | near-shippable | 1 week of build *(smallest gap of the SaaS three)* |
 | [Axiom MCP](#axiom-mcp) | standalone | near-shippable | 1-2 weeks of build *(13 MCP tools shipped; code-pattern refusal needs build)* |
 | [Axiom CallGuard](#axiom-callguard) | standalone | partial-implementation | 3-4 weeks of build *(intent patterns + signing exist; audio intake + per-industry rule engines need build)* |
-| [Axiom Data Gate](#axiom-data-gate) | standalone | near-shippable | 2 weeks of build *(HIPAA redaction + memory block registry already shipped; need other taxonomies + policy engine)* |
+| [Axiom Data Gate](#axiom-data-gate) | standalone | **shippable** | Core shipped *(GDPR Art. 9 + PCI DSS patterns, per-agent policy engine, memory gate, right-to-erasure cert, pgvector connector all shipped; remaining gaps: FCRA/GLBA/CUI taxonomies, UI, compliance PDF, vector sweep)* |
 | [Axiom Skill Pack Builder](#axiom-skill-pack-builder) | standalone *(foundational — see notes)* | near-shippable | 2-3 weeks of build *(AXMContainer + pack/inspect/verify/route shipped; need CLI polish, registry, marketplace)* |
 | [Axiom Nightly Review](#axiom-nightly-review) | standalone | near-shippable | 1-2 weeks of build *(ConstitutionalRetrospect + ImprovementRecord shipped; need report templates, scheduling, delivery)* |
 | [Axiom Shield Lite](#axiom-shield-lite) | standalone | near-shippable | 1-2 weeks for monitor product; 4-6 weeks for tabletop-simulation service *(ProcessManifold + file_access_rate + sovereign thresholds shipped)* |
@@ -217,10 +217,12 @@ customer-facing layer rather than new backend.
 
 **Tagline:** A black box recorder for AI decisions.
 
-**Status:** partial-implementation
-(backend mostly exists, replay UI and compliance export are the gaps)
+**Status:** shippable
+(per-tenant decisions table, search/filter API, replay endpoint,
+export in 4 formats, webhook/email/Slack alert dispatch all shipped.
+Remaining gaps: time-series dashboard UI, tenant onboarding workflow.)
 
-**Last updated:** 2026-05-16
+**Last updated:** 2026-06-04
 
 ### What the customer submits
 
@@ -277,41 +279,19 @@ A live web dashboard plus exportable compliance artifacts:
 | Decision graph (replay foundation) | `POST /ccg/seed`, `GET /ccg/nodes`, `GET /ccg/edges` | shipped |
 | Escalation events | `axiom_os_shield.py` escalate() + log_event() | shipped |
 | Live shield status feed | `GET /os/shield/status` | shipped |
+| **Multi-tenant decisions table** | `axiom_firewall/db.py decisions` table in per-tenant SQLite with composite indexes on `(intent_class, timestamp)` and `(verdict, timestamp)` | **shipped** |
+| **Search/filter API** | `axiom_firewall/flight_recorder.search_decisions()` + `POST /flight_recorder/search` | **shipped** |
+| **Replay endpoint** | `axiom_firewall/flight_recorder.replay_decision()` + `POST /flight_recorder/replay/{id}` — returns original vs current policy delta | **shipped** |
+| **Export (4 formats)** | `export_decisions(fmt)` → JSON lines, CSV, Splunk HEC, Datadog Logs + `GET /flight_recorder/export` | **shipped** |
+| **External alerts** | `AlertConfig` with webhook, Slack, SMTP; `PUT/GET /flight_recorder/alerts` | **shipped** |
 
-### Gaps to ship
+### Gaps remaining (v2 scope)
 
-What's missing for a customer-facing SaaS, in roughly priority order:
+1. **Time-series dashboard UI** — `docs/axiom_dashboard.html` is a snapshot; needs scrollable timeline, decision-detail flyout, filter chips, replay button. The API surface is complete; this is purely a UI build.
+2. **Tenant onboarding workflow** — sign-up flow, API key issuance, integration docs per pattern (proxy / sidecar / OAI drop-in), billing meter wiring.
+3. **Compliance PDF export** — CSV/SIEM already ship; PDF formatted for regulator submission (EU AI Act Article 12, HIPAA audit packet, FFIEC) is the shared gap with Certify/CallGuard.
 
-1. **Multi-tenant audit-log isolation** — today's
-   `axiom_os_shield_log.jsonl` is a single file. Each customer
-   needs an isolated stream (per-tenant subdirectory or per-tenant
-   SQLite/Postgres database). Same singleton concern as Certify.
-2. **Search/filter index** — the JSONL append-only log is fine for
-   write but linear-scan for read. Production needs SQLite with
-   indexes on (user, intent_class, distance_band, status, timestamp)
-   or a real time-series store.
-3. **Time-series dashboard UI** — `docs/axiom_dashboard.html`
-   exists but is a snapshot dashboard, not a time-series feed. Need
-   a new UI: scrollable timeline, decision-detail flyout, filter
-   chips, replay action.
-4. **Replay UI** — the CCG endpoints support graph traversal, but
-   there's no UI button that takes a historical decision and reruns
-   it. Needs a `POST /flight_recorder/replay/{decision_id}` that
-   loads the CCG node, replays the prompt through the current agent
-   config, and returns a delta report.
-5. **Compliance PDF/CSV/SIEM export** — same generator gap as
-   Certify (PDF). Plus a CSV adapter and SIEM webhook (Splunk HEC,
-   Datadog Logs, Sumo Logic). The shape exists in JSONL; needs
-   format adapters.
-6. **External alert delivery** — escalation events are logged
-   internally; need outbound webhooks + email (SES/Mailgun) + Slack
-   incoming-webhook integration for the alerts deliverable.
-7. **Tenant onboarding workflow** — sign-up flow, API key issuance,
-   integration docs per pattern (proxy / sidecar / OAI drop-in),
-   billing meter wiring.
-
-Estimated effort: 2-3 weeks of focused build. Multi-tenant isolation
-(item 1) is the biggest single piece; the rest are smaller.
+Estimated remaining effort: **~1 week** (the backend is complete; remaining work is UI and PDF).
 
 ### Target customer + pricing
 
@@ -1070,12 +1050,14 @@ account for ~2 of those weeks; the rest assemble around them.
 gate every piece of data before an AI agent reads, remembers, or
 exports it.
 
-**Status:** near-shippable
-(HIPAA Safe Harbor redaction + memory block registry + signing chain
-already ship; gaps are the additional regulated-data taxonomies,
-per-agent policy engine, and vector-DB integrations)
+**Status:** shippable
+(HIPAA + GDPR Art. 9 + PCI DSS patterns, per-agent policy engine,
+memory read/write gates, right-to-erasure with signed cert, pgvector
+connector, and 6 new REST endpoints all shipped. Remaining gaps:
+FCRA/GLBA/CUI taxonomies, policy authoring UI, compliance PDF export,
+vector classification sweep.)
 
-**Last updated:** 2026-05-16
+**Last updated:** 2026-06-04
 
 ### What the customer submits
 
@@ -1159,64 +1141,23 @@ Tenant dashboard:
 | Per-agent intent classification | `axiom_intent_classifier.py` (used to decide which agents can do what action class) | shipped |
 | Per-agent policy via SkillDelegate | `axiom_axm.py SkillDelegate.intent_classes` (existing pattern for "this agent only handles these intents" — generalizes to "this agent only sees these data classes") | shipped |
 | Append-only data access log | reuse `axiom_os_shield_log.jsonl` pattern + new `axiom_data_gate_log.jsonl` | partial (pattern shipped) |
+| **GDPR Article 9 patterns** | `axiom_redact.py GDPR_PATTERNS` (9 patterns: race, religion, trade union, health conditions, genetic data, biometric, sexual orientation, criminal record, political opinions) | **shipped** |
+| **PCI DSS patterns** | `axiom_redact.py PCI_PATTERNS` (6 patterns: PAN, CVV, card expiry, track data, PIN, cardholder name) | **shipped** |
+| **Per-agent policy engine** | `axiom_firewall/data_policy.py` — `is_allowed(tenant_id, agent_id, action, data_class) → PolicyVerdict`; `AgentAccessRule` stored per-tenant SQLite; prefix matching; safe defaults for sensitive classes | **shipped** |
+| **Memory write/read gate** | `axiom_mkb.py BlockRegistry(gate_fn=...)` — optional gate hook on `register()` and `find()`; denied writes raise `PermissionError`, denied reads return `None` | **shipped** |
+| **Right-to-erasure workflow** | `axiom_firewall/db.erase_subject_data()` — substring scan of decisions table, delete, return HMAC-signed cert with scope limitation note; `DELETE /data_gate/erasure` | **shipped** |
+| **pgvector connector** | `axiom_firewall/pgvector_connector.py` — `store_embedding`, `search_similar` (cosine via IVFFlat), `delete_by_subject`, `delete_by_tenant` | **shipped** |
+| REST endpoints | `PUT/GET/DELETE /data_policy/rule`, `GET /data_policy/rules`, `POST /data_policy/check`, `DELETE /data_gate/erasure` | **shipped** |
 
-### Gaps to ship
+### Gaps remaining (v2 scope)
 
-What needs to be built before the first paying customer:
+1. **FCRA / GLBA NPI / CUI-ITAR-EAR taxonomies** — additional pattern libraries for credit-report data, bank NPI, and government contractor CUI markings. Each is a `.axiom` spec under `axiom_files/taxonomies/`. V1 shipped HIPAA + GDPR Art. 9 + PCI.
+2. **Policy authoring UI** — web form for per-agent access rules that compiles to the `AgentAccessRule` JSON schema. Raw API works today; UI removes the config overhead for non-technical buyers.
+3. **Compliance PDF export** — GDPR Article 30 records of processing, HIPAA audit log packet, CCPA personal-information inventory. PDF generator is a shared gap with Certify and CallGuard — one build, three products benefit.
+4. **Vector-store classification sweep** — background cron that re-scans existing embeddings against current classifiers as regulations evolve. Reports new findings to the dashboard.
+5. **Additional vector-DB connectors** — Pinecone, Weaviate, Qdrant, ChromaDB. pgvector shipped; rest follow the same pattern (~200 lines each).
 
-1. **Additional regulated-data taxonomies** — `axiom_redact.py`
-   covers HIPAA Safe Harbor; need parallel pattern libraries for:
-   - **GDPR Article 9 special categories** — race, religion, health,
-     biometric, sex life, criminal record, trade-union membership
-   - **PCI DSS** — PAN (13-19 digit card numbers with Luhn check),
-     CVV (3-4 digit, never store), track data, expiration date
-     after first six (BIN-only is non-PCI)
-   - **FCRA covered data** — credit reports, employment background,
-     tenant screening
-   - **GLBA NPI** — non-public personal information from financial
-     institutions
-   - **CUI / ITAR / EAR** — for government contractors and defense
-   - Each is its own `.axiom` spec under `axiom_files/taxonomies/`
-   - V1 ships HIPAA (done) + GDPR special categories + PCI; FCRA /
-     GLBA / CUI in v2
-2. **Per-agent policy engine** — today's `SkillDelegate.intent_classes`
-   gates by intent. Data Gate needs to gate by `(agent_id, action,
-   data_class)` triples. Generalize the AXM delegate pattern, add a
-   policy-evaluation function `is_allowed(agent_id, action,
-   classifications) -> verdict`. ~400 lines of new code; the
-   pattern is established.
-3. **Memory write/read gate** — `BlockRegistry.register()` is
-   unconditional today. Add a pre-registration hook that checks the
-   policy before accepting a write, and a pre-read hook that filters
-   `find()` results according to the requesting agent's policy.
-4. **Vector-DB integrations** — Pinecone, Weaviate, Qdrant, pgvector,
-   ChromaDB. v1 ships with one (probably pgvector since it's
-   self-hostable and easy to wrap); the rest are connectors that
-   follow the same pattern. ~200 lines per connector.
-5. **Right-to-erasure workflow** — find every log line and memory
-   block containing a subject's identifier, delete them, produce a
-   signed deletion certificate. For vector embeddings, "deletion"
-   is technically possible (delete the vector) but **proving** the
-   subject's data isn't latently encoded elsewhere is hard — needs
-   a written limitation in the deletion certificate.
-6. **Policy authoring UI** — same gap pattern as Intent Firewall:
-   either the customer hand-writes `.axiom` specs, fills in a web
-   form, or uses a YAML shim. Recommend web form for v1 with raw
-   `.axiom` export.
-7. **Compliance export templates** — GDPR Article 30 records of
-   processing, HIPAA audit log packet, CCPA personal-information
-   inventory, CCPA right-to-know report. PDF generator shared gap
-   with Certify and CallGuard.
-8. **Vector-store classification sweep** — background job that
-   re-scans existing embeddings against current classifiers (since
-   regulations and patterns evolve). Cron-style; reports new
-   findings to the dashboard.
-
-Estimated effort: **2 weeks of focused build.** This is shorter than
-CallGuard because the regulatory plumbing already exists in
-`axiom_redact.py` and the memory primitives already exist in
-`axiom_mkb.py`. Most of the work is policy-engine + connectors +
-right-to-erasure workflow.
+Estimated remaining effort: **~1 week** (the hard parts are now shipped).
 
 ### Target customer + pricing
 

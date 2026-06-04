@@ -318,10 +318,33 @@ python examples/axiom_guard_api.py  # port 8001
 |--------|------|-------------|
 | `GET` | `/guard/status` | Health check |
 | `POST` | `/guard/check` | Constitutional check on input |
+| `POST` | `/guard/redact` | PII redaction (HIPAA/GDPR/PCI) |
 | `POST` | `/latent/run` | Full 3-phase reasoning pipeline |
 | `GET` | `/qrf/run` | QRF probability forecast |
 | `GET` | `/ccg/nodes` | Conversation graph nodes |
 | `GET` | `/guard/manifests` | Signed decision manifests |
+
+**Data Gate endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `PUT` | `/data_policy/rule` | Create or replace an agent access rule |
+| `GET` | `/data_policy/rules` | List all agent rules for the tenant |
+| `GET` | `/data_policy/rule/{agent_id}` | Get rule for a specific agent |
+| `DELETE` | `/data_policy/rule/{agent_id}` | Delete agent rule |
+| `POST` | `/data_policy/check` | Is agent allowed to do action on data class? |
+| `DELETE` | `/data_gate/erasure` | Right-to-erasure — returns signed deletion cert |
+
+**Flight Recorder endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/flight_recorder/search` | Search decisions with filters |
+| `GET` | `/flight_recorder/decision/{id}` | Full decision detail (includes input/output text) |
+| `POST` | `/flight_recorder/replay/{id}` | Re-evaluate against current policy, return delta |
+| `GET` | `/flight_recorder/export` | Export as `json`, `csv`, `splunk`, or `datadog` |
+| `PUT` | `/flight_recorder/alerts` | Configure webhook/email/Slack alerts |
+| `GET` | `/flight_recorder/alerts` | Get current alert config |
 
 **Per-patent endpoint families** (all under the same bearer-token middleware):
 
