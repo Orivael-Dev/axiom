@@ -327,6 +327,131 @@ Build time: ~10–15 min on Orin Nano.
 
 ---
 
+## Part 4b — OOM Prevention on Orin Nano
+
+The Orin Nano has **5.5 GB usable unified memory**. With the 4.07 GB model loaded,
+~1.4 GB remains. Memory is consumed by:
+
+| Consumer | Size |
+|----------|------|
+| Model weights (Q4_K_M) | 4.07 GB |
+| KV cache (f16, 8K ctx) | ~1.0 GB |
+| Activation tensors | ~150–200 MB |
+| System / driver overhead | ~150 MB |
+| **Total at 8K ctx** | **~5.5 GB** ← right at the limit |
+
+Without any protection, a long prompt or a second process eating RAM will OOM-kill
+llama.cpp mid-generation. Four layers prevent this.
+
+---
+
+### Layer 1 — KV cache quantization (biggest win, zero setup)
+
+llama.cpp can quantize the K and V cache tensors without retraining. This is the
+single highest-leverage change — halves or quarters KV memory with minimal quality
+impact at normal context lengths:
+
+```bash
+# Q8_0 — halves KV memory (~64 KB/token), nearly lossless up to ~20K ctx
+~/llama.cpp/build/bin/llama-cli \
+    -m /mnt/nvme/models/mistral_srd4_q4km.gguf \
+    -ngl 32 -c 16000 \
+    -ctk q8_0 -ctv q8_0 \
+    --flash-attn \
+    --prompt "Your prompt here"
+
+# Q4_0 — quarters KV memory (~32 KB/token), slight quality drop on very long ctx
+~/llama.cpp/build/bin/llama-cli \
+    -m /mnt/nvme/models/mistral_srd4_q4km.gguf \
+    -ngl 32 -c 32000 \
+    -ctk q4_0 -ctv q4_0 \
+    --flash-attn \
+    --prompt "Your prompt here"
+```
+
+**Context budget with 1.4 GB headroom:**
+
+| KV type | Per token | Max safe ctx | Quality impact |
+|---------|-----------|-------------|----------------|
+| `f16` (default) | 128 KB | ~8K | none |
+| `q8_0` | 64 KB | ~16K | negligible |
+| `q4_0` | 32 KB | ~32K | minor on long ctx |
+| `q4_K_M` | ~28 KB | ~37K | minor on long ctx |
+
+---
+
+### Layer 2 — Flash attention (free memory, no quality cost)
+
+`--flash-attn` computes attention in blocks instead of materialising the full
+N×N attention matrix. Saves ~200–400 MB of peak activation memory — always
+enable it:
+
+```bash
+# Add to every llama-cli call
+--flash-attn
+```
+
+---
+
+### Layer 3 — NVMe swap (overflow safety net)
+
+If DRAM fills unexpectedly, NVMe swap (3 GB/s) prevents a hard OOM kill.
+**Never use microSD for swap** (90 MB/s — a 4 GB page-out takes 45 s).
+
+```bash
+# One-time setup on Orin Nano
+sudo fallocate -l 8G /mnt/nvme/swapfile
+sudo chmod 600 /mnt/nvme/swapfile
+sudo mkswap /mnt/nvme/swapfile
+sudo swapon /mnt/nvme/swapfile
+
+# Persist across reboots
+echo '/mnt/nvme/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+With 8 GB NVMe swap, the effective memory ceiling is 13.5 GB. Generation will slow
+if it pages, but it won't crash.
+
+---
+
+### Layer 4 — Auto-select safe launch script
+
+`research/quant/orin_safe_launch.sh` reads `/proc/meminfo` and picks the highest
+config that fits in available RAM without manual tuning:
+
+```bash
+# Basic usage
+bash ~/axiom/research/quant/orin_safe_launch.sh \
+    /mnt/nvme/models/mistral_srd4_q4km.gguf \
+    ~/llama.cpp/build/bin/llama-cli \
+    "Explain edge AI in one paragraph:"
+```
+
+**Example output:**
+```
+=== Orin Safe Launch ===
+  Free RAM:    5340 MB
+  Model:       4200 MB
+  Headroom:    1140 MB
+  Config:      A-q8  (ngl=32  q8-KV  ctx=16K)
+```
+
+The script tries configs from most capable to most conservative and always
+enables `--flash-attn`. If headroom is below 200 MB it warns and drops to a
+minimal 2K context config rather than crashing.
+
+**Config tiers:**
+
+| Headroom | ngl | KV type | ctx | Label |
+|----------|-----|---------|-----|-------|
+| ≥ 1400 MB | 32 | f16 | 8K | A-full |
+| ≥ 900 MB | 32 | q8_0 | 16K | A-q8 |
+| ≥ 500 MB | 32 | q8_0 | 8K | A-q8-safe |
+| ≥ 200 MB | 22 | q4_0 | 4K | B-q4 |
+| < 200 MB | 16 | q4_0 | 2K | minimal |
+
+---
+
 ## Part 5 — Benchmark on Orin Nano
 
 ### 5.1 Clone the axiom repo (if not already present)
