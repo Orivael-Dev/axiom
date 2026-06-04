@@ -63,6 +63,7 @@ Create 7 separate code cells and paste each block below.
 ```python
 import subprocess, sys
 subprocess.run(["git", "clone", "--depth", "1",
+    "--branch", "claude/srd-prototype-benchmark-JRtv1",
     "https://github.com/orivael-dev/axiom.git", "/content/axiom"], check=True)
 sys.path.insert(0, "/content/axiom")
 from research.quant.colab_mistral_srd4_pipeline import *
@@ -154,13 +155,16 @@ cell4b_extract()
   fingerprint : a3f9...
 ```
 
-### Cell 5 — Quick generation test on GPU (~30 s)
+### Cell 5 — Quick generation test on GPU (~30 s)  *(optional)*
 
 ```python
 cell5_smoke_test()
 ```
 
-Runs 64 tokens of generation on the A100 to confirm the GGUF works before download.
+Validates the GGUF produces coherent output before download. **Core pipeline ends at
+Cell 4b** — skip this cell for production runs where output quality is verified
+separately. To skip programmatically: `os.environ["SKIP_SMOKE_TEST"] = "1"`.
+
 Expected: ~50–80 tok/s on A100.
 
 ### Cell 6 — Download files
@@ -180,6 +184,66 @@ Downloads four files to your browser:
 
 > Total download: ~8.6 GB. Use a fast connection or only download the GGUF
 > if you don't need the signed `.axm` for provenance verification.
+
+---
+
+## Part 2b — Running on RunPod (recommended for business use)
+
+For repeated or automated compression runs, RunPod is more reliable than Colab:
+no 12-hour timeout, persistent storage volumes, SSH access, and ~$3/run on an A100.
+
+### Setup (one time)
+
+1. Create a RunPod pod: **A100 SXM 40 GB**, attach a **50 GB network volume**
+   at `/workspace`.
+2. SSH in and install deps:
+
+```bash
+pip install transformers accelerate psutil torch --index-url https://download.pytorch.org/whl/cu121
+git clone --depth 1 \
+    --branch claude/srd-prototype-benchmark-JRtv1 \
+    https://github.com/orivael-dev/axiom.git /workspace/axiom
+pip install -r /workspace/axiom/research/quant/requirements.txt
+```
+
+### Run the pipeline
+
+```bash
+cd /workspace/axiom
+
+# Pack your model (HF ID or local path)
+python3 research/quant/run_srd4_local.py \
+    --model mistralai/Mistral-7B-Instruct-v0.3 \
+    --output-dir /workspace/srd_output \
+    --llamacpp /workspace/llama.cpp \
+    --quant Q4_K_M
+
+# Or with your own fine-tuned model
+python3 research/quant/run_srd4_local.py \
+    --model /workspace/my_finetuned_model \
+    --output-dir /workspace/srd_output \
+    --llamacpp /workspace/llama.cpp
+```
+
+Output files land in `--output-dir`:
+
+| File | Description |
+|------|-------------|
+| `model_srd4.axm` | Signed .axm container |
+| `model_srd4_q4km.gguf` | GGUF Q4_K_M for llama.cpp |
+| `pack_stats.json` | Timing, bpw, fingerprint |
+| `extract_stats.json` | GGUF size, verification |
+
+Add `--smoke-test` to run a 64-token generation check at the end.
+Add `--bench` to run the KV simulation benchmark after extraction.
+Use `--skip-extract` to stop after `.axm` (if you only need the signed container).
+
+### Cost estimate
+
+| GPU | Pack time | Extract time | Total | Cost |
+|-----|-----------|-------------|-------|------|
+| A100 40 GB | ~22 min | ~15 min | ~40 min | ~$1.10 |
+| A10G 24 GB | ~35 min | ~18 min | ~55 min | ~$0.55 |
 
 ---
 

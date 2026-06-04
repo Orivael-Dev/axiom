@@ -39,7 +39,12 @@ GGUF_PATH = OUT_DIR / "mistral_srd4_q4km.gguf"
 LLAMA_DIR = Path("/content/llama.cpp")
 LLAMA_CLI = LLAMA_DIR / "build/bin/llama-cli"
 RESULTS   = REPO / "results"
-MODEL_ID  = "mistralai/Mistral-7B-Instruct-v0.3"
+KEY_FILE  = OUT_DIR / "axiom_master.key"
+
+# Business use: set SRD_MODEL_ID to your own HF model ID or local model path.
+# Example: os.environ["SRD_MODEL_ID"] = "your-org/your-model"
+#          os.environ["SRD_MODEL_ID"] = "/workspace/my_finetuned_model"
+MODEL_ID  = os.environ.get("SRD_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -75,10 +80,22 @@ def cell1_setup():
     else:
         subprocess.run(["git", "-C", str(REPO), "pull", "origin", REPO_BRANCH], check=True)
 
-    if not os.environ.get("AXIOM_MASTER_KEY"):
-        import secrets
-        os.environ["AXIOM_MASTER_KEY"] = secrets.token_hex(32)
-        print("AXIOM_MASTER_KEY set (random, session-only)")
+    # Persist AXIOM_MASTER_KEY across cell re-runs within the same session.
+    # A new random key would invalidate any .axm signatures from a prior cell2 run.
+    import secrets
+    if KEY_FILE.is_file() and not os.environ.get("AXIOM_MASTER_KEY"):
+        os.environ["AXIOM_MASTER_KEY"] = KEY_FILE.read_text().strip()
+        print("AXIOM_MASTER_KEY restored from session key file")
+    elif not os.environ.get("AXIOM_MASTER_KEY"):
+        key = secrets.token_hex(32)
+        os.environ["AXIOM_MASTER_KEY"] = key
+        KEY_FILE.write_text(key)
+        print("AXIOM_MASTER_KEY generated and saved to session key file")
+    else:
+        print("AXIOM_MASTER_KEY already set in environment")
+
+    print(f"  Model: {MODEL_ID}")
+    print("  (set SRD_MODEL_ID env var to use a different model)")
 
     subprocess.run([sys.executable, "-m", "pip", "install", "-q",
                     "transformers", "accelerate", "psutil"], check=True)
@@ -239,9 +256,16 @@ def cell4b_extract():
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# CELL 5 — Quick generation test  (~30 s)
+# CELL 5 — Quick generation test  (~30 s)  [OPTIONAL]
+#
+# Validates the GGUF produces coherent output before download.
+# Skip this cell for production runs — it does not affect the output files.
+# Set SKIP_SMOKE_TEST=1 to bypass the guard.
 # ════════════════════════════════════════════════════════════════════════════
 def cell5_smoke_test():
+    if os.environ.get("SKIP_SMOKE_TEST"):
+        print("SKIP_SMOKE_TEST set — skipping smoke test")
+        return None
     assert GGUF_PATH.is_file(), "Run cell4b first"
 
     print("=" * 60)
@@ -316,7 +340,9 @@ cell4a_build_llamacpp()
 # ── CELL 4b: Extract .axm → reconstruct FP16 → GGUF Q4_K_M (~15 min) ─────────
 cell4b_extract()
 
-# ── CELL 5: Quick generation test on GPU (~30 s) ──────────────────────────────
+# ── CELL 5 (OPTIONAL): Quick generation test on GPU (~30 s) ──────────────────
+# Core pipeline ends at Cell 4b. Cell 5 validates output quality before download.
+# Skip for production runs: just don't run this cell, or set SKIP_SMOKE_TEST=1.
 cell5_smoke_test()
 
 # ── CELL 6: Download .axm + GGUF ─────────────────────────────────────────────
