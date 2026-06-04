@@ -189,22 +189,112 @@ def cell3_verify():
 #   4. Runs llama-quantize → Q4_K_M GGUF (~4.07 GB)
 # ════════════════════════════════════════════════════════════════════════════
 def cell4a_build_llamacpp():
-    """Build llama.cpp — skip if already built."""
+    """Install llama.cpp — downloads pre-built CUDA binary (fast) then clones repo for Python scripts."""
     if LLAMA_CLI.is_file():
         print(f"✓ llama-cli already at {LLAMA_CLI}")
+        _ensure_llama_repo()
         return
 
-    import torch
-    p    = torch.cuda.get_device_properties(0)
-    arch = f"{p.major}{p.minor}"
-    print(f"Building llama.cpp for {p.name} SM {p.major}.{p.minor}...")
+    print("Setting up llama.cpp...")
+    _ensure_llama_repo()
 
+    # Try pre-built binary first — avoids 15-min cmake CUDA compile
+    if _download_prebuilt_llamacpp():
+        return
+
+    # Fall back to source build (capped at 4 jobs to avoid hanging)
+    _build_llamacpp_source()
+
+
+def _ensure_llama_repo():
+    """Clone llama.cpp repo (needed for convert_hf_to_gguf.py Python script)."""
     if not LLAMA_DIR.is_dir():
+        print("  Cloning llama.cpp repo (Python scripts)...")
         subprocess.run(
             ["git", "clone", "--depth", "1",
              "https://github.com/ggerganov/llama.cpp.git", str(LLAMA_DIR)],
             check=True,
         )
+
+
+def _download_prebuilt_llamacpp() -> bool:
+    """Download pre-built CUDA binary from GitHub releases. Returns True on success."""
+    import io, json, urllib.request, zipfile
+    import torch
+
+    cuda_ver = torch.version.cuda or ""          # e.g. "12.2" or "12.4"
+    major_minor = ".".join(cuda_ver.split(".")[:2])
+    print(f"  Looking for pre-built llama.cpp binary (CUDA {major_minor})...")
+
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
+            headers={"User-Agent": "axiom-srd-pipeline/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            release = json.loads(r.read())
+    except Exception as e:
+        print(f"  GitHub API unavailable: {e}")
+        return False
+
+    assets = release.get("assets", [])
+
+    # Prefer exact CUDA match, fall back to any ubuntu CUDA binary
+    def score(a: dict) -> int:
+        n = a["name"]
+        if "ubuntu-x64" not in n or "cuda" not in n:
+            return 0
+        if f"cu{major_minor}" in n:
+            return 2
+        return 1
+
+    best = max(assets, key=score, default=None)
+    if not best or score(best) == 0:
+        print("  No pre-built CUDA binary found in latest release.")
+        return False
+
+    size_mb = best["size"] / 1024**2
+    print(f"  Downloading {best['name']}  ({size_mb:.0f} MB)...")
+
+    try:
+        with urllib.request.urlopen(best["browser_download_url"], timeout=180) as r:
+            data = r.read()
+    except Exception as e:
+        print(f"  Download failed: {e}")
+        return False
+
+    build_bin = LLAMA_DIR / "build" / "bin"
+    build_bin.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            extracted = []
+            for member in z.namelist():
+                stem = Path(member).name
+                if stem in ("llama-cli", "llama-quantize"):
+                    dest = build_bin / stem
+                    dest.write_bytes(z.read(member))
+                    dest.chmod(0o755)
+                    extracted.append(stem)
+    except Exception as e:
+        print(f"  Extraction failed: {e}")
+        return False
+
+    if LLAMA_CLI.is_file():
+        print(f"  ✓ Pre-built binary ready: {', '.join(extracted)}")
+        print(f"✓ llama-cli ready (pre-built — skipped cmake compile)")
+        return True
+
+    print("  Pre-built archive did not contain llama-cli.")
+    return False
+
+
+def _build_llamacpp_source():
+    """Build llama.cpp from source — fallback when pre-built binary is unavailable."""
+    import torch
+    p    = torch.cuda.get_device_properties(0)
+    arch = f"{p.major}{p.minor}"
+    print(f"  Building from source for {p.name} SM {p.major}.{p.minor} (this takes ~10 min)...")
 
     subprocess.run(
         ["cmake", "-B", str(LLAMA_DIR / "build"), "-S", str(LLAMA_DIR),
@@ -212,13 +302,14 @@ def cell4a_build_llamacpp():
          "-DCMAKE_BUILD_TYPE=Release"],
         check=True,
     )
-    nproc = subprocess.check_output(["nproc"]).decode().strip()
+    # Cap at 4 jobs — nproc (~12) saturates Colab CPU and causes hangs
     subprocess.run(
         ["cmake", "--build", str(LLAMA_DIR / "build"),
-         "-j", nproc, "-t", "llama-cli", "llama-quantize"],
+         "-j", "4", "--target", "llama-cli", "llama-quantize"],
         check=True,
+        timeout=900,   # 15 min hard limit
     )
-    print(f"✓ llama-cli ready")
+    print("✓ llama-cli ready (built from source)")
 
 
 def cell4b_extract():

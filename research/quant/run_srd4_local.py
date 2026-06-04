@@ -72,23 +72,105 @@ def _ensure_key(output_dir: Path) -> str:
 
 
 def _build_llamacpp(llamacpp_dir: Path) -> Path:
-    """Build llama.cpp if needed. Returns path to llama-cli binary."""
+    """Set up llama.cpp — tries pre-built binary first, falls back to source build."""
     llama_cli = llamacpp_dir / "build/bin/llama-cli"
     if llama_cli.is_file():
-        print(f"  llama-cli: already built at {llama_cli}")
+        print(f"  llama-cli: already at {llama_cli}")
+        _ensure_llama_repo(llamacpp_dir)
         return llama_cli
 
-    import torch
-    p    = torch.cuda.get_device_properties(0)
-    arch = f"{p.major}{p.minor}"
-    print(f"  Building llama.cpp for {p.name} SM {p.major}.{p.minor} ...")
+    _ensure_llama_repo(llamacpp_dir)
 
+    if _download_prebuilt_llamacpp(llamacpp_dir):
+        return llama_cli
+
+    _build_llamacpp_source(llamacpp_dir)
+    return llama_cli
+
+
+def _ensure_llama_repo(llamacpp_dir: Path) -> None:
     if not llamacpp_dir.is_dir():
+        print("  Cloning llama.cpp repo...")
         subprocess.run(
             ["git", "clone", "--depth", "1",
              "https://github.com/ggerganov/llama.cpp.git", str(llamacpp_dir)],
             check=True,
         )
+
+
+def _download_prebuilt_llamacpp(llamacpp_dir: Path) -> bool:
+    """Download pre-built CUDA binary from GitHub releases. Returns True on success."""
+    import io, json, urllib.request, zipfile
+    import torch
+
+    cuda_ver = torch.version.cuda or ""
+    major_minor = ".".join(cuda_ver.split(".")[:2])
+    print(f"  Fetching pre-built llama.cpp binary (CUDA {major_minor})...")
+
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
+            headers={"User-Agent": "axiom-srd-pipeline/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            release = json.loads(r.read())
+    except Exception as e:
+        print(f"  GitHub API unavailable: {e}")
+        return False
+
+    assets = release.get("assets", [])
+
+    def score(a: dict) -> int:
+        n = a["name"]
+        if "ubuntu-x64" not in n or "cuda" not in n:
+            return 0
+        if f"cu{major_minor}" in n:
+            return 2
+        return 1
+
+    best = max(assets, key=score, default=None)
+    if not best or score(best) == 0:
+        print("  No pre-built CUDA ubuntu binary found.")
+        return False
+
+    size_mb = best["size"] / 1024**2
+    print(f"  Downloading {best['name']}  ({size_mb:.0f} MB)...")
+
+    try:
+        with urllib.request.urlopen(best["browser_download_url"], timeout=300) as r:
+            data = r.read()
+    except Exception as e:
+        print(f"  Download failed: {e}")
+        return False
+
+    build_bin = llamacpp_dir / "build" / "bin"
+    build_bin.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            for member in z.namelist():
+                stem = Path(member).name
+                if stem in ("llama-cli", "llama-quantize"):
+                    dest = build_bin / stem
+                    dest.write_bytes(z.read(member))
+                    dest.chmod(0o755)
+                    print(f"  ✓ {stem}")
+    except Exception as e:
+        print(f"  Extraction failed: {e}")
+        return False
+
+    if (llamacpp_dir / "build/bin/llama-cli").is_file():
+        print("  llama-cli: pre-built binary ready")
+        return True
+    return False
+
+
+def _build_llamacpp_source(llamacpp_dir: Path) -> None:
+    """Build llama.cpp from source — fallback only."""
+    import torch
+    p    = torch.cuda.get_device_properties(0)
+    arch = f"{p.major}{p.minor}"
+    print(f"  Building from source for {p.name} SM {p.major}.{p.minor} (~10 min)...")
 
     subprocess.run(
         ["cmake", "-B", str(llamacpp_dir / "build"), "-S", str(llamacpp_dir),
@@ -96,14 +178,14 @@ def _build_llamacpp(llamacpp_dir: Path) -> Path:
          "-DCMAKE_BUILD_TYPE=Release"],
         check=True,
     )
-    nproc = subprocess.check_output(["nproc"]).decode().strip()
+    # Cap at 4 jobs — full nproc saturates CPU and causes hangs
     subprocess.run(
         ["cmake", "--build", str(llamacpp_dir / "build"),
-         "-j", nproc, "-t", "llama-cli", "llama-quantize"],
+         "-j", "4", "--target", "llama-cli", "llama-quantize"],
         check=True,
+        timeout=900,
     )
-    print(f"  llama-cli: built at {llama_cli}")
-    return llama_cli
+    print(f"  llama-cli: built from source")
 
 
 def run_pipeline(
