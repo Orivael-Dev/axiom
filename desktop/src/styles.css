@@ -1,0 +1,34 @@
+:root {
+  --bg: #0e1116; --panel: #161b22; --line: #2a313c; --text: #e6edf3;
+  --muted: #8b949e; --accent: #4aa3ff; --ready: #2ea043; --blocked: #f85149;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+.app { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.app__bar { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.app__bar h1 { margin: 0; font-size: 22px; letter-spacing: 0.5px; }
+.app__tag { color: var(--muted); font-size: 13px; }
+.intent { display: flex; gap: 10px; margin: 18px 0; }
+.intent__goal { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.intent select, .intent button { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.intent button { background: var(--accent); color: #07101c; font-weight: 600; cursor: pointer; border: none; }
+.intent button:disabled { opacity: 0.6; cursor: default; }
+.banner { padding: 10px 12px; border-radius: 8px; margin: 10px 0; font-size: 14px; }
+.banner--error { background: #2d1618; border: 1px solid var(--blocked); }
+.banner--blocked { background: #2d1d10; border: 1px solid #d29922; }
+.scene { color: var(--muted); margin: 8px 2px 14px; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.panel--pending { opacity: 0.75; }
+.panel--blocked { border-color: var(--blocked); }
+.panel__head { display: flex; align-items: center; gap: 8px; }
+.panel__title { font-weight: 600; }
+.panel__kind { color: var(--muted); font-size: 12px; margin-left: auto; }
+.panel__items { margin: 8px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.panel__empty { color: var(--muted); font-size: 12px; font-style: italic; margin: 8px 0 0; }
+.audit { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.audit summary { cursor: pointer; color: var(--muted); }
+.audit ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.audit code { color: var(--accent); }
+.sig { color: var(--muted); font-size: 12px; margin-top: 14px; }
