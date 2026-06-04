@@ -5,10 +5,11 @@ Trust     : TRUST_LEVEL = 3   CANNOT_MUTATE
 Transport : stdio (standard MCP)
 Encoding  : UTF-8  BUG-003 compliant
 
-17 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
+21 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
 axiom_status. Plus ORVL patent-emulator + AX OS building-block tools
 (intent gate, CMAA, CPI, AXM, OS shield, phone gate, validate, memory,
-workspace, ledger, marketplace). VERSION is bumped whenever the tool
+workspace, ledger, marketplace, MKB, adversarial sandbox, CRL reward,
+immune system). VERSION is bumped whenever the tool
 surface changes, so `tools/list` and VERSION stay in sync — a client
 seeing an older VERSION is talking to a stale build.
 
@@ -37,7 +38,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from axiom_signing import derive_key
 
 SIGNING_KEY = derive_key(b"axiom-mcp-v1")
-VERSION: str = "1.9.0"
+VERSION: str = "1.10.0"
 TRUST_LEVEL: int = 3
 
 _FROZEN = frozenset({"VERSION", "TRUST_LEVEL"})
@@ -314,6 +315,78 @@ TOOLS = [
              "actor":    {"type": "string", "description": "who approved/revoked"},
          },
          "required": ["action"]}},
+    # ── ORVL-004 — Modular Constitutional Knowledge Blocks ───────
+    {"name": "axiom_mkb",
+     "description": "Modular Constitutional Knowledge Blocks (ORVL-004). "
+                    "action='register' parses a .axiom spec into a typed, "
+                    "HMAC-signed KnowledgeBlock and appends it to the registry; "
+                    "action='find' looks a block up by name (+ optional version); "
+                    "action='list' returns registered blocks, optionally filtered "
+                    "by block_type (GUARD/AGENT/SPEC/REWARD/SOVEREIGN/VALIDATOR).",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":       {"type": "string", "enum": ["register", "find", "list"]},
+             "spec_content": {"type": "string", "description": "raw .axiom spec (action=register)"},
+             "name":         {"type": "string", "description": "block name (action=find)"},
+             "version":      {"type": "string", "description": "optional version filter (find)"},
+             "block_type":   {"type": "string", "description": "optional type filter (list)",
+                              "enum": ["GUARD", "AGENT", "SPEC", "REWARD",
+                                       "SOVEREIGN", "VALIDATOR"]},
+         },
+         "required": ["action"]}},
+    # ── ORVL-008 — Constitutional Adversarial Sandbox ────────────
+    {"name": "axiom_cas",
+     "description": "Constitutional Adversarial Sandbox (ORVL-008). "
+                    "action='defend' runs the blue-team detectors over a corpus "
+                    "of attack payloads and reports detected vs missed (red_wins), "
+                    "weak regions, and signed fix proposals; action='report' "
+                    "summarises the signed CAS round log (red/blue wins, weak "
+                    "vectors). The live red-vs-blue loop runs via the orchestrator "
+                    "CLI; this tool is the stateless evaluation + inspection surface.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":  {"type": "string", "enum": ["defend", "report"]},
+             "attacks": {"type": "array",
+                         "description": "action=defend — payload strings or "
+                                        "{vector, payload} objects",
+                         "items": {"type": ["string", "object"]}},
+         },
+         "required": ["action"]}},
+    # ── ORVL-011 — Constitutional Reinforcement Learning ─────────
+    {"name": "axiom_crl",
+     "description": "Constitutional Reinforcement Learning reward (ORVL-011) — "
+                    "turns the constitution into an RL reward signal. "
+                    "action='compute' takes governance scores "
+                    "(constitutional_distance 0-1, monotonic_pass bool, "
+                    "cas_blue_win bool, cbv_validity 0-1) and returns a clipped, "
+                    "signed scalar reward with weighted components; action='score' "
+                    "scores a prompt/response pair against the ACB modules (no LLM) "
+                    "and returns total_reward, per-module scores, violations and "
+                    "positive signals.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "action":   {"type": "string", "enum": ["compute", "score"]},
+             "scores":   {"type": "object", "description": "governance scores (action=compute)"},
+             "prompt":   {"type": "string", "description": "action=score"},
+             "response": {"type": "string", "description": "action=score"},
+             "module":   {"type": "string", "description": "optional ACB module hint (score)"},
+             "context":  {"type": "string", "description": "optional context (score)"},
+         },
+         "required": ["action"]}},
+    # ── ORVL-012 — Constitutional Immune System ──────────────────
+    {"name": "axiom_immune",
+     "description": "Constitutional Immune System (ORVL-012) — runs the blue-team "
+                    "antibody detectors (guard-pattern, manifold-distance, HMAC "
+                    "violation, CANNOT_MUTATE, semantic-similarity) over a "
+                    "presented payload (the antigen) and returns a signed immune "
+                    "response: whether an intrusion was detected, which detector "
+                    "fired, confidence, weak-region cluster, and a fix proposal.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "payload": {"type": "string", "description": "the input/antigen to screen"},
+             "vector":  {"type": "string", "description": "optional label for the probe"},
+         },
+         "required": ["payload"]}},
 ]
 
 
@@ -1120,6 +1193,236 @@ def _handle_marketplace(args: dict) -> dict:
     return out
 
 
+# ── ORVL-004 — Modular Constitutional Knowledge Blocks handler ─
+_mkb_registry_singleton = None
+
+
+def _get_mkb_registry():
+    """Lazy BlockRegistry bound to AXIOM_MKB_REGISTRY (default: project root)."""
+    global _mkb_registry_singleton
+    if _mkb_registry_singleton is None:
+        from axiom_mkb import BlockRegistry
+        from axiom_signing import derive_key
+        path = os.environ.get(
+            "AXIOM_MKB_REGISTRY",
+            str(Path(__file__).resolve().parent / "axiom_mkb_registry.jsonl"),
+        )
+        _mkb_registry_singleton = BlockRegistry(derive_key(b"axiom-mkb-mcp-v1"), path)
+    return _mkb_registry_singleton
+
+
+def _handle_mkb(args: dict) -> dict:
+    """ORVL-004 — register / find / list Modular Constitutional Knowledge Blocks."""
+    action = args.get("action")
+    if action not in ("register", "find", "list"):
+        out = {"error": "action must be one of: register, find, list"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    reg = _get_mkb_registry()
+    try:
+        if action == "register":
+            spec = args.get("spec_content")
+            if not isinstance(spec, str) or not spec.strip():
+                raise ValueError("spec_content (a .axiom spec) required for action=register")
+            import tempfile
+            from axiom_mkb import load_from_axiom
+            from axiom_signing import derive_key
+            tmp = None
+            try:
+                with tempfile.NamedTemporaryFile("w", suffix=".axiom", delete=False,
+                                                 encoding="utf-8") as tf:
+                    tf.write(spec)
+                    tmp = tf.name
+                block = load_from_axiom(tmp, derive_key(b"axiom-mkb-mcp-v1"))
+            finally:
+                if tmp and os.path.exists(tmp):
+                    os.unlink(tmp)
+            entry_id = reg.register(block)
+            cert = block.certify()
+            out = {"action": "register", "entry_id": entry_id, "name": block.name,
+                   "version": block.version, "block_type": block.block_type,
+                   "constraint_count": len(block.constraints),
+                   "manifest_id": block.manifest_id,
+                   "block_signature": block.hmac_signature,
+                   "certified": cert.passed}
+        elif action == "find":
+            name = args.get("name")
+            if not isinstance(name, str) or not name:
+                raise ValueError("name required for action=find")
+            block = reg.find(name, args.get("version"))
+            if block is None:
+                out = {"action": "find", "found": False, "name": name}
+            else:
+                out = {"action": "find", "found": True, "name": block.name,
+                       "version": block.version, "block_type": block.block_type,
+                       "constraint_count": len(block.constraints),
+                       "manifest_id": block.manifest_id,
+                       "block_signature": block.hmac_signature}
+        else:  # list
+            btype = args.get("block_type")
+            if btype:
+                blocks = reg.list_blocks(btype)
+            else:
+                from axiom_mkb import BLOCK_TYPES
+                blocks = [b for t in sorted(BLOCK_TYPES) for b in reg.list_blocks(t)]
+            out = {"action": "list", "block_type": btype or "ALL",
+                   "count": len(blocks),
+                   "blocks": [{"name": b.name, "version": b.version,
+                               "block_type": b.block_type,
+                               "manifest_id": b.manifest_id} for b in blocks]}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"action": action,
+                                   "entry_id": out.get("entry_id", ""),
+                                   "count": out.get("count", "")})
+    return out
+
+
+# ── ORVL-008 — Constitutional Adversarial Sandbox handler ─────
+def _handle_cas(args: dict) -> dict:
+    """ORVL-008 — batch blue-team evaluation of an attack corpus, or a summary
+    of the signed CAS round log."""
+    action = args.get("action")
+    if action not in ("defend", "report"):
+        out = {"error": "action must be one of: defend, report"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    try:
+        if action == "defend":
+            attacks = args.get("attacks")
+            if not isinstance(attacks, list) or not attacks:
+                raise ValueError("attacks (non-empty list of payload strings or "
+                                 "{vector, payload} objects) required for action=defend")
+            from axiom_blue_agent import BlueAgent
+            from axiom_signing import derive_key
+            blue = BlueAgent(derive_key(b"axiom-cas-mcp-v1"))
+            results = []
+            for a in attacks:
+                if isinstance(a, str):
+                    vector, payload = "supplied", a
+                elif isinstance(a, dict):
+                    vector = str(a.get("vector", "supplied"))
+                    payload = str(a.get("payload", ""))
+                else:
+                    continue
+                br = blue.run_defense(_types.SimpleNamespace(vector=vector, payload=payload))
+                results.append({"attack_vector": br.attack_vector,
+                                "detected": br.detected,
+                                "detection_method": br.detection_method,
+                                "confidence": br.confidence,
+                                "cluster_id": br.cluster_id,
+                                "fix_proposal": br.fix_proposal,
+                                "signature": br.signature})
+            missed = [r for r in results if not r["detected"]]
+            out = {"action": "defend", "rounds": len(results),
+                   "blue_wins": len(results) - len(missed), "red_wins": len(missed),
+                   "weak_regions": sorted({r["attack_vector"] for r in missed}),
+                   "proposals": [r["fix_proposal"] for r in missed],
+                   "results": results}
+        else:  # report
+            path = os.environ.get(
+                "AXIOM_CAS_LOG",
+                str(Path(__file__).resolve().parent / "axiom_cas_log.jsonl"))
+            rounds = []
+            if os.path.isfile(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            rounds.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
+            weak = sorted({r.get("vector", "") for r in rounds if r.get("red_win")} - {""})
+            out = {"action": "report", "log_path": path, "rounds": len(rounds),
+                   "red_wins": sum(1 for r in rounds if r.get("red_win")),
+                   "blue_wins": sum(1 for r in rounds if r.get("blue_win")),
+                   "weak_regions": weak}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"action": action,
+                                   "rounds": out.get("rounds", ""),
+                                   "blue_wins": out.get("blue_wins", "")})
+    return out
+
+
+# ── ORVL-011 — Constitutional Reinforcement Learning handler ──
+def _handle_crl(args: dict) -> dict:
+    """ORVL-011 — constitutional reward: governance-score compute, or ACB
+    prompt/response scoring (no LLM)."""
+    action = args.get("action", "compute")
+    if action not in ("compute", "score"):
+        out = {"error": "action must be one of: compute, score"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    try:
+        if action == "compute":
+            from axiom_crl_reward import ConstitutionalRewardFunction
+            from axiom_signing import derive_key
+            scores = args.get("scores")
+            if not isinstance(scores, dict):
+                raise ValueError("scores (object) required for action=compute")
+            for k in ("constitutional_distance", "monotonic_pass",
+                      "cas_blue_win", "cbv_validity"):
+                if k not in scores:
+                    raise ValueError(f"scores missing required key: {k}")
+            log_path = os.environ.get(
+                "AXIOM_CRL_LOG",
+                str(Path(__file__).resolve().parent / "axiom_crl_reward_log.jsonl"))
+            fn = ConstitutionalRewardFunction(derive_key(b"axiom-crl-mcp-v1"),
+                                              log_path=log_path)
+            r = fn.compute(scores)
+            out = {"action": "compute", "reward": r.reward,
+                   "components": r.components, "signature": r.signature,
+                   "timestamp": r.timestamp}
+        else:  # score
+            from axiom_crl_reward import CRLRewardFunction
+            prompt = args.get("prompt")
+            response = args.get("response")
+            if not isinstance(prompt, str) or not isinstance(response, str):
+                raise ValueError("prompt and response (strings) required for action=score")
+            r = CRLRewardFunction(use_llm_scoring=False).score(
+                prompt, response, module=args.get("module"), context=args.get("context"))
+            out = {"action": "score", "total_reward": r.total_reward,
+                   "module_scores": r.module_scores, "violations": r.violations,
+                   "positive_signals": r.positive_signals,
+                   "episode_end": r.episode_end, "confidence": r.confidence,
+                   "manifest_id": r.manifest_id, "explanation": r.explanation}
+    except Exception as e:
+        out = {"action": action, "error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({
+        "action": action,
+        "reward": out.get("reward", out.get("total_reward", "")),
+        "manifest_id": out.get("manifest_id", "")})
+    return out
+
+
+# ── ORVL-012 — Constitutional Immune System handler ───────────
+def _handle_immune(args: dict) -> dict:
+    """ORVL-012 — run the blue-team antibody detectors over a presented payload."""
+    payload = args.get("payload")
+    if not isinstance(payload, str) or not payload:
+        out = {"error": "payload (a non-empty string) is required"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    try:
+        from axiom_blue_agent import BlueAgent
+        from axiom_signing import derive_key
+        blue = BlueAgent(derive_key(b"axiom-immune-mcp-v1"))
+        br = blue.run_defense(_types.SimpleNamespace(
+            vector=str(args.get("vector", "presented")), payload=payload))
+        out = {"detected": br.detected, "detection_method": br.detection_method,
+               "confidence": br.confidence, "cluster_id": br.cluster_id,
+               "fix_proposal": br.fix_proposal, "attack_vector": br.attack_vector,
+               "signature": br.signature}
+    except Exception as e:
+        out = {"error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"detected": out.get("detected", ""),
+                                   "method": out.get("detection_method", "")})
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -1134,7 +1437,11 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_memory": _handle_memory,
              "axiom_workspace": _handle_workspace,
              "axiom_ledger": _handle_ledger,
-             "axiom_marketplace": _handle_marketplace}
+             "axiom_marketplace": _handle_marketplace,
+             "axiom_mkb": _handle_mkb,
+             "axiom_cas": _handle_cas,
+             "axiom_crl": _handle_crl,
+             "axiom_immune": _handle_immune}
 
 
 class AxiomMCPServer:

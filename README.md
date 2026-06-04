@@ -392,7 +392,7 @@ curl -s https://orivael-dev.github.io/axiom/mcp.json | jq .install.claude_code.s
 | `axiom_qrf` | Constitutional probability forecast (N branches) |
 | `axiom_status` | Get AXIOM stack status |
 
-**Patent emulator tools (8):**
+**Patent emulator tools (13):**
 
 | Tool | Patent | Description |
 |------|--------|-------------|
@@ -405,8 +405,12 @@ curl -s https://orivael-dev.github.io/axiom/mcp.json | jq .install.claude_code.s
 | `axiom_axm` | ORVL-023 | Operate an `.AXM` container (`inspect` / `verify` / `route`) |
 | `axiom_cpi` | ORVL-022 | Drive the physical-intelligence agent (`stability` / `classify` / `simulate` / `pickup` / `status`) |
 | `axiom_event_token` | ORVL-025 | Mint / verify a 3D multimodal EventToken; bind and verify its signed KV cache DAG (`mint` / `verify` / `chain` / `kv_bind` / `kv_verify`) |
+| `axiom_mkb` | ORVL-004 | Modular Constitutional Knowledge Blocks — `register` / `find` / `list` typed, signed knowledge blocks |
+| `axiom_cas` | ORVL-008 | Constitutional Adversarial Sandbox — `defend` a corpus through the blue team / `report` the signed CAS log |
+| `axiom_crl` | ORVL-011 | Constitutional Reinforcement Learning reward — `compute` from governance scores / `score` a prompt/response pair |
+| `axiom_immune` | ORVL-012 | Constitutional Immune System — blue-team antibody detectors over a presented payload |
 
-All 14 tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
+All tool results include HMAC signatures. Transport: JSON-RPC 2.0 over stdio.
 
 ---
 
@@ -856,15 +860,15 @@ python axiom_retrospect.py \
 | ORVL-001 | Constitutional Language | ✓ Implemented |
 | ORVL-002 | Constitutional Benchmark (ACB) | ✓ Implemented |
 | ORVL-003 | Latent Reasoning Architecture | ✓ Implemented |
-| ORVL-004 | Modular Constitutional Knowledge Blocks | ✓ Implemented |
+| ORVL-004 | Modular Constitutional Knowledge Blocks | ✓ Implemented (`axiom_mkb.py` — typed HMAC-signed KnowledgeBlocks + append-only registry; MCP tool `axiom_mkb`) |
 | ORVL-005 | Continuous Latent Constitutional AI | ✓ Implemented |
 | ORVL-006 | Quantum Constitutional Reasoning | ○ Spec-only (QRF code lives at ORVL-009) |
 | ORVL-007 | Constitutional Conversation Graph | ✓ Implemented |
-| ORVL-008 | Constitutional Adversarial Sandbox | ✓ Implemented |
+| ORVL-008 | Constitutional Adversarial Sandbox | ✓ Implemented (`axiom_cas_orchestrator.py` + red/blue agents — red-vs-blue rounds, weak-region clustering, signed fix proposals; MCP tool `axiom_cas`) |
 | ORVL-009 | Quantum Reasoning Forecast | ✓ Implemented |
 | ORVL-010 | Constitutional Boundary Validation | ✓ Implemented |
-| ORVL-011 | Constitutional Reinforcement Learning | ✓ Implemented |
-| ORVL-012 | Constitutional Immune System | ✓ Implemented |
+| ORVL-011 | Constitutional Reinforcement Learning | ✓ Implemented (`axiom_crl_reward.py` — constitution-as-reward, clipped + signed scalar reward, ACB module scoring; MCP tool `axiom_crl`) |
+| ORVL-012 | Constitutional Immune System | ✓ Implemented (`axiom_red_agent.py` + `axiom_blue_agent.py` + `axiom_honeypot.py` — red/blue/honeypot antibody detectors; MCP tool `axiom_immune`) |
 | ORVL-013 | Constitutional OS Protection | ✓ Implemented (`axiom_os_shield_daemon.py` — polling monitor + real L2/L3/L4 psutil actions, dry-run default) |
 | ORVL-014 | Constitutional World Model | ✓ Implemented |
 | ORVL-015 | Constitutional Memory Architecture | ✓ Implemented |
