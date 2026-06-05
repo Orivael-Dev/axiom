@@ -59,6 +59,13 @@ class MkbRegisterReq(BaseModel):
     spec_content: str
 
 
+class LlmReq(BaseModel):
+    enabled: Optional[bool] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
+
 # ── weather widget (Open-Meteo — keyless, cached) ────────────────
 _WEATHER_CACHE: dict[str, tuple[float, dict]] = {}
 _WEATHER_TTL = 600.0  # seconds
@@ -215,6 +222,27 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
                              outcome=res.get("block_type", ""),
                              attributes={"entry_id": res.get("entry_id")})
         return res
+
+    # ── settings: local-LLM planner backend ─────────────────────
+    @app.get("/settings/llm")
+    def get_llm_settings() -> dict:
+        from aui.settings import public_llm
+        return public_llm()
+
+    @app.post("/settings/llm")
+    def set_llm_settings(req: LlmReq) -> dict:
+        from aui.settings import update_llm, public_llm
+        data = update_llm(req.model_dump(exclude_none=True))
+        bridge.log_event("settings_llm_update",
+                         outcome="enabled" if data["llm"]["enabled"] else "disabled",
+                         attributes={"model": data["llm"]["model"],
+                                     "base_url": data["llm"]["base_url"]})
+        return public_llm()
+
+    @app.post("/settings/llm/test")
+    def test_llm_settings() -> dict:
+        from aui.planner_local import probe
+        return probe()
 
     # ── widgets ──────────────────────────────────────────────────
     @app.get("/widgets/time")

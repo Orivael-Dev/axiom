@@ -200,3 +200,45 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .widget:hover { transform: none; }
 }
+
+/* ── settings widget + form ──────────────────────────────────────────── */
+.widget--settings { min-width: 0; padding: 6px 12px; align-items: center; }
+.widget__gear { font-size: 20px; line-height: 1; }
+.widget-overlay__wx-icon--hero { font-size: 72px; line-height: 1; margin-bottom: 4px; }
+
+.settings { width: 100%; text-align: left; }
+.settings__title { margin: 0 0 18px; font-size: 22px; color: var(--text); }
+.settings__group { padding: 16px 0; border-top: 1px solid var(--border); }
+.settings__group:first-of-type { border-top: none; padding-top: 0; }
+.settings__label { font-size: 13px; font-weight: 700; color: var(--accent);
+  letter-spacing: 0.4px; text-transform: uppercase; }
+.settings__row { display: flex; align-items: center; justify-content: space-between; }
+.settings__hint { font-size: 12px; color: var(--muted); margin: 6px 0 14px; }
+
+.settings__themes { display: flex; gap: 10px; margin-top: 10px; }
+.settings__theme {
+  flex: 1; padding: 12px; border-radius: 12px; cursor: pointer; font: inherit;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+}
+.settings__theme.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.settings__switch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.settings__switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.settings__field { display: block; margin-top: 12px; }
+.settings__field > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.settings__field input {
+  width: 100%; padding: 10px 12px; border-radius: 10px; font: inherit;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text); outline: none;
+}
+.settings__field input:focus { border-color: var(--accent); }
+.settings__keyrow { display: flex; gap: 8px; }
+.settings__keyrow input { flex: 1; }
+
+.settings__testrow { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.settings__probe { font-size: 13px; }
+.settings__probe.is-ok { color: var(--accent); }
+.settings__probe.is-bad { color: var(--blocked, #e5534b); }

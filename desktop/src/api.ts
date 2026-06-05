@@ -1,6 +1,9 @@
 // Typed client for the AX OS local service. The desktop shell talks to the
 // same FastAPI endpoints as the Streamlit app — set VITE_AX_OS_API to override.
-import type { WorkspacePlan, AuditTrail, Health, Agent, Weather, ImmuneResult } from "./types";
+import type {
+  WorkspacePlan, AuditTrail, Health, Agent, Weather, ImmuneResult,
+  LlmSettings, LlmProbe,
+} from "./types";
 
 export const BASE: string =
   (import.meta.env.VITE_AX_OS_API as string | undefined) ?? "http://127.0.0.1:8800";
@@ -33,4 +36,8 @@ export const api = {
     get<Weather>(`/widgets/weather${lat != null && lon != null ? `?lat=${lat}&lon=${lon}` : ""}`),
   immuneScan: (payload: string, vector?: string) =>
     post<ImmuneResult>("/immune/scan", vector ? { payload, vector } : { payload }),
+  getLlm: () => get<LlmSettings>("/settings/llm"),
+  setLlm: (patch: Partial<LlmSettings> & { api_key?: string }) =>
+    post<LlmSettings>("/settings/llm", patch),
+  testLlm: () => post<LlmProbe>("/settings/llm/test", {}),
 };

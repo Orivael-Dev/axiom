@@ -189,6 +189,48 @@ def test_widget_time(client):
     assert "epoch_ms" in t and "tz" in t and t["epoch_ms"] > 0
 
 
+def test_llm_settings_default_and_update(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
+    cur = client.get("/settings/llm").json()
+    assert cur["enabled"] is False and cur["api_key_set"] is False
+
+    upd = client.post("/settings/llm", json={
+        "enabled": True, "model": "qwen2.5", "api_key": "secret"}).json()
+    assert upd["enabled"] is True and upd["model"] == "qwen2.5"
+    assert "api_key" not in upd and upd["api_key_set"] is True  # secret never echoed
+    # persisted
+    assert client.get("/settings/llm").json()["model"] == "qwen2.5"
+    assert any(e["event_type"] == "settings_llm_update"
+               for e in client.get("/audit").json()["events"])
+
+
+def test_llm_test_probe_fails_soft_offline(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
+    client.post("/settings/llm", json={"base_url": "http://127.0.0.1:9/v1"})
+    r = client.post("/settings/llm/test").json()
+    assert r["ok"] is False and "error" in r
+
+
+def test_local_planner_falls_back_to_rules_when_unreachable(tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
+    from aui.settings import update_llm
+    update_llm({"enabled": True, "base_url": "http://127.0.0.1:9/v1"})
+    from aui.planner_local import local_suggest
+    panels = local_suggest("work on the launch demo branch", "dev")
+    assert isinstance(panels, list) and len(panels) > 0  # rule fallback, not empty
+
+
+def test_get_planner_picks_local_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
+    monkeypatch.delenv("AX_OS_PLANNER", raising=False)
+    from aui.planner_claude import get_planner
+    from aui.planner_local import local_suggest
+    assert get_planner() is None  # default: rules
+    from aui.settings import update_llm
+    update_llm({"enabled": True})
+    assert get_planner() is local_suggest
+
+
 def test_widget_weather_fails_soft_offline(client, monkeypatch):
     # Force the upstream fetch to fail; the route must degrade, not 500.
     import aui.server as srv

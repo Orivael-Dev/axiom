@@ -1,8 +1,30 @@
 # ax-os-widgets — courier branch (transient)
 
 Not part of Axiom. Transfer these into `Orivael-Dev/ax-os`, then delete.
-Two things: (1) wire the four new ORVL MCP tools into AX OS, (2) add a
-weather + time status widget to the desktop shell.
+Covers: (1) wire the four new ORVL MCP tools into AX OS, (2) a weather +
+time + settings status strip, (3) a Settings widget (Studio/Calm theme +
+local-LLM planner backend).
+
+## LATEST — per-widget expand + Settings + local LLM
+
+- Each status widget now expands **on its own** (clock / weather / settings)
+  into a fullscreen overlay portalled to `<body>` (escapes the transformed
+  `.stage` / `.app` max-width that clipped it).
+- New **⚙ Settings** widget:
+  - **Theme** — Studio / Calm (wired to App's theme via `theme`/`onTheme`).
+  - **Local LLM** — enable + base URL + model + optional API key. When on,
+    it lays out the workspace **instead of Claude** (a real planner backend,
+    not just UI).
+- Backend:
+  - `aui/settings.py` — JSON-backed runtime config (`AX_OS_SETTINGS`),
+    secrets redacted to a boolean on read.
+  - `aui/planner_local.py` — `local_suggest` against an OpenAI-compatible
+    endpoint (Ollama / LM Studio / vLLM / llama.cpp), stdlib-only, falls back
+    to the rule planner on any error. `probe()` pings `/models` for the ⚙ UI.
+  - `aui/planner_claude.py` — `get_planner()` now resolves per request:
+    local LLM (if enabled) → Claude (`AX_OS_PLANNER=claude`) → rules.
+  - `aui/server.py` — `GET/POST /settings/llm` (+ `/settings/llm/test`);
+    a change logs a signed `settings_llm_update` audit event.
 
 ## UPDATE (overwrite)
 

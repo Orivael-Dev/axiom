@@ -61,3 +61,19 @@ export interface ImmuneResult {
   attack_vector: string;
   fix_proposal: string;
 }
+
+export interface LlmSettings {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  api_key_set: boolean;
+}
+
+export interface LlmProbe {
+  ok: boolean;
+  models?: string[];
+  model?: string;
+  model_present?: boolean;
+  error?: string;
+  base_url?: string;
+}

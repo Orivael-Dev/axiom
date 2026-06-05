@@ -50,7 +50,10 @@ export default function App() {
   }
 
   function toggleTheme() {
-    const next: Theme = theme === "studio" ? "calm" : "studio";
+    chooseTheme(theme === "studio" ? "calm" : "studio");
+  }
+
+  function chooseTheme(next: Theme) {
     setOverride(next);
     saveThemeOverride(next);
   }
@@ -60,7 +63,7 @@ export default function App() {
       <div className="stage" ref={stageRef}>
         <ConnectorLayer stageRef={stageRef} dep={planSig} />
 
-        <StatusStrip />
+        <StatusStrip theme={theme} onTheme={chooseTheme} />
 
         <GoalBar
           goal={goal} domain={domain} scene={plan?.scene} busy={busy} theme={theme}
