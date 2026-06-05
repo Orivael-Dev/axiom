@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from workspace.assembler import open_workspace
 from marketplace import AgentStore, AgentRunner
 from aui.plan import build_plan
-from aui.planner_claude import get_planner
+from aui.planner_claude import get_planner, claude_suggest
 from aui.panels import fill_plan
 
 
@@ -157,9 +157,14 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
         bridge.log_event("workspace_opened" if ws.allowed else "workspace_refused",
                          actor="ax-os.aui", subject=req.goal,
                          outcome="allowed" if ws.allowed else (ws.refusal or "blocked"))
-        plan = build_plan(ws, domain=req.domain, suggest=get_planner())
+        suggest = get_planner()
+        plan = build_plan(ws, domain=req.domain, suggest=suggest)
         fill_plan(plan, repo=repo, bridge=bridge)
-        return plan.to_dict()
+        out = plan.to_dict()
+        # cloud == the goal text was sent to Claude; local == stayed on-device
+        # (local LLM or rule planner).
+        out["planner"] = "cloud" if suggest is claude_suggest else "local"
+        return out
 
     @app.post("/marketplace/install")
     def install(req: ManifestReq) -> dict:

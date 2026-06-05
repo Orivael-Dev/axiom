@@ -14,6 +14,7 @@ export interface WorkspacePlan {
   scene: string;
   panels: Panel[];
   signature: string;
+  planner?: "local" | "cloud";
 }
 
 export interface AuditEvent {

@@ -66,7 +66,8 @@ export default function App() {
         <StatusStrip theme={theme} onTheme={chooseTheme} />
 
         <GoalBar
-          goal={goal} domain={domain} scene={plan?.scene} busy={busy} theme={theme}
+          goal={goal} domain={domain} scene={plan?.scene} planner={plan?.planner}
+          busy={busy} theme={theme}
           onGoal={setGoal} onDomain={setDomain} onOpen={openWorkspace} onToggleTheme={toggleTheme}
         />
 

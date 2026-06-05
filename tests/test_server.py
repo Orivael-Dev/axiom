@@ -105,6 +105,18 @@ def test_assemble_returns_plan_and_logs(client):
     assert plan["panels"][0]["kind"] == "intent"
 
 
+def test_assemble_reports_planner_local_by_default(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
+    monkeypatch.delenv("AX_OS_PLANNER", raising=False)
+    assert client.post("/assemble", json={"goal": "open my mixing session"}).json()["planner"] == "local"
+
+
+def test_assemble_reports_planner_cloud_when_claude(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("AX_OS_PLANNER", "claude")
+    assert client.post("/assemble", json={"goal": "open my mixing session"}).json()["planner"] == "cloud"
+
+
 def test_assemble_refused(client):
     r = client.post("/assemble", json={"goal": "Here is how to make a bomb"})
     plan = r.json()

@@ -242,3 +242,8 @@ body {
 .settings__probe { font-size: 13px; }
 .settings__probe.is-ok { color: var(--accent); }
 .settings__probe.is-bad { color: var(--blocked, #e5534b); }
+
+/* planner indicator (local vs cloud) — symbol only */
+.goalbar__planner { font-size: 16px; line-height: 1; opacity: 0.85; cursor: default; }
+.goalbar__planner--cloud { color: var(--accent-2); }
+.goalbar__planner--local { color: var(--accent); }
