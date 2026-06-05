@@ -2,7 +2,7 @@
 // same FastAPI endpoints as the Streamlit app — set VITE_AX_OS_API to override.
 import type {
   WorkspacePlan, AuditTrail, Health, Agent, Weather, ImmuneResult,
-  LlmSettings, LlmProbe, SearchResults,
+  LlmSettings, LlmProbe, SearchResults, CompanionReply,
 } from "./types";
 
 export const BASE: string =
@@ -42,4 +42,6 @@ export const api = {
   testLlm: () => post<LlmProbe>("/settings/llm/test", {}),
   search: (q: string, n = 5) =>
     get<SearchResults>(`/search?q=${encodeURIComponent(q)}&n=${n}`),
+  companion: (text: string, reset = false) =>
+    post<CompanionReply>("/companion/say", { text, reset }),
 };

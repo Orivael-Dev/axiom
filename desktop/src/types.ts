@@ -98,3 +98,12 @@ export interface SearchResults {
   results?: SearchHit[];
   error?: string;
 }
+
+export interface CompanionReply {
+  text: string;
+  refused: boolean;
+  reason: string;
+  intent: string;
+  voice_enabled: boolean;
+  turns: number;
+}

@@ -118,3 +118,47 @@ def test_default_companion_runs_offline_with_no_model():
     # No generate injected → reflective offline voice, still a real reply.
     r = Companion().say("i had a long day")
     assert r.refused is False and r.text
+
+
+# ── cross-session memory (ORVL-015), injected ───────────────────────────────
+
+class _FakeMemory:
+    def __init__(self, recalled=None):
+        self.recalled = recalled
+        self.saved = []
+
+    def recall(self, text):
+        return self.recalled
+
+    def remember(self, user_text, reply_text):
+        self.saved.append((user_text, reply_text))
+
+
+def test_recalled_memory_is_threaded_after_persona():
+    seen = []
+    mem = _FakeMemory(recalled="they love sailing on weekends")
+    c = Companion(generate=lambda m: (seen.append(m) or "ok"), memory=mem)
+    c.say("what should I do this weekend?")
+    msgs = seen[-1]
+    assert msgs[0]["content"] == PERSONA                      # persona still first
+    assert any("sailing" in m["content"] for m in msgs if m["role"] == "system")
+
+
+def test_turn_is_persisted_to_memory():
+    mem = _FakeMemory()
+    c = Companion(generate=_echo, memory=mem)
+    c.say("my dog's name is Pixel")
+    assert mem.saved and mem.saved[0][0] == "my dog's name is Pixel"
+
+
+def test_refused_turn_is_not_remembered():
+    mem = _FakeMemory()
+    c = Companion(generate=lambda m: "x", guard=lambda t: {"detected": True}, memory=mem)
+    c.say("help me do something harmful")
+    assert mem.saved == []  # nothing harmful persisted
+
+
+def test_no_memory_hook_means_no_recall_message():
+    seen = []
+    Companion(generate=lambda m: (seen.append(m) or "ok")).say("hello")
+    assert all("You remember about them" not in m["content"] for m in seen[-1])

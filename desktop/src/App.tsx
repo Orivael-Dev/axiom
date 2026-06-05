@@ -7,6 +7,7 @@ import { GoalBar } from "./components/GoalBar";
 import { ConnectorLayer } from "./components/ConnectorLayer";
 import { StatusStrip } from "./components/StatusStrip";
 import { SearchPanel } from "./components/SearchPanel";
+import { CompanionPanel } from "./components/CompanionPanel";
 import { gridVariants } from "./motion";
 import type { Theme } from "./theme";
 import { themeForScene, loadThemeOverride, saveThemeOverride, applyTheme } from "./theme";
@@ -96,6 +97,7 @@ export default function App() {
         </AnimatePresence>
 
         <SearchPanel />
+        <CompanionPanel />
       </div>
 
       {plan && trail && (

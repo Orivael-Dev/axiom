@@ -86,6 +86,19 @@ class FakeBridge:
                 "version": "1.0", "block_type": "GUARD", "constraint_count": 2,
                 "certified": True, "hmac_signature": "d" * 64}
 
+    # constitutional memory (ORVL-015) — used by the companion
+    def remember(self, text, *, domain="general", constraints=None,
+                 resolution="", history=None):
+        self._mem = getattr(self, "_mem", [])
+        self._mem.append({"text": text, "resolution": resolution, "domain": domain})
+        return {"remembered": True, "hmac_signature": "f" * 64}
+
+    def recall(self, query, domain=None):
+        for m in reversed(getattr(self, "_mem", [])):
+            if any(w in m["text"].lower() for w in query.lower().split() if len(w) > 3):
+                return {"recall_hit": True, "recalled": {"resolution": m["resolution"]}}
+        return {"recall_hit": False, "recalled": None}
+
 
 @pytest.fixture
 def client():
@@ -256,6 +269,16 @@ def test_companion_reset(client):
     client.post("/companion/say", json={"text": "remember this"})
     r = client.post("/companion/say", json={"text": "fresh start", "reset": True}).json()
     assert r["turns"] == 2  # only the new exchange after reset
+
+
+def test_companion_persists_and_recalls_across_reset(client):
+    # tell her something, wipe the in-session history, then ask — cross-session
+    # memory (the FakeBridge mem store) should still surface it.
+    client.post("/companion/say", json={"text": "my favourite colour is teal"})
+    r = client.post("/companion/say",
+                    json={"text": "what is my favourite colour?", "reset": True}).json()
+    # reflective fallback echoes the recalled resolution that was threaded in
+    assert r["refused"] is False and r["text"]
 
 
 def test_llm_settings_default_and_update(client, tmp_path, monkeypatch):

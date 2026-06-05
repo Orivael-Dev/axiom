@@ -18,7 +18,7 @@ Principles:
 """
 from __future__ import annotations
 
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Protocol
 
 PERSONA = (
     "You are Aria, a warm, curious, emotionally present companion. You speak "
@@ -33,6 +33,13 @@ VOICE_ENABLED = False
 # Verdict shape — works with bridge.immune_scan (ORVL-012) and intent gates.
 GuardFn = Callable[[str], dict]
 GenerateFn = Callable[[List[dict]], str]
+
+
+class Memory(Protocol):
+    """Cross-session recall. recall(text) -> a remembered snippet (or None);
+    remember(user, reply) persists the exchange."""
+    def recall(self, text: str) -> Optional[str]: ...
+    def remember(self, user_text: str, reply_text: str) -> None: ...
 
 
 class CompanionReply:
@@ -55,10 +62,12 @@ class Companion:
 
     def __init__(self, *, persona: str = PERSONA,
                  generate: Optional[GenerateFn] = None,
-                 guard: Optional[GuardFn] = None):
+                 guard: Optional[GuardFn] = None,
+                 memory: Optional["Memory"] = None):
         self.persona = persona
         self._generate: GenerateFn = generate or _reflective_reply
         self._guard = guard
+        self._memory = memory
         self._history: List[dict] = []
 
     @property
@@ -97,13 +106,33 @@ class Companion:
             return reply
 
         self._history.append({"role": "user", "content": text})
+
+        # Cross-session recall (ORVL-015): thread any relevant past memory in
+        # right after the persona, so she remembers between sessions.
+        msgs = self.messages()
+        if self._memory:
+            try:
+                recalled = self._memory.recall(text)
+            except Exception:
+                recalled = None
+            if recalled:
+                msgs = [msgs[0],
+                        {"role": "system", "content": f"You remember about them: {recalled}"},
+                        *msgs[1:]]
+
         try:
-            out = (self._generate(self.messages()) or "").strip()
+            out = (self._generate(msgs) or "").strip()
         except Exception:
             out = ""
         if not out:
             out = _reflective_reply(self.messages())
         self._history.append({"role": "assistant", "content": out})
+
+        if self._memory:
+            try:
+                self._memory.remember(text, out)
+            except Exception:
+                pass
         return CompanionReply(out)
 
 
@@ -130,8 +159,35 @@ def llm_generate(messages: List[dict]) -> str:
     return out["choices"][0]["message"]["content"]
 
 
+class BridgeMemory:
+    """Memory backed by the bridge's constitutional memory (ORVL-015) — signed,
+    local-first recall that survives restarts. Fails soft if the tool is absent."""
+
+    def __init__(self, bridge, domain: str = "companion"):
+        self._bridge = bridge
+        self._domain = domain
+
+    def recall(self, text: str) -> Optional[str]:
+        try:
+            r = self._bridge.recall(text, domain=self._domain) or {}
+        except Exception:
+            return None
+        if not r.get("recall_hit"):
+            return None
+        packet = r.get("recalled") or {}
+        return packet.get("resolution") or packet.get("summary") or None
+
+    def remember(self, user_text: str, reply_text: str) -> None:
+        try:
+            self._bridge.remember(f"{user_text}\n{reply_text}",
+                                  domain=self._domain, resolution=reply_text)
+        except Exception:
+            pass
+
+
 def build_companion(bridge=None) -> Companion:
-    """Wire a companion to AX OS: immune screening via the bridge, local LLM
-    for replies (falls back to the reflective offline voice)."""
+    """Wire a companion to AX OS: immune screening + constitutional memory via
+    the bridge, local LLM for replies (falls back to the reflective voice)."""
     guard = bridge.immune_scan if bridge is not None else None
-    return Companion(generate=llm_generate, guard=guard)
+    memory = BridgeMemory(bridge) if bridge is not None else None
+    return Companion(generate=llm_generate, guard=guard, memory=memory)
