@@ -214,6 +214,7 @@ class VisionSpecialistRunner:
             )
 
         # Prefer extracting weights from AXM for tamper-evident loading.
+        # Weights are stored as safetensors (safe_serialization=True in packer).
         # Fall back to HF cache if AXM not found (dev mode).
         weights_source = spec.base_model
         axm = Path(spec.axm_path)
@@ -223,7 +224,13 @@ class VisionSpecialistRunner:
             with zipfile.ZipFile(axm) as zf:
                 members = [n for n in zf.namelist() if n.startswith("weights/")]
                 zf.extractall(tmp, members)
-            weights_source = str(tmp / "weights")
+            weights_dir = tmp / "weights"
+            # Validate safetensors file landed correctly
+            if not any(weights_dir.glob("*.safetensors")):
+                raise RuntimeError(
+                    f"No .safetensors found in AXM weights dir — was it packed with pack_vision_to_axm.py?"
+                )
+            weights_source = str(weights_dir)
 
         quant_cfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
         self._processor = AutoProcessor.from_pretrained(

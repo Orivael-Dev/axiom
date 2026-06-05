@@ -336,14 +336,20 @@ def _vision_smoke_test(model_name: str, axm_path: Path) -> None:
         print(f"  smoke test skipped (missing dep: {e})")
         return
 
-    # Extract weights from AXM
+    # Extract weights from AXM — safetensors layout: weights/model.safetensors
     tmp_dir = Path(_tmp.mkdtemp(prefix="axm_vision_smoke_"))
     print(f"  extracting weights from {axm_path.name}...")
     try:
         with zipfile.ZipFile(axm_path) as zf:
             members = [n for n in zf.namelist() if n.startswith("weights/")]
+            if not members:
+                raise RuntimeError("no weights/ in AXM")
             zf.extractall(tmp_dir, members)
         weights_src = str(tmp_dir / "weights")
+        # Confirm at least one safetensors or config file landed
+        wdir = Path(weights_src)
+        if not any(wdir.glob("*.safetensors")) and not (wdir / "config.json").exists():
+            raise RuntimeError("weights dir looks empty after extraction")
     except Exception as e:
         print(f"  extraction failed ({e}) — using HF source directly")
         weights_src = model_name

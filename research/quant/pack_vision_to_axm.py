@@ -200,9 +200,9 @@ def pack_vision_model(
         weights_dir = Path(tmp) / "weights"
         weights_dir.mkdir()
 
-        print(f"[pack_vision] saving checkpoint...")
+        print(f"[pack_vision] saving checkpoint (safetensors)...")
         t2 = time.monotonic()
-        model.save_pretrained(weights_dir)
+        model.save_pretrained(weights_dir, safe_serialization=True)
         processor.save_pretrained(weights_dir)
         save_s = time.monotonic() - t2
 
