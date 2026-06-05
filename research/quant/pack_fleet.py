@@ -53,11 +53,11 @@ from axiom_fleet.fleet_manifest import (      # noqa: E402
     load_manifest, save_manifest, validate_manifest,
 )
 
-_QUANT_DIR = Path(__file__).parent
-_RUN_SRD   = _QUANT_DIR / "run_srd4_local.py"
-_PACK_AXM  = _QUANT_DIR / "pack_to_axm.py"
-_AXM_CLI   = _QUANT_DIR / "axm_cli.py"
-_PUSH_SRD  = _QUANT_DIR / "push_srd_to_hub.py"
+_QUANT_DIR        = Path(__file__).parent
+_RUN_SRD          = _QUANT_DIR / "run_srd4_local.py"
+_PACK_VISION_AXM  = _QUANT_DIR / "pack_vision_to_axm.py"
+_AXM_CLI          = _QUANT_DIR / "axm_cli.py"
+_PUSH_SRD         = _QUANT_DIR / "push_srd_to_hub.py"
 
 
 # ── Fingerprint extraction ────────────────────────────────────────────────────
@@ -137,8 +137,9 @@ def _pack_vision(
     dry_run: bool,
 ) -> Optional[Path]:
     """Returns axm_path after packing. None on dry-run."""
-    slug = spec.role
+    slug    = spec.role
     axm_out = out_dir / f"{slug}.axm"
+    stats_f = out_dir / "pack_stats.json"
     print(f"\n[pack_fleet] VISION specialist: {spec.role} ({spec.base_model})")
     print(f"  output : {axm_out}")
     if dry_run:
@@ -146,9 +147,10 @@ def _pack_vision(
         return None
 
     cmd = [
-        sys.executable, str(_PACK_AXM),
-        "--model",  spec.base_model,
-        "--output", str(axm_out),
+        sys.executable, str(_PACK_VISION_AXM),
+        "--model",      spec.base_model,
+        "--output",     str(axm_out),
+        "--stats-json", str(stats_f),
     ]
     print(f"  running: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
