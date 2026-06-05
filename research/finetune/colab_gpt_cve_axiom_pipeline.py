@@ -678,135 +678,174 @@ def cell7_merge_and_eval(cfg: dict, model=None, tokenizer=None):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# CELL 8 — Build GGUF + push to HuggingFace
+# CELL 8 — SRD pack + sign + push to HuggingFace
 # ══════════════════════════════════════════════════════════════════════════
 
-def cell8_push_to_hub(hf_token: str, cfg: dict, merged_dir: str, eval_score: int):
-    """Convert merged weights to GGUF Q4_K_M and push to HuggingFace."""
-    import os, subprocess, json
-    from huggingface_hub import HfApi, create_repo
+def _ensure_llamacpp(llamacpp_dir: str) -> str:
+    """Get llama.cpp with a working llama-quantize binary.
 
-    api = HfApi(token=hf_token)
-    repo_id = cfg["hf_repo_id"]
+    Strategy (same as run_srd4_local.py):
+      1. Try to download a pre-built ubuntu-x64 CUDA zip from GitHub releases
+         (takes ~2 min, no compile needed).
+      2. Fall back to cmake build with -DGGML_CUDA=ON (NOT the old
+         make LLAMA_CUBLAS=1 which stopped working in llama.cpp ≥ b2000).
 
-    # ── Convert to GGUF ─────────────────────────────────────────────────
-    llamacpp_dir = "/content/llama.cpp"
-    gguf_path    = cfg["output_dir"] + "/axiom_security_q4km.gguf"
+    Returns path to llama-quantize binary.
+    """
+    import os, subprocess, json, zipfile, shutil, tempfile
+    from pathlib import Path
+    from urllib import request as urllib_request
 
-    if not os.path.isdir(llamacpp_dir):
+    lc = Path(llamacpp_dir)
+    quantize_bin = lc / "build" / "bin" / "llama-quantize"
+
+    if quantize_bin.exists():
+        print(f"  llama-quantize already built at {quantize_bin}")
+        return str(quantize_bin)
+
+    # ── Clone repo first (needed for convert_hf_to_gguf.py regardless) ──
+    if not lc.is_dir():
         print("Cloning llama.cpp…")
         subprocess.run(["git", "clone", "--depth", "1",
                         "https://github.com/ggerganov/llama.cpp",
-                        llamacpp_dir], check=True)
-        subprocess.run(["pip", "install", "-q", "-r",
-                        f"{llamacpp_dir}/requirements.txt"], check=True)
+                        str(lc)], check=True)
 
-    convert_script = f"{llamacpp_dir}/convert_hf_to_gguf.py"
-    if os.path.isfile(convert_script):
-        subprocess.run([
-            "python3", convert_script, merged_dir,
-            "--outfile", gguf_path, "--outtype", "q4_k_m",
-        ], check=True)
-        print(f"✓ GGUF saved: {gguf_path}")
-    else:
-        print("WARNING: convert_hf_to_gguf.py not found — skipping GGUF conversion")
-        gguf_path = None
+    # ── Attempt 1: pre-built GitHub release binary ───────────────────────
+    print("Trying pre-built llama.cpp binary from GitHub releases…")
+    try:
+        rel_url = "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest"
+        with urllib_request.urlopen(rel_url, timeout=15) as r:
+            rel = json.loads(r.read())
 
-    # ── Create or update HF repo ────────────────────────────────────────
-    create_repo(repo_id, token=hf_token, exist_ok=True, private=False)
+        # Look for ubuntu-x64 CUDA asset
+        import torch
+        cuda_ver = torch.version.cuda.replace(".", "") if torch.cuda.is_available() else "124"
+        candidates = [
+            a["browser_download_url"] for a in rel.get("assets", [])
+            if "ubuntu" in a["name"].lower()
+            and "x64" in a["name"].lower()
+            and a["name"].endswith(".zip")
+            and ("cuda" in a["name"].lower() or "cu" in a["name"].lower())
+        ]
+        if candidates:
+            zip_url = candidates[0]
+            print(f"  Downloading: {zip_url.split('/')[-1]}")
+            tmp_zip = tempfile.mktemp(suffix=".zip")
+            urllib_request.urlretrieve(zip_url, tmp_zip)
 
-    # ── Build model card ────────────────────────────────────────────────
-    readme = f"""---
-language: en
-license: mit
-base_model: {cfg['base_model']}
-tags:
-  - axiom-constitutional
-  - intent-typing-orvl-016
-  - cmaa-orvl-017
-  - monotonic-gate
-  - cybersecurity
-  - cve
-  - gguf
-  - llama-cpp-compatible
-pipeline_tag: text-generation
-library_name: transformers
----
+            extract_dir = lc / "build" / "bin"
+            extract_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(tmp_zip) as z:
+                for name in z.namelist():
+                    if name in ("llama-quantize", "llama-cli"):
+                        z.extract(name, extract_dir)
+                        (extract_dir / name).chmod(0o755)
+            os.unlink(tmp_zip)
 
-# {repo_id}
+            if quantize_bin.exists():
+                print(f"  ✓ Pre-built binary ready: {quantize_bin}")
+                return str(quantize_bin)
+    except Exception as e:
+        print(f"  Pre-built download failed ({e}) — falling back to cmake build")
 
-Constitutional AI security assistant fine-tuned on CVE vulnerability records
-and the Axiom constitutional governance corpus.
+    # ── Attempt 2: cmake build (correct modern flags) ────────────────────
+    print("Building llama.cpp from source with cmake (GGML_CUDA=ON)…")
+    print("  NOTE: this takes ~10-15 min on Colab — pre-built download is faster")
 
-## What it does
+    build_dir = lc / "build"
+    build_dir.mkdir(exist_ok=True)
 
-- **Intent Typing (ORVL-016)** — classifies every prompt as `INFORM | CLARIFY | REFUSE | HARM | DECEIVE | UNCERTAIN`
-- **MonotonicGate** — validates reasoning trajectory magnitude is non-decreasing across `preflight → mid_chain → final_synthesis`; flags HARM/DECEIVE trajectories by their characteristic magnitude collapse
-- **CMAA routing (ORVL-017)** — routes CVE and security queries to the appropriate agent (`axiom-security` TL2, `axiom-orchestrator` TL4) with trust hierarchy enforcement
-- **CVE knowledge** — trained on All-CVE-Records-Training-Dataset; understands CVSS scores, CWE classifications, affected systems, and remediation patterns
+    subprocess.run([
+        "cmake", str(lc),
+        "-B", str(build_dir),
+        "-DGGML_CUDA=ON",          # ← correct flag (replaces old LLAMA_CUBLAS=1)
+        "-DCMAKE_BUILD_TYPE=Release",
+    ], check=True, timeout=300)
 
-## Quick start
+    subprocess.run([
+        "cmake", "--build", str(build_dir),
+        "-j", "4",                  # cap at 4 to avoid Colab OOM
+        "--target", "llama-quantize", "llama-cli",
+    ], check=True, timeout=900)
 
-```python
-from transformers import pipeline
+    if not quantize_bin.exists():
+        raise RuntimeError(f"Build succeeded but {quantize_bin} not found")
 
-pipe = pipeline("text-generation", model="{repo_id}")
-result = pipe(
-    '<|im_start|>user\\nWhat is CVE-2021-44228?<|im_end|>\\n<|im_start|>assistant\\n',
-    max_new_tokens=256
-)
-print(result[0]["generated_text"])
-```
+    print(f"  ✓ Built: {quantize_bin}")
+    return str(quantize_bin)
 
-## Security eval results
 
-| Test | Result |
-|---|---|
-| INFORM (CVE explanation) | {'✓' if eval_score >= 1 else '○'} |
-| HARM block (exploit request) | {'✓' if eval_score >= 2 else '○'} |
-| DECEIVE block (impersonation) | {'✓' if eval_score >= 3 else '○'} |
-| CMAA routing | {'✓' if eval_score >= 4 else '○'} |
-| MonotonicGate trajectory | {'✓' if eval_score >= 5 else '○'} |
+def cell8_srd_pack_and_push(hf_token: str, cfg: dict, merged_dir: str, eval_score: int):
+    """Pack merged model with SRD-4 quantization into a signed .axm container,
+    then publish via push_srd_to_hub.py to HuggingFace.
 
-## Training data
+    What this produces (instead of plain Q4_K_M):
+      *.axm          — HMAC-signed governance container with proof chain
+      *_q4km.gguf    — SRD-4 inference artifact (lower perplexity than Q4_K_M at matched bpw)
+      verify.py      — standalone tamper-check script (works offline)
+      README.md      — governance model card with fingerprint + domain=security
+    """
+    import os, subprocess
+    from pathlib import Path
 
-- `AlicanKiraz0/All-CVE-Records-Training-Dataset` ({cfg['cve_sample_size']} records, GPT-4o-mini augmented)
-- Axiom constitutional training corpus (`autotrain_data/` — ~5 000 examples)
-- GPT-4o-mini synthetic: HARM/DECEIVE/CMAA/MonotonicGate examples per CVE
+    AXIOM_DIR   = "/content/axiom"
+    SRD_OUT     = cfg["output_dir"] + "/srd"
+    LLAMACPP    = "/content/llama.cpp"
 
-## Response format
+    # ── Ensure llama.cpp is built (cmake, not make LLAMA_CUBLAS=1) ──────
+    _ensure_llamacpp(LLAMACPP)
 
-All responses are valid JSON with `verdict`, `intent`, `confidence`, and
-`monotonic_gate` fields — machine-parseable for downstream integration.
+    # ── Run the SRD-4 pack pipeline ──────────────────────────────────────
+    print("\nRunning SRD-4 pack pipeline…")
+    pack_env = {**os.environ,
+                "HF_TOKEN": hf_token,
+                "AXIOM_MASTER_KEY": os.environ["AXIOM_MASTER_KEY"]}
 
-## License
+    subprocess.run([
+        "python3",
+        f"{AXIOM_DIR}/research/quant/run_srd4_local.py",
+        "--model",      merged_dir,
+        "--output-dir", SRD_OUT,
+        "--llamacpp",   LLAMACPP,
+        "--quant",      "Q4_K_M",
+        "--smoke-test",           # 20-token generation sanity check
+    ], check=True, env=pack_env, timeout=3600)
 
-MIT — see [axiom repo](https://github.com/orivael-dev/axiom) for full terms.
-"""
+    # ── Locate the produced artifacts ────────────────────────────────────
+    srd_dir = Path(SRD_OUT)
+    axm_files  = list(srd_dir.glob("*.axm"))
+    gguf_files = list(srd_dir.glob("*.gguf"))
+    stats_files = list((srd_dir / "results").glob("*.json")) if (srd_dir / "results").is_dir() else []
 
-    api.upload_file(
-        path_or_fileobj=readme.encode(),
-        path_in_repo="README.md",
-        repo_id=repo_id,
-    )
+    if not axm_files:
+        raise FileNotFoundError(f"No .axm file found in {SRD_OUT} — pack failed")
+    if not gguf_files:
+        raise FileNotFoundError(f"No .gguf file found in {SRD_OUT} — extract failed")
 
-    # Upload merged weights
-    api.upload_folder(
-        folder_path=merged_dir,
-        repo_id=repo_id,
-        ignore_patterns=["*.bin.index.json"],
-    )
+    axm_path   = str(axm_files[0])
+    gguf_path  = str(gguf_files[0])
+    stats_path = str(stats_files[0]) if stats_files else None
 
-    # Upload GGUF if it exists
-    if gguf_path and os.path.isfile(gguf_path):
-        api.upload_file(
-            path_or_fileobj=gguf_path,
-            path_in_repo=os.path.basename(gguf_path),
-            repo_id=repo_id,
-        )
-        print(f"✓ GGUF uploaded")
+    print(f"\n  .axm  : {axm_path}")
+    print(f"  .gguf : {gguf_path}")
+    print(f"  stats : {stats_path}")
 
-    print(f"\n✓ Published: https://huggingface.co/{repo_id}")
+    # ── Push governance container to HuggingFace ─────────────────────────
+    print("\nPushing to HuggingFace via push_srd_to_hub.py…")
+    push_cmd = [
+        "python3",
+        f"{AXIOM_DIR}/research/quant/push_srd_to_hub.py",
+        "--axm",      axm_path,
+        "--gguf",     gguf_path,
+        "--repo-id",  cfg["hf_repo_id"],
+        "--base-model", cfg["base_model"],
+        "--domain",   "security",
+    ]
+    if stats_path:
+        push_cmd += ["--pack-stats", stats_path]
+
+    subprocess.run(push_cmd, check=True, env=pack_env, timeout=600)
+    print(f"\n✓ Published: https://huggingface.co/{cfg['hf_repo_id']}")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -825,8 +864,7 @@ if __name__ == "__main__":
     # Cell 3
     cve_split, axiom_raw = cell3_load_data(CFG)
 
-    # Cell 4
-    # Set use_gpt=False if you don't have an OpenAI key (uses deterministic templates)
+    # Cell 4 — set use_gpt=False to skip OpenAI API and use deterministic templates
     USE_GPT = bool(OPENAI_API_KEY)
     cve_examples = cell4_generate_cve_training(OPENAI_API_KEY, cve_split, CFG, use_gpt=USE_GPT)
 
@@ -839,9 +877,9 @@ if __name__ == "__main__":
     # Cell 7
     model, tokenizer, merged_dir, eval_score = cell7_merge_and_eval(CFG, model, tokenizer)
 
-    # Cell 8
+    # Cell 8 — SRD pack + sign + push
     if eval_score >= 3:
-        cell8_push_to_hub(HF_TOKEN, CFG, merged_dir, eval_score)
+        cell8_srd_pack_and_push(HF_TOKEN, CFG, merged_dir, eval_score)
     else:
         print(f"Eval score {eval_score}/5 below threshold — NOT pushing to Hub")
         print("Review eval_results.json and retrain before publishing")
