@@ -1,0 +1,43 @@
+{
+  "fleet_id": "medical-v1",
+  "version": "1.0",
+  "description": "Medical specialist fleet — two ≤0.5B SRD-quantized models totalling ~750M params. Research specialist answers clinical questions from text; imaging specialist describes X-rays, CT slices, and pathology images.",
+
+  "specialists": [
+    {
+      "role": "research",
+      "modality": "text",
+      "domain": "medical",
+      "description": "Clinical research assistant — medical literature, drug interactions, ICD codes, SOAP notes. Qwen2.5-0.5B-Instruct SRD-4 quantized.",
+      "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+      "axm_path": "specialists/research/research.axm",
+      "gguf_path": "specialists/research/research.gguf",
+      "intent_classes": ["INFORM", "CLARIFY", "REFUSE"],
+      "domains": ["medical", "general"],
+      "bpw": 4.5,
+      "params_m": 494,
+      "fingerprint": null
+    },
+    {
+      "role": "imaging",
+      "modality": "vision",
+      "domain": "medical",
+      "description": "Medical imaging analyst — chest X-ray interpretation, CT description, pathology slide commentary. SmolVLM-256M-Instruct SRD-4 quantized.",
+      "base_model": "HuggingFaceTB/SmolVLM-256M-Instruct",
+      "axm_path": "specialists/imaging/imaging.axm",
+      "gguf_path": null,
+      "intent_classes": ["INFORM"],
+      "domains": ["medical"],
+      "bpw": 4.5,
+      "params_m": 256,
+      "fingerprint": null
+    }
+  ],
+
+  "routing": {
+    "fallback_role": "research",
+    "image_attachment_role": "imaging",
+    "harm_block": true,
+    "uncertain_fallback": true
+  }
+}
