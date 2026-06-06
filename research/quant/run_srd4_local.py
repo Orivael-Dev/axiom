@@ -537,7 +537,7 @@ def run_pipeline(
         print("─" * 64)
         result = subprocess.run(
             [str(llama_cli), "-m", str(gguf_path),
-             "--ngl", "99", "--ctx-size", "512", "--n-predict", "64",
+             "--n-gpu-layers", "99", "--ctx-size", "512", "--n-predict", "64",
              "--log-disable",
              "--prompt", "Summarize what this model does in one sentence:"],
             capture_output=True, text=True, timeout=180,

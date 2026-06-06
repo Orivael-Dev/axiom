@@ -148,7 +148,7 @@ def run_llama(
         str(cli), "-m", gguf,
         "--ctx-size",  str(ctx),
         "--n-predict", str(n_predict),
-        "--ngl",       str(ngl),
+        "--n-gpu-layers", str(ngl),
         "--threads",   "4",
         "--log-disable",
         "--prompt",    PROMPT,

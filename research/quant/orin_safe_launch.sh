@@ -89,7 +89,7 @@ echo ""
 
 exec "$LLAMA" \
     -m        "$GGUF"   \
-    --ngl      "$NGL"   \
+    --n-gpu-layers "$NGL"   \
     --ctx-size "$CTX"   \
     -ctk       "$CTK"   \
     -ctv       "$CTK"   \

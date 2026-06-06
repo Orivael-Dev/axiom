@@ -365,7 +365,7 @@ def cell5_smoke_test():
 
     result = subprocess.run(
         [str(LLAMA_CLI), "-m", str(GGUF_PATH),
-         "--ngl", "99",
+         "--n-gpu-layers", "99",
          "--ctx-size", "512",
          "--n-predict", "64",
          "--log-disable",
