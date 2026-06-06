@@ -23,10 +23,12 @@ _DEFAULT_LLM = {
 
 _DEFAULT_VOICE = {
     "enabled": False,
-    "engine": "browser",                  # browser (Web Speech) | piper | cloud
-    "voice": "",                          # engine-specific voice id ("" = default)
-    "rate": 1.0,                          # 0.5–2.0
-    "base_url": "http://localhost:5000",  # piper/cloud TTS server (engine != browser)
+    "engine": "browser",                       # browser (Web Speech) | piper | cloud
+    "voice": "alloy",                          # OpenAI-style voice name
+    "model": "tts-1",                          # TTS model id
+    "rate": 1.0,                               # 0.5–2.0 (sent as 'speed')
+    "base_url": "http://localhost:8000/v1",    # OpenAI-compatible TTS (Piper via OpenedAI-speech)
+    "api_key": "",                             # for cloud TTS (e.g. OpenAI)
 }
 
 
@@ -79,7 +81,7 @@ def update_voice(patch: dict) -> dict:
     with _LOCK:
         data = load()
         voice = data["voice"]
-        for k in ("enabled", "engine", "voice", "rate", "base_url"):
+        for k in ("enabled", "engine", "voice", "model", "rate", "base_url", "api_key"):
             if k in patch and patch[k] is not None:
                 voice[k] = patch[k]
         data["voice"] = voice
@@ -92,5 +94,8 @@ def update_voice(patch: dict) -> dict:
 
 
 def public_voice() -> dict:
-    """Voice (TTS) config for the UI."""
-    return dict(load()["voice"])
+    """Voice (TTS) config for the UI — cloud secret redacted to a boolean."""
+    voice = dict(load()["voice"])
+    api_key = voice.pop("api_key", "")
+    voice["api_key_set"] = bool(api_key)
+    return voice

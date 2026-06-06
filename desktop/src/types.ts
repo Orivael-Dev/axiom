@@ -114,6 +114,8 @@ export interface VoiceSettings {
   enabled: boolean;
   engine: string;   // "browser" | "piper" | "cloud"
   voice: string;
+  model?: string;
   rate: number;
   base_url: string;
+  api_key_set?: boolean;
 }

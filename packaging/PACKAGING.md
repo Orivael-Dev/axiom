@@ -113,3 +113,49 @@ or just use the existing two-terminal flow with `npm run tauri dev`.
 - `pytest tests/test_bridge_command.py` → bridge command-resolution (AX_OS_MCP_BIN).
 - After a packaged build: launch the app — the window opens and `/health`
   returns 200 with no terminal open.
+
+---
+
+## Voice (TTS) for the companion
+
+Aria can speak her replies. Toggle it with the 🔊 button in the chat or in
+**⚙ Settings → Voice**, then click **🔊 Test voice** to confirm.
+
+### Browser engine — default, nothing to install
+On **Windows (WebView2)** and **macOS (WKWebView)** the webview ships the Web
+Speech API, so the default `browser` engine just works — fully on-device, no
+server. If Settings shows *"✕ no on-device voice here — use Piper"* (some Linux
+WebKitGTK builds), use the local Piper engine below.
+
+### Local neural voice (Piper) — one command
+AX OS speaks via an **OpenAI-compatible** `/v1/audio/speech` endpoint, so any
+such server works. The simplest is **OpenedAI-speech**, which wraps Piper:
+
+```bash
+docker run -d -p 8000:8000 ghcr.io/matatonic/openedai-speech
+```
+
+Then in **⚙ Settings → Voice**: set **Engine = Piper** (the default
+`base_url` is already `http://localhost:8000/v1`) and click **Test voice**.
+
+docker-compose:
+
+```yaml
+services:
+  tts:
+    image: ghcr.io/matatonic/openedai-speech
+    ports: ["8000:8000"]
+    restart: unless-stopped
+```
+
+### Cloud voice (optional)
+Set **Engine = Cloud**, `base_url = https://api.openai.com/v1`, an API key, and
+a `voice` (e.g. `alloy`). Same code path — note the reply text leaves the
+machine (the ☁ tradeoff).
+
+### How it routes
+`POST /tts` proxies `{base_url}/audio/speech` with
+`{model, input, voice, response_format: wav, speed}` and returns base64 WAV the
+webview plays. It **fails soft** — if the TTS server is down, Aria still replies
+in text; nothing crashes. `base_url`, `voice`, `model`, and `rate` live in the
+persisted settings (`AX_OS_SETTINGS`).

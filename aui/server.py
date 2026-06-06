@@ -288,8 +288,9 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
     @app.post("/tts")
     def tts(req: TtsReq) -> dict:
         """Server-side TTS for the piper/cloud engines (the browser engine speaks
-        client-side and never calls this). Proxies a Piper-style HTTP server;
-        fails soft when unconfigured/unreachable. Returns base64 WAV on success."""
+        client-side and never calls this). Proxies an OpenAI-compatible
+        /v1/audio/speech endpoint — local Piper (OpenedAI-speech) or cloud
+        (OpenAI) — fails soft when unconfigured/unreachable. Returns base64 WAV."""
         from aui.settings import load
         import base64
         import urllib.request
@@ -297,11 +298,19 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
         if voice.get("engine") == "browser":
             return {"ok": False, "reason": "browser_engine_speaks_client_side"}
         base = str(voice.get("base_url", "")).rstrip("/")
+        body = json.dumps({
+            "model": voice.get("model") or "tts-1",
+            "input": req.text,
+            "voice": voice.get("voice") or "alloy",
+            "response_format": "wav",
+            "speed": float(voice.get("rate") or 1.0),
+        }).encode("utf-8")
+        headers = {"content-type": "application/json"}
+        if voice.get("api_key"):
+            headers["authorization"] = f"Bearer {voice['api_key']}"
         try:
-            payload = json.dumps({"text": req.text, "voice": voice.get("voice", "")}).encode()
-            r = urllib.request.Request(base + "/api/tts", data=payload,
-                                       headers={"content-type": "application/json"})
-            with urllib.request.urlopen(r, timeout=15) as resp:  # noqa: S310
+            r = urllib.request.Request(base + "/audio/speech", data=body, headers=headers)
+            with urllib.request.urlopen(r, timeout=20) as resp:  # noqa: S310
                 audio = resp.read()
             return {"ok": True, "engine": voice.get("engine"),
                     "audio_b64": base64.b64encode(audio).decode("ascii"), "mime": "audio/wav"}
