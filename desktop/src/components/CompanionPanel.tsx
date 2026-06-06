@@ -2,30 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { fadeSlide } from "../motion";
 import { api } from "../api";
+import { speak } from "../voice";
 import type { VoiceSettings } from "../types";
 
 type Msg = { who: "you" | "aria"; text: string; refused?: boolean };
-
-// Speak a reply. Browser engine uses the Web Speech API (fully client-side,
-// no server); piper/cloud engines fetch audio from the /tts route and play it.
-function speak(text: string, voice: VoiceSettings | null) {
-  const engine = voice?.engine ?? "browser";
-  if (engine === "browser") {
-    if (!("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = voice?.rate || 1;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-    return;
-  }
-  api.tts(text)
-    .then((r) => {
-      if (r.ok && r.audio_b64) {
-        new Audio(`data:${r.mime ?? "audio/wav"};base64,${r.audio_b64}`).play().catch(() => {});
-      }
-    })
-    .catch(() => {});
-}
 
 export function CompanionPanel() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -54,7 +34,8 @@ export function CompanionPanel() {
     try {
       const r = await api.companion(t);
       setMsgs((m) => [...m, { who: "aria", text: r.text, refused: r.refused }]);
-      if (r.voice_enabled) speak(r.text, voice);
+      // gate + engine come from the server (authoritative); rate from local prefs
+      if (r.voice_enabled) speak(r.text, r.voice_engine ?? voice?.engine ?? "browser", voice?.rate ?? 1);
     } catch {
       setMsgs((m) => [...m, { who: "aria", text: "I'm having trouble reaching you right now." }]);
     } finally {

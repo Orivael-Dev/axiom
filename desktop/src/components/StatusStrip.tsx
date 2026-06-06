@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { fadeSlide } from "../motion";
 import { api } from "../api";
+import { speak, hasBrowserVoice } from "../voice";
 import type { Weather, LlmSettings, LlmProbe, VoiceSettings } from "../types";
 import type { Theme } from "../theme";
 
@@ -258,6 +259,18 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
             <option value="cloud">Cloud</option>
           </select>
         </label>
+        <div className="settings__testrow">
+          <button
+            className="btn btn--accent"
+            onClick={() => speak("Hi, I'm Aria. This is how I sound.",
+                                 voice?.engine ?? "browser", voice?.rate ?? 1)}
+          >
+            🔊 Test voice
+          </button>
+          {!hasBrowserVoice() && (voice?.engine ?? "browser") === "browser" && (
+            <span className="settings__probe is-bad">✕ no on-device voice here — use Piper</span>
+          )}
+        </div>
       </section>
     </div>
   );
