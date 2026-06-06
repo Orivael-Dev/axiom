@@ -380,6 +380,9 @@ def _bridge_from_env():
 
 def main() -> None:
     import uvicorn
+    # Anchor UI settings (LLM + voice) to a stable file so dev runs
+    # (python -m aui.server) persist them too — matches the ledger defaults.
+    os.environ.setdefault("AX_OS_SETTINGS", "ax_os_settings.json")
     bridge = _bridge_from_env()
     bridge.start()
     try:
