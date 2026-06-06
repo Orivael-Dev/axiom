@@ -5,11 +5,11 @@ Trust     : TRUST_LEVEL = 3   CANNOT_MUTATE
 Transport : stdio (standard MCP)
 Encoding  : UTF-8  BUG-003 compliant
 
-21 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
+22 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
 axiom_status. Plus ORVL patent-emulator + AX OS building-block tools
 (intent gate, CMAA, CPI, AXM, OS shield, phone gate, validate, memory,
 workspace, ledger, marketplace, MKB, adversarial sandbox, CRL reward,
-immune system). VERSION is bumped whenever the tool
+immune system, multimodal fusion). VERSION is bumped whenever the tool
 surface changes, so `tools/list` and VERSION stay in sync — a client
 seeing an older VERSION is talking to a stale build.
 
@@ -38,7 +38,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from axiom_signing import derive_key
 
 SIGNING_KEY = derive_key(b"axiom-mcp-v1")
-VERSION: str = "1.10.0"
+VERSION: str = "1.11.0"
 TRUST_LEVEL: int = 3
 
 _FROZEN = frozenset({"VERSION", "TRUST_LEVEL"})
@@ -387,6 +387,24 @@ TOOLS = [
              "vector":  {"type": "string", "description": "optional label for the probe"},
          },
          "required": ["payload"]}},
+    # ── axiom-fusion-v1 — multimodal intent fusion over an EventToken ─────
+    {"name": "axiom_fusion",
+     "description": "Fuse an EventToken's present modality layers (text / audio / "
+                    "tempo / vad / voice / video / physics / governance) into a "
+                    "signed FusedIntent (axiom-fusion-v1). Each present layer votes "
+                    "its intent signals weighted by confidence; the top-6 form the "
+                    "intent_vector. risk_clusters is the union across modalities (a "
+                    "governance HARM/DECEIVE verdict propagates directly). "
+                    "fusion_confidence is the mean modal confidence capped at 0.85. "
+                    "Physical-event modalities (audio+video) dominate text when each "
+                    "fires multiple strong signals. Empty token → ['ask_general'].",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "token": {"type": "object",
+                       "description": "an EventToken dict (EventToken.to_dict()); "
+                                      "absent/None layer slots are skipped"},
+         },
+         "required": ["token"]}},
 ]
 
 
@@ -1423,6 +1441,33 @@ def _handle_immune(args: dict) -> dict:
     return out
 
 
+# ── axiom-fusion-v1 — multimodal intent fusion handler ────────
+def _handle_fusion(args: dict) -> dict:
+    """Fuse an EventToken's layers into a signed FusedIntent (axiom-fusion-v1)."""
+    token_dict = args.get("token")
+    if not isinstance(token_dict, dict):
+        out = {"error": "token (an EventToken dict) is required"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    try:
+        from axiom_event_token.models import EventToken
+        from axiom_fusion import ModalFusion
+        fi = ModalFusion().fuse(EventToken.from_dict(token_dict))
+        out = {"intent_vector": list(fi.intent_vector),
+               "risk_clusters": list(fi.risk_clusters),
+               "fusion_confidence": fi.fusion_confidence,
+               "modalities": list(fi.modalities),
+               "verified": fi.verify(),
+               "signature": fi.signature,
+               "timestamp": fi.timestamp}
+    except Exception as e:
+        out = {"error": f"{type(e).__name__}: {e}"}
+    out["hmac_signature"] = _sign({"intent_vector": out.get("intent_vector", ""),
+                                   "risk_clusters": out.get("risk_clusters", ""),
+                                   "fusion_confidence": out.get("fusion_confidence", "")})
+    return out
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -1441,7 +1486,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_mkb": _handle_mkb,
              "axiom_cas": _handle_cas,
              "axiom_crl": _handle_crl,
-             "axiom_immune": _handle_immune}
+             "axiom_immune": _handle_immune,
+             "axiom_fusion": _handle_fusion}
 
 
 class AxiomMCPServer:
