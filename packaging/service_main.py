@@ -55,6 +55,9 @@ def main() -> None:
     os.environ.setdefault("AXIOM_MEMORY_STORE", str(d / "memory.jsonl"))
     os.environ.setdefault("AXIOM_AUDIT_LEDGER", str(d / "audit.jsonl"))
     os.environ.setdefault("AXIOM_MARKETPLACE_LEDGER", str(d / "marketplace.jsonl"))
+    # Persist UI settings (LLM + voice config) next to the ledgers so they
+    # survive app restarts — defaults to a cwd-relative file otherwise.
+    os.environ.setdefault("AX_OS_SETTINGS", str(d / "settings.json"))
 
     if not os.environ.get("AXIOM_MASTER_KEY"):
         keyf = d / "master.key"
