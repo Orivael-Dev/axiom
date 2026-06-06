@@ -208,3 +208,40 @@ def test_refused_turn_is_recorded_as_blocked():
     Companion(generate=lambda m: "x", guard=lambda t: {"detected": True},
               retrospect=recs.append).say("do harm")
     assert recs and recs[0]["verdict"] == "BLOCKED"
+
+
+# ── curiosity: ask about unknown, heavy personal topics ─────────────────────
+
+def test_curiosity_asks_about_unknown_work_offline():
+    # the headline example — she doesn't know their job, so she asks
+    r = Companion(curious=True).say("I have work today")
+    assert r.text.rstrip().endswith("?") and "work" in r.text.lower()
+
+
+def test_curiosity_off_by_default_keeps_contract():
+    r = Companion(generate=_echo).say("I have work today")
+    assert "what kind of work" not in r.text.lower()  # no curiosity unless enabled
+
+
+def test_curiosity_skips_non_personal_statements():
+    r = Companion(curious=True).say("the weather is nice")
+    assert "what kind of" not in r.text.lower()  # no personal gap → no probe
+
+
+def test_curiosity_does_not_reask_known_topic():
+    c = Companion(curious=True)
+    c.say("I have work today")          # asks about work → "work" now in history
+    r = c.say("I have work again")      # cooldown + already-known → no fresh probe
+    assert r.text  # still replies, just doesn't re-interrogate
+
+
+def test_curiosity_folds_question_into_model_statement():
+    r = Companion(generate=lambda m: "That sounds like a full day.",
+                  curious=True).say("I have work today")
+    assert "full day" in r.text and r.text.rstrip().endswith("?")
+
+
+def test_curiosity_respects_model_that_already_asked():
+    r = Companion(generate=lambda m: "Busy one — what do you do for a living?",
+                  curious=True).say("I have work today")
+    assert r.text.count("?") == 1  # didn't double up

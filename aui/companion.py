@@ -20,8 +20,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Callable, List, Optional, Protocol
+
+from aui.curiosity import find_gap
 
 RISK_INTENTS = frozenset({"HARM", "DECEIVE"})
 
@@ -70,14 +73,21 @@ class Companion:
                  guard: Optional[GuardFn] = None,
                  memory: Optional["Memory"] = None,
                  fuse: Optional[Callable[[dict], dict]] = None,
-                 retrospect: Optional[Callable[[dict], None]] = None):
+                 retrospect: Optional[Callable[[dict], None]] = None,
+                 curious: bool = False):
         self.persona = persona
         self._generate: GenerateFn = generate or _reflective_reply
         self._guard = guard
         self._memory = memory
         self._fuse = fuse              # axiom-fusion-v1: token dict -> FusedIntent dict
         self._retrospect = retrospect  # records each turn for retrospective review
+        self._curious = curious        # ask about unknown, heavy personal topics
+        self._user_turns = 0
+        self._last_curious_at = -10    # cooldown anchor (ask ~every other turn)
         self._history: List[dict] = []
+
+    def _curious_allowed(self) -> bool:
+        return self._curious and (self._user_turns - self._last_curious_at) >= 2
 
     @property
     def history(self) -> List[dict]:
@@ -131,20 +141,36 @@ class Companion:
             self._record_retrospect(text, True, verdict, fused)
             return reply
 
-        self._history.append({"role": "user", "content": text})
+        self._user_turns += 1
 
-        # Cross-session recall (ORVL-015): thread any relevant past memory in
-        # right after the persona, so she remembers between sessions.
-        msgs = self.messages()
+        # Reverse-check curiosity: what heavy, personal thing did they just
+        # mention that I don't yet know about them? `known` is the prior record
+        # (history + recalled memory) — the set the heavy word is checked against.
+        known = " ".join(m["content"] for m in self._history).lower()
+        recalled = None
         if self._memory:
             try:
                 recalled = self._memory.recall(text)
             except Exception:
                 recalled = None
             if recalled:
-                msgs = [msgs[0],
-                        {"role": "system", "content": f"You remember about them: {recalled}"},
-                        *msgs[1:]]
+                known += " " + str(recalled).lower()
+        gap = find_gap(text, known) if self._curious_allowed() else None
+
+        self._history.append({"role": "user", "content": text})
+
+        # Persona + recalled memory + (when curious) a hint about the gap, so a
+        # model can weave the question in naturally.
+        msgs = self.messages()
+        extras = []
+        if recalled:
+            extras.append({"role": "system", "content": f"You remember about them: {recalled}"})
+        if gap:
+            extras.append({"role": "system",
+                           "content": f"You don't yet know about their {gap[0]}. If it "
+                                      f"feels natural, gently ask — e.g. \"{gap[2]}\""})
+        if extras:
+            msgs = [msgs[0], *extras, *msgs[1:]]
 
         try:
             out = (self._generate(msgs) or "").strip()
@@ -152,6 +178,20 @@ class Companion:
             out = ""
         if not out:
             out = _reflective_reply(self.messages())
+
+        # Guarantee the curiosity surfaces (covers offline + a model that didn't
+        # bite): drop a generic "tell me more" tail and, if nothing's being
+        # asked, fold in the specific question.
+        if gap:
+            cleaned = re.sub(r"\s*(tell me more about that|tell me more)\s*\??\s*$",
+                             "", out, flags=re.IGNORECASE).rstrip()
+            if "?" not in cleaned:
+                q = gap[2][0].upper() + gap[2][1:]
+                out = (cleaned + " " if cleaned else "") + q
+            elif cleaned:
+                out = cleaned
+            self._last_curious_at = self._user_turns
+
         self._history.append({"role": "assistant", "content": out})
 
         if self._memory:
@@ -270,4 +310,4 @@ def build_companion(bridge=None) -> Companion:
     manifest = os.environ.get("AX_OS_RETROSPECT_MANIFEST", "ax_os_retrospect.jsonl")
     retrospect = _file_retrospect(manifest) if bridge is not None else None
     return Companion(generate=llm_generate, guard=guard, memory=memory,
-                     fuse=fuse, retrospect=retrospect)
+                     fuse=fuse, retrospect=retrospect, curious=True)
