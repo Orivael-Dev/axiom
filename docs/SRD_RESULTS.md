@@ -374,3 +374,57 @@ Llama 3.2 1B via SRD → Q4_K_M is **viable at 15W** on Jetson Orin hardware for
 Primary constraint is recall quality at 1B scale (breadcrumb benchmark shows
 expected degradation). For recall-critical applications, 3B or 8B variants are
 the natural next step.
+
+---
+
+## MAXN_SUPER run — 2026-06-06
+
+Same model, same GGUF, power cap removed.
+
+### Head-to-head vs 15W
+
+| Metric | 15W | MAXN_SUPER | Gain |
+|--------|-----|------------|------|
+| Bench1 gen tok/s | 31.8 | **45.6** | +43% |
+| Bench1 prefill (3k tokens) | 2.50 s | **1.68 s** | −33% |
+| Bench2 gen @ 2048 ctx | 32.7 tok/s | **47.0 tok/s** | +44% |
+| Bench2 gen @ 4096 ctx | 31.1 tok/s | **44.4 tok/s** | +43% |
+| Bench2 gen @ 8192 ctx | 28.8 tok/s | **40.6 tok/s** | +41% |
+| Bench3 gen tok/s | ~34 | **~49.4** | +45% |
+| Bench3 peak power | 12.5 W | 17.3 W | — |
+| Bench3 avg power | 11.5 W | 15.2 W | — |
+| **Efficiency (tok/s/W)** | **2.96** | **3.25** | **+10%** |
+
+### Key finding — efficiency crossover
+
+MAXN_SUPER is **both faster and more efficient per token** than 15W mode.
+This is counter-intuitive but explained by GPU utilisation: at 1B scale with
+Q4_K_M, the GPU is underfed at 15W — the clock cap starves the compute units
+while memory bandwidth is not the bottleneck. Removing the power cap lets the
+GPU operate in a better efficiency region of its power-perf curve. The result
+is 3.25 tok/s/W vs 2.96 tok/s/W — an extra token every ~3.5 W above the 15W
+floor pays for itself in fewer seconds of inference.
+
+**Practical read:** for a battery-powered device, 15W wins on longevity.
+For a plugged-in device (robotic arm, inference kiosk, always-on assistant),
+MAXN_SUPER is the right default — you get +43% throughput and save 10% on
+energy per token simultaneously.
+
+### Context scaling under MAXN_SUPER
+
+| Context | tok/s | Drop vs 2048 |
+|---------|-------|-------------|
+| 2048 | 47.0 | baseline |
+| 4096 | 44.4 | −5.5% |
+| 8192 | 40.6 | −13.6% |
+
+Throughput degrades roughly linearly with attention KV growth (O(n) per step
+for cached KV). The −14% drop from 2k to 8k context is well-behaved — no
+cliff — confirming that 8192 is a practical ceiling for this model and GGUF.
+
+### Thermal note
+
+17.3W peak exceeds the 15W TDP label. Verify sustained thermal headroom before
+deploying MAXN_SUPER in a closed enclosure. Short inference bursts (interactive
+chat) are fine; multi-hour sustained batch inference should be validated with
+extended tegrastats logging.

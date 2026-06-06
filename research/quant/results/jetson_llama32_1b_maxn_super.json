@@ -1,0 +1,47 @@
+{
+  "run_date": "2026-06-06",
+  "model": "unsloth/Llama-3.2-1B-Instruct",
+  "pipeline": "SRD-alpha0-g64 -> AXM -> GGUF Q4_K_M",
+  "hardware": "Jetson Orin (MAXN_SUPER mode)",
+  "llamacpp_build": "b9460+",
+  "flag_note": "--n-gpu-layers used (b9460+ rejects --ngl)",
+  "benchmarks": {
+    "bench1_cognitive_shift": {
+      "description": "~3k-token predictable prefix then abrupt pivot to complex reasoning",
+      "prefill_latency_s": 1.68,
+      "prefill_context_tokens": 3000,
+      "generation_tok_per_s": 45.6,
+      "vs_15w": {"gen_gain_pct": 43, "prefill_gain_pct": 33}
+    },
+    "bench2_throughput_vs_context": {
+      "description": "Generation throughput at different context window sizes",
+      "results": [
+        {"context_window_tokens": 2048, "generation_tok_per_s": 47.0, "vs_15w_tok_per_s": 32.7, "gain_pct": 44},
+        {"context_window_tokens": 4096, "generation_tok_per_s": 44.4, "vs_15w_tok_per_s": 31.1, "gain_pct": 43},
+        {"context_window_tokens": 8192, "generation_tok_per_s": 40.6, "vs_15w_tok_per_s": 28.8, "gain_pct": 41}
+      ],
+      "context_scaling_note": "14% throughput drop from 2048 to 8192 — linear with attention KV growth"
+    },
+    "bench3_power_reasoning": {
+      "description": "Sustained nuanced reasoning (debug loops, riddles) under tegrastats monitoring",
+      "generation_tok_per_s": 49.4,
+      "power_peak_w": 17.3,
+      "power_avg_w": 15.2,
+      "tokens_per_watt_avg": 3.25,
+      "vs_15w": {"gen_gain_pct": 45, "tok_per_watt_15w": 2.96, "efficiency_gain_pct": 10}
+    }
+  },
+  "efficiency_finding": {
+    "maxn_tok_per_watt": 3.25,
+    "mode_15w_tok_per_watt": 2.96,
+    "verdict": "MAXN_SUPER is both faster and slightly more energy-efficient per token — the GPU is more fully utilised, making each watt more productive",
+    "crossover_note": "At 1B scale with Q4_K_M, the GPU is likely underutilised at 15W; MAXN removes the clock/power cap and lets it operate in a more efficient region of the power-perf curve"
+  },
+  "notes": [
+    "45-47 tok/s generation — well above real-time interactive threshold",
+    "Prefill 1.68s on 3k tokens — responsive for embedded applications",
+    "Context scaling: 47.0 → 44.4 → 40.6 tok/s (2k→4k→8k), ~14% drop over 4x context",
+    "17.3W peak: above 15W TDP — verify thermal headroom for sustained MAXN_SUPER use",
+    "MAXN_SUPER is the right mode when throughput and latency matter; 15W for battery/thermal budgets"
+  ]
+}
