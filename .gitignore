@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+src-tauri/target/
+ax_os_*.jsonl
+ax_os_settings.json
