@@ -281,3 +281,96 @@ GPU: Colab T4 (~217 s) and L4 (~87 s) — results identical to 4 d.p.
 Dataset: WikiText-2 raw v1, test split, 341,469 tokens, stride 512,
 context 2048. Model revision: not pinned (pin with `--revision` in
 v2 runs).
+
+---
+
+# Jetson Edge Benchmark — Llama 3.2 1B (SRD → AXM → GGUF Q4_K_M)
+
+> **Status: complete.** Numbers are from a physical Jetson device run on
+> 2026-06-06 using `research/quant/llama32_1b_jetson_benchmark.ipynb`.
+> Power mode: **15W**. llama.cpp build: b9460+.
+
+## Model pipeline
+
+```
+unsloth/Llama-3.2-1B-Instruct  →  pack_to_axm.py (SRD α=0, g=64)
+  →  axm_to_gguf.py Q4_K_M  →  llama-cli on Jetson
+```
+
+## Results summary
+
+| # | Benchmark | Key metric | Result |
+|---|-----------|------------|--------|
+| 1 | Cognitive shift (3k-token context pivot) | Generation speed | **31.8 tok/s** |
+| 1 | | Prefill latency (~3k tokens) | **2.5 s** |
+| 2 | Breadcrumb memory (long-context recall) | 2048-token window | 1/5 breadcrumbs recalled |
+| 2 | | 4096-token window | 2/5 breadcrumbs recalled |
+| 2 | | 8192-token window | 1/5 breadcrumbs recalled (was failing before) |
+| 3 | Power + reasoning (sustained inference) | Generation speed | **~34 tok/s** |
+| 3 | | Peak power draw | **12.5 W** |
+| 3 | | Average power draw | **11.5 W** |
+| 3 | | Peak RAM | **~3.8 GB** |
+
+## Benchmark 1 — Cognitive shift
+
+**Protocol.** Feed ~3k tokens of repetitive, predictable text (bedtime story /
+structured game rules), then pivot abruptly to a deeply complex logic puzzle or
+abstract open-ended question. Measures prefill capacity and generation throughput
+at the moment of distribution shift.
+
+**Result.** 2.5 s prefill over ~3k tokens; 31.8 tok/s generation after the pivot.
+The model handled the context switch without degradation in generation rate —
+attention over the predictable prefix did not slow down the pivot response.
+
+## Benchmark 2 — Breadcrumb memory
+
+**Protocol.** Extended conversation seeding unique contextual facts ("My favourite
+imaginary animal is a neon green turtle named Sparky") at different depths, then
+querying recall after tens of thousands of tokens of intervening context.
+
+**Result.** Recall is window-size sensitive, as expected for a 1B model with no
+external memory:
+
+| Context window | Breadcrumbs recalled |
+|---|---|
+| 2048 | 1 / 5 |
+| 4096 | 2 / 5 |
+| 8192 | 1 / 5 ✓ (was failing to run at all before flag fix) |
+
+The 8192 window now runs end-to-end after the `--n-gpu-layers` flag fix (b9460+
+was rejecting `--ngl`). Recall at 8192 being lower than 4096 is consistent with
+attention dilution at 1B scale — larger window, more distraction.
+
+## Benchmark 3 — Power + reasoning
+
+**Protocol.** Sustained nuanced-reasoning tasks (Python loop debugging, complex
+riddles) under continuous monitoring via `tegrastats`. Measures throughput under
+cognitive load alongside real power draw.
+
+**Result.**
+
+| Metric | Value |
+|---|---|
+| Generation speed | ~34 tok/s |
+| Peak power (VDD_CPU_GPU_CV + VDD_SOC) | 12.5 W |
+| Average power | 11.5 W |
+| Peak RAM | ~3.8 GB |
+| Power mode | 15W |
+
+**Interpretation.** At 34 tok/s and 11.5 W average, this is **~3.0 tokens per
+watt** — a useful baseline for edge deployment budgeting. Peak of 12.5 W stays
+comfortably inside the 15W TDP envelope with ~2.5 W headroom for OS and peripherals.
+The 3.8 GB RAM peak leaves headroom on an 8 GB Orin; tight but viable on a 4 GB
+Nano.
+
+## Edge deployment verdict
+
+Llama 3.2 1B via SRD → Q4_K_M is **viable at 15W** on Jetson Orin hardware for:
+- Real-time interactive inference (31–34 tok/s — above the ~20 tok/s human reading
+  threshold)
+- Sustained reasoning tasks within TDP budget
+- Context windows up to 8192 tokens (now unblocked after llama.cpp flag fix)
+
+Primary constraint is recall quality at 1B scale (breadcrumb benchmark shows
+expected degradation). For recall-critical applications, 3B or 8B variants are
+the natural next step.
