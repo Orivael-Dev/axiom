@@ -96,6 +96,7 @@ export interface SearchResults {
   returned?: number;
   blocked?: number;
   results?: SearchHit[];
+  reason?: string;
   error?: string;
 }
 

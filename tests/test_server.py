@@ -253,10 +253,13 @@ def test_search_screen_can_be_disabled(client, monkeypatch):
 def test_search_fails_soft_when_searxng_down(client, monkeypatch):
     import aui.websearch as ws
     def boom(url, timeout=8.0):
-        raise OSError("connection refused")
+        raise OSError("[WinError 10061] No connection could be made because the "
+                      "target machine actively refused it")
     monkeypatch.setattr(ws, "_http_get_json", boom)
     r = client.get("/search?q=anything").json()
-    assert r["ok"] is False and "error" in r
+    assert r["ok"] is False
+    assert r["reason"] == "unreachable"
+    assert "SearXNG" in r["error"] and "WinError" not in r["error"]  # friendly, not raw
 
 
 def test_companion_replies_text_no_voice(client):

@@ -29,6 +29,23 @@ def _http_get_json(url: str, timeout: float = 8.0) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _classify_error(exc: Exception, base: str) -> tuple:
+    """Map a fetch failure to (reason, friendly_message)."""
+    text = str(exc).lower()
+    if any(s in text for s in ("refused", "10061", "actively refused",
+                               "connection", "failed to establish", "name or service")):
+        return ("unreachable",
+                f"No search engine is running at {base}. Start SearXNG "
+                f"(docker run -d -p 8080:8080 searxng/searxng) or set AX_OS_SEARXNG_URL.")
+    if "tim" in text:  # timed out / timeout
+        return ("timeout", f"The search engine at {base} timed out.")
+    if "403" in text or "forbidden" in text:
+        return ("blocked",
+                f"The search engine at {base} rejected the request — enable the "
+                f"JSON format in SearXNG settings.yml (search: {{ formats: [html, json] }}).")
+    return ("error", f"{type(exc).__name__}: {exc}")
+
+
 def search(query: str, *, n: int = 5,
            screen: Optional[Callable[[str], dict]] = None,
            timeout: float = 8.0) -> dict:
@@ -40,12 +57,14 @@ def search(query: str, *, n: int = 5,
     """
     base = os.environ.get("AX_OS_SEARXNG_URL", "http://localhost:8080").rstrip("/")
     if not query or not query.strip():
-        return {"ok": False, "error": "empty query", "engine": base, "query": query}
+        return {"ok": False, "reason": "empty_query", "error": "Enter a search query.",
+                "engine": base, "query": query}
     qs = urllib.parse.urlencode({"q": query, "format": "json"})
     try:
         raw: dict[str, Any] = _http_get_json(f"{base}/search?{qs}", timeout)
     except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}",
+        reason, message = _classify_error(e, base)
+        return {"ok": False, "reason": reason, "error": message,
                 "engine": base, "query": query}
 
     results = []
