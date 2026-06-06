@@ -108,7 +108,7 @@ def pack_vision_model(
     *,
     srd_top_k_pct: Optional[float] = 0.25,   # None = FP16 (no SRD)
     group_size:    int              = DEFAULT_GROUP_SIZE,
-    hardware_map:  str              = "auto",
+    hardware_map:  str              = "gpu",
     compresslevel: int              = 1,
     stats_json:    Optional[str]    = None,
 ) -> dict:
@@ -224,9 +224,10 @@ def pack_vision_model(
         print(f"[pack_vision] writing .axm archive...")
         t3 = time.monotonic()
         container = AXMContainer.pack(
-            weights_dir,
-            output_path=Path(output_path),
-            spec=spec,
+            spec,
+            str(output_path),
+            archive=True,
+            weights_source_dir=weights_dir,
             compresslevel=compresslevel,
         )
         pack_s = time.monotonic() - t3
@@ -234,7 +235,7 @@ def pack_vision_model(
     out_path = Path(output_path)
     out_gb   = out_path.stat().st_size / 1024**3
     total_s  = time.monotonic() - t0
-    fp       = container.fingerprint
+    fp       = container.fingerprint()
 
     print(f"[pack_vision] ✓ done in {total_s:.1f}s")
     print(f"  .axm:        {out_path}  ({out_gb:.3f} GB)")

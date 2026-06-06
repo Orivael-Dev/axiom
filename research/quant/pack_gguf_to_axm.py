@@ -119,7 +119,7 @@ def pack_gguf(
                 "bpw":     bpw,
                 "note":    f"Pre-quantized GGUF ({quant_name}) packed into AXM for governance",
             },
-            "hardware_map": "llama.cpp",
+            "hardware_map": "cpu",
             "safety_proofs": True,
             "core": {
                 "name":     model_name,
@@ -130,9 +130,10 @@ def pack_gguf(
 
         print(f"  writing .axm...")
         container = AXMContainer.pack(
-            weights_dir,
-            output_path=out,
-            spec=spec,
+            spec,
+            str(out),
+            archive=True,
+            weights_source_dir=weights_dir,
             compresslevel=1,   # GGUF is already compressed — skip re-compression
         )
 
@@ -141,12 +142,12 @@ def pack_gguf(
 
     print(f"  ✓ done in {elapsed:.1f}s")
     print(f"  .axm:        {out}  ({axm_gb:.3f} GB)")
-    print(f"  fingerprint: {container.fingerprint}")
+    print(f"  fingerprint: {container.fingerprint()}")
     print(f"  proofs:      {len(container.proofs)}")
 
     stats = {
         "model":           model_name,
-        "fingerprint":     container.fingerprint,
+        "fingerprint":     container.fingerprint(),
         "proofs":          len(container.proofs),
         "quant":           quant_name,
         "bpw_theoretical": bpw,
