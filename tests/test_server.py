@@ -243,6 +243,27 @@ def test_search_parses_and_screens_results(client, monkeypatch):
     assert any(e["event_type"] == "search" for e in client.get("/audit").json()["events"])
 
 
+def test_search_normalizes_object_answers(client, monkeypatch):
+    # newer SearXNG returns 'answers' as objects — must become plain strings so
+    # the UI never renders an object as a React child (the blank-screen bug).
+    import aui.websearch as ws
+    monkeypatch.setattr(ws, "_http_get_json", lambda url, timeout=8.0: {
+        "results": [{"url": "u", "title": "t", "content": "c", "engine": "e"}],
+        "answers": [{"answer": "42 is the answer", "url": "x"}, "plain string"],
+    })
+    r = client.get("/search?q=meaning").json()
+    assert r["answers"] == ["42 is the answer", "plain string"]
+    assert all(isinstance(a, str) for a in r["answers"])
+
+
+def test_search_skips_non_dict_results(client, monkeypatch):
+    import aui.websearch as ws
+    monkeypatch.setattr(ws, "_http_get_json", lambda url, timeout=8.0: {
+        "results": [None, {"url": "u", "title": "t", "content": "c", "engine": "e"}]})
+    r = client.get("/search?q=x").json()
+    assert r["returned"] == 1
+
+
 def test_search_screen_can_be_disabled(client, monkeypatch):
     import aui.websearch as ws
     monkeypatch.setattr(ws, "_http_get_json", lambda url, timeout=8.0: _SEARX)

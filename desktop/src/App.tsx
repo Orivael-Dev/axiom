@@ -8,6 +8,7 @@ import { ConnectorLayer } from "./components/ConnectorLayer";
 import { StatusStrip } from "./components/StatusStrip";
 import { SearchPanel } from "./components/SearchPanel";
 import { CompanionPanel } from "./components/CompanionPanel";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { gridVariants } from "./motion";
 import type { Theme } from "./theme";
 import { themeForScene, loadThemeOverride, saveThemeOverride, applyTheme } from "./theme";
@@ -96,8 +97,8 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <SearchPanel />
-        <CompanionPanel />
+        <ErrorBoundary label="Search"><SearchPanel /></ErrorBoundary>
+        <ErrorBoundary label="Aria"><CompanionPanel /></ErrorBoundary>
       </div>
 
       {plan && trail && (

@@ -49,8 +49,12 @@ export function SearchPanel() {
           </div>
 
           {(res.answers ?? []).map((a, i) => (
-            <div key={`ans-${i}`} className="search__answer">💡 {a}</div>
+            <div key={`ans-${i}`} className="search__answer">💡 {String(a)}</div>
           ))}
+
+          {(res.returned ?? 0) === 0 && (res.answers ?? []).length === 0 && (
+            <div className="search__error muted">No results — try different words.</div>
+          )}
 
           <ul className="search__list">
             {(res.results ?? []).map((h, i) => (

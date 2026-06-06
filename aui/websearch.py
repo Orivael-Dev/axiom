@@ -69,11 +69,13 @@ def search(query: str, *, n: int = 5,
 
     results = []
     for item in (raw.get("results") or [])[: max(1, n)]:
+        if not isinstance(item, dict):
+            continue
         results.append({
-            "url": item.get("url", ""),
-            "title": item.get("title", ""),
-            "content": item.get("content", "") or "",
-            "engine": item.get("engine", ""),
+            "url": str(item.get("url") or ""),
+            "title": str(item.get("title") or ""),
+            "content": str(item.get("content") or ""),
+            "engine": str(item.get("engine") or ""),
         })
 
     blocked = 0
@@ -92,6 +94,18 @@ def search(query: str, *, n: int = 5,
                 r["content"] = ""  # redact untrusted, flagged content
                 blocked += 1
 
-    return {"ok": True, "query": query, "engine": base,
-            "answers": raw.get("answers") or [],
+    # SearXNG 'answers' may be strings OR objects depending on version — coerce
+    # to plain strings so the UI never tries to render an object as a child.
+    answers = []
+    for a in (raw.get("answers") or []):
+        if isinstance(a, str):
+            text = a
+        elif isinstance(a, dict):
+            text = a.get("answer") or a.get("text") or a.get("title") or ""
+        else:
+            text = str(a)
+        if text:
+            answers.append(str(text))
+
+    return {"ok": True, "query": query, "engine": base, "answers": answers,
             "returned": len(results), "blocked": blocked, "results": results}
