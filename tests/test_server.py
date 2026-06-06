@@ -340,6 +340,13 @@ def test_llm_settings_default_and_update(client, tmp_path, monkeypatch):
                for e in client.get("/audit").json()["events"])
 
 
+def test_llm_embed_model_round_trips(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
+    upd = client.post("/settings/llm", json={"embed_model": "nomic-embed-text"}).json()
+    assert upd["embed_model"] == "nomic-embed-text"
+    assert client.get("/settings/llm").json()["embed_model"] == "nomic-embed-text"
+
+
 def test_llm_test_probe_fails_soft_offline(client, tmp_path, monkeypatch):
     monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "settings.json"))
     client.post("/settings/llm", json={"base_url": "http://127.0.0.1:9/v1"})

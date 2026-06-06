@@ -159,3 +159,24 @@ machine (the ☁ tradeoff).
 webview plays. It **fails soft** — if the TTS server is down, Aria still replies
 in text; nothing crashes. `base_url`, `voice`, `model`, and `rate` live in the
 persisted settings (`AX_OS_SETTINGS`).
+
+---
+
+## Latent curiosity (optional)
+
+Aria notices heavy, personal things you mention that she doesn't yet know and
+asks about them ("I have work today" → "what kind of work do you do?"). By
+default this uses a keyword + reverse-check heuristic and needs nothing.
+
+For **true latent salience** (weight from embeddings — how personally salient a
+word is × how novel it is vs what she already knows), give the local LLM an
+embedding model. With Ollama:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Then in **⚙ Settings → Local LLM**, set **Embedding model = `nomic-embed-text`**
+(and enable the local LLM). Curiosity then scores candidates by embedding
+cosine and **fails soft** to the keyword heuristic if embeddings are
+unreachable.

@@ -67,6 +67,7 @@ export interface LlmSettings {
   enabled: boolean;
   base_url: string;
   model: string;
+  embed_model?: string;
   api_key_set: boolean;
 }
 

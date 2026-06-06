@@ -205,6 +205,16 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
         </label>
 
         <label className="settings__field">
+          <span>Embedding model <span className="muted">(optional — latent curiosity)</span></span>
+          <input
+            value={llm?.embed_model ?? ""}
+            placeholder="nomic-embed-text"
+            onChange={(e) => setLlm(llm ? { ...llm, embed_model: e.target.value } : llm)}
+            onBlur={(e) => llm && save({ embed_model: e.target.value })}
+          />
+        </label>
+
+        <label className="settings__field">
           <span>API key {llm?.api_key_set ? "(set)" : "(optional)"}</span>
           <div className="settings__keyrow">
             <input

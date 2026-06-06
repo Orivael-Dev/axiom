@@ -63,6 +63,7 @@ class LlmReq(BaseModel):
     enabled: Optional[bool] = None
     base_url: Optional[str] = None
     model: Optional[str] = None
+    embed_model: Optional[str] = None
     api_key: Optional[str] = None
 
 

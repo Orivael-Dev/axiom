@@ -245,3 +245,39 @@ def test_curiosity_respects_model_that_already_asked():
     r = Companion(generate=lambda m: "Busy one — what do you do for a living?",
                   curious=True).say("I have work today")
     assert r.text.count("?") == 1  # didn't double up
+
+
+# ── latent (embedding) curiosity ────────────────────────────────────────────
+
+def _fake_embed(mapping, dim=4, default=None):
+    """Deterministic embedder: maps known strings to vectors, else `default`."""
+    dflt = default if default is not None else [0.0, 0.0, 0.0, 1.0]
+    return lambda texts: [mapping.get(t, dflt) for t in texts]
+
+
+def test_embedding_picks_salient_novel_topic():
+    from aui.curiosity import find_gap, _ANCHORS
+    emb = {"guitar": [1, 0, 0, 0], _ANCHORS[3]: [1, 0, 0, 0]}  # guitar ~ hobbies anchor
+    for a in _ANCHORS:
+        emb.setdefault(a, [0, 1, 0, 0])
+    g = find_gap("my guitar broke", "", embed=_fake_embed(emb))
+    assert g and g[0] == "guitar"
+
+
+def test_embedding_suppresses_already_known_topic():
+    from aui.curiosity import find_gap, _ANCHORS
+    emb = {"guitar": [1, 0, 0, 0]}
+    for a in _ANCHORS:
+        emb[a] = [1, 0, 0, 0]                      # guitar is salient…
+    g = find_gap("my guitar broke", "guitar", embed=_fake_embed(emb))
+    assert g is None                                # …but already known → novelty 0
+
+
+def test_embedding_unavailable_falls_back_to_keyword():
+    g = find_gap_kw_fallback()
+    assert g and g[0] == "work"
+
+
+def find_gap_kw_fallback():
+    from aui.curiosity import find_gap
+    return find_gap("I have work today", "", embed=lambda texts: None)

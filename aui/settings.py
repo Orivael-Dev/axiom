@@ -18,6 +18,7 @@ _DEFAULT_LLM = {
     "enabled": False,
     "base_url": "http://localhost:11434/v1",  # Ollama's OpenAI-compatible API
     "model": "llama3.2",
+    "embed_model": "",                        # e.g. nomic-embed-text → enables latent curiosity
     "api_key": "",
 }
 
@@ -56,7 +57,7 @@ def update_llm(patch: dict) -> dict:
     with _LOCK:
         data = load()
         llm = data["llm"]
-        for k in ("enabled", "base_url", "model", "api_key"):
+        for k in ("enabled", "base_url", "model", "embed_model", "api_key"):
             if k in patch and patch[k] is not None:
                 llm[k] = patch[k]
         data["llm"] = llm

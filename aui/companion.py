@@ -74,7 +74,8 @@ class Companion:
                  memory: Optional["Memory"] = None,
                  fuse: Optional[Callable[[dict], dict]] = None,
                  retrospect: Optional[Callable[[dict], None]] = None,
-                 curious: bool = False):
+                 curious: bool = False,
+                 embed: Optional[Callable[[Any], Any]] = None):
         self.persona = persona
         self._generate: GenerateFn = generate or _reflective_reply
         self._guard = guard
@@ -82,6 +83,7 @@ class Companion:
         self._fuse = fuse              # axiom-fusion-v1: token dict -> FusedIntent dict
         self._retrospect = retrospect  # records each turn for retrospective review
         self._curious = curious        # ask about unknown, heavy personal topics
+        self._embed = embed            # optional embedder → latent-salience curiosity
         self._user_turns = 0
         self._last_curious_at = -10    # cooldown anchor (ask ~every other turn)
         self._history: List[dict] = []
@@ -155,7 +157,7 @@ class Companion:
                 recalled = None
             if recalled:
                 known += " " + str(recalled).lower()
-        gap = find_gap(text, known) if self._curious_allowed() else None
+        gap = find_gap(text, known, embed=self._embed) if self._curious_allowed() else None
 
         self._history.append({"role": "user", "content": text})
 
@@ -309,5 +311,6 @@ def build_companion(bridge=None) -> Companion:
     fuse = getattr(bridge, "fuse", None) if bridge is not None else None
     manifest = os.environ.get("AX_OS_RETROSPECT_MANIFEST", "ax_os_retrospect.jsonl")
     retrospect = _file_retrospect(manifest) if bridge is not None else None
+    from aui.embeddings import llm_embed
     return Companion(generate=llm_generate, guard=guard, memory=memory,
-                     fuse=fuse, retrospect=retrospect, curious=True)
+                     fuse=fuse, retrospect=retrospect, curious=True, embed=llm_embed)
