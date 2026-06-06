@@ -105,5 +105,14 @@ export interface CompanionReply {
   reason: string;
   intent: string;
   voice_enabled: boolean;
+  voice_engine?: string;
   turns: number;
+}
+
+export interface VoiceSettings {
+  enabled: boolean;
+  engine: string;   // "browser" | "piper" | "cloud"
+  voice: string;
+  rate: number;
+  base_url: string;
 }

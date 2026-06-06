@@ -71,6 +71,18 @@ class CompanionReq(BaseModel):
     reset: bool = False
 
 
+class VoiceReq(BaseModel):
+    enabled: Optional[bool] = None
+    engine: Optional[str] = None
+    voice: Optional[str] = None
+    rate: Optional[float] = None
+    base_url: Optional[str] = None
+
+
+class TtsReq(BaseModel):
+    text: str
+
+
 # ── weather widget (Open-Meteo — keyless, cached) ────────────────
 _WEATHER_CACHE: dict[str, tuple[float, dict]] = {}
 _WEATHER_TTL = 600.0  # seconds
@@ -236,17 +248,65 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
                              attributes={"entry_id": res.get("entry_id")})
         return res
 
-    # ── companion (text-only, à la "Her") ───────────────────────
+    # ── companion (à la "Her") ───────────────────────────────────
     @app.post("/companion/say")
     def companion_say(req: CompanionReq) -> dict:
+        from aui.settings import load
         if req.reset:
             companion.reset()
         r = companion.say(req.text)
         bridge.log_event("companion_turn", subject=req.text[:80],
                          outcome="refused" if r.refused else "reply",
                          attributes={"intent": r.intent})
-        return {**r.to_dict(), "voice_enabled": companion.voice_enabled,
-                "turns": len(companion.history)}
+        voice = load()["voice"]
+        return {**r.to_dict(), "voice_enabled": bool(voice.get("enabled")),
+                "voice_engine": voice.get("engine"), "turns": len(companion.history)}
+
+    @app.post("/companion/listen")
+    def companion_listen() -> dict:
+        """STT seam (voice input). Not implemented yet — the contract: transcribe
+        audio, screen the transcript through axiom_immune, then call /companion/say.
+        Voice input is the safety-relevant half, so it lands behind this gate."""
+        return {"ok": False, "reason": "stt_not_implemented",
+                "contract": "audio -> transcript -> immune_scan -> companion.say"}
+
+    # ── settings: voice (TTS) ────────────────────────────────────
+    @app.get("/settings/voice")
+    def get_voice_settings() -> dict:
+        from aui.settings import public_voice
+        return public_voice()
+
+    @app.post("/settings/voice")
+    def set_voice_settings(req: VoiceReq) -> dict:
+        from aui.settings import update_voice, public_voice
+        data = update_voice(req.model_dump(exclude_none=True))
+        bridge.log_event("settings_voice_update",
+                         outcome="enabled" if data["voice"]["enabled"] else "disabled",
+                         attributes={"engine": data["voice"]["engine"]})
+        return public_voice()
+
+    @app.post("/tts")
+    def tts(req: TtsReq) -> dict:
+        """Server-side TTS for the piper/cloud engines (the browser engine speaks
+        client-side and never calls this). Proxies a Piper-style HTTP server;
+        fails soft when unconfigured/unreachable. Returns base64 WAV on success."""
+        from aui.settings import load
+        import base64
+        import urllib.request
+        voice = load()["voice"]
+        if voice.get("engine") == "browser":
+            return {"ok": False, "reason": "browser_engine_speaks_client_side"}
+        base = str(voice.get("base_url", "")).rstrip("/")
+        try:
+            payload = json.dumps({"text": req.text, "voice": voice.get("voice", "")}).encode()
+            r = urllib.request.Request(base + "/api/tts", data=payload,
+                                       headers={"content-type": "application/json"})
+            with urllib.request.urlopen(r, timeout=15) as resp:  # noqa: S310
+                audio = resp.read()
+            return {"ok": True, "engine": voice.get("engine"),
+                    "audio_b64": base64.b64encode(audio).decode("ascii"), "mime": "audio/wav"}
+        except Exception as e:
+            return {"ok": False, "reason": f"{type(e).__name__}: {e}", "engine": voice.get("engine")}
 
     # ── web search (SearXNG) with an immune screen on results ────
     @app.get("/search")

@@ -21,6 +21,14 @@ _DEFAULT_LLM = {
     "api_key": "",
 }
 
+_DEFAULT_VOICE = {
+    "enabled": False,
+    "engine": "browser",                  # browser (Web Speech) | piper | cloud
+    "voice": "",                          # engine-specific voice id ("" = default)
+    "rate": 1.0,                          # 0.5–2.0
+    "base_url": "http://localhost:5000",  # piper/cloud TTS server (engine != browser)
+}
+
 
 def _path() -> str:
     return os.environ.get("AX_OS_SETTINGS", "ax_os_settings.json")
@@ -37,7 +45,8 @@ def load() -> dict:
         except (json.JSONDecodeError, OSError):
             data = {}
     llm = {**_DEFAULT_LLM, **(data.get("llm") or {})}
-    return {**data, "llm": llm}
+    voice = {**_DEFAULT_VOICE, **(data.get("voice") or {})}
+    return {**data, "llm": llm, "voice": voice}
 
 
 def update_llm(patch: dict) -> dict:
@@ -63,3 +72,25 @@ def public_llm() -> dict:
     api_key = llm.pop("api_key", "")
     llm["api_key_set"] = bool(api_key)
     return llm
+
+
+def update_voice(patch: dict) -> dict:
+    """Apply a partial voice-config update and persist. Returns the full config."""
+    with _LOCK:
+        data = load()
+        voice = data["voice"]
+        for k in ("enabled", "engine", "voice", "rate", "base_url"):
+            if k in patch and patch[k] is not None:
+                voice[k] = patch[k]
+        data["voice"] = voice
+        try:
+            with open(_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except OSError:
+            pass
+        return data
+
+
+def public_voice() -> dict:
+    """Voice (TTS) config for the UI."""
+    return dict(load()["voice"])

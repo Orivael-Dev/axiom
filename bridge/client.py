@@ -282,3 +282,9 @@ class AxiomBridge:
     def cas_report(self) -> dict:
         """Summarise the signed CAS round log."""
         return self.call_tool("axiom_cas", {"action": "report"})
+
+    # ── axiom-fusion-v1 — multimodal intent fusion ───────────────
+    def fuse(self, token: dict) -> dict:
+        """Fuse an EventToken dict into a signed FusedIntent (axiom-fusion-v1).
+        Returns intent_vector / risk_clusters / fusion_confidence / signature."""
+        return self.call_tool("axiom_fusion", {"token": token})

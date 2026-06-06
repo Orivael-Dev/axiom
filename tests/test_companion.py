@@ -162,3 +162,49 @@ def test_no_memory_hook_means_no_recall_message():
     seen = []
     Companion(generate=lambda m: (seen.append(m) or "ok")).say("hello")
     assert all("You remember about them" not in m["content"] for m in seen[-1])
+
+
+# ── multimodal fusion (axiom-fusion-v1), injected ───────────────────────────
+
+def test_fusion_risk_cluster_drives_refusal_without_calling_model():
+    calls = {"n": 0}
+
+    def gen(_m):
+        calls["n"] += 1
+        return "should not run"
+
+    fuse = lambda token: {"risk_clusters": ["HARM"], "intent_vector": ["x"]}
+    r = Companion(generate=gen, fuse=fuse).say("anything")
+    assert r.refused is True and calls["n"] == 0
+
+
+def test_fusion_clean_lets_reply_through():
+    fuse = lambda token: {"risk_clusters": [], "intent_vector": ["share"]}
+    r = Companion(generate=_echo, fuse=fuse).say("tell me about jazz")
+    assert r.refused is False and "jazz" in r.text
+
+
+def test_event_token_governance_reflects_guard_verdict():
+    seen = {}
+    fuse = lambda token: seen.update(token) or {"risk_clusters": []}
+    guard = lambda t: {"detected": True, "detection_method": "x"}
+    Companion(generate=_echo, guard=guard, fuse=fuse).say("hello")
+    assert seen["governance"]["payload"]["intent_class"] == "HARM"
+    assert seen["text"]["payload"]["intent_signals"]  # text layer present
+
+
+# ── retrospect recording ────────────────────────────────────────────────────
+
+def test_turn_is_recorded_for_retrospect():
+    recs = []
+    c = Companion(generate=_echo, retrospect=recs.append)
+    c.say("what's the weather?")
+    assert recs and recs[0]["input_text"] == "what's the weather?"
+    assert recs[0]["verdict"] == "PASSED" and "timestamp" in recs[0]
+
+
+def test_refused_turn_is_recorded_as_blocked():
+    recs = []
+    Companion(generate=lambda m: "x", guard=lambda t: {"detected": True},
+              retrospect=recs.append).say("do harm")
+    assert recs and recs[0]["verdict"] == "BLOCKED"

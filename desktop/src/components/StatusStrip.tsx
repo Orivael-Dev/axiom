@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { fadeSlide } from "../motion";
 import { api } from "../api";
-import type { Weather, LlmSettings, LlmProbe } from "../types";
+import type { Weather, LlmSettings, LlmProbe, VoiceSettings } from "../types";
 import type { Theme } from "../theme";
 
 type Panel = "clock" | "weather" | "settings";
@@ -122,8 +122,15 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
   const [apiKey, setApiKey] = useState("");
   const [probe, setProbe] = useState<LlmProbe | null>(null);
   const [busy, setBusy] = useState(false);
+  const [voice, setVoice] = useState<VoiceSettings | null>(null);
 
   useEffect(() => { api.getLlm().then(setLlm).catch(() => setLlm(null)); }, []);
+  useEffect(() => { api.getVoice().then(setVoice).catch(() => setVoice(null)); }, []);
+
+  async function saveVoice(patch: Partial<VoiceSettings>) {
+    const next = await api.setVoice(patch).catch(() => null);
+    if (next) setVoice(next);
+  }
 
   async function save(patch: Partial<LlmSettings> & { api_key?: string }) {
     setBusy(true);
@@ -221,6 +228,36 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
             </span>
           )}
         </div>
+      </section>
+
+      <section className="settings__group">
+        <div className="settings__row">
+          <div className="settings__label">Voice (Aria)</div>
+          <label className="settings__switch">
+            <input
+              type="checkbox"
+              checked={!!voice?.enabled}
+              disabled={!voice}
+              onChange={(e) => saveVoice({ enabled: e.target.checked })}
+            />
+            <span>{voice?.enabled ? "on" : "off"}</span>
+          </label>
+        </div>
+        <p className="settings__hint">
+          Speak Aria's replies. Browser uses on-device OS voices; Piper/cloud
+          stream audio from a TTS server. Voice input (STT) is coming.
+        </p>
+        <label className="settings__field">
+          <span>Engine</span>
+          <select
+            value={voice?.engine ?? "browser"}
+            onChange={(e) => saveVoice({ engine: e.target.value })}
+          >
+            <option value="browser">Browser (on-device)</option>
+            <option value="piper">Piper (local server)</option>
+            <option value="cloud">Cloud</option>
+          </select>
+        </label>
       </section>
     </div>
   );

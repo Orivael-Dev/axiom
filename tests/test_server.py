@@ -99,6 +99,13 @@ class FakeBridge:
                 return {"recall_hit": True, "recalled": {"resolution": m["resolution"]}}
         return {"recall_hit": False, "recalled": None}
 
+    # axiom-fusion-v1 — fuse an EventToken dict
+    def fuse(self, token):
+        gov = (token.get("governance") or {}).get("payload", {})
+        risk = ["HARM"] if gov.get("intent_class") == "HARM" else []
+        return {"intent_vector": ["share"], "risk_clusters": risk,
+                "fusion_confidence": 0.7, "signature": "f" * 64}
+
 
 @pytest.fixture
 def client():
@@ -269,6 +276,40 @@ def test_companion_reset(client):
     client.post("/companion/say", json={"text": "remember this"})
     r = client.post("/companion/say", json={"text": "fresh start", "reset": True}).json()
     assert r["turns"] == 2  # only the new exchange after reset
+
+
+def test_companion_reports_voice_state(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    r = client.post("/companion/say", json={"text": "hi"}).json()
+    assert r["voice_enabled"] is False and r["voice_engine"] == "browser"
+    client.post("/settings/voice", json={"enabled": True})
+    r2 = client.post("/companion/say", json={"text": "hi again"}).json()
+    assert r2["voice_enabled"] is True
+
+
+def test_voice_settings_default_and_update(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    assert client.get("/settings/voice").json()["engine"] == "browser"
+    upd = client.post("/settings/voice", json={"enabled": True, "engine": "piper"}).json()
+    assert upd["enabled"] is True and upd["engine"] == "piper"
+
+
+def test_tts_browser_engine_is_client_side(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    r = client.post("/tts", json={"text": "hello"}).json()
+    assert r["ok"] is False and r["reason"] == "browser_engine_speaks_client_side"
+
+
+def test_tts_piper_fails_soft_when_unreachable(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    client.post("/settings/voice", json={"engine": "piper", "base_url": "http://127.0.0.1:9"})
+    r = client.post("/tts", json={"text": "hello"}).json()
+    assert r["ok"] is False and "reason" in r
+
+
+def test_stt_listen_is_stubbed(client):
+    r = client.post("/companion/listen").json()
+    assert r["ok"] is False and r["reason"] == "stt_not_implemented"
 
 
 def test_companion_persists_and_recalls_across_reset(client):
