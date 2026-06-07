@@ -58,19 +58,26 @@ def ollama_create(name: str, modelfile_path: str) -> None:
     subprocess.run(["ollama", "create", name, "-f", modelfile_path], check=True)
 
 
-def configure_aria(name: str, *, base_url: str = OLLAMA_BASE_URL) -> dict:
+def configure_aria(name: str, *, base_url: str = OLLAMA_BASE_URL,
+                   vision_model: Optional[str] = None) -> dict:
     """Enable Aria's LLM at base_url and make `name` her persona's base_model.
-    Returns a summary {base_url, base_model, persona_token_signature}."""
-    from aui.settings import update_llm
+    If vision_model is given, also enable her eyes (a VLM served the same way —
+    e.g. `ollama pull moondream`). Returns a summary."""
+    from aui.settings import update_llm, update_vision
     from aui.persona import PersonaStore
 
     update_llm({"enabled": True, "base_url": base_url})
     tok = PersonaStore().save({"base_model": name})
-    return {
+    summary = {
         "base_url": base_url,
         "base_model": tok.base_model,
         "persona_token_signature": tok.token_signature,
+        "vision_model": None,
     }
+    if vision_model:
+        update_vision({"enabled": True, "base_url": base_url, "model": vision_model})
+        summary["vision_model"] = vision_model
+    return summary
 
 
 def main(argv: Optional[list] = None) -> int:
@@ -87,6 +94,9 @@ def main(argv: Optional[list] = None) -> int:
                    help="override chat TEMPLATE (only if the GGUF lacks one)")
     p.add_argument("--base-url", default=OLLAMA_BASE_URL,
                    help="OpenAI-compatible base_url Aria should call")
+    p.add_argument("--vision-model", default=None,
+                   help="also give Aria eyes: enable vision with this VLM id served "
+                        "at the same base_url (e.g. `moondream`; `ollama pull` it first)")
     p.add_argument("--no-ollama", action="store_true",
                    help="skip `ollama create` (e.g. when serving via llama-server); "
                         "only flip Aria's config")
@@ -118,12 +128,17 @@ def main(argv: Optional[list] = None) -> int:
             print(f"error: `ollama create` failed ({e.returncode})", file=sys.stderr)
             return e.returncode
 
-    summary = configure_aria(args.name, base_url=args.base_url)
+    summary = configure_aria(args.name, base_url=args.base_url,
+                             vision_model=args.vision_model)
     print(f"• Aria → enabled @ {summary['base_url']}, "
           f"base_model={summary['base_model']}")
+    if summary["vision_model"]:
+        print(f"• Aria's eyes → vision enabled, model={summary['vision_model']}")
     print(f"  persona token {summary['persona_token_signature'][:16]}… "
           f"(lineage updated)")
-    print("Aria speaks through the SRD model on her next turn.")
+    print("Aria speaks through the SRD model on her next turn"
+          + (" and can see images you show her." if summary["vision_model"]
+             else "."))
     return 0
 
 

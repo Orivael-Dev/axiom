@@ -93,6 +93,18 @@ class TtsReq(BaseModel):
     text: str
 
 
+class SeeReq(BaseModel):
+    image: str                       # data URI (data:image/…;base64,…) or URL
+    text: str = ""                   # optional words alongside what she's shown
+    reset: bool = False
+
+
+class VisionReq(BaseModel):
+    enabled: Optional[bool] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+
+
 class AnticipationReq(BaseModel):
     enabled: Optional[bool] = None
     min_obs: Optional[int] = None
@@ -294,6 +306,35 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
         return {"ok": False, "reason": "stt_not_implemented",
                 "contract": "audio -> transcript -> immune_scan -> companion.say"}
 
+    @app.post("/companion/see")
+    def companion_see(req: SeeReq) -> dict:
+        """Aria's vision seam (wired). A local VLM captions the image; the caption
+        is folded into the turn so even her text brain sees it — and because it
+        flows in as the turn's text, the same axiom_immune guard screens it (an
+        image's caption is screened like any other input). Returns the reply plus
+        what she saw."""
+        from aui.companion import vision_caption
+        from aui.settings import load
+        if not load()["vision"].get("enabled"):
+            return {"ok": False, "reason": "vision_not_configured",
+                    "contract": "image -> VLM caption -> immune_scan -> "
+                                "companion.say(seen=…)"}
+        if req.reset:
+            companion.reset()
+        caption = vision_caption(req.image)
+        r = companion.say(req.text, seen=caption)
+        bridge.log_event("companion_see", subject=(caption or "")[:80],
+                         outcome="refused" if r.refused else "reply",
+                         attributes={"intent": r.intent})
+        voice = load()["voice"]
+        mt = companion.master_token
+        return {**r.to_dict(), "saw": caption,
+                "voice_enabled": bool(voice.get("enabled")),
+                "voice_engine": voice.get("engine"),
+                "turns": len(companion.history),
+                "met_head": mt.head, "met_turns": len(mt.links),
+                "anticipation": companion.anticipation}
+
     # ── persona: Aria's signed identity (soul) + outfit + lineage ─
     @app.get("/companion/persona")
     def get_persona() -> dict:
@@ -326,6 +367,21 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
                          outcome="enabled" if data["voice"]["enabled"] else "disabled",
                          attributes={"engine": data["voice"]["engine"]})
         return public_voice()
+
+    # ── settings: vision (VLM — Aria's eyes) ─────────────────────
+    @app.get("/settings/vision")
+    def get_vision_settings() -> dict:
+        from aui.settings import public_vision
+        return public_vision()
+
+    @app.post("/settings/vision")
+    def set_vision_settings(req: VisionReq) -> dict:
+        from aui.settings import update_vision, public_vision
+        data = update_vision(req.model_dump(exclude_none=True))
+        bridge.log_event("settings_vision_update",
+                         outcome="enabled" if data["vision"]["enabled"] else "disabled",
+                         attributes={"model": data["vision"]["model"]})
+        return public_vision()
 
     @app.post("/tts")
     def tts(req: TtsReq) -> dict:

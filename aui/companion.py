@@ -196,8 +196,16 @@ class Companion:
             self._genesis = token.identity_signature
             self.reset()
 
-    def say(self, text: str) -> CompanionReply:
+    def say(self, text: str, *, seen: Optional[str] = None) -> CompanionReply:
         text = (text or "").strip()
+        # Vision: a caption from Aria's eyes (a VLM, screened upstream) is folded
+        # into the turn as grounding — so even a text-only brain "sees". It flows
+        # through the same guard, fusion, curiosity and history as typed text,
+        # which is the point: an image's caption is screened like any other input.
+        seen = (seen or "").strip()
+        if seen:
+            grounding = f"[You can see: {seen}]"
+            text = f"{grounding}\n\n{text}" if text else grounding
         if not text:
             return CompanionReply("I'm here. What's on your mind?")
 
@@ -425,6 +433,32 @@ def llm_generate(messages: List[dict], *, model: Optional[str] = None) -> str:
         "temperature": 0.7, "stream": False,
     }, timeout=30)
     return out["choices"][0]["message"]["content"]
+
+
+def vision_caption(image: str, *, prompt: Optional[str] = None) -> str:
+    """Aria's eyes: describe an image through the configured local VLM (served the
+    same OpenAI-compatible way as her brain — e.g. `ollama pull moondream`).
+    Returns a one-line caption that grounds her text brain, or '' when vision is
+    disabled, no image is given, or the VLM is unreachable (fails soft)."""
+    from aui.settings import load
+    cfg = load()["vision"]
+    if not cfg.get("enabled") or not image:
+        return ""
+    from aui.planner_local import _post
+    content = [
+        {"type": "text", "text": prompt or
+         "Describe what you see in one vivid, concrete sentence."},
+        {"type": "image_url", "image_url": {"url": image}},
+    ]
+    try:
+        out = _post(cfg, "/chat/completions", {
+            "model": cfg["model"],
+            "messages": [{"role": "user", "content": content}],
+            "temperature": 0.2, "stream": False,
+        }, timeout=60)
+        return (out["choices"][0]["message"]["content"] or "").strip()
+    except Exception:
+        return ""
 
 
 def _persona_model() -> Optional[str]:

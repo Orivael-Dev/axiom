@@ -65,3 +65,22 @@ def test_main_missing_gguf_errors(monkeypatch, tmp_path):
     _isolate(monkeypatch, tmp_path)
     rc = srd_setup.main(["--gguf", str(tmp_path / "nope.gguf")])
     assert rc == 2                                      # GGUF not found
+
+
+def test_configure_aria_enables_vision(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)
+    summary = srd_setup.configure_aria("aria-srd", vision_model="moondream")
+    assert summary["vision_model"] == "moondream"
+    from aui.settings import load
+    vis = load()["vision"]
+    assert vis["enabled"] is True and vis["model"] == "moondream"
+
+
+def test_main_no_ollama_with_vision(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)
+    monkeypatch.setattr(srd_setup, "ollama_create", lambda *a, **k: None)
+    rc = srd_setup.main(["--no-ollama", "--name", "aria-srd",
+                         "--vision-model", "llava"])
+    assert rc == 0
+    from aui.settings import load
+    assert load()["vision"]["model"] == "llava"

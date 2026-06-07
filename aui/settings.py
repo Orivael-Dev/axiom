@@ -33,6 +33,14 @@ _DEFAULT_VOICE = {
 }
 
 
+_DEFAULT_VISION = {
+    "enabled": False,
+    "base_url": "http://localhost:11434/v1",   # Ollama's OpenAI-compatible API
+    "model": "moondream",                      # a tiny local VLM — Aria's eyes
+    "api_key": "",
+}
+
+
 _DEFAULT_ANTICIPATION = {
     "enabled": True,
     "min_obs": 3,            # transitions to observe before acting
@@ -58,8 +66,10 @@ def load() -> dict:
             data = {}
     llm = {**_DEFAULT_LLM, **(data.get("llm") or {})}
     voice = {**_DEFAULT_VOICE, **(data.get("voice") or {})}
+    vision = {**_DEFAULT_VISION, **(data.get("vision") or {})}
     antic = {**_DEFAULT_ANTICIPATION, **(data.get("anticipation") or {})}
-    return {**data, "llm": llm, "voice": voice, "anticipation": antic}
+    return {**data, "llm": llm, "voice": voice, "vision": vision,
+            "anticipation": antic}
 
 
 def update_llm(patch: dict) -> dict:
@@ -110,6 +120,31 @@ def public_voice() -> dict:
     api_key = voice.pop("api_key", "")
     voice["api_key_set"] = bool(api_key)
     return voice
+
+
+def update_vision(patch: dict) -> dict:
+    """Apply a partial vision-config update and persist. Returns the full config."""
+    with _LOCK:
+        data = load()
+        vision = data["vision"]
+        for k in ("enabled", "base_url", "model", "api_key"):
+            if k in patch and patch[k] is not None:
+                vision[k] = patch[k]
+        data["vision"] = vision
+        try:
+            with open(_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except OSError:
+            pass
+        return data
+
+
+def public_vision() -> dict:
+    """Vision (VLM) config for the UI — secret redacted to a boolean."""
+    vision = dict(load()["vision"])
+    api_key = vision.pop("api_key", "")
+    vision["api_key_set"] = bool(api_key)
+    return vision
 
 
 def update_anticipation(patch: dict) -> dict:
