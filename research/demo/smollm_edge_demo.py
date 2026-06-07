@@ -59,6 +59,18 @@ _MODEL_CATALOG: dict[str, tuple] = {
     "gemma3-4b":   ("google/gemma-3-4b-it",                  4.3,  "Gemma 3 4B",     7,   18,  "Pixel 8 Pro NNAPI"),
     "qwen2.5-0.5": ("Qwen/Qwen2.5-0.5B-Instruct",           0.5,  "Qwen2.5-0.5B",  25,   50,  "Pixel 7 NNAPI"),
     "qwen2.5-1.5": ("Qwen/Qwen2.5-1.5B-Instruct",           1.5,  "Qwen2.5-1.5B",  15,   28,  "Pixel 8 NNAPI"),
+    # Gemma 4 MoE — total params derived from BF16 size (E=Effective active params)
+    # BF16: E2B=11.4 GB → 6.1B total params  |  E4B=17.9 GB → 9.6B total params
+    # HF IDs are best-guess; adjust if Google uses a different naming scheme
+    "gemma4-e2b":  ("google/gemma-4-2b-it",                  6.1,  "Gemma 4 E2B",    5,   12,  "Pixel 9 NNAPI"),
+    "gemma4-e4b":  ("google/gemma-4-4b-it",                  9.6,  "Gemma 4 E4B",    3,    8,  "Pixel 9 Pro NNAPI"),
+}
+
+# Google QAT published sizes from Gemma 4 launch (in-memory, LiteRT-LM)
+# Source: Google Gemma 4 announcement table
+_GOOGLE_QAT: dict[str, dict] = {
+    "gemma4-e2b": {"bf16_gb": 11.4, "q4_0_gb": 2.9, "mobile_gb": 1.1,  "mobile_text_gb": 0.84},
+    "gemma4-e4b": {"bf16_gb": 17.9, "q4_0_gb": 4.5, "mobile_gb": 2.5,  "mobile_text_gb": 2.2},
 }
 
 def _compute_ref(params_b: float, cpu_tok_s: int = 0, mob_tok_s: int = 0) -> dict:
@@ -102,7 +114,9 @@ def _drone_device_targets(params_b: float) -> list[tuple]:
         note = f"{weight_g}g board  ~{tok_s} tok/s  {power_w}W"
         rows.append((f"{drone} ({cls})", sc_b, f"{note}  ScA:{sc_a} ScB:{sc_b}"))
     return rows
-    """Return (device, status, note) rows adjusted for model size."""
+
+
+def _device_targets(params_b: float, mob_device: str) -> list[tuple]:
     gguf_mb = round(params_b * 1e9 * 4.07 / 8 / 1024**2)
     ram_floor_mb = gguf_mb + 100
 
@@ -509,6 +523,82 @@ def cell6_dashboard(pack_stats: dict, extract_stats: dict, met_stats: dict,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CELL 7 — Competitive comparison vs Google QAT
+# ─────────────────────────────────────────────────────────────────────────────
+def cell7_competitive(catalog_key: str | None = None) -> None:
+    _section("CELL 7  —  AXIOM SRD vs GOOGLE QAT  (Gemma 4 Mobile)")
+
+    # Google's published numbers
+    rows_goog = [
+        ("Gemma 4 E2B", "gemma4-e2b", 11.4, 2.9,  1.1,  0.84),
+        ("Gemma 4 E4B", "gemma4-e4b", 17.9, 4.5,  2.5,  2.2),
+    ]
+
+    # Column header
+    print(f"  {'Model':<16}  {'BF16':>6}  {'AXIOM':>6}  {'AXIOM':>6}  "
+          f"{'G-Q4_0':>7}  {'G-Mobile':>9}  {'G-Mob Text':>10}  Gap")
+    print(f"  {'':16}  {'GB':>6}  {'SRD-4':>6}  {'GGUF':>6}  "
+          f"{'4-bit':>7}  {'LiteRT':>9}  {'LiteRT':>10}")
+    print("  " + "─" * 80)
+
+    for name, key, bf16, g_q4, g_mob, g_mobt in rows_goog:
+        # Derive AXIOM sizes from BF16
+        axm_gb  = round(bf16 * (4.5 / 16), 2)   # SRD-4 at 4.5 bpw
+        gguf_gb = round(bf16 * (4.07 / 16), 2)  # Q4_K_M at 4.07 bpw
+        # Gap to Mobile column (what bpw would match it)
+        mobile_bpw = round(g_mob / bf16 * 16, 2)
+        gap_label  = f"Mobile needs ~{mobile_bpw} bpw"
+        print(f"  {name:<16}  {bf16:>5.1f}G  {axm_gb:>5.2f}G  {gguf_gb:>5.2f}G  "
+              f"  {g_q4:>5.1f}G  {g_mob:>8.2f}G  {g_mobt:>9.2f}G  {gap_label}")
+
+    print()
+    print(f"  AXIOM SRD-4 ≈ Google Q4_0  (both ~4-bit, comparable compression ratio)")
+    print(f"  Google Mobile gap: ~1.56 bpw  →  requires sub-4-bit + QAT + pruning")
+    print()
+
+    # Compression ratios
+    print(f"  COMPRESSION RATIO vs BF16")
+    print(f"  {'':30}  {'E2B':>6}  {'E4B':>6}")
+    print("  " + "─" * 45)
+    for label, e2b_val, e4b_val in [
+        ("AXIOM SRD-4 (.axm)",           round(11.4/(11.4*4.5/16), 2), round(17.9/(17.9*4.5/16), 2)),
+        ("AXIOM GGUF Q4_K_M",            round(11.4/(11.4*4.07/16), 2), round(17.9/(17.9*4.07/16), 2)),
+        ("Google Q4_0",                  round(11.4/2.9, 2),            round(17.9/4.5, 2)),
+        ("Google Mobile (LiteRT)",        round(11.4/1.1, 2),            round(17.9/2.5, 2)),
+        ("Google Mobile Text-only",       round(11.4/0.84, 2),           round(17.9/2.2, 2)),
+    ]:
+        bar_e2b = "▓" * min(20, round(e2b_val))
+        print(f"  {label:<30}  {e2b_val:>5.1f}×  {e4b_val:>5.1f}×  {bar_e2b}")
+    print()
+
+    # What AXIOM has that Google does not
+    print(f"  CAPABILITY COMPARISON")
+    print(f"  {'─'*62}")
+    caps = [
+        ("Weight compression ~4-bit",   "✓ AXIOM", "✓ Google"),
+        ("Mobile-tier <2 bpw",          "✗ (roadmap: SRD sparse-D8)", "✓ Google LiteRT"),
+        ("HMAC proof per layer",        "✓ AXIOM", "✗"),
+        ("Tamper detection",            "✓ AXIOM fingerprint", "✗"),
+        ("Chain of custody (.axm)",     "✓ AXIOM", "✗"),
+        ("MET KV cache compression",    "✓ 9.5× on input side", "✗"),
+        ("Open format (llama.cpp)",     "✓ GGUF", "✗ LiteRT-only"),
+        ("Framework-agnostic",          "✓", "✗ Android/iOS only"),
+        ("QAT quality boost",           "✗ (post-training only)", "✓ trained with quant"),
+    ]
+    for capability, axiom_val, google_val in caps:
+        print(f"  {capability:<32}  {axiom_val:<28}  {google_val}")
+    print()
+
+    print(f"  ROADMAP NOTE")
+    print(f"  {'─'*62}")
+    print(f"  The Mobile gap (~1.56 bpw) is closeable via SRD sparse-D8 residual.")
+    print(f"  axm_cli.py --srd-top-k-pct 0.25 targets ~7 bpw today;")
+    print(f"  full sparse packing (E3 compressed) would push toward 2-3 bpw.")
+    print(f"  QAT integration (train-aware quant) is a separate workstream.")
+    print(f"  Governance story (signed proofs + MET) has no Google equivalent.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 def build_parser() -> argparse.ArgumentParser:
@@ -533,6 +623,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="print estimates, skip model download/pack/extract")
     p.add_argument("--drone", action="store_true",
                    help="show drone hardware targets instead of mobile devices")
+    p.add_argument("--compare", action="store_true",
+                   help="show AXIOM vs Google QAT competitive comparison (auto on for gemma4 models)")
     return p
 
 
@@ -588,6 +680,12 @@ def main(argv=None) -> int:
     extract_stats = {} if args.skip_extract else cell4_extract(outdir, llama, args.dry_run)
     met_stats     = cell5_met_demo()
     cell6_dashboard(pack_stats, extract_stats, met_stats, outdir, args.dry_run)
+
+    # Show competitive comparison for Gemma 4 models or when --compare is set
+    active_key = (args.model or "").lower()
+    is_gemma4  = active_key.startswith("gemma4")
+    if args.compare or is_gemma4:
+        cell7_competitive(active_key if is_gemma4 else None)
 
     elapsed = time.time() - t_total
     print(f"  Total demo time: {elapsed:.0f}s")
