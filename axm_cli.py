@@ -182,6 +182,7 @@ def cmd_pack(args: argparse.Namespace) -> int:
         model_revision=args.revision,
         hardware_map=args.hardware_map,
         compresslevel=args.compresslevel,
+        real_pack=getattr(args, "real_pack", False),
     )
     if args.stats_json:
         Path(args.stats_json).parent.mkdir(parents=True, exist_ok=True)
@@ -250,6 +251,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="SRD sparsity (0.25 = ~7 bpw, 0 = W4-only ~4.5 bpw); omit for FP16")
     pp.add_argument("--srd4", action="store_true",
                     help="shorthand for --srd-top-k-pct 0 (pure W4, no residual, ~4.5 bpw)")
+    pp.add_argument("--real-pack", action="store_true",
+                    help="bit-pack W4+D8 into E3 format for real storage savings "
+                         "(requires --srd4 or --srd-top-k-pct); without this flag "
+                         "weights are stored as FP16 fake-quant on the SRD grid")
     pp.add_argument("--group-size", type=int, default=64)
     pp.add_argument("--revision", default=None)
     pp.add_argument("--hardware-map", default="gpu",
