@@ -560,6 +560,59 @@ def erase_subject_data(
     }
 
 
+def init_studio_containers(tenant_id: str) -> None:
+    """Ensure the studio_containers table exists in the tenant DB."""
+    init_tenant_db(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS studio_containers (
+                container_id  TEXT PRIMARY KEY,
+                tenant_id     TEXT NOT NULL,
+                name          TEXT NOT NULL,
+                config_json   TEXT NOT NULL,
+                created_at    TEXT NOT NULL
+            )
+        """)
+
+
+def count_studio_containers(tenant_id: str) -> int:
+    init_studio_containers(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        return c.execute("SELECT COUNT(*) FROM studio_containers").fetchone()[0]
+
+
+def list_studio_containers(tenant_id: str) -> list[dict]:
+    init_studio_containers(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        rows = c.execute(
+            "SELECT container_id, name, config_json, created_at "
+            "FROM studio_containers ORDER BY created_at DESC"
+        ).fetchall()
+        return [
+            {
+                "container_id": r["container_id"],
+                "name": r["name"],
+                "config": json.loads(r["config_json"]),
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+
+def insert_studio_container(tenant_id: str, name: str, config: dict) -> str:
+    init_studio_containers(tenant_id)
+    container_id = uuid.uuid4().hex
+    with _conn(_tenant_path(tenant_id)) as c:
+        c.execute(
+            "INSERT INTO studio_containers "
+            "(container_id, tenant_id, name, config_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (container_id, tenant_id, name, json.dumps(config),
+             datetime.utcnow().isoformat()),
+        )
+    return container_id
+
+
 def usage_summary(tenant_id: str) -> dict:
     """Aggregate usage across the tenant's full history (Phase 1 — no time filter)."""
     init_tenant_db(tenant_id)
