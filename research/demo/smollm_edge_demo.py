@@ -84,7 +84,24 @@ def _compute_ref(params_b: float, cpu_tok_s: int = 0, mob_tok_s: int = 0) -> dic
         "params_b":         params_b,
     }
 
-def _device_targets(params_b: float, mob_device: str) -> list[tuple]:
+def _drone_device_targets(params_b: float) -> list[tuple]:
+    """Drone hardware rows — Scenario A (state engine) and B (onboard LLM)."""
+    gguf_mb   = round(params_b * 1e9 * 4.07 / 8 / 1024**2)
+    ram_floor = gguf_mb + 100
+
+    rows = []
+    for cls, drone, weight_g, compute, ram_mb, power_w, tok_s in [
+        ("Micro <250g",  "DJI Mini 4 Pro",     10,   "RPi Zero 2W",      512,    1.5,   2),
+        ("Consumer",     "DJI Mavic 3",        16,   "RPi CM4 (4GB)",   4096,    4.0,  12),
+        ("Inspection",   "DJI Matrice 30T",    30,   "Jetson Orin Nano",8192,    8.0,  40),
+        ("Enterprise",   "DJI Matrice 350",    65,   "Jetson Orin NX", 16384,   15.0,  80),
+        ("Delivery",     "Zipline P2",        200,   "Jetson AGX Orin",32768,   25.0, 150),
+    ]:
+        sc_a = "✓"
+        sc_b = "✓" if ram_mb >= ram_floor else "✗"
+        note = f"{weight_g}g board  ~{tok_s} tok/s  {power_w}W"
+        rows.append((f"{drone} ({cls})", sc_b, f"{note}  ScA:{sc_a} ScB:{sc_b}"))
+    return rows
     """Return (device, status, note) rows adjusted for model size."""
     gguf_mb = round(params_b * 1e9 * 4.07 / 8 / 1024**2)
     ram_floor_mb = gguf_mb + 100
@@ -459,10 +476,20 @@ def cell6_dashboard(pack_stats: dict, extract_stats: dict, met_stats: dict,
     # Target devices — auto-scaled to model size
     params_b  = _REF.get("params_b", 0.135)
     mob_dev   = _REF.get("mob_device", "Pixel 7 NNAPI")
-    targets   = _device_targets(params_b, mob_dev)
-    print(f"  TARGET DEVICES")
-    for name, status, note in targets:
-        print(f"  {status}  {name:<30}  {note}")
+    drone_mode = _REF.get("drone_mode", False)
+
+    if drone_mode:
+        print(f"  TARGET DRONES  (ScA=state-engine-only  ScB=onboard LLM)")
+        print(f"  {'─'*62}")
+        for name, status, note in _drone_device_targets(params_b):
+            print(f"  {status}  {name:<30}  {note}")
+    else:
+        targets = _device_targets(params_b, mob_dev)
+        print(f"  TARGET DEVICES")
+        for name, status, note in targets:
+            print(f"  {status}  {name:<30}  {note}")
+        print()
+        print(f"  For drone hardware targets run with --drone flag")
 
     print()
     print(f"  {'─'*62}")
@@ -504,6 +531,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="skip GGUF extraction (pack + MET only)")
     p.add_argument("--dry-run", action="store_true",
                    help="print estimates, skip model download/pack/extract")
+    p.add_argument("--drone", action="store_true",
+                   help="show drone hardware targets instead of mobile devices")
     return p
 
 
@@ -539,6 +568,7 @@ def main(argv=None) -> int:
     llama  = Path(args.llamacpp) if args.llamacpp else None
 
     MODEL_ID, MODEL_SLUG, _REF = _resolve_model(args)
+    _REF["drone_mode"] = args.drone
 
     params_b   = _REF["params_b"]
     params_str = f"{params_b*1000:.0f} M" if params_b < 1 else f"{params_b:.1f} B"
