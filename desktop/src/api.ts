@@ -3,7 +3,7 @@
 import type {
   WorkspacePlan, AuditTrail, Health, Agent, Weather, ImmuneResult,
   LlmSettings, LlmProbe, SearchResults, CompanionReply, VoiceSettings,
-  AnticipationSettings,
+  AnticipationSettings, PersonaToken, PersonaLineageEntry,
 } from "./types";
 
 export const BASE: string =
@@ -52,4 +52,8 @@ export const api = {
   getAnticipation: () => get<AnticipationSettings>("/settings/anticipation"),
   setAnticipation: (patch: Partial<AnticipationSettings>) =>
     post<AnticipationSettings>("/settings/anticipation", patch),
+  getPersona: () => get<PersonaToken>("/companion/persona"),
+  setPersona: (patch: Partial<PersonaToken>) => post<PersonaToken>("/companion/persona", patch),
+  getPersonaLineage: () =>
+    get<{ lineage: PersonaLineageEntry[] }>("/companion/persona/lineage"),
 };

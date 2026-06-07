@@ -128,3 +128,24 @@ export interface AnticipationSettings {
   min_hit_rate: number;
   cooldown: number;
 }
+
+export interface PersonaToken {
+  name: string;
+  backstory: string;
+  self_image: string;       // data URI or path (avatar)
+  image_caption: string;
+  base_model: string;
+  voice: string;
+  created_at: string;
+  updated_at: string;
+  version: number;
+  identity_signature: string;
+  token_signature: string;
+}
+
+export interface PersonaLineageEntry {
+  token_signature: string;
+  identity_signature: string;
+  at: string;
+  current: boolean;
+}

@@ -4,7 +4,10 @@ import { motion, AnimatePresence } from "motion/react";
 import { fadeSlide } from "../motion";
 import { api } from "../api";
 import { speak, hasBrowserVoice } from "../voice";
-import type { Weather, LlmSettings, LlmProbe, VoiceSettings, AnticipationSettings } from "../types";
+import type {
+  Weather, LlmSettings, LlmProbe, VoiceSettings, AnticipationSettings,
+  PersonaToken, PersonaLineageEntry,
+} from "../types";
 import type { Theme } from "../theme";
 
 type Panel = "clock" | "weather" | "settings";
@@ -125,10 +128,31 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
   const [busy, setBusy] = useState(false);
   const [voice, setVoice] = useState<VoiceSettings | null>(null);
   const [antic, setAntic] = useState<AnticipationSettings | null>(null);
+  const [persona, setPersona] = useState<PersonaToken | null>(null);
+  const [lineage, setLineage] = useState<PersonaLineageEntry[]>([]);
 
   useEffect(() => { api.getLlm().then(setLlm).catch(() => setLlm(null)); }, []);
   useEffect(() => { api.getVoice().then(setVoice).catch(() => setVoice(null)); }, []);
   useEffect(() => { api.getAnticipation().then(setAntic).catch(() => setAntic(null)); }, []);
+  useEffect(() => {
+    api.getPersona().then(setPersona).catch(() => setPersona(null));
+    api.getPersonaLineage().then((r) => setLineage(r.lineage)).catch(() => setLineage([]));
+  }, []);
+
+  async function savePersona(patch: Partial<PersonaToken>) {
+    const next = await api.setPersona(patch).catch(() => null);
+    if (next) {
+      setPersona(next);
+      api.getPersonaLineage().then((r) => setLineage(r.lineage)).catch(() => {});
+    }
+  }
+
+  function onImageFile(file?: File) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => savePersona({ self_image: String(reader.result) });
+    reader.readAsDataURL(file);
+  }
 
   async function saveVoice(patch: Partial<VoiceSettings>) {
     const next = await api.setVoice(patch).catch(() => null);
@@ -157,6 +181,69 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
   return (
     <div className="settings">
       <h2 className="settings__title">Settings</h2>
+
+      <section className="settings__group">
+        <div className="settings__label">Persona (Aria)</div>
+        <p className="settings__hint">
+          Her signed identity. Name, backstory and self-image are the <em>soul</em>
+          (changing them re-roots her); base model and voice are the <em>outfit</em>.
+        </p>
+        <div className="settings__persona-head">
+          {persona?.self_image
+            ? <img className="settings__face" src={persona.self_image} alt={persona.name} />
+            : <span className="settings__face settings__face--empty">✦</span>}
+          <label className="btn">
+            Set image
+            <input type="file" accept="image/*" style={{ display: "none" }}
+                   onChange={(e) => onImageFile(e.target.files?.[0])} />
+          </label>
+        </div>
+        <label className="settings__field">
+          <span>Name</span>
+          <input value={persona?.name ?? ""}
+                 onChange={(e) => setPersona(persona ? { ...persona, name: e.target.value } : persona)}
+                 onBlur={(e) => savePersona({ name: e.target.value })} />
+        </label>
+        <label className="settings__field">
+          <span>Backstory</span>
+          <textarea rows={4} value={persona?.backstory ?? ""}
+                    onChange={(e) => setPersona(persona ? { ...persona, backstory: e.target.value } : persona)}
+                    onBlur={(e) => savePersona({ backstory: e.target.value })} />
+        </label>
+        <label className="settings__field">
+          <span>Self-image caption <span className="muted">(grounds the text model)</span></span>
+          <input value={persona?.image_caption ?? ""}
+                 placeholder="a calm woman with violet eyes"
+                 onChange={(e) => setPersona(persona ? { ...persona, image_caption: e.target.value } : persona)}
+                 onBlur={(e) => savePersona({ image_caption: e.target.value })} />
+        </label>
+        <label className="settings__field">
+          <span>Base model <span className="muted">(~1B; the outfit)</span></span>
+          <input value={persona?.base_model ?? ""}
+                 placeholder="llama3.2:1b"
+                 onChange={(e) => setPersona(persona ? { ...persona, base_model: e.target.value } : persona)}
+                 onBlur={(e) => savePersona({ base_model: e.target.value })} />
+        </label>
+        {persona && (
+          <p className="settings__hint">
+            identity <code>{persona.identity_signature.slice(0, 12)}…</code> · token{" "}
+            <code>{persona.token_signature.slice(0, 12)}…</code>
+          </p>
+        )}
+        {lineage.length > 1 && (
+          <details className="settings__lineage">
+            <summary>identity lineage · {lineage.length}</summary>
+            <ul>
+              {lineage.map((l, i) => (
+                <li key={i}>
+                  <code>{(l.identity_signature || "").slice(0, 10)}…</code>
+                  {l.current ? " · current" : ` · ${l.at}`}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
 
       <section className="settings__group">
         <div className="settings__label">Theme</div>

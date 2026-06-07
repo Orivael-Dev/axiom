@@ -47,11 +47,12 @@ class TurnLink:
 @dataclass
 class MasterEventToken:
     session_id: str
+    genesis: str = ""   # the persona identity_signature the chain parents off
     links: List[TurnLink] = field(default_factory=list)
 
     def add_turn(self, *, intent_class: str = "INFORM", risk_clusters: list = None,
                  fusion_signature: str = "", learned: bool = False) -> TurnLink:
-        parent = self.links[-1].chain_hash if self.links else ""
+        parent = self.links[-1].chain_hash if self.links else self.genesis
         risk = list(risk_clusters or [])
         ch = _link_hash(parent, fusion_signature, intent_class, risk)
         link = TurnLink(step=len(self.links), intent_class=intent_class,
@@ -66,7 +67,7 @@ class MasterEventToken:
         return self.links[-1].chain_hash if self.links else ""
 
     def verify(self) -> bool:
-        parent = ""
+        parent = self.genesis
         for link in self.links:
             if _link_hash(parent, link.fusion_signature, link.intent_class,
                           link.risk_clusters) != link.chain_hash:
@@ -78,5 +79,6 @@ class MasterEventToken:
         self.links.clear()
 
     def to_dict(self) -> dict:
-        return {"session_id": self.session_id, "turns": len(self.links),
-                "head": self.head, "links": [link.to_dict() for link in self.links]}
+        return {"session_id": self.session_id, "genesis": self.genesis,
+                "turns": len(self.links), "head": self.head,
+                "links": [link.to_dict() for link in self.links]}

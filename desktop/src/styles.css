@@ -325,3 +325,24 @@ body {
   flex: 1; border: none; background: transparent; color: var(--text);
   font-size: 15px; outline: none;
 }
+
+/* ── persona: avatar, mic placeholder, identity editor ───────────────── */
+.companion__face { width: 28px; height: 28px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--border); }
+.companion__mic { margin-left: 6px; font-size: 14px; line-height: 1; padding: 4px 8px;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: not-allowed; opacity: 0.6; }
+.settings__field textarea {
+  width: 100%; padding: 10px 12px; border-radius: 10px; font: inherit; resize: vertical;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text); outline: none;
+}
+.settings__field textarea:focus { border-color: var(--accent); }
+.settings__persona-head { display: flex; align-items: center; gap: 12px; margin: 8px 0 4px; }
+.settings__face { width: 56px; height: 56px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--border); }
+.settings__face--empty { display: flex; align-items: center; justify-content: center;
+  font-size: 26px; color: var(--accent-2); background: var(--surface); }
+.settings__lineage { margin-top: 10px; }
+.settings__lineage summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.settings__lineage ul { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--muted); }
+.settings__lineage code, .settings__hint code { color: var(--accent); }

@@ -72,6 +72,15 @@ class CompanionReq(BaseModel):
     reset: bool = False
 
 
+class PersonaReq(BaseModel):
+    name: Optional[str] = None
+    backstory: Optional[str] = None
+    self_image: Optional[str] = None
+    image_caption: Optional[str] = None
+    base_model: Optional[str] = None
+    voice: Optional[str] = None
+
+
 class VoiceReq(BaseModel):
     enabled: Optional[bool] = None
     engine: Optional[str] = None
@@ -174,6 +183,8 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
     runner = AgentRunner(bridge)
 
     from aui.companion import build_companion
+    from aui.persona import PersonaStore, public_persona
+    persona_store = PersonaStore()
     companion = build_companion(bridge)
 
     @app.get("/health")
@@ -276,11 +287,30 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
 
     @app.post("/companion/listen")
     def companion_listen() -> dict:
-        """STT seam (voice input). Not implemented yet — the contract: transcribe
-        audio, screen the transcript through axiom_immune, then call /companion/say.
-        Voice input is the safety-relevant half, so it lands behind this gate."""
+        """Reserved voice-agent slot (voice input). Not wired in v1 — the seam's
+        contract for a future TTS/voice agent is: audio -> transcribe -> screen the
+        transcript through axiom_immune -> companion.say. Voice input is the
+        safety-relevant half, so it lands behind this gate."""
         return {"ok": False, "reason": "stt_not_implemented",
                 "contract": "audio -> transcript -> immune_scan -> companion.say"}
+
+    # ── persona: Aria's signed identity (soul) + outfit + lineage ─
+    @app.get("/companion/persona")
+    def get_persona() -> dict:
+        return public_persona(persona_store.load_or_mint())
+
+    @app.post("/companion/persona")
+    def set_persona(req: PersonaReq) -> dict:
+        tok = persona_store.save(req.model_dump(exclude_none=True))
+        companion.apply_persona(tok)   # re-grounds + new chain root iff identity changed
+        bridge.log_event("persona_update", subject=tok.name,
+                         outcome=tok.identity_signature[:16],
+                         attributes={"token_sig": tok.token_signature[:16]})
+        return public_persona(tok)
+
+    @app.get("/companion/persona/lineage")
+    def persona_lineage() -> dict:
+        return {"lineage": persona_store.lineage()}
 
     # ── settings: voice (TTS) ────────────────────────────────────
     @app.get("/settings/voice")

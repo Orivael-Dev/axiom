@@ -3,18 +3,20 @@ import { motion } from "motion/react";
 import { fadeSlide } from "../motion";
 import { api } from "../api";
 import { speak } from "../voice";
-import type { VoiceSettings } from "../types";
+import type { VoiceSettings, PersonaToken } from "../types";
 
 type Msg = { who: "you" | "aria"; text: string; refused?: boolean };
 
 export function CompanionPanel() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [persona, setPersona] = useState<PersonaToken | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [voice, setVoice] = useState<VoiceSettings | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { api.getVoice().then(setVoice).catch(() => setVoice(null)); }, []);
+  useEffect(() => { api.getPersona().then(setPersona).catch(() => setPersona(null)); }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
   const speaking = !!voice?.enabled;
@@ -46,8 +48,13 @@ export function CompanionPanel() {
   return (
     <motion.div className="companion" variants={fadeSlide} initial="hidden" animate="visible">
       <div className="companion__head">
-        <span className="companion__avatar" aria-hidden>✦</span>
-        <span className="companion__name">Aria</span>
+        {persona?.self_image
+          ? <img className="companion__face" src={persona.self_image} alt={persona.name}
+                 title={persona.image_caption || persona.name} />
+          : <span className="companion__avatar" aria-hidden>✦</span>}
+        <span className="companion__name">{persona?.name ?? "Aria"}</span>
+        <button type="button" className="companion__mic" disabled
+                title="Voice input coming soon" aria-label="Voice input (coming soon)">🎙️</button>
         <button
           type="button"
           className="companion__voice"

@@ -6,3 +6,4 @@ dist/
 src-tauri/target/
 ax_os_*.jsonl
 ax_os_settings.json
+ax_os_persona/

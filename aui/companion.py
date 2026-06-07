@@ -93,6 +93,7 @@ class Companion:
                  search: Optional[Callable[[str], dict]] = None,
                  summarize: Optional[Callable[[str, list, list], str]] = None,
                  anticipation_cfg: Optional[Callable[[], dict]] = None,
+                 genesis: str = "",
                  session_id: str = "companion"):
         self.persona = persona
         self._generate: GenerateFn = generate or _reflective_reply
@@ -105,7 +106,9 @@ class Companion:
         self._search = search          # web search to answer unknown questions
         self._summarize = summarize    # tl;dr summariser for search results
         self._antic_cfg = anticipation_cfg  # () -> dict of QRF thresholds (settings)
-        self._master = MasterEventToken(session_id)  # MET chain of the conversation
+        self._session_id = session_id
+        self._genesis = genesis        # persona identity_signature → MET genesis
+        self._master = MasterEventToken(session_id, genesis=genesis)  # MET chain
         self._qrf = QRFEngine()        # reverse-QRF predictor fed by the MET chain
         self._last_search: dict = {}
         self._user_turns = 0
@@ -180,9 +183,18 @@ class Companion:
 
     def reset(self) -> None:
         self._history.clear()
-        self._master.reset()
+        self._master = MasterEventToken(self._session_id, genesis=self._genesis)
         self._qrf.reset()
         self._last_search = {}
+
+    def apply_persona(self, token) -> None:
+        """Adopt an edited PersonaToken. A true identity change (new
+        identity_signature) re-grounds the persona text and starts a fresh
+        conversation root; a model/voice change (same identity) is a no-op here."""
+        if token.identity_signature != self._genesis:
+            self.persona = token.persona_text()
+            self._genesis = token.identity_signature
+            self.reset()
 
     def say(self, text: str) -> CompanionReply:
         text = (text or "").strip()
@@ -489,7 +501,13 @@ def build_companion(bridge=None) -> Companion:
         from aui.settings import load
         return load().get("anticipation", {})
 
+    # Aria's signed identity (two-tier); the MET chain parents off her soul.
+    from aui.persona import PersonaStore
+    persona_tok = PersonaStore().load_or_mint()
+
     return Companion(generate=llm_generate, guard=guard, memory=memory,
                      fuse=fuse, retrospect=retrospect, curious=True, embed=llm_embed,
                      search=(search if bridge is not None else None), summarize=summarize,
-                     anticipation_cfg=antic_cfg)
+                     anticipation_cfg=antic_cfg,
+                     persona=persona_tok.persona_text(),
+                     genesis=persona_tok.identity_signature)

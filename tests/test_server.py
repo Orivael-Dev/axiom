@@ -416,3 +416,18 @@ def test_anticipation_settings_round_trip(client, tmp_path, monkeypatch):
     upd = client.post("/settings/anticipation", json={"min_obs": 5, "enabled": False}).json()
     assert upd["min_obs"] == 5 and upd["enabled"] is False
     assert client.get("/settings/anticipation").json()["min_obs"] == 5
+
+
+def test_persona_route_round_trip(tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_PERSONA", str(tmp_path))
+    monkeypatch.setenv("AXIOM_MASTER_KEY", "t")
+    c = TestClient(create_app(FakeBridge()))
+    cur = c.get("/companion/persona").json()
+    assert cur["name"] == "Aria" and cur["base_model"]
+    # outfit change → token sig changes, identity (soul) stays
+    upd = c.post("/companion/persona", json={"base_model": "qwen2.5:1b"}).json()
+    assert upd["base_model"] == "qwen2.5:1b"
+    assert upd["identity_signature"] == cur["identity_signature"]
+    assert upd["token_signature"] != cur["token_signature"]
+    lin = c.get("/companion/persona/lineage").json()["lineage"]
+    assert lin and lin[-1]["current"] is True
