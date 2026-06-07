@@ -628,6 +628,8 @@ def cell7_competitive(catalog_key: str | None = None) -> None:
         ("MET KV cache compression",    "✓ 9.5× on input side", "✗"),
         ("Task-selective token load",   "✓ only task METs in KV", "✗ full ctx always"),
         ("EventToken agent gating",     "✓ skip unused modules", "✗ full forward pass"),
+        ("QRF core pre-wake",           "✓ spawn in idle gap", "✗ always-on"),
+        ("Sleeping core power",         "✓ T0=0.2W idle→T2 only on demand", "✗ fixed 0.8W"),
         ("Open format (llama.cpp)",     "✓ GGUF", "✗ LiteRT-only"),
         ("Framework-agnostic",          "✓", "✗ Android/iOS only"),
         ("QAT quality boost",           "✗ (post-training only)", "✓ trained with quant"),
