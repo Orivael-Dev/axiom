@@ -235,6 +235,7 @@ def cell2_pack(output_dir: Path, dry_run: bool) -> dict:
         sys.executable, "axm_cli.py", "pack",
         "--model",      MODEL_ID,
         "--srd4",
+        "--real-pack",
         "--output",     str(axm_path),
         "--hardware-map", "cpu",
         "--stats-json", str(stats_json),
