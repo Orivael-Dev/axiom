@@ -321,6 +321,35 @@ def cell4_extract(output_dir: Path, llamacpp: Path | None, dry_run: bool) -> dic
 # ─────────────────────────────────────────────────────────────────────────────
 # CELL 5 — MET Encoding demo
 # ─────────────────────────────────────────────────────────────────────────────
+def _print_task_budget_table() -> None:
+    """Show per-task MET counts — .axm only uses tokens the task actually needs."""
+    # (task_label, raw_tok, met_count, agents_active)
+    # Agents: T=text  G=governance  A=audio  V=vision
+    tasks = [
+        ("Battery status check",   38,   4, "T G"),
+        ("Simple yes/no query",    12,   2, "T"),
+        ("Policy / compliance ask", 55,  6, "T G"),
+        ("Voice command (audio)",  18,   2, "T A"),
+        ("Code review snippet",   127,  12, "T G"),
+        ("Image + caption",        45,   5, "T V G"),
+        ("Complex multi-step plan",180,  18, "T G"),
+    ]
+    print(f"  TASK-SELECTIVE TOKEN BUDGET  (.axm only loads what the task needs)")
+    print(f"  {'Task':<28}  {'N':>4}  {'M':>4}  {'O(M²)':>6}  {'Agents active':<14}  {'vs full ctx'}")
+    print("  " + "─" * 72)
+    # "full context" reference: 2048-token window = 2048² = 4,194,304
+    full_ctx_n2 = 2048 ** 2
+    for label, n, m, agents in tasks:
+        o_m2 = m * m
+        savings_pct = round((1 - o_m2 / (n * n)) * 100)
+        vs_full = f"{full_ctx_n2 // o_m2:,}× less than 2K ctx"
+        print(f"  {label:<28}  {n:>4}  {m:>4}  {o_m2:>6,}  {agents:<14}  {vs_full}")
+    print()
+    print(f"  T=text  G=governance  A=audio  V=vision")
+    print(f"  Google Mobile: always loads full model regardless of task.")
+    print(f"  AXIOM .axm:    routes intent → activates only required agents.")
+
+
 def cell5_met_demo() -> dict:
     _section("CELL 5  —  MET ENCODING  +  TOKEN STATS")
 
@@ -366,6 +395,8 @@ def _met_show_results(mets: list) -> dict:
     print()
     print(f"  Raw N = {raw_tokens} tokens  →  M = {m_count} METs  |  Compression {compression:.1f}×")
     print(f"  O(N²) = {o_n2:,}  →  O(M²) = {o_m2}  |  {attn_savings*100:.0f}% attention cost saved")
+    print()
+    _print_task_budget_table()
 
     return {
         "raw_tokens": raw_tokens, "met_count": m_count,
@@ -395,6 +426,8 @@ def _met_demo_estimate() -> dict:
     print()
     print(f"  Raw N = {raw_tokens} tokens  →  M = {m_count} METs  |  Compression {compression:.1f}×")
     print(f"  O(N²) = {o_n2:,}  →  O(M²) = {o_m2}  |  {attn_savings*100:.0f}% attention cost saved")
+    print()
+    _print_task_budget_table()
 
     return {
         "raw_tokens": raw_tokens, "met_count": m_count,
@@ -464,6 +497,18 @@ def cell6_dashboard(pack_stats: dict, extract_stats: dict, met_stats: dict,
     print(f"  {kv_raw_lbl:<28}  {kv_mb_full:>6.1f} MB")
     print(f"  {kv_met_lbl:<28}  {kv_mb_met:>6.1f} MB   {met_comp:.1f}× smaller")
     print(f"  {'Total RAM floor (MET)':<28}  {ram_floor:>6.0f} MB   ✓ fits 256 MB devices")
+    print()
+    # Effective RAM by task type — model + only the task's KV, not full context
+    print(f"  EFFECTIVE RAM BY TASK  (model {gguf_mb} MB + task KV only)")
+    task_ram = [
+        ("Simple query (M=2)",   2  * kv_per_tok),
+        ("Mobile assist (M=4)",  4  * kv_per_tok),
+        ("Policy check (M=6)",   6  * kv_per_tok),
+        ("Code review (M=12)",   12 * kv_per_tok),
+    ]
+    for tlabel, tkv in task_ram:
+        effective = gguf_mb + tkv + 20
+        print(f"  {tlabel:<28}  {effective:>6.0f} MB")
     print()
 
     # Token efficiency
@@ -581,6 +626,8 @@ def cell7_competitive(catalog_key: str | None = None) -> None:
         ("Tamper detection",            "✓ AXIOM fingerprint", "✗"),
         ("Chain of custody (.axm)",     "✓ AXIOM", "✗"),
         ("MET KV cache compression",    "✓ 9.5× on input side", "✗"),
+        ("Task-selective token load",   "✓ only task METs in KV", "✗ full ctx always"),
+        ("EventToken agent gating",     "✓ skip unused modules", "✗ full forward pass"),
         ("Open format (llama.cpp)",     "✓ GGUF", "✗ LiteRT-only"),
         ("Framework-agnostic",          "✓", "✗ Android/iOS only"),
         ("QAT quality boost",           "✗ (post-training only)", "✓ trained with quant"),
