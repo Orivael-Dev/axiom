@@ -50,20 +50,21 @@ _BRANCH   = "claude/srd-prototype-benchmark-JRtv1"
 MODEL_ID   = "HuggingFaceTB/SmolLM2-135M-Instruct"
 MODEL_SLUG = "smollm2_135m"
 
-# Known models: (hf_id, params_b, display_name, cpu_tok_s, mob_tok_s, mob_device)
+# Known models: (hf_id, params_b, display_name, cpu_tok_s, mob_tok_s, mob_device, gguf_q4km_mb)
+# gguf_q4km_mb: empirical Q4_K_M GGUF size (None = use formula).
+# NOTE: models with large vocabularies (SmolLM 49K, Qwen 152K) have a big F16 embedding
+# that inflates GGUF size well above the params*4.07/8 estimate.
 _MODEL_CATALOG: dict[str, tuple] = {
-    # key           hf_id                                  params_b  display          cpu   mob  mob_device
-    "smollm135":   ("HuggingFaceTB/SmolLM2-135M-Instruct",  0.135, "SmolLM2-135M",  30,   55,  "Pixel 7 NNAPI"),
-    "smollm360":   ("HuggingFaceTB/SmolLM2-360M-Instruct",  0.360, "SmolLM2-360M",  22,   40,  "Pixel 7 NNAPI"),
-    "gemma3-1b":   ("google/gemma-3-1b-it",                  1.0,  "Gemma 3 1B",    18,   35,  "Pixel 8 NNAPI"),
-    "gemma3-4b":   ("google/gemma-3-4b-it",                  4.3,  "Gemma 3 4B",     7,   18,  "Pixel 8 Pro NNAPI"),
-    "qwen2.5-0.5": ("Qwen/Qwen2.5-0.5B-Instruct",           0.5,  "Qwen2.5-0.5B",  25,   50,  "Pixel 7 NNAPI"),
-    "qwen2.5-1.5": ("Qwen/Qwen2.5-1.5B-Instruct",           1.5,  "Qwen2.5-1.5B",  15,   28,  "Pixel 8 NNAPI"),
+    # key           hf_id                                  params_b  display          cpu   mob  mob_device          gguf_mb
+    "smollm135":   ("HuggingFaceTB/SmolLM2-135M-Instruct",  0.135, "SmolLM2-135M",  30,   55,  "Pixel 7 NNAPI",    119),
+    "smollm360":   ("HuggingFaceTB/SmolLM2-360M-Instruct",  0.360, "SmolLM2-360M",  22,   40,  "Pixel 7 NNAPI",    250),
+    "gemma3-1b":   ("google/gemma-3-1b-it",                  1.0,  "Gemma 3 1B",    18,   35,  "Pixel 8 NNAPI",    None),
+    "gemma3-4b":   ("google/gemma-3-4b-it",                  4.3,  "Gemma 3 4B",     7,   18,  "Pixel 8 Pro NNAPI",None),
+    "qwen2.5-0.5": ("Qwen/Qwen2.5-0.5B-Instruct",           0.5,  "Qwen2.5-0.5B",  25,   50,  "Pixel 7 NNAPI",    None),
+    "qwen2.5-1.5": ("Qwen/Qwen2.5-1.5B-Instruct",           1.5,  "Qwen2.5-1.5B",  15,   28,  "Pixel 8 NNAPI",    None),
     # Gemma 4 MoE — total params derived from BF16 size (E=Effective active params)
-    # BF16: E2B=11.4 GB → 6.1B total params  |  E4B=17.9 GB → 9.6B total params
-    # HF IDs are best-guess; adjust if Google uses a different naming scheme
-    "gemma4-e2b":  ("google/gemma-4-2b-it",                  6.1,  "Gemma 4 E2B",    5,   12,  "Pixel 9 NNAPI"),
-    "gemma4-e4b":  ("google/gemma-4-4b-it",                  9.6,  "Gemma 4 E4B",    3,    8,  "Pixel 9 Pro NNAPI"),
+    "gemma4-e2b":  ("google/gemma-4-2b-it",                  6.1,  "Gemma 4 E2B",    5,   12,  "Pixel 9 NNAPI",    None),
+    "gemma4-e4b":  ("google/gemma-4-4b-it",                  9.6,  "Gemma 4 E4B",    3,    8,  "Pixel 9 Pro NNAPI",None),
 }
 
 # Google QAT published sizes from Gemma 4 launch (in-memory, LiteRT-LM)
@@ -691,9 +692,11 @@ def _resolve_model(args) -> tuple[str, str, dict]:
     catalog_entry = _MODEL_CATALOG.get(args.model) or _MODEL_CATALOG.get(key)
 
     if catalog_entry:
-        hf_id, params_b, display, cpu_s, mob_s, mob_dev = catalog_entry
+        hf_id, params_b, display, cpu_s, mob_s, mob_dev, gguf_known = catalog_entry
         ref = _compute_ref(params_b, cpu_tok_s=cpu_s, mob_tok_s=mob_s)
         ref["mob_device"] = mob_dev
+        if gguf_known is not None:
+            ref["gguf_mb"] = gguf_known
         slug  = re.sub(r"[^a-z0-9_]", "_", hf_id.lower().split("/")[-1])
         return hf_id, slug, ref
 
