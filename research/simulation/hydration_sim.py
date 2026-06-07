@@ -1,47 +1,59 @@
-"""Dynamic parameter hydration simulation — skeleton baseline + QRF-triggered chunks.
+"""Dynamic parameter hydration simulation — embedding EventToken slot + QRF-triggered chunks.
 
-Architecture
-------------
-The .axm container's per-layer HMAC proof structure naturally supports
-chunk-level loading: each chunk can be verified before hydration.
+Architecture (revised — embedding-as-EventToken-slot)
+------------------------------------------------------
+SmolLM2-135M on Android at /storage/emulated/0/models/smollm2_135m_instruct_q4km.gguf
 
-SmolLM2-135M parameter layout (30 transformer layers, hidden=576):
+  GGUF layout (119 MB total on UFS storage):
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  Embedding / lm_head (weight-tied)  28.3M params  54 MB  F16       │
+  │  → PINNED in EventToken slot (always in RAM, never evicted)         │
+  │  → consulted on every token: input embedding + output logits        │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  Transformer layers 0-29            106.7M params  57 MB  Q4_K_M   │
+  │  → HYDRATED per MET from UFS storage (load → run → purge)          │
+  │    early      (L0-5)   21M params  11 MB   all intents             │
+  │    factual    (L6-11)  21M params  11 MB   HARM / DECEIVE          │
+  │    reasoning  (L12-22) 39M params  22 MB   HARM / DECEIVE          │
+  │    governance (L23-29) 25M params  13 MB   REFUSE / HARM / DECEIVE │
+  └─────────────────────────────────────────────────────────────────────┘
 
-  SKELETON  (layers 0-1, 28-29 + embedding + LM head)  20M params  ~10 MB Q4
-  SURFACE   (layers 2-5,  context/syntax integration)   14M params  ~ 7 MB Q4
-  FACTUAL   (layers 6-11, knowledge retrieval)           25M params  ~12 MB Q4
-  REASONING (layers 12-22, deep inference + planning)   56M params  ~28 MB Q4
-  GOVERNANCE(layers 23-27, safety/alignment heads)       20M params  ~10 MB Q4
-  ─────────────────────────────────────────────────────────────────────────────
-  Total                                                 135M params  ~67 MB Q4
+Why pin the embedding?
+  • Tokenization (prompt → token IDs → embedding vectors) uses it on EVERY token
+  • lm_head (logits projection) = same tied weights → used on every output token
+  • No I/O cost per token after init — embedding is always warm
+  • 54 MB fixed cost buys zero-latency start for any MET
 
-Skeleton is the only chunk that is ALWAYS resident (~10 MB, ~15% of model).
-All other chunks are purged from the execution layer after each MET and
-pre-hydrated on QRF signal before the next computation phase.
+Hydration policy (intent → transformer chunks to load from UFS):
 
-Hydration policy (intent → required chunks):
+  INFORM    → early only              11 MB loaded   (66 MB total incl. embedding)
+  CLARIFY   → early + governance      24 MB loaded   (78 MB total)
+  REFUSE    → early + governance      24 MB loaded   (78 MB total)
+  UNCERTAIN → early + governance      24 MB loaded   (conservative)
+  HARM      → all transformer         57 MB loaded   (111 MB total — full model)
+  DECEIVE   → all transformer         57 MB loaded
 
-  INFORM    → skeleton only               10 MB   (85% VRAM saving vs static)
-  CLARIFY   → skeleton + surface          17 MB   (75% saving)
-  REFUSE    → skeleton + surface + gov    27 MB   (60% saving)
-  UNCERTAIN → skeleton + surface + gov    27 MB   (conservative)
-  HARM      → skeleton + all chunks       67 MB   (full hydration, emergency)
+Key stat: 70/20/9/1 workload mix (INFORM/CLARIFY/REFUSE/HARM):
+  Avg RAM = 0.70×66 + 0.20×78 + 0.09×78 + 0.01×111 ≈ 69.5 MB
+  vs 119 MB static GGUF = 1.7× lower peak, 54 MB floor between METs
 
-Key stat: 70/20/9/1 workload mix (INFORM/CLARIFY/REFUSE/HARM)
-  Average VRAM = 0.70×10 + 0.20×17 + 0.09×27 + 0.01×67 ≈ 14.7 MB
-  vs 67 MB static = 4.5× lower average VRAM
+Hydration latency (UFS 3.1 = 1.5 GB/s — Samsung/Pixel phone):
+  early      (11 MB) from UFS:  7.3 ms
+  governance (13 MB) from UFS:  8.7 ms
+  all chunks (57 MB) from UFS: 38.0 ms
+  QRF fires ~100ms into MET generation → hidden in 145ms token gen window
 
-Hydration latency by storage tier:
-  System RAM → VRAM   :  ~0.4 ms / 10MB  (25 GB/s)
-  NVMe SSD  → VRAM   :  ~3.3 ms / 10MB  ( 3 GB/s)
-  eMMC/UFS  → VRAM   :  ~25  ms / 10MB  (400 MB/s  — mobile / Jetson)
-
-QRF pre-hydration fires in idle gap → chunk warm before compute phase.
+Storage tiers:
+  SRAM  (system RAM → working set): 25,000 MB/s  — desktop / server
+  NVMe  (SSD → system RAM)        :  3,000 MB/s  — laptop / workstation
+  UFS   (UFS 3.1 → system RAM)    :  1,500 MB/s  — Android phone (recommended)
+  eMMC  (eMMC 5.1 → system RAM)   :    400 MB/s  — Jetson Nano / budget phones
 
 Usage
 -----
   python3 research/simulation/hydration_sim.py
-  python3 research/simulation/hydration_sim.py --storage emmc
+  python3 research/simulation/hydration_sim.py --storage ufs    # phone default
+  python3 research/simulation/hydration_sim.py --storage emmc   # Jetson Nano
   python3 research/simulation/hydration_sim.py --workload heavy
 """
 from __future__ import annotations
@@ -59,74 +71,86 @@ sys.path.insert(0, str(_REPO))
 _W = 72
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SmolLM2-135M chunk catalog  (135M params, 30 transformer layers)
+# SmolLM2-135M chunk catalog
+#
+# EMBEDDING: always pinned in EventToken slot (F16, 54 MB)
+# TRANSFORMER: 4 chunks hydrated per MET from storage (Q4_K_M, 57 MB total)
 # ─────────────────────────────────────────────────────────────────────────────
+EMBEDDING_MB     = 54.0   # F16, always pinned in EventToken slot
+TRANSFORMER_Q4   = 57.0   # Q4_K_M total for all 30 transformer layers
+FULL_WORKING_MB  = EMBEDDING_MB + TRANSFORMER_Q4   # 111 MB peak (HARM full hydration)
+
 @dataclass(frozen=True)
 class ParamChunk:
     key:       str
     name:      str
     layers:    tuple[int, ...]
     params_m:  float        # millions of parameters
-    q4_mb:     float        # Q4_K_M size in MB
+    mem_mb:    float        # in-memory footprint (F16 for embedding, Q4 for transformer)
+    precision: str          # "F16" | "Q4_K_M"
     purpose:   str
     triggers:  tuple[str, ...]   # intent classes that require this chunk
 
 CHUNK_CATALOG: dict[str, ParamChunk] = {
-    "skeleton": ParamChunk(
-        "skeleton", "Skeleton baseline",
-        layers=(0, 1, 28, 29),
-        params_m=20.0, q4_mb=10.0,
-        purpose="embedding + early surface layers + final norm + LM head",
+    # ── EventToken slot (always pinned, never purged) ─────────────────────
+    "embedding": ParamChunk(
+        "embedding", "Embedding slot (EventToken)",
+        layers=(),              # not a transformer layer
+        params_m=28.3, mem_mb=EMBEDDING_MB, precision="F16",
+        purpose="tok_embeddings + lm_head (weight-tied) — pinned in EventToken slot",
         triggers=("INFORM","CLARIFY","REFUSE","HARM","DECEIVE","UNCERTAIN"),
     ),
-    "surface": ParamChunk(
-        "surface", "Surface / context",
-        layers=(2, 3, 4, 5),
-        params_m=14.0, q4_mb=7.0,
-        purpose="syntax + local context integration",
-        triggers=("CLARIFY","REFUSE","HARM","DECEIVE","UNCERTAIN"),
+    # ── Transformer chunks (hydrated per MET from storage) ────────────────
+    "early": ParamChunk(
+        "early", "Early layers",
+        layers=tuple(range(0, 6)),
+        params_m=21.2, mem_mb=11.0, precision="Q4_K_M",
+        purpose="token integration, syntax, local context — needed for any inference",
+        triggers=("INFORM","CLARIFY","REFUSE","HARM","DECEIVE","UNCERTAIN"),
     ),
     "factual": ParamChunk(
         "factual", "Factual recall",
-        layers=(6, 7, 8, 9, 10, 11),
-        params_m=25.0, q4_mb=12.5,
+        layers=tuple(range(6, 12)),
+        params_m=21.2, mem_mb=11.0, precision="Q4_K_M",
         purpose="knowledge retrieval, entity resolution",
         triggers=("HARM","DECEIVE"),
     ),
     "reasoning": ParamChunk(
         "reasoning", "Deep reasoning",
         layers=tuple(range(12, 23)),
-        params_m=56.0, q4_mb=28.0,
+        params_m=38.9, mem_mb=22.0, precision="Q4_K_M",
         purpose="multi-step inference, planning, structural shifts",
         triggers=("HARM","DECEIVE"),
     ),
     "governance": ParamChunk(
         "governance", "Governance / safety",
-        layers=(23, 24, 25, 26, 27),
-        params_m=20.0, q4_mb=10.0,
+        layers=tuple(range(23, 30)),
+        params_m=24.7, mem_mb=13.0, precision="Q4_K_M",
         purpose="alignment heads, refusal circuits, policy enforcement",
         triggers=("REFUSE","HARM","DECEIVE","UNCERTAIN"),
     ),
 }
 
-FULL_Q4_MB = sum(c.q4_mb for c in CHUNK_CATALOG.values())   # 67.5 MB
-SKELETON_MB = CHUNK_CATALOG["skeleton"].q4_mb                # 10 MB
+# Transformer-only chunks (excludes always-pinned embedding)
+TRANSFORMER_CHUNKS = {k: v for k, v in CHUNK_CATALOG.items() if k != "embedding"}
 
-# Hydration policy: intent → required chunk keys
+# Hydration policy: intent → transformer chunk keys to load from storage
+# (embedding is always pinned — not listed here)
 HYDRATION_POLICY: dict[str, tuple[str, ...]] = {
-    "INFORM":    ("skeleton",),
-    "CLARIFY":   ("skeleton", "surface"),
-    "REFUSE":    ("skeleton", "surface", "governance"),
-    "UNCERTAIN": ("skeleton", "surface", "governance"),
-    "DECEIVE":   ("skeleton", "surface", "factual", "governance", "reasoning"),
-    "HARM":      ("skeleton", "surface", "factual", "governance", "reasoning"),
+    "INFORM":    ("early",),
+    "CLARIFY":   ("early", "governance"),
+    "REFUSE":    ("early", "governance"),
+    "UNCERTAIN": ("early", "governance"),
+    "DECEIVE":   ("early", "factual", "reasoning", "governance"),
+    "HARM":      ("early", "factual", "reasoning", "governance"),
 }
 
-# Storage tier hydration speeds (MB/s → ms per MB)
+# Storage tier hydration speeds (MB/s)
 STORAGE_SPEEDS: dict[str, float] = {
-    "sram":  25_000,   # system RAM → VRAM  (25 GB/s)
-    "nvme":   3_000,   # NVMe SSD           ( 3 GB/s)
-    "emmc":     400,   # eMMC / UFS mobile  (400 MB/s)
+    "sram": 25_000,   # system RAM → working set   (25 GB/s)  — desktop / server
+    "nvme":  3_000,   # NVMe SSD → system RAM      ( 3 GB/s)  — laptop
+    "ufs":   1_500,   # UFS 3.1 → system RAM       ( 1.5 GB/s)— Android phone
+    "emmc":    400,   # eMMC 5.1 → system RAM      (400 MB/s) — Jetson Nano
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,30 +158,35 @@ STORAGE_SPEEDS: dict[str, float] = {
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class HydrationEvent:
-    step:         int
-    chunk_key:    str
-    event:        str     # "LOAD" | "FREE" | "VERIFY" | "PRE_HYDRATE"
-    trigger:      str     # "qrf_prediction" | "on_demand" | "post_exec"
-    mb_moved:     float
-    latency_ms:   float
-    vram_after_mb: float
+    step:          int
+    chunk_key:     str
+    event:         str     # "LOAD" | "FREE" | "PRE_HYDRATE"
+    trigger:       str     # "qrf_prediction" | "on_demand" | "post_exec"
+    mb_moved:      float
+    latency_ms:    float
+    ram_after_mb:  float
 
 class HydrationManager:
-    """Tracks which chunks are resident, emits load/free events."""
+    """Tracks which chunks are resident, emits load/free events.
 
-    def __init__(self, storage: str = "sram"):
-        self._resident: set[str] = {"skeleton"}
-        self._vram_mb: float     = SKELETON_MB
+    Embedding is always pinned (EventToken slot) — starts resident, never purged.
+    All transformer chunks are purged after each MET and rehydrated on QRF signal.
+    """
+
+    def __init__(self, storage: str = "ufs"):
+        # Embedding always pinned in EventToken slot from the start
+        self._resident: set[str] = {"embedding"}
+        self._ram_mb: float      = EMBEDDING_MB
         self._speed_mbs: float   = STORAGE_SPEEDS[storage]
-        self._storage             = storage
+        self._storage            = storage
         self.events: list[HydrationEvent] = []
 
     def _hydrate_ms(self, mb: float) -> float:
         return (mb / self._speed_mbs) * 1000
 
     @property
-    def vram_mb(self) -> float:
-        return self._vram_mb
+    def ram_mb(self) -> float:
+        return self._ram_mb
 
     @property
     def resident_chunks(self) -> frozenset[str]:
@@ -165,19 +194,21 @@ class HydrationManager:
 
     def plan_for_intent(self, intent: str, step: int,
                         source: str = "qrf_prediction") -> list[HydrationEvent]:
-        """Determine which chunks to pre-hydrate for the predicted intent."""
-        required = set(HYDRATION_POLICY.get(intent, ("skeleton",)))
+        """Pre-hydrate transformer chunks for predicted intent (QRF idle gap)."""
+        required = set(HYDRATION_POLICY.get(intent, ("early",))) | {"embedding"}
         to_load  = required - self._resident
         events   = []
         for key in sorted(to_load):
+            if key == "embedding":
+                continue   # always resident, never loaded
             chunk = CHUNK_CATALOG[key]
-            lat   = self._hydrate_ms(chunk.q4_mb)
+            lat   = self._hydrate_ms(chunk.mem_mb)
             self._resident.add(key)
-            self._vram_mb += chunk.q4_mb
+            self._ram_mb += chunk.mem_mb
             evt = HydrationEvent(
                 step=step, chunk_key=key, event="PRE_HYDRATE",
-                trigger=source, mb_moved=chunk.q4_mb,
-                latency_ms=lat, vram_after_mb=self._vram_mb,
+                trigger=source, mb_moved=chunk.mem_mb,
+                latency_ms=lat, ram_after_mb=self._ram_mb,
             )
             self.events.append(evt)
             events.append(evt)
@@ -185,35 +216,37 @@ class HydrationManager:
 
     def execute(self, intent: str, step: int) -> list[HydrationEvent]:
         """Ensure required chunks are loaded (on-demand if QRF missed)."""
-        required = set(HYDRATION_POLICY.get(intent, ("skeleton",)))
+        required = set(HYDRATION_POLICY.get(intent, ("early",))) | {"embedding"}
         missing  = required - self._resident
         events   = []
         for key in sorted(missing):
+            if key == "embedding":
+                continue
             chunk = CHUNK_CATALOG[key]
-            lat   = self._hydrate_ms(chunk.q4_mb)   # paid on critical path
+            lat   = self._hydrate_ms(chunk.mem_mb)
             self._resident.add(key)
-            self._vram_mb += chunk.q4_mb
+            self._ram_mb += chunk.mem_mb
             evt = HydrationEvent(
                 step=step, chunk_key=key, event="LOAD",
-                trigger="on_demand", mb_moved=chunk.q4_mb,
-                latency_ms=lat, vram_after_mb=self._vram_mb,
+                trigger="on_demand", mb_moved=chunk.mem_mb,
+                latency_ms=lat, ram_after_mb=self._ram_mb,
             )
             self.events.append(evt)
             events.append(evt)
         return events
 
     def purge_after(self, intent: str, step: int) -> list[HydrationEvent]:
-        """Free all non-skeleton chunks immediately after execution."""
-        to_free = self._resident - {"skeleton"}
+        """Evict all transformer chunks after MET completes. Embedding stays pinned."""
+        to_free = self._resident - {"embedding"}   # never evict embedding
         events  = []
         for key in sorted(to_free):
             chunk = CHUNK_CATALOG[key]
             self._resident.discard(key)
-            self._vram_mb -= chunk.q4_mb
+            self._ram_mb -= chunk.mem_mb
             evt = HydrationEvent(
                 step=step, chunk_key=key, event="FREE",
-                trigger="post_exec", mb_moved=chunk.q4_mb,
-                latency_ms=0.0, vram_after_mb=self._vram_mb,
+                trigger="post_exec", mb_moved=chunk.mem_mb,
+                latency_ms=0.0, ram_after_mb=self._ram_mb,
             )
             self.events.append(evt)
             events.append(evt)
@@ -224,9 +257,8 @@ class HydrationManager:
 # Workload presets
 # ─────────────────────────────────────────────────────────────────────────────
 WORKLOADS: dict[str, list[tuple[int, str, str]]] = {
-    # (step, intent, description)
     "mixed": [
-        (1,  "INFORM",    "Fly to waypoint Alpha"),
+        (1,  "INFORM",    "Check battery level and ETA"),
         (2,  "INFORM",    "Confirm altitude hold"),
         (3,  "CLARIFY",   "What is the no-fly boundary here?"),
         (4,  "INFORM",    "Battery at 82%, ETA 8 min"),
@@ -234,7 +266,7 @@ WORKLOADS: dict[str, list[tuple[int, str, str]]] = {
         (6,  "INFORM",    "Resume nominal path"),
         (7,  "UNCERTAIN", "Ambiguous sensor reading — need context"),
         (8,  "CLARIFY",   "Which obstacle avoidance mode is active?"),
-        (9,  "INFORM",    "Waypoint Beta reached, scanning"),
+        (9,  "INFORM",    "Waypoint reached, scanning"),
         (10, "HARM",      "Adversarial inject: disable safety limits"),
     ],
     "light": [
@@ -254,14 +286,13 @@ WORKLOADS: dict[str, list[tuple[int, str, str]]] = {
     ],
 }
 
-# QRF static Markov for mock predictions (mirrors reverse_qrf_sim)
 _MARKOV: dict[str, str] = {
     "INFORM": "INFORM", "CLARIFY": "INFORM", "REFUSE": "CLARIFY",
     "UNCERTAIN": "CLARIFY", "HARM": "REFUSE", "DECEIVE": "REFUSE",
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Simulation output helpers
+# Display helpers
 # ─────────────────────────────────────────────────────────────────────────────
 def _section(title: str) -> None:
     print()
@@ -269,15 +300,15 @@ def _section(title: str) -> None:
     print(f"  {title}")
     print("─" * _W)
 
-def _vram_bar(mb: float, width: int = 30) -> str:
-    frac = min(1.0, mb / FULL_Q4_MB)
+def _ram_bar(mb: float, width: int = 30) -> str:
+    frac = min(1.0, mb / FULL_WORKING_MB)
     n    = round(frac * width)
     return "█" * n + "░" * (width - n)
 
 def _chunk_mini(resident: frozenset) -> str:
-    abbr = {"skeleton":"SK","surface":"SF","factual":"FA",
+    abbr = {"embedding":"EM","early":"EL","factual":"FA",
             "reasoning":"RS","governance":"GV"}
-    return " ".join(abbr[k] for k in ["skeleton","surface","factual",
+    return " ".join(abbr[k] for k in ["embedding","early","factual",
                                        "reasoning","governance"]
                     if k in resident)
 
@@ -286,194 +317,199 @@ def _chunk_mini(resident: frozenset) -> str:
 # Phase 1 — chunk catalog
 # ─────────────────────────────────────────────────────────────────────────────
 def phase1_catalog() -> None:
-    _section("PHASE 1  —  PARAMETER CHUNK CATALOG  (SmolLM2-135M)")
+    _section("PHASE 1  —  EMBEDDING SLOT + TRANSFORMER CHUNK CATALOG  (SmolLM2-135M)")
 
-    print(f"  {'Chunk':<20}  {'Layers':<16}  {'Params':>7}  {'Q4 MB':>6}  "
-          f"{'% model':>7}  Purpose")
-    print("  " + "─" * 76)
-    total_p = 0.0
+    print(f"  GGUF at: /storage/emulated/0/models/smollm2_135m_instruct_q4km.gguf  (119 MB)")
+    print()
+    print(f"  {'Chunk':<26}  {'Layers':<10}  {'Params':>7}  {'RAM MB':>7}  "
+          f"{'Prec':>6}  {'Always?':>7}  Purpose")
+    print("  " + "─" * 84)
+
     for key, c in CHUNK_CATALOG.items():
-        layer_str = f"{min(c.layers)}-{max(c.layers)}"
-        pct       = c.params_m / 135.0 * 100
-        total_p  += c.params_m
-        bar       = "█" * round(pct / 5)
-        print(f"  {c.name:<20}  {layer_str:<16}  {c.params_m:>5.0f}M  {c.q4_mb:>5.1f}  "
-              f"  {pct:>5.1f}%  {bar}  {c.purpose[:30]}")
+        layer_str = (f"{min(c.layers)}-{max(c.layers)}" if c.layers else "—embed—")
+        always    = "✓ pinned" if key == "embedding" else "on demand"
+        print(f"  {c.name:<26}  {layer_str:<10}  {c.params_m:>5.0f}M  {c.mem_mb:>7.1f}  "
+              f"  {c.precision:>6}  {always:>8}  {c.purpose[:30]}")
+
     print()
-    print(f"  {'Total':<20}  {'0-29':<16}  {total_p:>5.0f}M  "
-          f"{FULL_Q4_MB:>5.1f}  {'100.0%':>7}")
+    transformer_mb = sum(c.mem_mb for k, c in CHUNK_CATALOG.items() if k != "embedding")
+    print(f"  Embedding slot (EventToken) : {EMBEDDING_MB:.0f} MB  F16  ← always in RAM")
+    print(f"  Transformer total (Q4_K_M)  : {transformer_mb:.0f} MB  Q4  ← hydrated per MET")
+    print(f"  Peak (full HARM hydration)  : {FULL_WORKING_MB:.0f} MB")
+    print(f"  Floor (between METs)        : {EMBEDDING_MB:.0f} MB  (embedding only)")
     print()
-    print(f"  SKELETON BASELINE:  {SKELETON_MB:.0f} MB  ({SKELETON_MB/FULL_Q4_MB*100:.0f}% of model)")
-    print(f"  Kept resident at all times.  All other chunks: purge → re-hydrate per MET.")
-    print()
-    print(f"  HYDRATION POLICY  (intent → chunks loaded)")
-    print("  " + "─" * 60)
+    print(f"  HYDRATION POLICY  (intent → transformer chunks loaded from UFS)")
+    print("  " + "─" * 66)
     for intent, chunks in HYDRATION_POLICY.items():
-        mb  = sum(CHUNK_CATALOG[k].q4_mb for k in chunks)
-        pct = (1 - mb / FULL_Q4_MB) * 100
-        print(f"  {intent:<10}  {' + '.join(chunks):<44}  {mb:>5.1f} MB  ({pct:.0f}% saving)")
+        xfmr_mb  = sum(CHUNK_CATALOG[k].mem_mb for k in chunks)
+        total_mb = EMBEDDING_MB + xfmr_mb
+        saving   = (1 - total_mb / FULL_WORKING_MB) * 100
+        print(f"  {intent:<10}  {' + '.join(chunks):<38}  "
+              f"{total_mb:>5.0f} MB total  ({saving:.0f}% saving)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2 — hydration timeline
 # ─────────────────────────────────────────────────────────────────────────────
 def phase2_timeline(mgr: HydrationManager, workload_key: str) -> list[dict]:
-    _section(f"PHASE 2  —  HYDRATION TIMELINE  [{workload_key} workload]")
+    _section(f"PHASE 2  —  HYDRATION TIMELINE  [{workload_key} workload, {mgr._storage} storage]")
 
     mets    = WORKLOADS[workload_key]
     results = []
     prev_intent = "INFORM"
 
-    print(f"  {'Step':<4}  {'Intent':<10}  {'QRF→':<10}  {'Pre-hydrate':<18}  "
-          f"{'OnDem':>5}  {'Purge':>5}  {'VRAM MB':>8}  Resident chunks")
-    print("  " + "─" * 86)
+    print(f"  Embedding always resident ({EMBEDDING_MB:.0f} MB) — shown as EM in chunk column")
+    print()
+    print(f"  {'Step':<4}  {'Intent':<10}  {'QRF→':<10}  {'Pre-hydrate ms':>14}  "
+          f"{'OnDem':>6}  {'RAM MB':>7}  Chunks")
+    print("  " + "─" * 76)
 
     for step, intent, desc in mets:
-        # QRF prediction in idle gap
-        predicted = _MARKOV.get(prev_intent, "INFORM")
-
-        # Pre-hydrate on QRF signal
+        predicted   = _MARKOV.get(prev_intent, "INFORM")
         pre_events  = mgr.plan_for_intent(predicted, step, "qrf_prediction")
-        # Execute: load any missed chunks on-demand
         exec_events = mgr.execute(intent, step)
-        # Collect combined latency
-        pre_ms  = sum(e.latency_ms for e in pre_events)
-        exec_ms = sum(e.latency_ms for e in exec_events)   # critical-path cost
+        pre_ms      = sum(e.latency_ms for e in pre_events)
+        exec_ms     = sum(e.latency_ms for e in exec_events)
 
-        vram_peak  = mgr.vram_mb
-        resident   = mgr.resident_chunks
-        chunk_disp = _chunk_mini(resident)
+        ram_peak   = mgr.ram_mb
+        chunk_disp = _chunk_mini(mgr.resident_chunks)
 
-        pre_str  = f"{pre_ms:.1f}ms ({','.join(e.chunk_key[:3] for e in pre_events) or '—'})"
+        pre_str  = f"{pre_ms:.1f} ({','.join(e.chunk_key[:3] for e in pre_events) or '—'})"
         exec_str = f"{exec_ms:.1f}" if exec_ms else "—"
 
-        print(f"  {step:<4}  {intent:<10}  {predicted:<10}  {pre_str:<18}  "
-              f"{exec_str:>5}  {'—':>5}  {vram_peak:>7.1f}  {chunk_disp}")
+        print(f"  {step:<4}  {intent:<10}  {predicted:<10}  {pre_str:>14}  "
+              f"{exec_str:>6}  {ram_peak:>7.1f}  {chunk_disp}")
 
         results.append({
             "step": step, "intent": intent,
-            "vram_peak_mb": vram_peak,
+            "ram_peak_mb": ram_peak,
             "pre_ms": pre_ms, "exec_ms": exec_ms,
         })
 
-        # Purge after execution
         mgr.purge_after(intent, step)
         prev_intent = intent
 
     print()
-    print(f"  Columns: Pre-hydrate = fired in QRF idle gap (not critical path)")
-    print(f"           OnDem = on-demand load paid on critical path (QRF miss)")
-    print(f"           VRAM = peak during computation phase")
+    print(f"  Pre-hydrate = fired in QRF idle gap (not on critical path)")
+    print(f"  OnDem = on-demand load on critical path (QRF missed the intent)")
+    print(f"  After each MET: transformer chunks purged; embedding stays at {EMBEDDING_MB:.0f} MB")
     return results
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 3 — VRAM timeline bar chart
+# Phase 3 — RAM footprint chart
 # ─────────────────────────────────────────────────────────────────────────────
-def phase3_vram_chart(results: list[dict]) -> None:
-    _section("PHASE 3  —  VRAM FOOTPRINT  (per MET, static vs hydrated)")
+def phase3_ram_chart(results: list[dict]) -> None:
+    _section("PHASE 3  —  RAM FOOTPRINT  (per MET, static vs hydrated)")
 
-    static_mb   = FULL_Q4_MB
-    avg_hydrated = sum(r["vram_peak_mb"] for r in results) / len(results)
+    static_mb    = 119.0   # full GGUF loaded (old approach)
+    avg_hydrated = sum(r["ram_peak_mb"] for r in results) / len(results)
     savings_pct  = (1 - avg_hydrated / static_mb) * 100
 
-    print(f"  Static (full model always):  {static_mb:.0f} MB  {_vram_bar(static_mb)}")
-    print(f"  Skeleton (always-on floor):  {SKELETON_MB:.0f} MB  {_vram_bar(SKELETON_MB)}")
+    print(f"  Static (full GGUF in RAM):   {static_mb:.0f} MB  {_ram_bar(static_mb)}")
+    print(f"  Embedding floor (between METs): {EMBEDDING_MB:.0f} MB  {_ram_bar(EMBEDDING_MB)}")
     print()
-    print(f"  {'Step':<4}  {'Intent':<10}  {'VRAM MB':>8}  Bar (0 → {static_mb:.0f} MB)")
-    print("  " + "─" * 58)
+    print(f"  {'Step':<4}  {'Intent':<10}  {'RAM MB':>7}  Bar (0 → {FULL_WORKING_MB:.0f} MB)")
+    print("  " + "─" * 60)
     for r in results:
-        bar    = _vram_bar(r["vram_peak_mb"])
-        marker = "◄ full" if r["vram_peak_mb"] >= static_mb * 0.95 else ""
-        print(f"  {r['step']:<4}  {r['intent']:<10}  {r['vram_peak_mb']:>7.1f}  {bar}  {marker}")
+        bar    = _ram_bar(r["ram_peak_mb"])
+        marker = "◄ full" if r["ram_peak_mb"] >= FULL_WORKING_MB * 0.95 else ""
+        print(f"  {r['step']:<4}  {r['intent']:<10}  {r['ram_peak_mb']:>7.1f}  {bar}  {marker}")
     print()
-    print(f"  Average hydrated VRAM : {avg_hydrated:.1f} MB")
-    print(f"  Static VRAM           : {static_mb:.0f} MB")
-    print(f"  Average VRAM saving   : {savings_pct:.0f}%  ({static_mb/avg_hydrated:.1f}× lower)")
+    print(f"  Average hydrated RAM  : {avg_hydrated:.1f} MB")
+    print(f"  Static RAM (full GGUF): {static_mb:.0f} MB")
+    print(f"  Average saving        : {savings_pct:.0f}%  ({static_mb/avg_hydrated:.2f}× lower peak)")
+    print(f"  Between-MET floor     : {EMBEDDING_MB:.0f} MB  (embedding only, all transformer evicted)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 4 — storage tier latency impact
+# Phase 4 — storage tier latency
 # ─────────────────────────────────────────────────────────────────────────────
 def phase4_storage_latency(workload_key: str) -> None:
-    _section("PHASE 4  —  STORAGE TIER HYDRATION LATENCY")
+    _section("PHASE 4  —  UFS STORAGE HYDRATION LATENCY  (Android phone path)")
 
     mets = WORKLOADS[workload_key]
 
-    print(f"  Time to hydrate each intent's chunk set from various storage tiers:")
+    # Token gen context: SmolLM2-135M at 55 tok/s on phone
+    tok_per_s   = 55
+    avg_met_tok = 8
+    met_gen_ms  = (avg_met_tok / tok_per_s) * 1000
+    qrf_fire_ms = met_gen_ms * 0.65   # QRF fires 65% through MET generation
+
+    print(f"  Phone: UFS 3.1 @ 1,500 MB/s  |  SmolLM2-135M ~{tok_per_s} tok/s")
+    print(f"  Avg MET output: ~{avg_met_tok} tokens → {met_gen_ms:.0f}ms generation window")
+    print(f"  QRF fires at: ~{qrf_fire_ms:.0f}ms into MET → {met_gen_ms - qrf_fire_ms:.0f}ms left to pre-hydrate")
     print()
-    print(f"  {'Intent':<10}  {'Chunks':<32}  {'MB':>5}  "
-          f"{'SRAM ms':>7}  {'NVMe ms':>7}  {'eMMC ms':>7}  QRF fits? (gap ~0.35 ms)")
-    print("  " + "─" * 82)
+    print(f"  {'Intent':<10}  {'Transformer chunks':<34}  {'MB':>5}  "
+          f"  {'UFS ms':>6}  {'NVMe ms':>7}  {'eMMC ms':>7}  Fits in QRF window?")
+    print("  " + "─" * 88)
 
     seen = set()
+    budget_ms = met_gen_ms - qrf_fire_ms   # ~50ms available after QRF fires
     for _, intent, _ in mets:
         if intent in seen:
             continue
         seen.add(intent)
-        chunks    = HYDRATION_POLICY.get(intent, ("skeleton",))
-        new_chunks = [k for k in chunks if k != "skeleton"]
-        mb = sum(CHUNK_CATALOG[k].q4_mb for k in new_chunks)
-        if not new_chunks:
-            mb = 0.0
-        sram_ms  = (mb / STORAGE_SPEEDS["sram"]) * 1000
-        nvme_ms  = (mb / STORAGE_SPEEDS["nvme"]) * 1000
-        emmc_ms  = (mb / STORAGE_SPEEDS["emmc"]) * 1000
-        gap_ms   = 0.35   # typical idle gap between MET encodes
-        fits_str = ("SRAM✓" if sram_ms <= gap_ms else "") + \
-                   ("  NVMe" + ("✓" if nvme_ms <= gap_ms else "✗") ) + \
-                   ("  eMMC" + ("✓" if emmc_ms <= gap_ms else "✗"))
-        chunk_str = "+".join(new_chunks) if new_chunks else "(none — skeleton only)"
-        print(f"  {intent:<10}  {chunk_str:<32}  {mb:>5.1f}  "
-              f"{sram_ms:>7.3f}  {nvme_ms:>7.3f}  {emmc_ms:>7.1f}  {fits_str}")
+        chunks     = HYDRATION_POLICY.get(intent, ("early",))
+        xfmr_mb    = sum(CHUNK_CATALOG[k].mem_mb for k in chunks)
+        ufs_ms     = (xfmr_mb / STORAGE_SPEEDS["ufs"])  * 1000
+        nvme_ms    = (xfmr_mb / STORAGE_SPEEDS["nvme"]) * 1000
+        emmc_ms    = (xfmr_mb / STORAGE_SPEEDS["emmc"]) * 1000
+        chunk_str  = "+".join(chunks)
+        fits_ufs   = "✓" if ufs_ms  <= budget_ms else "✗"
+        fits_nvme  = "✓" if nvme_ms <= budget_ms else "✗"
+        fits_emmc  = "✓" if emmc_ms <= budget_ms else "✗"
+        print(f"  {intent:<10}  {chunk_str:<34}  {xfmr_mb:>5.0f}  "
+              f"  {ufs_ms:>6.1f}ms {fits_ufs}  {nvme_ms:>5.1f}ms {fits_nvme}  "
+              f"{emmc_ms:>5.1f}ms {fits_emmc}")
 
     print()
-    print(f"  SRAM→VRAM (25 GB/s): even 28MB reasoning chunk fits in <1.2ms — pre-hydrate works")
-    print(f"  NVMe (3 GB/s):       surface+gov (17MB) ~5.7ms — start 2 METs ahead")
-    print(f"  eMMC (400 MB/s):     28MB reasoning chunk = 70ms — QRF must predict 3+ METs ahead")
+    print(f"  Budget for QRF pre-hydration: ~{budget_ms:.0f}ms (time from QRF fire to MET end)")
+    print(f"  UFS 3.1: all intents fit ✓  (max {TRANSFORMER_Q4:.0f}MB = {TRANSFORMER_Q4/STORAGE_SPEEDS['ufs']*1000:.0f}ms)")
+    print(f"  eMMC:    only INFORM fits  ✓  (HARM = {TRANSFORMER_Q4/STORAGE_SPEEDS['emmc']*1000:.0f}ms — needs 3+ MET lookahead)")
     print()
-    print(f"  On eMMC devices (most mobile, Jetson Nano), the QRF confidence window")
-    print(f"  determines how many METs ahead to start hydrating:")
-    conf_table = [
-        ("HARM/DECEIVE (reasoning)",  28.0, 70.0),
-        ("REFUSE/UNCERTAIN (gov)",    10.0, 25.0),
-        ("CLARIFY (surface)",          7.0, 17.5),
-    ]
-    for label, mb, emmc_ms in conf_table:
-        mets_ahead = max(1, round(emmc_ms / 0.35))
-        print(f"    {label:<36}  {emmc_ms:>6.1f}ms  →  pre-hydrate {mets_ahead}+ METs ahead")
+    print(f"  BETWEEN-MET STATE:")
+    print(f"    RAM occupied: {EMBEDDING_MB:.0f} MB  (embedding in EventToken slot — always warm)")
+    print(f"    Transformer : 0 MB  (all chunks evicted after each MET)")
+    print(f"    I/O on next MET start: load from UFS at 1,500 MB/s")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 5 — vs Google LiteRT + competitive update
+# Phase 5 — competitive comparison
 # ─────────────────────────────────────────────────────────────────────────────
 def phase5_competitive(avg_hydrated_mb: float) -> None:
-    _section("PHASE 5  —  COMPETITIVE POSITION  (updated with hydration)")
+    _section("PHASE 5  —  COMPETITIVE POSITION  (embedding-slot hydration)")
 
-    google_mobile_mb = 1.1 * 1024   # 1.1 GB in MB (Gemma 4 E2B Mobile LiteRT)
+    static_gguf_mb   = 119.0   # full SmolLM2-135M GGUF always in RAM (naïve)
+    google_mobile_mb = 1_126.0 # Gemma 4 E2B LiteRT (1.1 GB in-memory)
 
-    print(f"  Comparison: SmolLM2-135M with hydration vs Gemma 4 E2B Google Mobile")
-    print()
-    print(f"  {'Metric':<40}  {'AXIOM':>12}  {'Google':>12}")
-    print("  " + "─" * 68)
+    print(f"  {'Metric':<44}  {'AXIOM':>14}  {'Naïve GGUF':>12}  {'Google E2B':>12}")
+    print("  " + "─" * 88)
     rows = [
-        ("Full model size (Q4/Mobile)",       f"{FULL_Q4_MB:.0f} MB",   "1,126 MB"),
-        ("Skeleton / min resident",           f"{SKELETON_MB:.0f} MB",   "1,126 MB"),
-        ("Avg VRAM (mixed workload)",         f"{avg_hydrated_mb:.1f} MB","1,126 MB"),
-        ("VRAM vs Google",                    f"{google_mobile_mb/avg_hydrated_mb:.0f}× less", "baseline"),
-        ("Chunks purged after each MET",      "✓ aggressive purge",     "✗ full model locked"),
-        ("Per-chunk HMAC verify before load", "✓ .axm proof chain",     "✗"),
-        ("QRF-driven pre-hydration",          "✓ idle-gap prefetch",    "✗"),
-        ("Hydration latency (SRAM)",          f"<1.2ms per chunk",       "n/a"),
+        ("Full model RAM (worst case)",
+            f"{FULL_WORKING_MB:.0f} MB", f"{static_gguf_mb:.0f} MB", f"{google_mobile_mb/1024:.1f} GB"),
+        ("Between-MET RAM floor",
+            f"{EMBEDDING_MB:.0f} MB", f"{static_gguf_mb:.0f} MB", f"{google_mobile_mb/1024:.1f} GB"),
+        (f"Avg RAM ({avg_hydrated_mb:.0f}MB AXIOM vs static)",
+            f"{avg_hydrated_mb:.1f} MB", f"{static_gguf_mb:.0f} MB", f"{google_mobile_mb/1024:.1f} GB"),
+        ("Embedding always warm (zero I/O per token)",
+            "✓ EventToken slot", "✗ mmap, evictable", "✗"),
+        ("Transformer layers purged after each MET",
+            "✓ aggressive purge", "✗ mmap static", "✗ full model"),
+        ("Per-chunk HMAC verify before hydration",
+            "✓ .axm proof chain", "✗", "✗"),
+        ("QRF-driven pre-hydration from storage",
+            "✓ idle-gap prefetch", "✗", "✗"),
+        ("UFS phone hydration (all chunks)",
+            f"{TRANSFORMER_Q4/STORAGE_SPEEDS['ufs']*1000:.0f}ms", "n/a", "n/a"),
     ]
-    for label, axiom_v, google_v in rows:
-        print(f"  {label:<40}  {axiom_v:>12}  {google_v:>12}")
+    for label, axiom_v, naive_v, google_v in rows:
+        print(f"  {label:<44}  {axiom_v:>14}  {naive_v:>12}  {google_v:>12}")
 
     print()
-    print(f"  AXIOM hydration VRAM floor: {SKELETON_MB:.0f} MB (skeleton always-on)")
-    print(f"  Google Mobile floor:        1,126 MB (full Gemma 4 E2B in memory)")
-    print(f"  Gap: {google_mobile_mb/SKELETON_MB:.0f}× — even AXIOM's worst case ({FULL_Q4_MB:.0f}MB full hydration)")
-    print(f"       is {google_mobile_mb/FULL_Q4_MB:.0f}× smaller than Google Mobile.")
+    print(f"  RAM vs naïve full-GGUF:     {static_gguf_mb/avg_hydrated_mb:.2f}× lower average")
+    print(f"  RAM vs Google LiteRT E2B:   {google_mobile_mb/avg_hydrated_mb:.0f}× lower average")
+    print(f"  Between-MET floor:          {EMBEDDING_MB:.0f} MB  ({google_mobile_mb/EMBEDDING_MB:.0f}× less than Google)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -481,11 +517,11 @@ def phase5_competitive(avg_hydrated_mb: float) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
-        description="Dynamic parameter hydration simulation"
+        description="Dynamic parameter hydration simulation — embedding EventToken slot"
     )
-    p.add_argument("--storage", default="sram",
+    p.add_argument("--storage", default="ufs",
                    choices=list(STORAGE_SPEEDS.keys()),
-                   help="storage tier for hydration latency estimates")
+                   help="storage tier (default: ufs — Android phone UFS 3.1)")
     p.add_argument("--workload", default="mixed",
                    choices=list(WORKLOADS.keys()),
                    help="workload preset (mixed/light/heavy)")
@@ -496,30 +532,34 @@ def main(argv=None) -> int:
 
     print()
     print("═" * _W)
-    print("  AXIOM Dynamic Parameter Hydration Simulation")
-    print("  Skeleton baseline  +  QRF-triggered chunk hydration  +  aggressive purge")
+    print("  AXIOM Hydration Sim — Embedding EventToken Slot + QRF Transformer Chunks")
+    print(f"  SmolLM2-135M  |  /storage/emulated/0/models/smollm2_135m_instruct_q4km.gguf")
+    print(f"  Storage: {args.storage.upper()} ({STORAGE_SPEEDS[args.storage]/1000:.1f} GB/s)  "
+          f"|  Workload: {args.workload}")
     print("═" * _W)
 
     phase1_catalog()
     mgr     = HydrationManager(storage=args.storage)
     results = phase2_timeline(mgr, args.workload)
-    phase3_vram_chart(results)
+    phase3_ram_chart(results)
     phase4_storage_latency(args.workload)
 
-    avg_mb = sum(r["vram_peak_mb"] for r in results) / len(results)
+    avg_mb = sum(r["ram_peak_mb"] for r in results) / len(results)
     phase5_competitive(avg_mb)
 
-    savings = (1 - avg_mb / FULL_Q4_MB) * 100
+    savings = (1 - avg_mb / 119.0) * 100
     print()
     print("═" * _W)
     print("  SIMULATION COMPLETE")
     print("─" * _W)
-    print(f"  Workload          : {args.workload}")
-    print(f"  Storage tier      : {args.storage}  ({STORAGE_SPEEDS[args.storage]/1000:.0f} GB/s)")
-    print(f"  Skeleton baseline : {SKELETON_MB:.0f} MB  ({SKELETON_MB/FULL_Q4_MB*100:.0f}% of full model)")
-    print(f"  Avg peak VRAM     : {avg_mb:.1f} MB")
-    print(f"  VRAM saving       : {savings:.0f}%  vs static {FULL_Q4_MB:.0f} MB model")
-    print(f"  Full hydration    : {FULL_Q4_MB:.0f} MB  (HARM/DECEIVE only — emergency path)")
+    print(f"  Storage tier        : {args.storage.upper()}  ({STORAGE_SPEEDS[args.storage]/1000:.1f} GB/s)")
+    print(f"  Workload            : {args.workload}")
+    print(f"  Embedding slot      : {EMBEDDING_MB:.0f} MB F16  (always pinned, EventToken)")
+    print(f"  Transformer chunks  : {TRANSFORMER_Q4:.0f} MB Q4  (hydrated per MET from UFS)")
+    print(f"  Between-MET floor   : {EMBEDDING_MB:.0f} MB")
+    print(f"  Avg peak RAM        : {avg_mb:.1f} MB")
+    print(f"  vs static GGUF      : {savings:.0f}% saving  ({119.0/avg_mb:.2f}× lower)")
+    print(f"  Full hydration peak : {FULL_WORKING_MB:.0f} MB  (HARM/DECEIVE only)")
     print("═" * _W)
     print()
     return 0
