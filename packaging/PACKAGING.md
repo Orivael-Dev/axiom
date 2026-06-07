@@ -180,3 +180,29 @@ Then in **⚙ Settings → Local LLM**, set **Embedding model = `nomic-embed-tex
 (and enable the local LLM). Curiosity then scores candidates by embedding
 cosine and **fails soft** to the keyword heuristic if embeddings are
 unreachable.
+
+---
+
+## Anticipation (reverse-QRF)
+
+Every turn feeds the conversation's **Master Event Token** chain into a
+reverse-QRF predictor that forecasts your next intent. Once the prediction has
+**earned trust** — the learned table is driving, enough transitions have been
+seen, and it's been accurate — Aria starts *acting* on it: proactively offering
+to look things up, to slow down, or to reassure. Below the threshold she only
+observes.
+
+Tune it in **⚙ Settings → Anticipation** (persisted to `AX_OS_SETTINGS`, applied
+live):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Enabled | on | turn the proactive behaviour off entirely (still predicts, never acts) |
+| Observations before acting | 3 | transitions to capture before the threshold can trip |
+| Confidence floor | 0.6 | predictor confidence required |
+| Accuracy floor | 0.6 | proven hit-rate required |
+| Turns between nudges | 3 | cooldown so she doesn't repeat |
+
+Raise the floors / observations to make her more cautious; lower them to make
+her anticipate sooner. The current read (`predicted_next_intent`, `confidence`,
+`basis`, `hit_rate`, `mature`) is returned on every `/companion/say`.
