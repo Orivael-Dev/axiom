@@ -33,6 +33,24 @@ with st.sidebar:
                                      "music", "medical"])
     go = st.button("Open workspace", type="primary")
 
+    with st.expander("⚙ Settings"):
+        try:
+            vis = requests.get(f"{API}/settings/vision", timeout=10).json()
+        except Exception:  # noqa: BLE001 — settings are optional; show defaults
+            vis = {"enabled": False, "model": "moondream"}
+        st.caption("Vision — let Aria see images you show her")
+        v_on = st.toggle("Enable vision", value=bool(vis.get("enabled")),
+                         help="A local VLM captions the image; the caption is "
+                              "screened and folded into her reply.")
+        v_model = st.text_input("Vision model (VLM)", vis.get("model", "moondream"))
+        if st.button("Save"):
+            try:
+                requests.post(f"{API}/settings/vision",
+                              json={"enabled": v_on, "model": v_model}, timeout=10)
+                st.success(f"Vision {'enabled' if v_on else 'disabled'}.")
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Could not update settings: {e}")
+
 
 def _assemble(goal: str, domain: str) -> dict:
     payload = {"goal": goal}
