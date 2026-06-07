@@ -92,6 +92,7 @@ class Companion:
                  embed: Optional[Callable[[Any], Any]] = None,
                  search: Optional[Callable[[str], dict]] = None,
                  summarize: Optional[Callable[[str, list, list], str]] = None,
+                 anticipation_cfg: Optional[Callable[[], dict]] = None,
                  session_id: str = "companion"):
         self.persona = persona
         self._generate: GenerateFn = generate or _reflective_reply
@@ -103,6 +104,7 @@ class Companion:
         self._embed = embed            # optional embedder → latent-salience curiosity
         self._search = search          # web search to answer unknown questions
         self._summarize = summarize    # tl;dr summariser for search results
+        self._antic_cfg = anticipation_cfg  # () -> dict of QRF thresholds (settings)
         self._master = MasterEventToken(session_id)  # MET chain of the conversation
         self._qrf = QRFEngine()        # reverse-QRF predictor fed by the MET chain
         self._last_search: dict = {}
@@ -114,11 +116,14 @@ class Companion:
     def _anticipatory_guidance(self):
         """Once the reverse-QRF prediction is mature, return (model_hint, suffix,
         key) for what Aria should proactively do — else None. Cooldown-gated."""
-        a = self._qrf.anticipation()
+        cfg = self._antic_settings()
+        if not cfg["enabled"]:
+            return None
+        a = self.anticipation
         if not a.get("mature"):
             return None
         g = _ANTICIPATE.get(a["predicted_next_intent"])
-        if not g or (self._user_turns - self._last_anticipated_at) < 3:
+        if not g or (self._user_turns - self._last_anticipated_at) < cfg["cooldown"]:
             return None
         return g
 
@@ -126,10 +131,33 @@ class Companion:
     def master_token(self) -> MasterEventToken:
         return self._master
 
+    def _antic_settings(self) -> dict:
+        from aui.qrf import MATURE_MIN_OBS, MATURE_CONF, MATURE_HIT
+        c = {}
+        if self._antic_cfg:
+            try:
+                c = self._antic_cfg() or {}
+            except Exception:
+                c = {}
+        return {
+            "enabled": bool(c.get("enabled", True)),
+            "min_obs": int(c.get("min_obs", MATURE_MIN_OBS)),
+            "min_confidence": float(c.get("min_confidence", MATURE_CONF)),
+            "min_hit_rate": float(c.get("min_hit_rate", MATURE_HIT)),
+            "cooldown": int(c.get("cooldown", 3)),
+        }
+
     @property
     def anticipation(self) -> dict:
-        """Reverse-QRF's current read on the next turn (fed by the MET chain)."""
-        return self._qrf.anticipation()
+        """Reverse-QRF's current read on the next turn (fed by the MET chain),
+        with maturity judged against the configurable thresholds."""
+        cfg = self._antic_settings()
+        a = self._qrf.anticipation(min_obs=cfg["min_obs"],
+                                   conf_threshold=cfg["min_confidence"],
+                                   hit_threshold=cfg["min_hit_rate"])
+        if not cfg["enabled"]:
+            a["mature"] = False
+        return a
 
     def _curious_allowed(self) -> bool:
         return self._curious and (self._user_turns - self._last_curious_at) >= 2
@@ -457,6 +485,11 @@ def build_companion(bridge=None) -> Companion:
         except Exception:
             return ""
 
+    def antic_cfg() -> dict:
+        from aui.settings import load
+        return load().get("anticipation", {})
+
     return Companion(generate=llm_generate, guard=guard, memory=memory,
                      fuse=fuse, retrospect=retrospect, curious=True, embed=llm_embed,
-                     search=(search if bridge is not None else None), summarize=summarize)
+                     search=(search if bridge is not None else None), summarize=summarize,
+                     anticipation_cfg=antic_cfg)

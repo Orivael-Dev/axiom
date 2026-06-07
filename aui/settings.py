@@ -33,6 +33,15 @@ _DEFAULT_VOICE = {
 }
 
 
+_DEFAULT_ANTICIPATION = {
+    "enabled": True,
+    "min_obs": 3,            # transitions to observe before acting
+    "min_confidence": 0.6,   # predictor confidence floor
+    "min_hit_rate": 0.6,     # proven accuracy floor
+    "cooldown": 3,           # turns between proactive moves
+}
+
+
 def _path() -> str:
     return os.environ.get("AX_OS_SETTINGS", "ax_os_settings.json")
 
@@ -49,7 +58,8 @@ def load() -> dict:
             data = {}
     llm = {**_DEFAULT_LLM, **(data.get("llm") or {})}
     voice = {**_DEFAULT_VOICE, **(data.get("voice") or {})}
-    return {**data, "llm": llm, "voice": voice}
+    antic = {**_DEFAULT_ANTICIPATION, **(data.get("anticipation") or {})}
+    return {**data, "llm": llm, "voice": voice, "anticipation": antic}
 
 
 def update_llm(patch: dict) -> dict:
@@ -100,3 +110,24 @@ def public_voice() -> dict:
     api_key = voice.pop("api_key", "")
     voice["api_key_set"] = bool(api_key)
     return voice
+
+
+def update_anticipation(patch: dict) -> dict:
+    """Apply a partial anticipation-config update and persist."""
+    with _LOCK:
+        data = load()
+        antic = data["anticipation"]
+        for k in ("enabled", "min_obs", "min_confidence", "min_hit_rate", "cooldown"):
+            if k in patch and patch[k] is not None:
+                antic[k] = patch[k]
+        data["anticipation"] = antic
+        try:
+            with open(_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except OSError:
+            pass
+        return data
+
+
+def public_anticipation() -> dict:
+    return dict(load()["anticipation"])

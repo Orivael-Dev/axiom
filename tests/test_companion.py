@@ -413,3 +413,24 @@ def test_anticipation_does_not_fire_for_neutral_inform():
     c = Companion(generate=_echo)
     replies = [c.say(f"note {i}").text for i in range(7)]
     assert all("look that up" not in r.lower() and "slow down" not in r.lower() for r in replies)
+
+
+# ── configurable anticipation thresholds ────────────────────────────────────
+
+def test_anticipation_can_be_disabled_via_config():
+    guard = lambda t: {"detected": False, "intent_class": "CLARIFY"}
+    c = Companion(generate=_echo, guard=guard, anticipation_cfg=lambda: {"enabled": False})
+    replies = [c.say(f"t {i}").text for i in range(8)]
+    assert all("slow down" not in r.lower() for r in replies)  # disabled → never acts
+
+
+def test_anticipation_threshold_is_configurable():
+    guard = lambda t: {"detected": False, "intent_class": "CLARIFY"}
+    # very strict: needs many observations → stays cold across a short chat
+    strict = Companion(generate=_echo, guard=guard,
+                       anticipation_cfg=lambda: {"min_obs": 50})
+    assert all("slow down" not in strict.say(f"t {i}").text.lower() for i in range(6))
+    # lenient → matures fast
+    easy = Companion(generate=_echo, guard=guard,
+                     anticipation_cfg=lambda: {"min_obs": 1, "cooldown": 1})
+    assert any("slow down" in easy.say(f"t {i}").text.lower() for i in range(6))

@@ -84,6 +84,14 @@ class TtsReq(BaseModel):
     text: str
 
 
+class AnticipationReq(BaseModel):
+    enabled: Optional[bool] = None
+    min_obs: Optional[int] = None
+    min_confidence: Optional[float] = None
+    min_hit_rate: Optional[float] = None
+    cooldown: Optional[int] = None
+
+
 # ── weather widget (Open-Meteo — keyless, cached) ────────────────
 _WEATHER_CACHE: dict[str, tuple[float, dict]] = {}
 _WEATHER_TTL = 600.0  # seconds
@@ -355,6 +363,17 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
     def test_llm_settings() -> dict:
         from aui.planner_local import probe
         return probe()
+
+    @app.get("/settings/anticipation")
+    def get_anticipation_settings() -> dict:
+        from aui.settings import public_anticipation
+        return public_anticipation()
+
+    @app.post("/settings/anticipation")
+    def set_anticipation_settings(req: AnticipationReq) -> dict:
+        from aui.settings import update_anticipation, public_anticipation
+        update_anticipation(req.model_dump(exclude_none=True))
+        return public_anticipation()
 
     # ── widgets ──────────────────────────────────────────────────
     @app.get("/widgets/time")

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { fadeSlide } from "../motion";
 import { api } from "../api";
 import { speak, hasBrowserVoice } from "../voice";
-import type { Weather, LlmSettings, LlmProbe, VoiceSettings } from "../types";
+import type { Weather, LlmSettings, LlmProbe, VoiceSettings, AnticipationSettings } from "../types";
 import type { Theme } from "../theme";
 
 type Panel = "clock" | "weather" | "settings";
@@ -124,13 +124,20 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
   const [probe, setProbe] = useState<LlmProbe | null>(null);
   const [busy, setBusy] = useState(false);
   const [voice, setVoice] = useState<VoiceSettings | null>(null);
+  const [antic, setAntic] = useState<AnticipationSettings | null>(null);
 
   useEffect(() => { api.getLlm().then(setLlm).catch(() => setLlm(null)); }, []);
   useEffect(() => { api.getVoice().then(setVoice).catch(() => setVoice(null)); }, []);
+  useEffect(() => { api.getAnticipation().then(setAntic).catch(() => setAntic(null)); }, []);
 
   async function saveVoice(patch: Partial<VoiceSettings>) {
     const next = await api.setVoice(patch).catch(() => null);
     if (next) setVoice(next);
+  }
+
+  async function saveAntic(patch: Partial<AnticipationSettings>) {
+    const next = await api.setAnticipation(patch).catch(() => null);
+    if (next) setAntic(next);
   }
 
   async function save(patch: Partial<LlmSettings> & { api_key?: string }) {
@@ -281,6 +288,43 @@ function SettingsView({ theme, onTheme }: { theme: Theme; onTheme: (t: Theme) =>
             <span className="settings__probe is-bad">✕ no on-device voice here — use Piper</span>
           )}
         </div>
+      </section>
+
+      <section className="settings__group">
+        <div className="settings__row">
+          <div className="settings__label">Anticipation</div>
+          <label className="settings__switch">
+            <input
+              type="checkbox"
+              checked={!!antic?.enabled}
+              disabled={!antic}
+              onChange={(e) => saveAntic({ enabled: e.target.checked })}
+            />
+            <span>{antic?.enabled ? "on" : "off"}</span>
+          </label>
+        </div>
+        <p className="settings__hint">
+          When Aria has seen enough of your conversation to predict it reliably,
+          she starts acting on it (offering to look things up, slowing down). Tune
+          how much trust she needs first.
+        </p>
+        {([
+          ["min_obs", "Observations before acting", 1, 50, 1],
+          ["min_confidence", "Confidence floor", 0, 1, 0.05],
+          ["min_hit_rate", "Accuracy floor", 0, 1, 0.05],
+          ["cooldown", "Turns between nudges", 1, 20, 1],
+        ] as const).map(([key, label, min, max, step]) => (
+          <label className="settings__field" key={key}>
+            <span>{label}: <strong>{antic ? antic[key] : "—"}</strong></span>
+            <input
+              type="range" min={min} max={max} step={step}
+              value={antic ? Number(antic[key]) : min}
+              disabled={!antic}
+              onChange={(e) => setAntic(antic ? { ...antic, [key]: Number(e.target.value) } : antic)}
+              onMouseUp={(e) => saveAntic({ [key]: Number((e.target as HTMLInputElement).value) })}
+            />
+          </label>
+        ))}
       </section>
     </div>
   );

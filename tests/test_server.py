@@ -407,3 +407,12 @@ def test_widget_weather_fails_soft_offline(client, monkeypatch):
                         lambda lat, lon: (_ for _ in ()).throw(OSError("no network")))
     r = client.get("/widgets/weather?lat=51.5&lon=-0.1")
     assert r.status_code == 200 and r.json()["ok"] is False
+
+
+def test_anticipation_settings_round_trip(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    cur = client.get("/settings/anticipation").json()
+    assert cur["enabled"] is True and cur["min_obs"] == 3
+    upd = client.post("/settings/anticipation", json={"min_obs": 5, "enabled": False}).json()
+    assert upd["min_obs"] == 5 and upd["enabled"] is False
+    assert client.get("/settings/anticipation").json()["min_obs"] == 5

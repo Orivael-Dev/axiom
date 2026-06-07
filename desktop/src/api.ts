@@ -3,6 +3,7 @@
 import type {
   WorkspacePlan, AuditTrail, Health, Agent, Weather, ImmuneResult,
   LlmSettings, LlmProbe, SearchResults, CompanionReply, VoiceSettings,
+  AnticipationSettings,
 } from "./types";
 
 export const BASE: string =
@@ -48,4 +49,7 @@ export const api = {
   setVoice: (patch: Partial<VoiceSettings>) => post<VoiceSettings>("/settings/voice", patch),
   tts: (text: string) =>
     post<{ ok: boolean; audio_b64?: string; mime?: string; reason?: string }>("/tts", { text }),
+  getAnticipation: () => get<AnticipationSettings>("/settings/anticipation"),
+  setAnticipation: (patch: Partial<AnticipationSettings>) =>
+    post<AnticipationSettings>("/settings/anticipation", patch),
 };

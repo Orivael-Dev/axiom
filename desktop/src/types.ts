@@ -120,3 +120,11 @@ export interface VoiceSettings {
   base_url: string;
   api_key_set?: boolean;
 }
+
+export interface AnticipationSettings {
+  enabled: boolean;
+  min_obs: number;
+  min_confidence: number;
+  min_hit_rate: number;
+  cooldown: number;
+}

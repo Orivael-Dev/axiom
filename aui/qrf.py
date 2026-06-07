@@ -98,11 +98,13 @@ class QRFEngine:
         self._pending = self._learner.predict(intent_class, self._history, self._static)
         return self.anticipation()
 
-    def anticipation(self) -> dict:
+    def anticipation(self, *, min_obs: int = MATURE_MIN_OBS,
+                     conf_threshold: float = MATURE_CONF,
+                     hit_threshold: float = MATURE_HIT) -> dict:
         intent, conf, basis = self._pending or ("INFORM", 0.5, "uniform")
         hit_rate = round(self._hits / self._total, 3) if self._total else None
-        mature = (basis == "learned" and self._total >= MATURE_MIN_OBS
-                  and conf >= MATURE_CONF and (hit_rate or 0.0) >= MATURE_HIT)
+        mature = (basis == "learned" and self._total >= min_obs
+                  and conf >= conf_threshold and (hit_rate or 0.0) >= hit_threshold)
         return {
             "predicted_next_intent": intent,
             "confidence": conf,
