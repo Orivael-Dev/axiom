@@ -411,18 +411,30 @@ def _reflective_reply(messages: List[dict]) -> str:
     return f"I hear you — {snippet}. Tell me more about that?"
 
 
-def llm_generate(messages: List[dict]) -> str:
-    """Talk through the configured local LLM when enabled; else reflect offline."""
+def llm_generate(messages: List[dict], *, model: Optional[str] = None) -> str:
+    """Talk through the configured local LLM when enabled; else reflect offline.
+    ``model`` overrides the LLM-settings model — used to drive Aria's chat with her
+    persona's base_model while the settings model stays the workspace planner's."""
     from aui.settings import load
     cfg = load()["llm"]
     if not cfg.get("enabled"):
         return _reflective_reply(messages)
     from aui.planner_local import _post
     out = _post(cfg, "/chat/completions", {
-        "model": cfg["model"], "messages": messages,
+        "model": model or cfg["model"], "messages": messages,
         "temperature": 0.7, "stream": False,
     }, timeout=30)
     return out["choices"][0]["message"]["content"]
+
+
+def _persona_model() -> Optional[str]:
+    """Aria's chat model = her persona's base_model (live), or None to defer to
+    the LLM-settings model."""
+    try:
+        from aui.persona import PersonaStore
+        return PersonaStore().load_or_mint().base_model or None
+    except Exception:
+        return None
 
 
 class BridgeMemory:
@@ -493,9 +505,13 @@ def build_companion(bridge=None) -> Companion:
             {"role": "user", "content": f"Question: {question}\n\nContext:\n{ctx}"},
         ]
         try:
-            return (llm_generate(msgs) or "").strip()
+            return (llm_generate(msgs, model=_persona_model()) or "").strip()
         except Exception:
             return ""
+
+    def generate(messages: List[dict]) -> str:
+        # Aria speaks with her persona's base_model (live), not the planner's.
+        return llm_generate(messages, model=_persona_model())
 
     def antic_cfg() -> dict:
         from aui.settings import load
@@ -505,7 +521,7 @@ def build_companion(bridge=None) -> Companion:
     from aui.persona import PersonaStore
     persona_tok = PersonaStore().load_or_mint()
 
-    return Companion(generate=llm_generate, guard=guard, memory=memory,
+    return Companion(generate=generate, guard=guard, memory=memory,
                      fuse=fuse, retrospect=retrospect, curious=True, embed=llm_embed,
                      search=(search if bridge is not None else None), summarize=summarize,
                      anticipation_cfg=antic_cfg,

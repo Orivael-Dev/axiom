@@ -434,3 +434,39 @@ def test_anticipation_threshold_is_configurable():
     easy = Companion(generate=_echo, guard=guard,
                      anticipation_cfg=lambda: {"min_obs": 1, "cooldown": 1})
     assert any("slow down" in easy.say(f"t {i}").text.lower() for i in range(6))
+
+
+# ── persona base_model drives Aria's generation ─────────────────────────────
+
+def test_llm_generate_uses_given_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    from aui.settings import update_llm
+    update_llm({"enabled": True})
+    import aui.planner_local as pl
+    seen = {}
+    monkeypatch.setattr(pl, "_post", lambda cfg, path, body, timeout: (
+        seen.update(body) or {"choices": [{"message": {"content": "hi"}}]}))
+    from aui.companion import llm_generate
+    llm_generate([{"role": "user", "content": "x"}], model="aria-1b")
+    assert seen["model"] == "aria-1b"          # persona model overrides settings model
+
+
+def test_llm_generate_falls_back_to_settings_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    from aui.settings import update_llm
+    update_llm({"enabled": True, "model": "planner-x"})
+    import aui.planner_local as pl
+    seen = {}
+    monkeypatch.setattr(pl, "_post", lambda cfg, path, body, timeout: (
+        seen.update(body) or {"choices": [{"message": {"content": "hi"}}]}))
+    from aui.companion import llm_generate
+    llm_generate([{"role": "user", "content": "x"}])   # no model → settings model
+    assert seen["model"] == "planner-x"
+
+
+def test_persona_model_resolves_base_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("AX_OS_PERSONA", str(tmp_path / "persona"))
+    from aui.persona import PersonaStore
+    from aui.companion import _persona_model
+    PersonaStore(str(tmp_path / "persona")).save({"base_model": "phi3:mini"})
+    assert _persona_model() == "phi3:mini"
