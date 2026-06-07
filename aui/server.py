@@ -263,7 +263,8 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
         mt = companion.master_token
         return {**r.to_dict(), "voice_enabled": bool(voice.get("enabled")),
                 "voice_engine": voice.get("engine"), "turns": len(companion.history),
-                "met_head": mt.head, "met_turns": len(mt.links)}
+                "met_head": mt.head, "met_turns": len(mt.links),
+                "anticipation": companion.anticipation}
 
     @app.post("/companion/listen")
     def companion_listen() -> dict:

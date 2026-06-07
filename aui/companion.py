@@ -27,6 +27,7 @@ from typing import Any, Callable, List, Optional, Protocol
 from aui.curiosity import find_gap
 from aui.knowledge import is_knowledge_question, is_more_request, tldr, sources_block
 from aui.master_token import MasterEventToken
+from aui.qrf import QRFEngine
 
 RISK_INTENTS = frozenset({"HARM", "DECEIVE"})
 
@@ -92,6 +93,7 @@ class Companion:
         self._search = search          # web search to answer unknown questions
         self._summarize = summarize    # tl;dr summariser for search results
         self._master = MasterEventToken(session_id)  # MET chain of the conversation
+        self._qrf = QRFEngine()        # reverse-QRF predictor fed by the MET chain
         self._last_search: dict = {}
         self._user_turns = 0
         self._last_curious_at = -10    # cooldown anchor (ask ~every other turn)
@@ -101,6 +103,11 @@ class Companion:
     def master_token(self) -> MasterEventToken:
         return self._master
 
+    @property
+    def anticipation(self) -> dict:
+        """Reverse-QRF's current read on the next turn (fed by the MET chain)."""
+        return self._qrf.anticipation()
+
     def _curious_allowed(self) -> bool:
         return self._curious and (self._user_turns - self._last_curious_at) >= 2
 
@@ -109,6 +116,8 @@ class Companion:
                               risk_clusters=(fused or {}).get("risk_clusters", []),
                               fusion_signature=(fused or {}).get("signature", ""),
                               learned=learned)
+        # feed the MET chain into the reverse-QRF predictor (learned turns weighted)
+        self._qrf.step(intent or "INFORM", learned=learned)
 
     @property
     def history(self) -> List[dict]:
@@ -121,6 +130,7 @@ class Companion:
     def reset(self) -> None:
         self._history.clear()
         self._master.reset()
+        self._qrf.reset()
         self._last_search = {}
 
     def say(self, text: str) -> CompanionReply:

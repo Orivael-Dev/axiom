@@ -343,3 +343,41 @@ def test_search_disabled_by_default_keeps_contract():
     # no search hook → factual questions just get a normal reply, no lookup
     r = Companion(generate=_echo).say("what is the capital of France?")
     assert "tl;dr" not in r.text.lower()
+
+
+# ── reverse-QRF: predict next intent from the MET chain ─────────────────────
+
+def test_qrf_learns_and_predicts_next_intent():
+    from aui.qrf import QRFEngine
+    q = QRFEngine()
+    for _ in range(4):
+        q.step("INFORM")
+    a = q.anticipation()
+    assert a["predicted_next_intent"] == "INFORM"
+    assert a["basis"] == "learned" and a["hit_rate"] is not None
+
+
+def test_qrf_hit_rate_climbs_on_repetition():
+    from aui.qrf import QRFEngine
+    q = QRFEngine()
+    for _ in range(6):
+        q.step("INFORM")
+    assert q.anticipation()["hit_rate"] >= 0.5  # repeated pattern → predictable
+
+
+def test_companion_exposes_anticipation_fed_by_met_chain():
+    c = Companion(generate=_echo)
+    c.say("hello")
+    c.say("again")
+    a = c.anticipation
+    assert "predicted_next_intent" in a and a["observations"] >= 1
+
+
+def test_learned_turn_is_weighted_in_qrf():
+    from aui.qrf import QRFEngine
+    q = QRFEngine()
+    q.step("INFORM")
+    q.step("CLARIFY", learned=True)   # weighted transition INFORM->CLARIFY
+    q.step("INFORM")
+    tbl = q._learner.transition_table()
+    assert tbl.get("INFORM", {}).get("CLARIFY", 0) > 0
