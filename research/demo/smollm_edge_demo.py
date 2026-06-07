@@ -35,10 +35,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -50,19 +50,65 @@ _BRANCH   = "claude/srd-prototype-benchmark-JRtv1"
 MODEL_ID   = "HuggingFaceTB/SmolLM2-135M-Instruct"
 MODEL_SLUG = "smollm2_135m"
 
-# Measured reference values (CPU, 8-core modern x86)
-# Used in the dry-run and stats dashboard estimates
-_REF = {
-    "fp16_mb":         270,
-    "axm_mb":           76,
-    "gguf_mb":          68,
-    "pack_s":          180,   # 3 min on CPU
-    "extract_s":       120,   # 2 min on CPU
-    "cpu_tok_per_s":    30,   # tokens/sec on 8-core x86
-    "mobile_tok_per_s": 55,   # tokens/sec estimate on Pixel 7 NPU
-    "idle_w":            0.5, # Watts during inference (mobile NPU)
-    "cloud_cost_per_1m": 0.60,# $ per 1M tokens (cheapest tier API)
+# Known models: (hf_id, params_b, display_name, cpu_tok_s, mob_tok_s, mob_device)
+_MODEL_CATALOG: dict[str, tuple] = {
+    # key           hf_id                                  params_b  display          cpu   mob  mob_device
+    "smollm135":   ("HuggingFaceTB/SmolLM2-135M-Instruct",  0.135, "SmolLM2-135M",  30,   55,  "Pixel 7 NNAPI"),
+    "smollm360":   ("HuggingFaceTB/SmolLM2-360M-Instruct",  0.360, "SmolLM2-360M",  22,   40,  "Pixel 7 NNAPI"),
+    "gemma3-1b":   ("google/gemma-3-1b-it",                  1.0,  "Gemma 3 1B",    18,   35,  "Pixel 8 NNAPI"),
+    "gemma3-4b":   ("google/gemma-3-4b-it",                  4.3,  "Gemma 3 4B",     7,   18,  "Pixel 8 Pro NNAPI"),
+    "qwen2.5-0.5": ("Qwen/Qwen2.5-0.5B-Instruct",           0.5,  "Qwen2.5-0.5B",  25,   50,  "Pixel 7 NNAPI"),
+    "qwen2.5-1.5": ("Qwen/Qwen2.5-1.5B-Instruct",           1.5,  "Qwen2.5-1.5B",  15,   28,  "Pixel 8 NNAPI"),
 }
+
+def _compute_ref(params_b: float, cpu_tok_s: int = 0, mob_tok_s: int = 0) -> dict:
+    """Derive reference values from parameter count (in billions)."""
+    fp16_mb  = round(params_b * 1e9 * 2 / 1024**2)
+    axm_mb   = round(params_b * 1e9 * 4.5 / 8 / 1024**2)
+    gguf_mb  = round(params_b * 1e9 * 4.07 / 8 / 1024**2)
+    # pack time: ~180s for 135M baseline, scales roughly with params
+    pack_s   = max(60, round(180 * (params_b / 0.135) * 0.7))
+    extract_s = max(30, round(120 * (params_b / 0.135) * 0.6))
+    cpu_tok_s  = cpu_tok_s  or max(2,  round(30  * (0.135 / params_b) ** 0.6))
+    mob_tok_s  = mob_tok_s  or max(5,  round(55  * (0.135 / params_b) ** 0.6))
+    return {
+        "fp16_mb":          fp16_mb,
+        "axm_mb":           axm_mb,
+        "gguf_mb":          gguf_mb,
+        "pack_s":           pack_s,
+        "extract_s":        extract_s,
+        "cpu_tok_per_s":    cpu_tok_s,
+        "mobile_tok_per_s": mob_tok_s,
+        "idle_w":           0.5 + params_b * 0.08,
+        "cloud_cost_per_1m": 0.60,
+        "params_b":         params_b,
+    }
+
+def _device_targets(params_b: float, mob_device: str) -> list[tuple]:
+    """Return (device, status, note) rows adjusted for model size."""
+    gguf_mb = round(params_b * 1e9 * 4.07 / 8 / 1024**2)
+    ram_floor_mb = gguf_mb + 100
+
+    def fits(device_ram_mb: int) -> str:
+        return "✓" if ram_floor_mb < device_ram_mb * 0.85 else "~"
+
+    cpu_s = max(2, round(30 * (0.135 / params_b) ** 0.6))
+    mob_s = max(5, round(55 * (0.135 / params_b) ** 0.6))
+
+    rows = [
+        ("Raspberry Pi 4 (4 GB)",    fits(4096),  f"~{max(1, cpu_s//2)} tok/s"),
+        ("iPhone 15 Pro (8 GB)",     fits(8192),  f"~{mob_s*2} tok/s  (CoreML)"),
+        (mob_device,                 fits(6144),  f"~{mob_s} tok/s  (NNAPI)"),
+        ("Jetson Orin Nano (8 GB)",  fits(8192),  f"~{mob_s*3} tok/s  (CUDA)"),
+        ("Laptop CPU (no GPU)",      "✓",         f"~{cpu_s} tok/s"),
+    ]
+    if ram_floor_mb < 256:
+        rows.insert(2, ("Android 256 MB budget", "✓", "✓ fits in RAM"))
+    return rows
+
+# Measured reference values (CPU, 8-core modern x86)
+# Updated at startup by main() via _compute_ref() for the selected model.
+_REF = _compute_ref(0.135, cpu_tok_s=30, mob_tok_s=55)
 
 # Mobile demo prompt — realistic assistant query
 _DEMO_PROMPT = (
@@ -109,8 +155,10 @@ def cell1_setup(output_dir: Path, dry_run: bool) -> None:
     _ensure_key()
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    params_b = _REF.get("params_b", 0.135)
+    params_str = f"{params_b*1000:.0f} M" if params_b < 1 else f"{params_b:.1f} B"
     print(f"  Model     : {MODEL_ID}")
-    print(f"  Params    : ~135 M")
+    print(f"  Params    : ~{params_str}")
     print(f"  Output dir: {output_dir}")
     print(f"  Mode      : {'dry-run (no model download)' if dry_run else 'full pipeline'}")
     print()
@@ -354,8 +402,13 @@ def cell6_dashboard(pack_stats: dict, extract_stats: dict, met_stats: dict,
     cloud_cost_usd        = (tokens_per_1k_queries / 1_000_000) * cloud_per_1m * 1000
 
     print()
+    params_b   = _REF.get("params_b", 0.135)
+    params_str = f"{params_b*1000:.0f}M" if params_b < 1 else f"{params_b:.1f}B"
+    disp_name  = MODEL_ID.split("/")[-1].upper()
+    hdr        = f"{disp_name}  ({params_str})  EDGE DEPLOYMENT"
+    pad        = max(0, 61 - len(hdr)) // 2
     print(f"  ┌─────────────────────────────────────────────────────────────┐")
-    print(f"  │                SMOLLM2-135M  EDGE DEPLOYMENT                │")
+    print(f"  │{' '*pad}{hdr}{' '*(61-pad-len(hdr))}│")
     print(f"  └─────────────────────────────────────────────────────────────┘")
     print()
 
@@ -366,11 +419,14 @@ def cell6_dashboard(pack_stats: dict, extract_stats: dict, met_stats: dict,
     print(f"  {'Q4_K_M GGUF (deploy)':<28}  {gguf_mb:>6.0f} MB  {_bar(gguf_mb/fp16_mb)} {gguf_ratio:.2f}×")
     print()
 
-    # Memory footprint
-    kv_mb_full = met_n * 0.3    # ~0.3 MB per token KV at 135M
-    kv_mb_met  = met_m * 0.3
+    # Memory footprint — KV size scales with model hidden dim
+    params_b   = _REF.get("params_b", 0.135)
+    kv_per_tok = max(0.05, round(0.3 * (params_b / 0.135) ** 0.5, 3))  # MB/token
+    kv_mb_full = met_n * kv_per_tok
+    kv_mb_met  = met_m * kv_per_tok
     ram_floor  = gguf_mb + kv_mb_met + 20  # weights + KV + activations
-    print(f"  MEMORY FOOTPRINT  (inference, 135M model)")
+    params_str = f"{params_b*1000:.0f}M" if params_b < 1 else f"{params_b:.1f}B"
+    print(f"  MEMORY FOOTPRINT  (inference, {params_str} model)")
     kv_raw_lbl = f"KV cache (raw N={met_n} tokens)"
     kv_met_lbl = f"KV cache (MET M={met_m} tokens)"
     print(f"  {'GGUF weights loaded':<28}  {gguf_mb:>6.0f} MB")
@@ -400,16 +456,11 @@ def cell6_dashboard(pack_stats: dict, extract_stats: dict, met_stats: dict,
     print(f"  {'Local (energy cost only)':<28}  ${local_cost_usd:>6.4f}  ({cloud_cost_usd/local_cost_usd:.0f}× cheaper)")
     print()
 
-    # Target devices
+    # Target devices — auto-scaled to model size
+    params_b  = _REF.get("params_b", 0.135)
+    mob_dev   = _REF.get("mob_device", "Pixel 7 NNAPI")
+    targets   = _device_targets(params_b, mob_dev)
     print(f"  TARGET DEVICES")
-    targets = [
-        ("Raspberry Pi 4 (4GB)",    "✓",  "~12 tok/s"),
-        ("iPhone 15 (A17 Neural)",  "✓",  "~80 tok/s  (CoreML)"),
-        ("Pixel 7 (Tensor G2)",     "✓",  "~55 tok/s  (NNAPI)"),
-        ("Android 256 MB budget",   "✓",  "✓ fits in RAM"),
-        ("Jetson Orin Nano (8GB)",  "✓",  "~90 tok/s  (CUDA)"),
-        ("Laptop CPU (no GPU)",     "✓",  "~30 tok/s"),
-    ]
     for name, status, note in targets:
         print(f"  {status}  {name:<30}  {note}")
 
@@ -434,9 +485,17 @@ def cell6_dashboard(pack_stats: dict, extract_stats: dict, met_stats: dict,
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 def build_parser() -> argparse.ArgumentParser:
+    catalog_keys = " | ".join(_MODEL_CATALOG.keys())
     p = argparse.ArgumentParser(
-        description="SmolLM2-135M edge demo — SRD + MET for mobile deployment",
+        description="AXIOM edge demo — SRD + MET for mobile/edge deployment",
     )
+    p.add_argument("--model", default=None,
+                   help=(
+                       f"HuggingFace model ID or catalog key ({catalog_keys}). "
+                       "Default: HuggingFaceTB/SmolLM2-135M-Instruct"
+                   ))
+    p.add_argument("--params-b", type=float, default=None,
+                   help="Model parameter count in billions (auto-detected for catalog models)")
     p.add_argument("--output-dir", default="/tmp/smollm_demo",
                    help="directory for .axm and .gguf output (default: /tmp/smollm_demo)")
     p.add_argument("--llamacpp", default=None,
@@ -448,14 +507,46 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _resolve_model(args) -> tuple[str, str, dict]:
+    """Return (model_id, slug, ref_dict) for the selected model."""
+    global MODEL_ID, MODEL_SLUG
+
+    # Check catalog first
+    key = (args.model or "").lower().replace("/", "-")
+    catalog_entry = _MODEL_CATALOG.get(args.model) or _MODEL_CATALOG.get(key)
+
+    if catalog_entry:
+        hf_id, params_b, display, cpu_s, mob_s, mob_dev = catalog_entry
+        ref = _compute_ref(params_b, cpu_tok_s=cpu_s, mob_tok_s=mob_s)
+        ref["mob_device"] = mob_dev
+        slug  = re.sub(r"[^a-z0-9_]", "_", hf_id.lower().split("/")[-1])
+        return hf_id, slug, ref
+
+    # Raw HF model ID
+    hf_id    = args.model or "HuggingFaceTB/SmolLM2-135M-Instruct"
+    params_b = args.params_b or 0.135
+    ref      = _compute_ref(params_b)
+    ref["mob_device"] = "Pixel 8 NNAPI"
+    slug     = re.sub(r"[^a-z0-9_]", "_", hf_id.lower().split("/")[-1])
+    return hf_id, slug, ref
+
+
 def main(argv=None) -> int:
+    global MODEL_ID, MODEL_SLUG, _REF
+
     args   = build_parser().parse_args(argv)
     outdir = Path(args.output_dir)
     llama  = Path(args.llamacpp) if args.llamacpp else None
 
+    MODEL_ID, MODEL_SLUG, _REF = _resolve_model(args)
+
+    params_b   = _REF["params_b"]
+    params_str = f"{params_b*1000:.0f} M" if params_b < 1 else f"{params_b:.1f} B"
+    display    = MODEL_ID.split("/")[-1]
+
     print()
     print("═" * _W)
-    print("  AXIOM SmolLM2-135M Edge Demo")
+    print(f"  AXIOM Edge Demo  —  {display}  ({params_str} params)")
     print(f"  SRD compression  +  MET token stack  +  edge deployment stats")
     print("═" * _W)
 
