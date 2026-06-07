@@ -289,6 +289,11 @@ def test_companion_replies_text_no_voice(client):
     assert any(e["event_type"] == "companion_turn" for e in client.get("/audit").json()["events"])
 
 
+def test_companion_reports_met_chain(client):
+    r = client.post("/companion/say", json={"text": "hi"}).json()
+    assert r["met_turns"] >= 1 and r["met_head"]
+
+
 def test_companion_refuses_harm(client):
     # FakeBridge.immune_scan flags 'override'/'disable' → refusal, in persona.
     r = client.post("/companion/say",

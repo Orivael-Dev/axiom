@@ -56,6 +56,12 @@ export default function App() {
     chooseTheme(theme === "studio" ? "calm" : "studio");
   }
 
+  function goHome() {
+    setPlan(null);
+    setTrail(null);
+    setError(null);
+  }
+
   function chooseTheme(next: Theme) {
     setOverride(next);
     saveThemeOverride(next);
@@ -70,7 +76,7 @@ export default function App() {
 
         <GoalBar
           goal={goal} domain={domain} scene={plan?.scene} planner={plan?.planner}
-          busy={busy} theme={theme}
+          busy={busy} theme={theme} hasWorkspace={!!plan} onHome={goHome}
           onGoal={setGoal} onDomain={setDomain} onOpen={openWorkspace} onToggleTheme={toggleTheme}
         />
 

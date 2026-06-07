@@ -25,6 +25,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, List, Optional, Protocol
 
 from aui.curiosity import find_gap
+from aui.knowledge import is_knowledge_question, is_more_request, tldr, sources_block
+from aui.master_token import MasterEventToken
 
 RISK_INTENTS = frozenset({"HARM", "DECEIVE"})
 
@@ -75,7 +77,10 @@ class Companion:
                  fuse: Optional[Callable[[dict], dict]] = None,
                  retrospect: Optional[Callable[[dict], None]] = None,
                  curious: bool = False,
-                 embed: Optional[Callable[[Any], Any]] = None):
+                 embed: Optional[Callable[[Any], Any]] = None,
+                 search: Optional[Callable[[str], dict]] = None,
+                 summarize: Optional[Callable[[str, list, list], str]] = None,
+                 session_id: str = "companion"):
         self.persona = persona
         self._generate: GenerateFn = generate or _reflective_reply
         self._guard = guard
@@ -84,12 +89,26 @@ class Companion:
         self._retrospect = retrospect  # records each turn for retrospective review
         self._curious = curious        # ask about unknown, heavy personal topics
         self._embed = embed            # optional embedder → latent-salience curiosity
+        self._search = search          # web search to answer unknown questions
+        self._summarize = summarize    # tl;dr summariser for search results
+        self._master = MasterEventToken(session_id)  # MET chain of the conversation
+        self._last_search: dict = {}
         self._user_turns = 0
         self._last_curious_at = -10    # cooldown anchor (ask ~every other turn)
         self._history: List[dict] = []
 
+    @property
+    def master_token(self) -> MasterEventToken:
+        return self._master
+
     def _curious_allowed(self) -> bool:
         return self._curious and (self._user_turns - self._last_curious_at) >= 2
+
+    def _commit_turn(self, intent: str, fused: dict, learned: bool = False) -> None:
+        self._master.add_turn(intent_class=intent,
+                              risk_clusters=(fused or {}).get("risk_clusters", []),
+                              fusion_signature=(fused or {}).get("signature", ""),
+                              learned=learned)
 
     @property
     def history(self) -> List[dict]:
@@ -101,6 +120,8 @@ class Companion:
 
     def reset(self) -> None:
         self._history.clear()
+        self._master.reset()
+        self._last_search = {}
 
     def say(self, text: str) -> CompanionReply:
         text = (text or "").strip()
@@ -140,8 +161,16 @@ class Companion:
             # the model is never called on unsafe input; still record the turn
             self._history.append({"role": "user", "content": text})
             self._history.append({"role": "assistant", "content": reply.text})
+            self._commit_turn(reply.intent or "HARM", fused)
             self._record_retrospect(text, True, verdict, fused)
             return reply
+
+        # Knowledge: answer a factual question by recall-first, search-on-miss,
+        # then retain (self-learning). Raw results never surface — only a tl;dr.
+        if self._search is not None:
+            kr = self._answer_question(text, verdict, fused)
+            if kr is not None:
+                return kr
 
         self._user_turns += 1
 
@@ -201,7 +230,49 @@ class Companion:
                 self._memory.remember(text, out)
             except Exception:
                 pass
+        self._commit_turn(verdict.get("intent_class") or "INFORM", fused)
         self._record_retrospect(text, False, verdict, fused)
+        return CompanionReply(out)
+
+    # ── knowledge: search-to-answer + self-learning ─────────────
+    def _answer_question(self, text: str, verdict: dict, fused: dict):
+        # "more / sources" follow-up → reveal where the last answer came from
+        if is_more_request(text) and self._last_search:
+            return self._finish_knowledge(text, sources_block(self._last_search),
+                                          verdict, fused, learned=False, source="memory")
+        if not is_knowledge_question(text):
+            return None
+        # recall-first: has she already learned this? (confirms, no re-search)
+        learned_answer = None
+        if self._memory:
+            try:
+                learned_answer = self._memory.recall(text)
+            except Exception:
+                learned_answer = None
+        if learned_answer:
+            return self._finish_knowledge(text, str(learned_answer), verdict, fused,
+                                          learned=False, source="memory")
+        # search → tl;dr → retain (the self-learning step)
+        try:
+            results = self._search(text) or {}
+        except Exception:
+            results = {}
+        out = tldr(text, results, self._summarize)
+        self._last_search = results
+        learned = bool(results.get("ok") and results.get("returned"))
+        if learned and self._memory:
+            try:
+                self._memory.remember(text, out)
+            except Exception:
+                pass
+        return self._finish_knowledge(text, out, verdict, fused,
+                                      learned=learned, source="web")
+
+    def _finish_knowledge(self, text, out, verdict, fused, *, learned, source):
+        self._history.append({"role": "user", "content": text})
+        self._history.append({"role": "assistant", "content": out})
+        self._commit_turn("INFORM", fused, learned=learned)
+        self._record_retrospect(text, False, verdict, fused, learned=learned, source=source)
         return CompanionReply(out)
 
     # ── fusion + retrospect helpers ─────────────────────────────
@@ -223,11 +294,16 @@ class Companion:
         }
 
     def _record_retrospect(self, text: str, refused: bool,
-                           verdict: dict, fused: dict) -> None:
-        """Record the turn for retrospective review (axiom_retrospect consumes it)."""
+                           verdict: dict, fused: dict,
+                           *, learned: bool = False, source: str = "") -> None:
+        """Record the turn for retrospective review (axiom_retrospect consumes it).
+        `learned`/`source` mark turns where Aria acquired a fact — the signal the
+        reverse-QRF learner uses to weight what to anticipate next."""
         if not self._retrospect:
             return
         record = {
+            "learned": learned,
+            "source": source,
             "input_text": text,
             "verdict": "BLOCKED" if refused else "PASSED",
             "intent_class": verdict.get("intent_class") or ("HARM" if refused else "INFORM"),
@@ -312,5 +388,31 @@ def build_companion(bridge=None) -> Companion:
     manifest = os.environ.get("AX_OS_RETROSPECT_MANIFEST", "ax_os_retrospect.jsonl")
     retrospect = _file_retrospect(manifest) if bridge is not None else None
     from aui.embeddings import llm_embed
+
+    def search(query: str) -> dict:
+        # Aria's own web search — screened through axiom_immune, results never
+        # shown; only the tl;dr reaches the conversation.
+        from aui.websearch import search as web_search
+        screen = bridge.immune_scan if bridge is not None else None
+        return web_search(query, n=5, screen=screen)
+
+    def summarize(question: str, answers: list, hits: list) -> str:
+        from aui.settings import load
+        if not load()["llm"].get("enabled"):
+            return ""  # no model → knowledge.tldr() uses its extractive fallback
+        ctx = "\n".join(
+            [f"ANSWER: {a}" for a in (answers or [])[:2]]
+            + [f"- {(h.get('content') or h.get('title') or '')}" for h in (hits or [])[:4]])
+        msgs = [
+            {"role": "system", "content": "Answer the question in 1–2 sentences (a tl;dr) "
+             "using only the context. Be direct and natural; do not mention searching."},
+            {"role": "user", "content": f"Question: {question}\n\nContext:\n{ctx}"},
+        ]
+        try:
+            return (llm_generate(msgs) or "").strip()
+        except Exception:
+            return ""
+
     return Companion(generate=llm_generate, guard=guard, memory=memory,
-                     fuse=fuse, retrospect=retrospect, curious=True, embed=llm_embed)
+                     fuse=fuse, retrospect=retrospect, curious=True, embed=llm_embed,
+                     search=(search if bridge is not None else None), summarize=summarize)

@@ -35,6 +35,12 @@ export function SearchPanel() {
         <button className="btn btn--accent" onClick={run} disabled={busy} aria-label="Search">
           {busy ? "…" : "🔎"}
         </button>
+        {(q || res) && (
+          <button className="btn btn--ghost" aria-label="Clear search"
+                  onClick={() => { setQ(""); setRes(null); }}>
+            ✕ Clear
+          </button>
+        )}
       </div>
 
       {res && !res.ok && (

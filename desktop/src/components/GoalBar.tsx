@@ -15,10 +15,16 @@ export function GoalBar(props: {
   onDomain: (v: string) => void;
   onOpen: () => void;
   onToggleTheme: () => void;
+  onHome?: () => void;
+  hasWorkspace?: boolean;
 }) {
   const { goal, domain, scene, planner, busy, theme } = props;
   return (
     <motion.div className="goalbar" variants={fadeSlide} initial="hidden" animate="visible">
+      {props.hasWorkspace && (
+        <button className="btn btn--ghost" onClick={props.onHome}
+                title="Leave workspace" aria-label="Home">🏠</button>
+      )}
       <div className="goalbar__pill" data-anchor="goal">
         <span className="goalbar__label">Goal</span>
         <input

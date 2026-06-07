@@ -281,3 +281,65 @@ def test_embedding_unavailable_falls_back_to_keyword():
 def find_gap_kw_fallback():
     from aui.curiosity import find_gap
     return find_gap("I have work today", "", embed=lambda texts: None)
+
+
+# ── knowledge: search-to-answer, tl;dr, self-learning ───────────────────────
+
+_RESULTS = {"ok": True, "returned": 2, "answers": ["Paris is the capital of France."],
+            "results": [{"url": "https://x", "title": "France", "content": "Paris is the capital.",
+                         "engine": "ddg"}]}
+
+
+def test_searches_unknown_question_and_returns_tldr():
+    calls = {"n": 0}
+    def search(q):
+        calls["n"] += 1
+        return _RESULTS
+    r = Companion(search=search, memory=_FakeMemory(recalled=None)).say("what is the capital of France?")
+    assert calls["n"] == 1
+    assert "tl;dr" in r.text.lower() or "paris" in r.text.lower()
+
+
+def test_known_question_answered_from_memory_without_searching():
+    calls = {"n": 0}
+    def search(q):
+        calls["n"] += 1
+        return _RESULTS
+    mem = _FakeMemory(recalled="Paris is the capital of France.")
+    r = Companion(search=search, memory=mem).say("what is the capital of France?")
+    assert calls["n"] == 0 and "paris" in r.text.lower()  # confirmed from memory, no search
+
+
+def test_learned_answer_is_retained_to_memory():
+    mem = _FakeMemory(recalled=None)
+    Companion(search=lambda q: _RESULTS, memory=mem).say("what is the capital of France?")
+    assert mem.saved and mem.saved[0][0] == "what is the capital of France?"
+
+
+def test_conversational_question_about_aria_is_not_searched():
+    calls = {"n": 0}
+    Companion(search=lambda q: (calls.__setitem__("n", calls["n"] + 1) or _RESULTS),
+              generate=_echo).say("how are you?")
+    assert calls["n"] == 0  # 'you' → conversational, not a web lookup
+
+
+def test_more_request_reveals_sources():
+    c = Companion(search=lambda q: _RESULTS, memory=_FakeMemory(recalled=None))
+    c.say("what is the capital of France?")
+    r = c.say("sources?")
+    assert "https://x" in r.text
+
+
+def test_master_event_token_chains_and_verifies():
+    c = Companion(generate=_echo)
+    c.say("hello")
+    c.say("again")
+    mt = c.master_token
+    assert len(mt.links) == 2 and mt.verify() is True
+    assert mt.links[1].parent == mt.links[0].chain_hash  # parent-linked
+
+
+def test_search_disabled_by_default_keeps_contract():
+    # no search hook → factual questions just get a normal reply, no lookup
+    r = Companion(generate=_echo).say("what is the capital of France?")
+    assert "tl;dr" not in r.text.lower()

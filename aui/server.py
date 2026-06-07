@@ -260,8 +260,10 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
                          outcome="refused" if r.refused else "reply",
                          attributes={"intent": r.intent})
         voice = load()["voice"]
+        mt = companion.master_token
         return {**r.to_dict(), "voice_enabled": bool(voice.get("enabled")),
-                "voice_engine": voice.get("engine"), "turns": len(companion.history)}
+                "voice_engine": voice.get("engine"), "turns": len(companion.history),
+                "met_head": mt.head, "met_turns": len(mt.links)}
 
     @app.post("/companion/listen")
     def companion_listen() -> dict:
