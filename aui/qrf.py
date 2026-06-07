@@ -22,6 +22,12 @@ _TRANSITION_PRIORS: Dict[str, str] = {
 }
 LEARNED_WEIGHT = 1.6   # IMPROVEMENT-like boost for turns where Aria learned
 
+# Maturity threshold — only act on the prediction once it's earned trust:
+# the learned table is driving, enough transitions seen, and it's been accurate.
+MATURE_MIN_OBS = 3
+MATURE_CONF = 0.6
+MATURE_HIT = 0.6
+
 
 class ReverseQRFPredictor:
     """Static forward-intent predictor: Markov window over recent intents, then
@@ -94,12 +100,16 @@ class QRFEngine:
 
     def anticipation(self) -> dict:
         intent, conf, basis = self._pending or ("INFORM", 0.5, "uniform")
+        hit_rate = round(self._hits / self._total, 3) if self._total else None
+        mature = (basis == "learned" and self._total >= MATURE_MIN_OBS
+                  and conf >= MATURE_CONF and (hit_rate or 0.0) >= MATURE_HIT)
         return {
             "predicted_next_intent": intent,
             "confidence": conf,
             "basis": basis,
-            "hit_rate": round(self._hits / self._total, 3) if self._total else None,
+            "hit_rate": hit_rate,
             "observations": self._total,
+            "mature": mature,
         }
 
     def reset(self) -> None:

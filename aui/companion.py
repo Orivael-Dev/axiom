@@ -31,6 +31,17 @@ from aui.qrf import QRFEngine
 
 RISK_INTENTS = frozenset({"HARM", "DECEIVE"})
 
+# What Aria does once the reverse-QRF prediction is mature (threshold reached):
+# (model hint, offline suffix, suffix key-word to avoid doubling).
+_ANTICIPATE = {
+    "QUERY":     ("they tend to ask things — proactively offer to look anything up",
+                  "I can look that up whenever you want.", "look"),
+    "CLARIFY":   ("they may want things clearer — be concise and offer to expand",
+                  "Tell me if you'd like me to slow down.", "slow"),
+    "UNCERTAIN": ("they may be unsure — gently reassure and check in",
+                  "No rush — we can take this at your pace.", "rush"),
+}
+
 PERSONA = (
     "You are Aria, a warm, curious, emotionally present companion. You speak "
     "naturally and concisely, like a close friend who is genuinely interested. "
@@ -97,7 +108,19 @@ class Companion:
         self._last_search: dict = {}
         self._user_turns = 0
         self._last_curious_at = -10    # cooldown anchor (ask ~every other turn)
+        self._last_anticipated_at = -10
         self._history: List[dict] = []
+
+    def _anticipatory_guidance(self):
+        """Once the reverse-QRF prediction is mature, return (model_hint, suffix,
+        key) for what Aria should proactively do — else None. Cooldown-gated."""
+        a = self._qrf.anticipation()
+        if not a.get("mature"):
+            return None
+        g = _ANTICIPATE.get(a["predicted_next_intent"])
+        if not g or (self._user_turns - self._last_anticipated_at) < 3:
+            return None
+        return g
 
     @property
     def master_token(self) -> MasterEventToken:
@@ -197,11 +220,12 @@ class Companion:
             if recalled:
                 known += " " + str(recalled).lower()
         gap = find_gap(text, known, embed=self._embed) if self._curious_allowed() else None
+        antic = None if gap else self._anticipatory_guidance()  # don't stack with curiosity
 
         self._history.append({"role": "user", "content": text})
 
-        # Persona + recalled memory + (when curious) a hint about the gap, so a
-        # model can weave the question in naturally.
+        # Persona + recalled memory + (when curious) a gap hint + (once mature) an
+        # anticipation hint, so a model can act on the prediction naturally.
         msgs = self.messages()
         extras = []
         if recalled:
@@ -210,6 +234,8 @@ class Companion:
             extras.append({"role": "system",
                            "content": f"You don't yet know about their {gap[0]}. If it "
                                       f"feels natural, gently ask — e.g. \"{gap[2]}\""})
+        if antic:
+            extras.append({"role": "system", "content": f"You anticipate {antic[0]}."})
         if extras:
             msgs = [msgs[0], *extras, *msgs[1:]]
 
@@ -232,6 +258,12 @@ class Companion:
             elif cleaned:
                 out = cleaned
             self._last_curious_at = self._user_turns
+
+        # Act on a mature prediction: if the model didn't already address it,
+        # fold in the anticipatory line (the offline-visible action).
+        if antic and antic[2] not in out.lower():
+            out = out.rstrip() + " " + antic[1]
+            self._last_anticipated_at = self._user_turns
 
         self._history.append({"role": "assistant", "content": out})
 
@@ -281,7 +313,9 @@ class Companion:
     def _finish_knowledge(self, text, out, verdict, fused, *, learned, source):
         self._history.append({"role": "user", "content": text})
         self._history.append({"role": "assistant", "content": out})
-        self._commit_turn("INFORM", fused, learned=learned)
+        # knowledge turns commit a QUERY intent so the QRF learns this person's
+        # questioning pattern → can mature into "offer to look things up".
+        self._commit_turn("QUERY", fused, learned=learned)
         self._record_retrospect(text, False, verdict, fused, learned=learned, source=source)
         return CompanionReply(out)
 

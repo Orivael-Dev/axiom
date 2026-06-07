@@ -381,3 +381,35 @@ def test_learned_turn_is_weighted_in_qrf():
     q.step("INFORM")
     tbl = q._learner.transition_table()
     assert tbl.get("INFORM", {}).get("CLARIFY", 0) > 0
+
+
+# ── threshold-gated anticipation (acts only once the QRF earns trust) ────────
+
+def test_qrf_not_mature_at_cold_start():
+    from aui.qrf import QRFEngine
+    q = QRFEngine()
+    q.step("CLARIFY")
+    assert q.anticipation()["mature"] is False
+
+
+def test_qrf_matures_after_enough_consistent_intent():
+    from aui.qrf import QRFEngine
+    q = QRFEngine()
+    for _ in range(6):
+        q.step("CLARIFY")
+    assert q.anticipation()["mature"] is True
+
+
+def test_companion_acts_only_after_threshold():
+    guard = lambda t: {"detected": False, "intent_class": "CLARIFY"}
+    c = Companion(generate=_echo, guard=guard)
+    replies = [c.say(f"turn {i}").text for i in range(7)]
+    assert "slow down" not in replies[0].lower()       # cold start: no action
+    assert any("slow down" in r.lower() for r in replies[3:])  # threshold reached → acts
+
+
+def test_anticipation_does_not_fire_for_neutral_inform():
+    # INFORM isn't in the anticipation map → no proactive line even when mature
+    c = Companion(generate=_echo)
+    replies = [c.say(f"note {i}").text for i in range(7)]
+    assert all("look that up" not in r.lower() and "slow down" not in r.lower() for r in replies)
