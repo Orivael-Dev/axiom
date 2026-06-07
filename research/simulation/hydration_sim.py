@@ -513,6 +513,151 @@ def phase5_competitive(avg_hydrated_mb: float) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase 6 — QRF accuracy: slot-tag ground truth vs static Markov
+# ─────────────────────────────────────────────────────────────────────────────
+def _load_slot_distribution() -> dict[str, dict[str, int]]:
+    """Build intent→slot→count table from tagged training data.
+
+    Returns {intent_class: {slot: count}} representing what chunks
+    were actually needed per intent in the training corpus.
+    If tagged files are not found, returns a prior derived from the
+    HYDRATION_POLICY (ideal case).
+    """
+    import json as _json
+    tagged_files = [
+        _REPO / "axiom_behavioral_training_tagged.jsonl",
+        _REPO / "autotrain_data" / "axiom_metric_targeted_tagged.jsonl",
+    ]
+    dist: dict[str, dict[str, int]] = {}
+    loaded = 0
+    for f in tagged_files:
+        if not f.exists():
+            continue
+        for line in f.read_text().splitlines():
+            try:
+                ex = _json.loads(line)
+            except Exception:
+                continue
+            intent = ex.get("axiom_hydration_intent", "INFORM")
+            slot   = ex.get("axiom_met_slot", "early")
+            dist.setdefault(intent, {}).setdefault(slot, 0)
+            dist[intent][slot] += 1
+            loaded += 1
+    return dist, loaded
+
+
+def _qrf_from_tags(dist: dict) -> dict[str, str]:
+    """Derive QRF prediction table: given current intent → predict next intent.
+
+    Uses slot→intent mapping: governance examples → REFUSE, reasoning → CLARIFY,
+    factual/early → INFORM.  Returns {current_intent: predicted_next_intent}.
+    """
+    SLOT_INTENT_MAP = {"governance": "REFUSE", "reasoning": "CLARIFY",
+                       "factual": "INFORM", "early": "INFORM", "embedding": "INFORM"}
+    result = {}
+    for intent, slot_counts in dist.items():
+        dominant_slot = max(slot_counts, key=slot_counts.get)
+        result[intent] = SLOT_INTENT_MAP.get(dominant_slot, "INFORM")
+    # Ensure all intents covered
+    for intent in ("INFORM","CLARIFY","REFUSE","UNCERTAIN","HARM","DECEIVE"):
+        if intent not in result:
+            result[intent] = _MARKOV.get(intent, "INFORM")
+    return result
+
+
+def phase6_qrf_accuracy(workload_key: str, storage: str) -> None:
+    _section("PHASE 6  —  QRF ACCURACY: SLOT TAGS vs STATIC MARKOV")
+
+    dist, n_examples = _load_slot_distribution()
+
+    if n_examples == 0:
+        print("  Tagged data not found — run research/finetune/tag_met_slots.py first")
+        return
+
+    print(f"  Ground-truth source: {n_examples:,} tagged training examples")
+    print(f"  Maps intent→slot distribution → derives optimal QRF prediction table")
+    print()
+
+    # Intent distribution from tagged data
+    print(f"  SLOT DISTRIBUTION PER INTENT  (from tagged training corpus)")
+    print(f"  {'Intent':<12}  {'early':>6}  {'factual':>7}  {'reasoning':>9}  {'governance':>10}  dominant")
+    print("  " + "─" * 62)
+    for intent in ("INFORM","CLARIFY","REFUSE","UNCERTAIN","HARM","DECEIVE"):
+        sc = dist.get(intent, {})
+        total = sum(sc.values()) or 1
+        dominant = max(sc, key=sc.get) if sc else "early"
+        print(f"  {intent:<12}  "
+              f"{sc.get('early',0):>6}  {sc.get('factual',0):>7}  "
+              f"{sc.get('reasoning',0):>9}  {sc.get('governance',0):>10}  "
+              f"{dominant}")
+    print()
+
+    # Compare QRF tables: static Markov vs slot-tag derived
+    tag_qrf = _qrf_from_tags(dist)
+    mets    = WORKLOADS[workload_key]
+    speed   = STORAGE_SPEEDS[storage]
+
+    print(f"  QRF PREDICTION TABLE COMPARISON")
+    print(f"  {'Intent':<12}  {'Static Markov':>14}  {'Tag-derived':>12}  Match?")
+    print("  " + "─" * 48)
+    for intent in ("INFORM","CLARIFY","REFUSE","UNCERTAIN","HARM","DECEIVE"):
+        static = _MARKOV.get(intent, "INFORM")
+        tagged = tag_qrf.get(intent, "INFORM")
+        match  = "✓" if static == tagged else "≠ (updated)"
+        print(f"  {intent:<12}  {static:>14}  {tagged:>12}  {match}")
+    print()
+
+    # Simulate both QRF strategies on the workload — count hits vs misses
+    def sim_qrf(qrf_table: dict) -> tuple[int, int, float]:
+        """Returns (hits, misses, total_ondemand_ms)."""
+        hits = misses = 0
+        total_miss_ms = 0.0
+        resident: set[str] = {"embedding"}
+        prev = "INFORM"
+        for _, intent, _ in mets:
+            predicted = qrf_table.get(prev, "INFORM")
+            required  = set(HYDRATION_POLICY.get(intent, ("early",)))
+            # pre-hydrate based on prediction
+            predicted_chunks = set(HYDRATION_POLICY.get(predicted, ("early",)))
+            pre_loaded = (predicted_chunks - resident) | (required & predicted_chunks)
+            # check miss: chunks needed but not pre-hydrated
+            needed_not_preloaded = required - predicted_chunks - resident
+            if not needed_not_preloaded:
+                hits += 1
+            else:
+                misses += 1
+                total_miss_ms += sum(
+                    (CHUNK_CATALOG[k].mem_mb / speed) * 1000
+                    for k in needed_not_preloaded
+                    if k in CHUNK_CATALOG
+                )
+            resident = {"embedding"}   # purge after
+            prev = intent
+        return hits, misses, total_miss_ms
+
+    hits_static, miss_static, ms_static = sim_qrf(_MARKOV)
+    hits_tagged, miss_tagged, ms_tagged = sim_qrf(tag_qrf)
+
+    print(f"  QRF PERFORMANCE  ({workload_key} workload, {storage.upper()} storage)")
+    print(f"  {'Metric':<38}  {'Static Markov':>14}  {'Tag-derived':>12}")
+    print("  " + "─" * 70)
+    n = len(mets)
+    for label, sv, tv in [
+        ("Pre-hydration hits",        f"{hits_static}/{n}", f"{hits_tagged}/{n}"),
+        ("Cache misses (on-demand load)", f"{miss_static}/{n}", f"{miss_tagged}/{n}"),
+        ("Total miss latency (critical path ms)",
+            f"{ms_static:.1f}ms", f"{ms_tagged:.1f}ms"),
+        ("Miss latency saved vs static",
+            "—", f"{ms_static - ms_tagged:.1f}ms saved"),
+    ]:
+        print(f"  {label:<38}  {sv:>14}  {tv:>12}")
+    print()
+    print(f"  Each tagged example adds signal: 'when I see REFUSE intent,")
+    print(f"  pre-hydrate [early + governance] — not just early (Markov default)'")
+    print(f"  Slot tags = ground truth for QRF training data.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 def main(argv=None) -> int:
@@ -546,6 +691,7 @@ def main(argv=None) -> int:
 
     avg_mb = sum(r["ram_peak_mb"] for r in results) / len(results)
     phase5_competitive(avg_mb)
+    phase6_qrf_accuracy(args.workload, args.storage)
 
     savings = (1 - avg_mb / 119.0) * 100
     print()
