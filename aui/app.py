@@ -30,7 +30,7 @@ with st.sidebar:
     goal = st.text_input("What are you working on?",
                          "work on the launch demo branch")
     domain = st.selectbox("Domain", ["(auto)", "general", "dev", "financial",
-                                     "music", "medical"])
+                                     "music", "medical", "autonomous"])
     go = st.button("Open workspace", type="primary")
 
     with st.expander("⚙ Settings"):
@@ -80,6 +80,67 @@ def _assemble(goal: str, domain: str) -> dict:
     r = requests.post(f"{API}/assemble", json=payload, timeout=30)
     r.raise_for_status()
     return r.json()
+
+
+_RUN_ICON = {"running": "⏳", "done": "🟢", "failed": "🔴", "blocked": "🛑",
+             "error": "🔴", "timeout": "⌛"}
+
+if domain == "autonomous":
+    # Dedicated workspace for Axiom's autonomous agent: submit a task, watch runs.
+    st.subheader("Autonomous agents · dedicated workspace")
+    st.caption("Hand a task to Axiom's autonomous agent — it plans, edits in a "
+               "sandbox, runs tests, and verifies, under its constitutional gates.")
+    try:
+        avail = requests.get(f"{API}/autonomous/available", timeout=10).json()
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Could not reach the AX OS service at {API}: {e}")
+        st.stop()
+    if not avail.get("available"):
+        st.warning("Axiom's autonomous agent isn't reachable. Set **AXIOM_REPO** to "
+                   "the Axiom repo on disk (and AXIOM_MASTER_KEY) on the service.")
+
+    task = st.text_area("Task", "write primes.py with a sieve + pytest tests")
+    c1, c2, c3 = st.columns(3)
+    budget = c1.number_input("Budget steps", 1, 200, 30)
+    wall = c2.number_input("Wall seconds", 30, 3600, 900)
+    sandbox = c3.selectbox("Sandbox", ["local", "docker", "docker_required"])
+    if st.button("Run autonomous agent", type="primary",
+                 disabled=not avail.get("available")):
+        try:
+            res = requests.post(f"{API}/autonomous/run",
+                                json={"task": task, "budget_steps": int(budget),
+                                      "wall_seconds": int(wall), "sandbox": sandbox},
+                                timeout=30).json()
+            if res.get("ok"):
+                st.success(f"Launched {res['run_id']} — it runs in the background.")
+            else:
+                st.error(f"Not launched: {res.get('reason')}")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Could not launch: {e}")
+
+    st.divider()
+    st.button("Refresh runs")          # reruns the script → re-fetches below
+    try:
+        runs = requests.get(f"{API}/autonomous/runs", timeout=10).json().get("runs", [])
+    except Exception:  # noqa: BLE001
+        runs = []
+    if not runs:
+        st.caption("No runs yet.")
+    for r in runs:
+        with st.container(border=True):
+            st.markdown(f"**{_RUN_ICON.get(r['status'], '')} {r['status']}** · "
+                        f"`{r['id']}`  \n{r['task']}")
+            res = r.get("result") or {}
+            if res:
+                line = f"steps: {res.get('steps')} · success: {res.get('success')}"
+                if res.get("aborted_reason"):
+                    line += f" · {res['aborted_reason']}"
+                st.caption(line)
+                for sg in (res.get("plan") or {}).get("subgoals", []):
+                    st.write(f"- {'✅' if sg.get('done') else '⬜'} {sg.get('description')}")
+            if r.get("error"):
+                st.caption(f"error: {r['error'][:200]}")
+    st.stop()
 
 
 if go:

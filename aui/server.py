@@ -112,6 +112,13 @@ class LocationReq(BaseModel):
     timezone: Optional[str] = None
 
 
+class AutonomousReq(BaseModel):
+    task: str                        # what the autonomous agent should accomplish
+    budget_steps: Optional[int] = None
+    wall_seconds: Optional[int] = None
+    sandbox: Optional[str] = None    # local | docker | docker_required
+
+
 class AnticipationReq(BaseModel):
     enabled: Optional[bool] = None
     min_obs: Optional[int] = None
@@ -554,6 +561,48 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
         except Exception as e:  # network off / upstream down — fail soft
             return {"ok": False, "error": f"{type(e).__name__}: {e}",
                     "latitude": lat, "longitude": lon}
+
+    # ── autonomous agent (dedicated workspace) ───────────────────
+    # Drives Axiom's upstream autonomous agent via its CLI (aui.autonomous).
+    @app.get("/autonomous/available")
+    def autonomous_available() -> dict:
+        from aui import autonomous
+        return autonomous.available()
+
+    @app.post("/autonomous/run")
+    def autonomous_run(req: AutonomousReq) -> dict:
+        """Screen the task through axiom_immune, then launch an autonomous run.
+        The agent has its own constitutional gates too — this is defense in depth."""
+        from aui import autonomous
+        task = (req.task or "").strip()
+        if not task:
+            return {"ok": False, "reason": "empty_task"}
+        verdict = {}
+        try:
+            verdict = bridge.immune_scan(task) or {}
+        except Exception:  # noqa: BLE001
+            verdict = {}
+        if verdict.get("detected"):
+            bridge.log_event("autonomous_refused", subject=task[:80],
+                             outcome=verdict.get("detection_method", "safety"))
+            return {"ok": False, "reason": "refused"}
+        res = autonomous.submit(task, budget_steps=req.budget_steps or 30,
+                                wall_seconds=req.wall_seconds or 900,
+                                sandbox=req.sandbox or "local")
+        if res.get("ok"):
+            bridge.log_event("autonomous_run", subject=task[:80],
+                             outcome=res["run_id"])
+        return res
+
+    @app.get("/autonomous/runs")
+    def autonomous_runs() -> dict:
+        from aui import autonomous
+        return {**autonomous.available(), "runs": autonomous.list_runs()}
+
+    @app.get("/autonomous/run/{run_id}")
+    def autonomous_run_detail(run_id: str) -> dict:
+        from aui import autonomous
+        return autonomous.get_run(run_id) or {"ok": False, "reason": "not_found"}
 
     return app
 
