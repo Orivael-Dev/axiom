@@ -4,6 +4,17 @@
 > `notebooks/srd_benchmark.ipynb` (2026-05-29). See §11 for the
 > reproducibility appendix.
 
+> **⚠ 2026-06-08 update — Q4_K_M baseline caveat.**
+> A direct on-device measurement (PocketPal, TinyLlama-1.1B-Chat-v1.0,
+> wikitext-2, 100 chunks) found F16 PPL = 19.205 ± 0.404 vs Q4_K_M PPL =
+> 19.385 ± 0.399 — a gap of **+0.94% (0.18 PPL absolute)** with overlapping
+> error bars (not statistically significant). The "+1.51 PPL SRD vs Q4_K_M"
+> finding in the TL;DR below used *cited* K-quant numbers measured on the
+> **base** model with a different stride, not the chat model at matched stride.
+> The SRD α=0 advantage over Q4_K_M must be re-measured on the same
+> model/dataset/stride before that delta can be cited. The SRD vs Q6_K and
+> SRD vs FP16 findings are unaffected. See `results/mobile_baselines.json`.
+
 ## TL;DR
 
 - **Verdict: pursue.** SRD at 13 bpw (α=1.0, g=64) reaches PPL 7.095
