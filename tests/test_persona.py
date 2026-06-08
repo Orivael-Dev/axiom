@@ -140,3 +140,19 @@ def replace_base_model(tok, model):
     from dataclasses import replace
     from aui.persona import _now
     return replace(tok, base_model=model, updated_at=_now()).signed()
+
+
+# ── one-time migration of a legacy CWD persona dir into the stable home ──────
+
+def test_persona_migrates_legacy_dir(monkeypatch, tmp_path):
+    monkeypatch.delenv("AX_OS_NO_MIGRATE", raising=False)   # opt into migration
+    monkeypatch.delenv("AX_OS_PERSONA", raising=False)
+    monkeypatch.setenv("AX_OS_HOME", str(tmp_path / "home"))
+    monkeypatch.chdir(tmp_path)
+    # an old CWD persona dir holding Aria with a chosen brain
+    from aui.persona import PersonaStore
+    legacy = PersonaStore(str(tmp_path / "ax_os_persona"))
+    legacy.save({"base_model": "mistral:7b"})
+    # a fresh default-path store (home) migrates it instead of minting anew
+    migrated = PersonaStore().load_or_mint()
+    assert migrated.base_model == "mistral:7b"

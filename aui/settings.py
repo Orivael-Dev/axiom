@@ -67,11 +67,33 @@ def _ax_os_home() -> str:
     return base
 
 
+_LEGACY_SETTINGS = "ax_os_settings.json"   # the old CWD-relative default
+
+
+def _migrate_legacy(dest: str) -> None:
+    """One-time, non-destructive copy of a legacy CWD-relative settings file into
+    the stable home, so upgrading from the old default isn't seen as a reset.
+    Skips if the home file already exists, no legacy file is present, or
+    AX_OS_NO_MIGRATE is set (tests)."""
+    if os.environ.get("AX_OS_NO_MIGRATE") or os.path.exists(dest):
+        return
+    try:
+        if os.path.isfile(_LEGACY_SETTINGS):
+            import shutil
+            shutil.copy2(_LEGACY_SETTINGS, dest)
+    except OSError:
+        pass
+
+
 def _path() -> str:
     # An explicit file wins; otherwise a stable home — not a CWD-relative file
     # that "resets" when the service starts from a different directory.
-    return os.environ.get("AX_OS_SETTINGS") or os.path.join(
-        _ax_os_home(), "settings.json")
+    explicit = os.environ.get("AX_OS_SETTINGS")
+    if explicit:
+        return explicit
+    dest = os.path.join(_ax_os_home(), "settings.json")
+    _migrate_legacy(dest)
+    return dest
 
 
 def load() -> dict:

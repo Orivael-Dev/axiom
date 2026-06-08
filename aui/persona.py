@@ -131,9 +131,28 @@ def _persona_default_dir() -> str:
     return os.path.join(base, "persona")
 
 
+def _migrate_legacy_persona(dest: Path) -> None:
+    """One-time, non-destructive copy of a legacy CWD-relative ``ax_os_persona``
+    dir into the stable home, so Aria's identity + chosen brain carry over.
+    Skips if the home dir already exists or AX_OS_NO_MIGRATE is set (tests)."""
+    if os.environ.get("AX_OS_NO_MIGRATE") or dest.exists():
+        return
+    legacy = Path("ax_os_persona")
+    try:
+        if legacy.is_dir():
+            import shutil
+            shutil.copytree(legacy, dest)
+    except OSError:
+        pass
+
+
 class PersonaStore:
     def __init__(self, path: Optional[str] = None):
-        self._dir = Path(path or os.environ.get("AX_OS_PERSONA") or _persona_default_dir())
+        if path or os.environ.get("AX_OS_PERSONA"):
+            self._dir = Path(path or os.environ["AX_OS_PERSONA"])
+        else:
+            self._dir = Path(_persona_default_dir())
+            _migrate_legacy_persona(self._dir)   # before mkdir (copytree needs absent dest)
         self._dir.mkdir(parents=True, exist_ok=True)
 
     @property

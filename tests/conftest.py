@@ -13,3 +13,6 @@ import pytest
 def _isolated_ax_os_home(tmp_path_factory, monkeypatch):
     home = tmp_path_factory.mktemp("ax_os_home")
     monkeypatch.setenv("AX_OS_HOME", str(home))
+    # never auto-migrate a stray CWD file into a test's home (deterministic
+    # defaults); the migration tests opt back in by deleting this.
+    monkeypatch.setenv("AX_OS_NO_MIGRATE", "1")
