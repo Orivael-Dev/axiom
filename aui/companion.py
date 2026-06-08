@@ -432,7 +432,26 @@ def llm_generate(messages: List[dict], *, model: Optional[str] = None) -> str:
         "model": model or cfg["model"], "messages": messages,
         "temperature": 0.7, "stream": False,
     }, timeout=30)
-    return out["choices"][0]["message"]["content"]
+    return _strip_reasoning(out["choices"][0]["message"]["content"])
+
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_reasoning(text: str) -> str:
+    """Drop chain-of-thought blocks so a thinking model's reasoning never leaks
+    into Aria's visible reply. Qwen3 emits <think>…</think> by default (so do
+    DeepSeek-R1 et al.); some chat templates inject the opening <think> server-
+    side, so the content may carry only a closing tag — handle both. No-op for
+    non-thinking models."""
+    if not text:
+        return text or ""
+    out = _THINK_RE.sub("", text)            # balanced <think>…</think> pairs
+    if "</think>" in out:                    # template-opened: keep what follows
+        out = out.rsplit("</think>", 1)[-1]
+    if "<think>" in out:                     # truncated/unclosed: keep the head
+        out = out.split("<think>", 1)[0]
+    return out.strip()
 
 
 def vision_caption(image: str, *, prompt: Optional[str] = None) -> str:
@@ -456,7 +475,7 @@ def vision_caption(image: str, *, prompt: Optional[str] = None) -> str:
             "messages": [{"role": "user", "content": content}],
             "temperature": 0.2, "stream": False,
         }, timeout=60)
-        return (out["choices"][0]["message"]["content"] or "").strip()
+        return _strip_reasoning(out["choices"][0]["message"]["content"])
     except Exception:
         return ""
 
