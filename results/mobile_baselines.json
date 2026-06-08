@@ -1,0 +1,70 @@
+{
+  "description": "PocketPal mobile inference baselines — Q4_K_M GGUF on-device benchmarks. Used as reference for SRD pack comparisons.",
+  "device": {
+    "ram_gb": 12,
+    "gpu": "GPUOpenCL",
+    "cpu_threads": 6,
+    "gpu_layers": 99,
+    "app": "PocketPal",
+    "flash_attention": false,
+    "cache_types": "f16/f16"
+  },
+  "benchmark_config": {
+    "pp": 512,
+    "tg": 128,
+    "pl": 1,
+    "repetitions": 3,
+    "context": 2048,
+    "batch": 512,
+    "ubatch": 512
+  },
+  "baselines": [
+    {
+      "id": "smollm2_135m_q4km_mobile",
+      "model": "smollm2_135m_instruct",
+      "file": "smollm2_135m_instruct_q4km.gguf",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "size_mb": 103.67,
+      "params_m": 134.52,
+      "results": {
+        "prompt_processing_ts": 261.30,
+        "token_generation_ts": 4.82,
+        "total_time_s": 96,
+        "peak_memory_pct": 8.9,
+        "peak_memory_gb": 1.0
+      },
+      "notes": "Baseline for MiniSRDAgent capsule size class (params_m=135). TG limited by OpenCL pipeline underutilisation at 135M scale.",
+      "timestamp": "2026-06-08T12:01:59"
+    },
+    {
+      "id": "tinyllama_1b_q4km_mobile",
+      "model": "tinyllama-1.1b-chat-v1.0",
+      "file": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "size_mb": 667.08,
+      "params_m": 1100,
+      "results": {
+        "prompt_processing_ts": 106.23,
+        "token_generation_ts": 12.03,
+        "total_time_s": 47,
+        "peak_memory_pct": 13.8,
+        "peak_memory_gb": 2.0
+      },
+      "notes": "Primary SRD benchmark target. TG 2.5x faster than 135M despite 8x more params — OpenCL saturates better at 1B scale. SRD-4 at ~4.5 bpw expected to match or beat TG while improving perplexity ~1.5 PPL vs this Q4_K_M baseline.",
+      "timestamp": "2026-06-08T15:00:28"
+    }
+  ],
+  "srd_targets": {
+    "description": "Expected SRD-4 results to beat vs Q4_K_M baselines",
+    "tinyllama_1b": {
+      "quant": "SRD-4",
+      "bpw_target": 4.5,
+      "ppl_improvement_vs_q4km": "~1.5",
+      "size_reduction_vs_q4km_pct": "~7",
+      "tg_target_ts": ">=12.03",
+      "source": "docs/SRD_RESULTS.md"
+    }
+  }
+}
