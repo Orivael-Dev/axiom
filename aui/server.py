@@ -281,6 +281,12 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
         return res
 
     # ── companion (à la "Her") ───────────────────────────────────
+    def _persona_block() -> dict:
+        """Who the MET chain points back to — Aria's name + the signatures
+        (soul/genesis and the soul+brain token) stamped onto her turns."""
+        return {"name": persona_store.load_or_mint().name,
+                **companion.persona_anchor}
+
     @app.post("/companion/say")
     def companion_say(req: CompanionReq) -> dict:
         from aui.settings import load
@@ -295,6 +301,7 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
         return {**r.to_dict(), "voice_enabled": bool(voice.get("enabled")),
                 "voice_engine": voice.get("engine"), "turns": len(companion.history),
                 "met_head": mt.head, "met_turns": len(mt.links),
+                "persona": _persona_block(),
                 "anticipation": companion.anticipation}
 
     @app.post("/companion/listen")
@@ -333,6 +340,7 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
                 "voice_engine": voice.get("engine"),
                 "turns": len(companion.history),
                 "met_head": mt.head, "met_turns": len(mt.links),
+                "persona": _persona_block(),
                 "anticipation": companion.anticipation}
 
     # ── persona: Aria's signed identity (soul) + outfit + lineage ─

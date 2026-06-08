@@ -136,6 +136,13 @@ class Companion:
     def master_token(self) -> MasterEventToken:
         return self._master
 
+    @property
+    def persona_anchor(self) -> dict:
+        """What the MET chain points back to: Aria's soul (genesis) and the
+        persona token (soul + brain) stamped onto turns."""
+        return {"identity_signature": self._genesis,
+                "token_signature": self._persona_sig}
+
     def _antic_settings(self) -> dict:
         from aui.qrf import MATURE_MIN_OBS, MATURE_CONF, MATURE_HIT
         c = {}

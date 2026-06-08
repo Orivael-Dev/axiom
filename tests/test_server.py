@@ -475,3 +475,24 @@ def test_vision_settings_default_and_update(client, tmp_path, monkeypatch):
     upd = client.post("/settings/vision",
                       json={"enabled": True, "model": "llava"}).json()
     assert upd["enabled"] is True and upd["model"] == "llava"
+
+
+# ── MET anchor surfaced: replies point back to Aria ─────────────────────────
+
+def test_say_surfaces_persona_anchor(client):
+    r = client.post("/companion/say", json={"text": "hi"}).json()
+    p = r["persona"]
+    assert p["name"] and p["identity_signature"] and p["token_signature"]
+    # the surfaced soul matches what the MET chain parents off
+    assert p["identity_signature"] == client.get("/companion/persona").json()["identity_signature"]
+
+
+def test_see_surfaces_persona_anchor(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_SETTINGS", str(tmp_path / "s.json"))
+    client.post("/settings/vision", json={"enabled": True})
+    import aui.planner_local as pl
+    monkeypatch.setattr(pl, "_post", lambda cfg, path, body, timeout:
+                        {"choices": [{"message": {"content": "a cat"}}]})
+    r = client.post("/companion/see",
+                    json={"image": "data:image/png;base64,AAAA"}).json()
+    assert r["persona"]["name"] and r["persona"]["token_signature"]
