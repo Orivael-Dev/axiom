@@ -104,3 +104,4 @@ tests/_tmp_bonded_pair_server_logs/
 # deploys point this at /data/tenants via env; this directory only ever
 # exists when tests/imports run from the repo root.
 tenants/
+audio_harness_results.json
