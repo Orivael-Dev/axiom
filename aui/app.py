@@ -72,6 +72,21 @@ with st.sidebar:
             except Exception as e:  # noqa: BLE001
                 st.error(f"Could not set location: {e}")
 
+        st.divider()
+        st.caption("Conversation — fold the window into a retrospective note "
+                   "(keys/passwords redacted before anything is stored)")
+        if st.button("Consolidate to retrospect"):
+            try:
+                res = requests.post(f"{API}/companion/consolidate", timeout=30).json()
+                if res.get("recorded"):
+                    st.success(f"Consolidated {res.get('turns', 0)} turns → retrospect.")
+                    if res.get("summary"):
+                        st.caption(res["summary"])
+                else:
+                    st.info("Nothing to consolidate yet.")
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Could not consolidate: {e}")
+
 
 def _assemble(goal: str, domain: str) -> dict:
     payload = {"goal": goal}
