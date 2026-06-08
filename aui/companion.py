@@ -94,6 +94,7 @@ class Companion:
                  summarize: Optional[Callable[[str, list, list], str]] = None,
                  anticipation_cfg: Optional[Callable[[], dict]] = None,
                  genesis: str = "",
+                 persona_sig: str = "",
                  session_id: str = "companion"):
         self.persona = persona
         self._generate: GenerateFn = generate or _reflective_reply
@@ -108,6 +109,7 @@ class Companion:
         self._antic_cfg = anticipation_cfg  # () -> dict of QRF thresholds (settings)
         self._session_id = session_id
         self._genesis = genesis        # persona identity_signature → MET genesis
+        self._persona_sig = persona_sig  # current token_signature (soul + brain) → stamped per turn
         self._master = MasterEventToken(session_id, genesis=genesis)  # MET chain
         self._qrf = QRFEngine()        # reverse-QRF predictor fed by the MET chain
         self._last_search: dict = {}
@@ -169,7 +171,7 @@ class Companion:
         self._master.add_turn(intent_class=intent,
                               risk_clusters=(fused or {}).get("risk_clusters", []),
                               fusion_signature=(fused or {}).get("signature", ""),
-                              learned=learned)
+                              learned=learned, persona_sig=self._persona_sig)
         # feed the MET chain into the reverse-QRF predictor (learned turns weighted)
         self._qrf.step(intent or "INFORM", learned=learned)
 
@@ -190,7 +192,11 @@ class Companion:
     def apply_persona(self, token) -> None:
         """Adopt an edited PersonaToken. A true identity change (new
         identity_signature) re-grounds the persona text and starts a fresh
-        conversation root; a model/voice change (same identity) is a no-op here."""
+        conversation root. An outfit change (same soul, new brain/voice — e.g.
+        swapping to mistral-7b) keeps the conversation, but updates the persona
+        signature stamped onto subsequent MET turns so the chain still points
+        back to the exact Aria that spoke."""
+        self._persona_sig = getattr(token, "token_signature", self._persona_sig)
         if token.identity_signature != self._genesis:
             self.persona = token.persona_text()
             self._genesis = token.identity_signature
@@ -579,4 +585,5 @@ def build_companion(bridge=None) -> Companion:
                      search=(search if bridge is not None else None), summarize=summarize,
                      anticipation_cfg=antic_cfg,
                      persona=persona_tok.persona_text(),
-                     genesis=persona_tok.identity_signature)
+                     genesis=persona_tok.identity_signature,
+                     persona_sig=persona_tok.token_signature)

@@ -18,10 +18,11 @@ from dataclasses import dataclass, field
 from typing import List
 
 
-def _link_hash(parent: str, fusion_signature: str, intent: str, risk: list) -> str:
+def _link_hash(parent: str, fusion_signature: str, intent: str, risk: list,
+               persona_sig: str = "") -> str:
     body = json.dumps(
         {"p": parent, "s": fusion_signature or "", "i": intent or "",
-         "r": sorted(risk or [])},
+         "r": sorted(risk or []), "pa": persona_sig or ""},
         sort_keys=True, separators=(",", ":"), ensure_ascii=True,
     ).encode("utf-8")
     return hashlib.sha256(body).hexdigest()
@@ -35,13 +36,15 @@ class TurnLink:
     learned: bool                  # did this turn teach Aria something new?
     fusion_signature: str          # axiom-fusion-v1 verdict for the turn
     parent: str                    # previous link's chain_hash
+    persona_sig: str = ""          # the Aria persona token (soul + brain) that spoke
     chain_hash: str = ""
 
     def to_dict(self) -> dict:
         return {"step": self.step, "intent_class": self.intent_class,
                 "risk_clusters": list(self.risk_clusters), "learned": self.learned,
                 "fusion_signature": self.fusion_signature,
-                "parent": self.parent, "chain_hash": self.chain_hash}
+                "parent": self.parent, "persona_sig": self.persona_sig,
+                "chain_hash": self.chain_hash}
 
 
 @dataclass
@@ -51,14 +54,15 @@ class MasterEventToken:
     links: List[TurnLink] = field(default_factory=list)
 
     def add_turn(self, *, intent_class: str = "INFORM", risk_clusters: list = None,
-                 fusion_signature: str = "", learned: bool = False) -> TurnLink:
+                 fusion_signature: str = "", learned: bool = False,
+                 persona_sig: str = "") -> TurnLink:
         parent = self.links[-1].chain_hash if self.links else self.genesis
         risk = list(risk_clusters or [])
-        ch = _link_hash(parent, fusion_signature, intent_class, risk)
+        ch = _link_hash(parent, fusion_signature, intent_class, risk, persona_sig)
         link = TurnLink(step=len(self.links), intent_class=intent_class,
                         risk_clusters=risk, learned=learned,
                         fusion_signature=fusion_signature or "", parent=parent,
-                        chain_hash=ch)
+                        persona_sig=persona_sig or "", chain_hash=ch)
         self.links.append(link)
         return link
 
@@ -70,7 +74,7 @@ class MasterEventToken:
         parent = self.genesis
         for link in self.links:
             if _link_hash(parent, link.fusion_signature, link.intent_class,
-                          link.risk_clusters) != link.chain_hash:
+                          link.risk_clusters, link.persona_sig) != link.chain_hash:
                 return False
             parent = link.chain_hash
         return True

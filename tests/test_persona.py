@@ -95,3 +95,48 @@ def test_apply_persona_identity_change_resets_chain():
     assert c.master_token.genesis == new.identity_signature
     assert len(c.master_token.links) == 0
     assert new.persona_text().split(".")[0] in c.persona  # persona re-grounded
+
+
+# ── MET turns are stamped with the persona (soul + brain) that spoke ─────────
+
+def test_met_turn_stamped_with_persona_sig():
+    tok = mint_default()
+    c = Companion(generate=lambda m: "ok", genesis=tok.identity_signature,
+                  persona_sig=tok.token_signature)
+    c.say("hello")
+    link = c.master_token.links[0]
+    assert link.persona_sig == tok.token_signature   # the exact Aria that spoke
+    assert c.master_token.verify() is True
+    assert "persona_sig" in link.to_dict()
+
+
+def test_met_persona_sig_is_in_the_chain_hash():
+    # tampering the persona stamp must break verify — it's bound into the hash
+    c = Companion(generate=lambda m: "ok", genesis="ident-A", persona_sig="aria-v1")
+    c.say("hello")
+    c.master_token.links[0].persona_sig = "someone-else"   # tamper
+    assert c.master_token.verify() is False
+
+
+def test_brain_swap_updates_stamp_without_rerooting():
+    # outfit change (same soul, new base_model = mistral) keeps the conversation
+    # but stamps later turns with the new persona token — still pointing to Aria.
+    tok = mint_default()
+    c = Companion(generate=lambda m: "ok", genesis=tok.identity_signature,
+                  persona_sig=tok.token_signature)
+    c.say("before swap")
+    swapped = replace_base_model(tok, "mistral:7b")
+    c.apply_persona(swapped)
+    assert len(c.master_token.links) == 1                  # NOT re-rooted
+    assert c.master_token.genesis == tok.identity_signature  # same soul
+    c.say("after swap")
+    assert c.master_token.links[0].persona_sig == tok.token_signature
+    assert c.master_token.links[1].persona_sig == swapped.token_signature
+    assert swapped.token_signature != tok.token_signature  # the brain change is recorded
+    assert c.master_token.verify() is True
+
+
+def replace_base_model(tok, model):
+    from dataclasses import replace
+    from aui.persona import _now
+    return replace(tok, base_model=model, updated_at=_now()).signed()
