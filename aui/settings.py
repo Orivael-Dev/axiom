@@ -41,6 +41,14 @@ _DEFAULT_VISION = {
 }
 
 
+_DEFAULT_LOCATION = {
+    "name": "London",          # human label — set it / "ask" for a place by name
+    "lat": 51.51,
+    "lon": -0.13,
+    "timezone": "Europe/London",
+}
+
+
 _DEFAULT_ANTICIPATION = {
     "enabled": True,
     "min_obs": 3,            # transitions to observe before acting
@@ -50,8 +58,20 @@ _DEFAULT_ANTICIPATION = {
 }
 
 
+def _ax_os_home() -> str:
+    """Stable per-user state dir so settings survive a restart regardless of the
+    directory AX OS was launched from. Override with AX_OS_HOME."""
+    base = os.environ.get("AX_OS_HOME") or os.path.join(
+        os.path.expanduser("~"), ".ax_os")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
 def _path() -> str:
-    return os.environ.get("AX_OS_SETTINGS", "ax_os_settings.json")
+    # An explicit file wins; otherwise a stable home — not a CWD-relative file
+    # that "resets" when the service starts from a different directory.
+    return os.environ.get("AX_OS_SETTINGS") or os.path.join(
+        _ax_os_home(), "settings.json")
 
 
 def load() -> dict:
@@ -67,9 +87,10 @@ def load() -> dict:
     llm = {**_DEFAULT_LLM, **(data.get("llm") or {})}
     voice = {**_DEFAULT_VOICE, **(data.get("voice") or {})}
     vision = {**_DEFAULT_VISION, **(data.get("vision") or {})}
+    location = {**_DEFAULT_LOCATION, **(data.get("location") or {})}
     antic = {**_DEFAULT_ANTICIPATION, **(data.get("anticipation") or {})}
     return {**data, "llm": llm, "voice": voice, "vision": vision,
-            "anticipation": antic}
+            "location": location, "anticipation": antic}
 
 
 def update_llm(patch: dict) -> dict:
@@ -145,6 +166,29 @@ def public_vision() -> dict:
     api_key = vision.pop("api_key", "")
     vision["api_key_set"] = bool(api_key)
     return vision
+
+
+def update_location(patch: dict) -> dict:
+    """Set the location used for time & weather (name + lat/lon + timezone).
+    Returns the full config."""
+    with _LOCK:
+        data = load()
+        loc = data["location"]
+        for k in ("name", "lat", "lon", "timezone"):
+            if k in patch and patch[k] is not None:
+                loc[k] = patch[k]
+        data["location"] = loc
+        try:
+            with open(_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except OSError:
+            pass
+        return data
+
+
+def public_location() -> dict:
+    """Location for the UI / widgets (no secrets)."""
+    return dict(load()["location"])
 
 
 def update_anticipation(patch: dict) -> dict:

@@ -105,6 +105,13 @@ class VisionReq(BaseModel):
     model: Optional[str] = None
 
 
+class LocationReq(BaseModel):
+    name: Optional[str] = None       # a place to look up, e.g. "Paris" (geocoded)
+    lat: Optional[float] = None      # or set coordinates directly
+    lon: Optional[float] = None
+    timezone: Optional[str] = None
+
+
 class AnticipationReq(BaseModel):
     enabled: Optional[bool] = None
     min_obs: Optional[int] = None
@@ -139,6 +146,25 @@ _WMO = {
     81: "Rain showers", 82: "Violent showers", 95: "Thunderstorm",
     96: "Thunderstorm + hail", 99: "Thunderstorm + hail",
 }
+
+
+def _geocode(name: str) -> Optional[dict]:
+    """Resolve a place name → {name, lat, lon, timezone} via Open-Meteo's keyless
+    geocoding API. Returns None on no match or network failure (fails soft)."""
+    qs = urllib.parse.urlencode({"name": name, "count": 1, "language": "en",
+                                 "format": "json"})
+    url = f"https://geocoding-api.open-meteo.com/v1/search?{qs}"
+    try:
+        with urllib.request.urlopen(url, timeout=6) as resp:  # noqa: S310 (https only)
+            raw = json.loads(resp.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001 — offline / upstream down
+        return None
+    results = raw.get("results") or []
+    if not results:
+        return None
+    r = results[0]
+    return {"name": r.get("name") or name, "lat": r.get("latitude"),
+            "lon": r.get("longitude"), "timezone": r.get("timezone") or "UTC"}
 
 
 def _fetch_weather(lat: float, lon: float) -> dict:
@@ -391,6 +417,30 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
                          attributes={"model": data["vision"]["model"]})
         return public_vision()
 
+    # ── settings: location (time & weather) ──────────────────────
+    @app.get("/settings/location")
+    def get_location() -> dict:
+        from aui.settings import public_location
+        return public_location()
+
+    @app.post("/settings/location")
+    def set_location(req: LocationReq) -> dict:
+        """Set the location for time & weather. Pass a place name to look up
+        ("ask" by name → geocoded to lat/lon/timezone), or explicit coordinates."""
+        from aui.settings import update_location, public_location
+        patch = req.model_dump(exclude_none=True)
+        if patch.get("name") and patch.get("lat") is None and patch.get("lon") is None:
+            geo = _geocode(patch["name"])
+            if geo is None:
+                return {"ok": False, "reason": "geocode_failed",
+                        "name": patch["name"]}
+            patch.update(geo)
+        update_location(patch)
+        loc = public_location()
+        bridge.log_event("settings_location_update", subject=str(loc.get("name", "")),
+                         outcome=f"{loc.get('lat')},{loc.get('lon')}")
+        return {"ok": True, **loc}
+
     @app.post("/tts")
     def tts(req: TtsReq) -> dict:
         """Server-side TTS for the piper/cloud engines (the browser engine speaks
@@ -472,15 +522,33 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
     # ── widgets ──────────────────────────────────────────────────
     @app.get("/widgets/time")
     def widget_time() -> dict:
-        """Server clock — lets the widget show server time / timezone."""
+        """Local time at the configured location (falls back to the server clock)."""
+        from aui.settings import load
+        loc = load()["location"]
+        tz = loc.get("timezone") or ""
         now = time.time()
+        if tz:
+            try:
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+                dt = datetime.now(ZoneInfo(tz))
+                return {"epoch_ms": int(now * 1000),
+                        "iso": dt.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "tz": tz, "location": loc.get("name", "")}
+            except Exception:  # noqa: BLE001 — bad/unknown tz → server clock
+                pass
         return {"epoch_ms": int(now * 1000),
                 "iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now)),
                 "tz": time.strftime("%Z", time.localtime(now))}
 
     @app.get("/widgets/weather")
-    def widget_weather(lat: float = _DEFAULT_LAT, lon: float = _DEFAULT_LON) -> dict:
-        """Current conditions via Open-Meteo (keyless). Defaults to AX_OS_WEATHER_LATLON."""
+    def widget_weather(lat: Optional[float] = None, lon: Optional[float] = None) -> dict:
+        """Current conditions via Open-Meteo (keyless). Defaults to the configured
+        location; explicit lat/lon override it."""
+        from aui.settings import load
+        loc = load()["location"]
+        lat = loc.get("lat", _DEFAULT_LAT) if lat is None else lat
+        lon = loc.get("lon", _DEFAULT_LON) if lon is None else lon
         try:
             return _fetch_weather(lat, lon)
         except Exception as e:  # network off / upstream down — fail soft

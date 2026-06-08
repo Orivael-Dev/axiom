@@ -51,6 +51,27 @@ with st.sidebar:
             except Exception as e:  # noqa: BLE001
                 st.error(f"Could not update settings: {e}")
 
+        st.divider()
+        try:
+            loc = requests.get(f"{API}/settings/location", timeout=10).json()
+        except Exception:  # noqa: BLE001
+            loc = {"name": ""}
+        st.caption("Location — for time & weather")
+        place = st.text_input("Place", loc.get("name", ""),
+                              help="A city/place name; looked up for coordinates "
+                                   "and timezone.")
+        if st.button("Set location"):
+            try:
+                res = requests.post(f"{API}/settings/location",
+                                    json={"name": place}, timeout=15).json()
+                if res.get("ok") is False:
+                    st.error(f"Couldn't find “{place}”.")
+                else:
+                    st.success(f"Location set to {res.get('name')} "
+                               f"({res.get('timezone')}).")
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Could not set location: {e}")
+
 
 def _assemble(goal: str, domain: str) -> dict:
     payload = {"goal": goal}

@@ -123,9 +123,17 @@ def mint_default() -> PersonaToken:
 
 # ── persisted store: persona.current.json + persona.history/<ts>.json ────────
 
+def _persona_default_dir() -> str:
+    """Stable per-user dir (under AX_OS_HOME) so Aria's identity + chosen brain
+    survive a restart regardless of the launch directory."""
+    base = os.environ.get("AX_OS_HOME") or os.path.join(
+        os.path.expanduser("~"), ".ax_os")
+    return os.path.join(base, "persona")
+
+
 class PersonaStore:
     def __init__(self, path: Optional[str] = None):
-        self._dir = Path(path or os.environ.get("AX_OS_PERSONA", "ax_os_persona"))
+        self._dir = Path(path or os.environ.get("AX_OS_PERSONA") or _persona_default_dir())
         self._dir.mkdir(parents=True, exist_ok=True)
 
     @property

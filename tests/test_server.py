@@ -496,3 +496,44 @@ def test_see_surfaces_persona_anchor(client, tmp_path, monkeypatch):
     r = client.post("/companion/see",
                     json={"image": "data:image/png;base64,AAAA"}).json()
     assert r["persona"]["name"] and r["persona"]["token_signature"]
+
+
+# ── location: set by name (geocoded) → drives time & weather ─────────────────
+
+def test_set_location_by_name_geocodes(client, monkeypatch):
+    import aui.server as srv
+    monkeypatch.setattr(srv, "_geocode", lambda name: {
+        "name": "Paris", "lat": 48.85, "lon": 2.35, "timezone": "Europe/Paris"})
+    r = client.post("/settings/location", json={"name": "paris"}).json()
+    assert r["ok"] is True and r["name"] == "Paris" and r["timezone"] == "Europe/Paris"
+    assert client.get("/settings/location").json()["lat"] == 48.85
+    assert any(e["event_type"] == "settings_location_update"
+               for e in client.get("/audit").json()["events"])
+
+
+def test_set_location_geocode_miss(client, monkeypatch):
+    import aui.server as srv
+    monkeypatch.setattr(srv, "_geocode", lambda name: None)
+    r = client.post("/settings/location", json={"name": "zzznowhere"}).json()
+    assert r["ok"] is False and r["reason"] == "geocode_failed"
+
+
+def test_weather_widget_defaults_to_configured_location(client, monkeypatch):
+    import aui.server as srv
+    monkeypatch.setattr(srv, "_geocode", lambda name: {
+        "name": "Tokyo", "lat": 35.68, "lon": 139.69, "timezone": "Asia/Tokyo"})
+    seen = {}
+    monkeypatch.setattr(srv, "_fetch_weather", lambda lat, lon: (
+        seen.update({"lat": lat, "lon": lon}) or {"ok": True, "latitude": lat}))
+    client.post("/settings/location", json={"name": "tokyo"})
+    client.get("/widgets/weather")
+    assert seen == {"lat": 35.68, "lon": 139.69}      # used the set location
+
+
+def test_time_widget_uses_location_timezone(client, monkeypatch):
+    import aui.server as srv
+    monkeypatch.setattr(srv, "_geocode", lambda name: {
+        "name": "Tokyo", "lat": 35.68, "lon": 139.69, "timezone": "Asia/Tokyo"})
+    client.post("/settings/location", json={"name": "tokyo"})
+    t = client.get("/widgets/time").json()
+    assert t["tz"] == "Asia/Tokyo" and t["location"] == "Tokyo"
