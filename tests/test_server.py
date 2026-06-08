@@ -579,3 +579,24 @@ def test_autonomous_runs_and_detail(client, monkeypatch):
     assert runs["runs"][0]["id"] == "job_1"
     assert client.get("/autonomous/run/job_1").json()["status"] == "done"
     assert client.get("/autonomous/run/nope").json()["reason"] == "not_found"
+
+
+# ── consolidate window → retrospect, and Aria delegating a build task ────────
+
+def test_companion_consolidate_endpoint(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("AX_OS_RETROSPECT_MANIFEST", str(tmp_path / "retro.jsonl"))
+    client.post("/companion/say", json={"text": "let's plan the launch demo"})
+    r = client.post("/companion/consolidate").json()
+    assert r["turns"] >= 2 and "summary" in r
+    assert any(e["event_type"] == "companion_consolidate"
+               for e in client.get("/audit").json()["events"])
+
+
+def test_companion_say_delegates_build_task(client, monkeypatch):
+    import aui.autonomous as auto
+    monkeypatch.setattr(auto, "submit", lambda task, **k: {
+        "ok": True, "run_id": "job_say", "status": "running"})
+    r = client.post("/companion/say",
+                    json={"text": "please implement a primes.py script with tests"}).json()
+    assert r["intent"] == "BUILD" and "job_say" in r["text"]
+    assert r["attributes"]["run_id"] == "job_say"

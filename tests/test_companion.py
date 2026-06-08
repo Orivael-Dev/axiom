@@ -573,3 +573,69 @@ def test_llm_generate_strips_think_block(monkeypatch, tmp_path):
                          "<think>they greeted me</think>Hi! How are you?"}}]})
     from aui.companion import llm_generate
     assert llm_generate([{"role": "user", "content": "hi"}]) == "Hi! How are you?"
+
+
+# ── consolidation, delegation, and secret-safe retrospect ───────────────────
+
+def test_retrospect_redacts_secrets():
+    recs = []
+    c = Companion(generate=lambda m: "ok", retrospect=recs.append)
+    c.say("my password = hunter2 keep it safe")
+    blob = " ".join(r.get("input_text", "") for r in recs)
+    assert "hunter2" not in blob and "[REDACTED]" in blob
+
+
+def test_consolidate_summarizes_and_records():
+    recs = []
+    c = Companion(generate=lambda m: "They discussed the launch demo and a music mix.",
+                  retrospect=recs.append)
+    c.say("let's plan the launch demo")
+    c.say("and the music mix after")
+    out = c.consolidate()
+    assert out["turns"] == 4 and out["recorded"] is True and out["summary"]
+    note = [r for r in recs if r.get("kind") == "consolidation"]
+    assert note and note[0]["turns"] == 4 and note[0]["met_head"]
+
+
+def test_consolidate_redacts_secrets_in_summary():
+    recs = []
+    # summariser echoes a secret back → it must still be scrubbed before recording
+    c = Companion(generate=lambda m: "user shared api_key = SuperSecretValue123",
+                  retrospect=recs.append)
+    c.say("here is my api_key = SuperSecretValue123")
+    out = c.consolidate()
+    assert "SuperSecretValue123" not in out["summary"]
+    note = [r for r in recs if r.get("kind") == "consolidation"][0]
+    assert "SuperSecretValue123" not in note["input_text"]
+
+
+def test_consolidate_empty_window():
+    c = Companion(generate=lambda m: "x")
+    assert c.consolidate() == {"summary": "", "turns": 0, "recorded": False}
+
+
+def test_delegates_build_request_to_autonomous():
+    calls = []
+    def delegate(task):
+        calls.append(task)
+        return {"ok": True, "run_id": "job_xyz", "status": "running"}
+    c = Companion(generate=lambda m: "(should not be used)", delegate=delegate)
+    r = c.say("can you implement a primes.py script with tests?")
+    assert calls == ["can you implement a primes.py script with tests?"]
+    assert r.intent == "BUILD" and "job_xyz" in r.text
+    assert r.attributes["run_id"] == "job_xyz"
+
+
+def test_non_build_chat_does_not_delegate():
+    calls = []
+    c = Companion(generate=lambda m: "a lovely poem",
+                  delegate=lambda t: calls.append(t) or {"ok": True, "run_id": "x"})
+    r = c.say("write me a poem about the sea")   # no software object → normal chat
+    assert calls == [] and r.intent != "BUILD"
+
+
+def test_delegate_unavailable_falls_through_to_chat():
+    c = Companion(generate=lambda m: "Sure, let's talk it through.",
+                  delegate=lambda t: {"ok": False, "reason": "autonomous_unavailable"})
+    r = c.say("implement a cli tool for me")
+    assert r.intent != "BUILD" and r.text == "Sure, let's talk it through."

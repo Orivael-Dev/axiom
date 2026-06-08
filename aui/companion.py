@@ -28,6 +28,7 @@ from aui.curiosity import find_gap
 from aui.knowledge import is_knowledge_question, is_more_request, tldr, sources_block
 from aui.master_token import MasterEventToken
 from aui.qrf import QRFEngine
+from aui.redact import redact_secrets
 
 RISK_INTENTS = frozenset({"HARM", "DECEIVE"})
 
@@ -68,15 +69,18 @@ class CompanionReply:
     """One companion turn."""
 
     def __init__(self, text: str, *, refused: bool = False,
-                 reason: str = "", intent: str = ""):
+                 reason: str = "", intent: str = "",
+                 attributes: Optional[dict] = None):
         self.text = text
         self.refused = refused
         self.reason = reason
         self.intent = intent
+        self.attributes = attributes or {}
 
     def to_dict(self) -> dict:
         return {"text": self.text, "refused": self.refused,
-                "reason": self.reason, "intent": self.intent}
+                "reason": self.reason, "intent": self.intent,
+                "attributes": self.attributes}
 
 
 class Companion:
@@ -93,6 +97,7 @@ class Companion:
                  search: Optional[Callable[[str], dict]] = None,
                  summarize: Optional[Callable[[str, list, list], str]] = None,
                  anticipation_cfg: Optional[Callable[[], dict]] = None,
+                 delegate: Optional[Callable[[str], dict]] = None,
                  genesis: str = "",
                  persona_sig: str = "",
                  session_id: str = "companion"):
@@ -107,6 +112,7 @@ class Companion:
         self._search = search          # web search to answer unknown questions
         self._summarize = summarize    # tl;dr summariser for search results
         self._antic_cfg = anticipation_cfg  # () -> dict of QRF thresholds (settings)
+        self._delegate = delegate      # (task) -> run handle; hands a build task to the autonomous agent
         self._session_id = session_id
         self._genesis = genesis        # persona identity_signature → MET genesis
         self._persona_sig = persona_sig  # current token_signature (soul + brain) → stamped per turn
@@ -259,6 +265,26 @@ class Companion:
             self._record_retrospect(text, True, verdict, fused)
             return reply
 
+        # Delegation: a clear build/implement request → hand it to the autonomous
+        # agent (already immune-screened above; the agent re-gates it too). Aria
+        # acknowledges with the run handle and keeps it working in the background.
+        if self._delegate is not None and _is_build_request(text):
+            try:
+                res = self._delegate(text) or {}
+            except Exception:
+                res = {}
+            if res.get("ok"):
+                out = (f"On it — I've handed that to the autonomous agent "
+                       f"(run {res['run_id']}). It'll plan, edit in a sandbox and "
+                       f"run tests in the background; check the autonomous workspace "
+                       f"for progress.")
+                self._history.append({"role": "user", "content": text})
+                self._history.append({"role": "assistant", "content": out})
+                self._commit_turn("BUILD", fused)
+                self._record_retrospect(text, False, verdict, fused)
+                return CompanionReply(out, intent="BUILD",
+                                      attributes={"run_id": res["run_id"]})
+
         # Knowledge: answer a factual question by recall-first, search-on-miss,
         # then retain (self-learning). Raw results never surface — only a tl;dr.
         if self._search is not None:
@@ -409,7 +435,7 @@ class Companion:
         record = {
             "learned": learned,
             "source": source,
-            "input_text": text,
+            "input_text": redact_secrets(text),   # never persist obvious keys/passwords
             "verdict": "BLOCKED" if refused else "PASSED",
             "intent_class": verdict.get("intent_class") or ("HARM" if refused else "INFORM"),
             "intent_vector": fused.get("intent_vector", []),
@@ -421,6 +447,69 @@ class Companion:
             self._retrospect(record)
         except Exception:
             pass
+
+    def consolidate(self) -> dict:
+        """Consolidate the current conversation window into a single retrospective
+        note and record it — secrets redacted, so no obvious key or password is
+        persisted. Returns {summary, turns, recorded}."""
+        turns = len(self._history)
+        if turns == 0:
+            return {"summary": "", "turns": 0, "recorded": False}
+        summary = redact_secrets(self._consolidate_text())
+        recorded = False
+        if self._retrospect:
+            record = {
+                "kind": "consolidation",
+                "learned": False, "source": "consolidation",
+                "input_text": summary,
+                "verdict": "PASSED", "intent_class": "INFORM",
+                "intent_vector": [], "risk_clusters": [], "fusion_confidence": None,
+                "turns": turns, "met_head": self._master.head,
+                "persona_sig": self._persona_sig,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            try:
+                self._retrospect(record)
+                recorded = True
+            except Exception:
+                recorded = False
+        return {"summary": summary, "turns": turns, "recorded": recorded}
+
+    def _consolidate_text(self) -> str:
+        # redact each turn BEFORE it reaches the summariser, so secrets never even
+        # leave for the model.
+        convo = "\n".join(f"{m['role']}: {redact_secrets(m['content'])}"
+                          for m in self._history)
+        msgs = [
+            {"role": "system", "content":
+             "Consolidate this conversation into a concise retrospective note "
+             "(3–5 sentences): what the person shared, what was decided or learned, "
+             "and any open threads. Never include secrets, keys, or passwords."},
+            {"role": "user", "content": convo},
+        ]
+        try:
+            out = (self._generate(msgs) or "").strip()
+            if out:
+                return out
+        except Exception:
+            pass
+        # extractive fallback — the recent user turns, redacted
+        users = [redact_secrets(m["content"]) for m in self._history
+                 if m["role"] == "user"]
+        return " · ".join(users[-6:])
+
+
+_BUILD_VERB = re.compile(
+    r"(?i)\b(build|implement|write|create|code|fix|refactor|add|generate)\b")
+_BUILD_OBJECT = re.compile(
+    r"(?i)\b(script|function|module|class|test|tests|file|app|feature|bug|"
+    r"endpoint|api|cli|program|package|patch|repo|code|\w+\.py)\b")
+
+
+def _is_build_request(text: str) -> bool:
+    """A coding/build task Aria can hand to the autonomous agent — a build verb
+    plus a software object (so "write me a poem" doesn't trigger)."""
+    return bool(_BUILD_VERB.search(text) and _BUILD_OBJECT.search(text))
 
 
 def _reflective_reply(messages: List[dict]) -> str:
@@ -583,6 +672,12 @@ def build_companion(bridge=None) -> Companion:
         from aui.settings import load
         return load().get("anticipation", {})
 
+    def delegate(task: str) -> dict:
+        # Aria hands a build/implement task to Axiom's autonomous agent (fails
+        # soft → ok:False when unreachable, so she just replies normally).
+        from aui import autonomous
+        return autonomous.submit(task)
+
     # Aria's signed identity (two-tier); the MET chain parents off her soul.
     from aui.persona import PersonaStore
     persona_tok = PersonaStore().load_or_mint()
@@ -590,7 +685,7 @@ def build_companion(bridge=None) -> Companion:
     return Companion(generate=generate, guard=guard, memory=memory,
                      fuse=fuse, retrospect=retrospect, curious=True, embed=llm_embed,
                      search=(search if bridge is not None else None), summarize=summarize,
-                     anticipation_cfg=antic_cfg,
+                     anticipation_cfg=antic_cfg, delegate=delegate,
                      persona=persona_tok.persona_text(),
                      genesis=persona_tok.identity_signature,
                      persona_sig=persona_tok.token_signature)

@@ -337,6 +337,16 @@ def create_app(bridge: Any, *, repo: Optional[str] = None):
                 "persona": _persona_block(),
                 "anticipation": companion.anticipation}
 
+    @app.post("/companion/consolidate")
+    def companion_consolidate() -> dict:
+        """Consolidate the conversation window into a single retrospective note and
+        record it (obvious keys/passwords redacted before anything is persisted)."""
+        out = companion.consolidate()
+        bridge.log_event("companion_consolidate",
+                         outcome="recorded" if out.get("recorded") else "empty",
+                         attributes={"turns": out.get("turns", 0)})
+        return out
+
     @app.post("/companion/listen")
     def companion_listen() -> dict:
         """Reserved voice-agent slot (voice input). Not wired in v1 — the seam's
