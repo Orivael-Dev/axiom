@@ -639,3 +639,29 @@ def test_delegate_unavailable_falls_through_to_chat():
                   delegate=lambda t: {"ok": False, "reason": "autonomous_unavailable"})
     r = c.say("implement a cli tool for me")
     assert r.intent != "BUILD" and r.text == "Sure, let's talk it through."
+
+
+def test_reset_auto_consolidates_to_retrospect():
+    recs = []
+    c = Companion(generate=lambda m: "They planned the launch demo.",
+                  retrospect=recs.append)
+    c.say("let's plan the launch demo")
+    recs.clear()                       # ignore the per-turn record
+    c.reset()
+    notes = [r for r in recs if r.get("kind") == "consolidation"]
+    assert notes and notes[0]["turns"] == 2          # window saved before clearing
+    assert c.history == []                            # then cleared
+
+
+def test_reset_empty_window_records_nothing():
+    recs = []
+    c = Companion(generate=lambda m: "x", retrospect=recs.append)
+    c.reset()
+    assert not any(r.get("kind") == "consolidation" for r in recs)
+
+
+def test_reset_without_retrospect_is_safe():
+    c = Companion(generate=lambda m: "x")            # no retrospect sink
+    c.say("hello")
+    c.reset()
+    assert c.history == []

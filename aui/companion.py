@@ -197,6 +197,13 @@ class Companion:
         return [{"role": "system", "content": self.persona}, *self._history]
 
     def reset(self) -> None:
+        # auto-consolidate the window to retrospect first, so a cleared session
+        # isn't lost (consolidate() redacts secrets before recording).
+        if self._retrospect and self._history:
+            try:
+                self.consolidate()
+            except Exception:
+                pass
         self._history.clear()
         self._master = MasterEventToken(self._session_id, genesis=self._genesis)
         self._qrf.reset()
