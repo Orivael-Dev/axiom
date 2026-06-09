@@ -88,17 +88,17 @@
       "file": "deepseek_r1_1b5_q4km.gguf",
       "quant": "Q4_K_M",
       "bpw_approx": 4.85,
-      "size_mb": 1024,
-      "params_b": 1.54,
+      "size_mb": 1137,
+      "params_b": 1.78,
       "results": {
-        "prompt_processing_ts": null,
-        "token_generation_ts": null,
-        "total_time_s": null,
-        "peak_memory_pct": null,
-        "peak_memory_gb": null
+        "prompt_processing_ts": 96.46,
+        "token_generation_ts": 9.22,
+        "total_time_s": 58,
+        "peak_memory_pct": 20.1,
+        "peak_memory_gb": 2.0
       },
-      "notes": "PENDING — PocketPal run in progress. Expected TG ~6.5-7.5 t/s (lighter than Qwen3-1.7B at 1.54B params). Reasoning model: thinking tokens will make PP cost more visible.",
-      "timestamp": null
+      "notes": "TG 9.22 t/s — 49% faster than Qwen3-1.7B (6.20 t/s) despite similar size. Driver: num_kv_heads=2 (vs Qwen3's 8) → tiny KV cache → faster attention during TG on memory-bandwidth-limited OpenCL GPU. PP slower than Qwen3 (96 vs 158 t/s) — larger vocab (151936) and architecture overhead. Same 2 GB peak RAM as TinyLlama-1.1B.",
+      "timestamp": "2026-06-09T18:20:47"
     },
     {
       "id": "tinyllama_1b_f16_ppl",
