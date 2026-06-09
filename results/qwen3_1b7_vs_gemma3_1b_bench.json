@@ -1,0 +1,71 @@
+{
+  "description": "Qwen3-1.7B Q4_K_M vs Gemma-3-1B Q4_K_M head-to-head benchmark. WikiText-2 perplexity + llama-bench speed.",
+  "device": {
+    "gpu": "GTX 1660 Ti",
+    "vram_gb": 6,
+    "platform": "CUDA"
+  },
+  "benchmark_config": {
+    "ppl_dataset": "wikitext-2",
+    "ppl_context": 512,
+    "ppl_note": "Instruct-tuned models scored over raw WikiText text — absolute PPL inflated by = Heading = markup and chat formatting mismatch. Use for relative comparison only.",
+    "speed_tool": "llama-bench"
+  },
+  "models": {
+    "qwen3_1b7_q4km": {
+      "hf_id": "Qwen/Qwen3-1.7B",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "gguf_mb": 1056,
+      "fingerprint": "35312123",
+      "architecture": {
+        "hidden_size": 2048,
+        "num_layers": 28,
+        "vocab_size": 151936,
+        "num_attention_heads": 16,
+        "num_kv_heads": 8
+      },
+      "results": {
+        "ppl": 21.19,
+        "ppl_error": 0.48,
+        "tg_ts": 84.8,
+        "pp_ts": 526,
+        "ttft_ms": 347,
+        "vram_gb": 1.63
+      }
+    },
+    "gemma3_1b_q4km": {
+      "hf_id": "bartowski/gemma-3-1b-it-GGUF",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "gguf_mb": 815,
+      "architecture": {
+        "params_b": 1.0
+      },
+      "results": {
+        "ppl": 28.90,
+        "ppl_error": 0.65,
+        "tg_ts": 56.7,
+        "pp_ts": 387,
+        "ttft_ms": 481,
+        "vram_gb": 1.09
+      }
+    }
+  },
+  "comparison": {
+    "ppl_delta": 7.71,
+    "ppl_delta_pct": 26.7,
+    "ppl_winner": "qwen3_1b7",
+    "ppl_significant": true,
+    "ppl_note": "Confidence intervals do not overlap (±0.48 vs ±0.65). 27% lower perplexity is real quality, not noise.",
+    "tg_delta_pct": 49.6,
+    "pp_delta_pct": 35.9,
+    "ttft_delta_pct": 27.9,
+    "speed_winner": "qwen3_1b7",
+    "vram_winner": "gemma3_1b",
+    "vram_delta_gb": 0.54,
+    "overall_verdict": "Qwen3-1.7B Q4_K_M sweeps every quality+speed metric. Gemma-3-1B's only edge is 0.54 GB less VRAM — irrelevant at 27% GTX 1660 Ti utilisation. Qwen3-1.7B is the stronger pick.",
+    "vram_headroom_note": "Both models fit in 6 GB with ~4 GB headroom. VRAM tradeoff doesn't matter on this device."
+  },
+  "timestamp": "2026-06-09"
+}
