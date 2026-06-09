@@ -1,5 +1,5 @@
 {
-  "description": "Qwen3-1.7B Q4_K_M vs Gemma-3-1B Q4_K_M head-to-head benchmark. WikiText-2 perplexity + llama-bench speed.",
+  "description": "Qwen3-1.7B Q4_K_M vs Gemma-3-1B Q4_K_M head-to-head benchmark. WikiText-2 perplexity + llama-bench speed + energy + cost.",
   "device": {
     "gpu": "GTX 1660 Ti",
     "vram_gb": 6,
@@ -31,6 +31,9 @@
         "tg_ts": 84.8,
         "pp_ts": 526,
         "ttft_ms": 347,
+        "latency_median_s": 1.8,
+        "energy_per_token_j": 0.79,
+        "cost_per_1m_tokens_usd": 0.035,
         "vram_gb": 1.63
       }
     },
@@ -48,6 +51,9 @@
         "tg_ts": 56.7,
         "pp_ts": 387,
         "ttft_ms": 481,
+        "latency_median_s": 3.2,
+        "energy_per_token_j": 0.79,
+        "cost_per_1m_tokens_usd": 0.036,
         "vram_gb": 1.09
       }
     }
@@ -61,10 +67,16 @@
     "tg_delta_pct": 49.6,
     "pp_delta_pct": 35.9,
     "ttft_delta_pct": 27.9,
+    "latency_delta_pct": 43.8,
     "speed_winner": "qwen3_1b7",
+    "latency_winner": "qwen3_1b7",
+    "energy_winner": "tie",
+    "energy_note": "0.79 J/token for both — identical electricity cost at Q4_K_M on this GPU.",
+    "cost_winner": "tie",
+    "cost_note": "$0.035 vs $0.036 per 1M tokens — rounding distance, not a real difference.",
     "vram_winner": "gemma3_1b",
     "vram_delta_gb": 0.54,
-    "overall_verdict": "Qwen3-1.7B Q4_K_M sweeps every quality+speed metric. Gemma-3-1B's only edge is 0.54 GB less VRAM — irrelevant at 27% GTX 1660 Ti utilisation. Qwen3-1.7B is the stronger pick.",
+    "overall_verdict": "Qwen3-1.7B Q4_K_M wins quality, speed, and latency. Energy and cost are a dead tie. Gemma-3-1B's only edge is 0.54 GB less VRAM — irrelevant with 4 GB headroom on a 6 GB card. Qwen3-1.7B is the clear pick.",
     "vram_headroom_note": "Both models fit in 6 GB with ~4 GB headroom. VRAM tradeoff doesn't matter on this device."
   },
   "timestamp": "2026-06-09"
