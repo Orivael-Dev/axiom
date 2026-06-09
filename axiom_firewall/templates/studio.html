@@ -106,12 +106,63 @@
           </select>
         </div>
 
-        <div class="field-row">
-          <label class="field-label" for="quant_scheme">Quant scheme</label>
-          <select id="quant_scheme" name="quant_scheme" class="field-select">
-            <option value="srd_alpha0">SRD α=0 → Q4_K_M (recommended)</option>
-          </select>
-        </div>
+        <details class="pack-options" id="pack-options">
+          <summary class="pack-options-title">Pack Options (SRD flags)</summary>
+          <div class="pack-options-body">
+
+            <div class="field-row">
+              <label class="field-label" for="srd_alpha">
+                α (alpha)
+                <span class="field-hint">0 = pure 4-bit (4.5 bpw) · 0.5 = balanced · 1.0 = full residue (13 bpw)</span>
+              </label>
+              <select id="srd_alpha" name="srd_alpha" class="field-select">
+                <option value="0.0" selected>0.0 — pure 4-bit, best size (recommended)</option>
+                <option value="0.5">0.5 — balanced quality/size</option>
+                <option value="1.0">1.0 — near-FP16 quality, 13 bpw</option>
+              </select>
+            </div>
+
+            <div class="field-row">
+              <label class="field-label" for="srd_group_size">
+                Group size
+                <span class="field-hint">Quantization block size — smaller = finer granularity, higher bpw overhead</span>
+              </label>
+              <select id="srd_group_size" name="srd_group_size" class="field-select">
+                <option value="32">32 — fine-grained, highest overhead</option>
+                <option value="64" selected>64 — balanced (recommended)</option>
+                <option value="128">128 — coarse, lowest overhead</option>
+              </select>
+            </div>
+
+            <div class="field-row">
+              <label class="field-label" for="srd_top_k_pct">
+                Top-k layers (%)
+                <span class="field-hint">Fraction of layers to SRD-pack; others kept FP16</span>
+              </label>
+              <select id="srd_top_k_pct" name="srd_top_k_pct" class="field-select">
+                <option value="0.10">10% — top layers only</option>
+                <option value="0.25" selected>25% — recommended</option>
+                <option value="0.50">50% — half all layers</option>
+                <option value="1.0">100% — all layers</option>
+              </select>
+            </div>
+
+            <div class="field-row">
+              <label class="field-label" for="srd_gguf_quant">
+                GGUF output format
+                <span class="field-hint">Quantization applied after AXM extraction</span>
+              </label>
+              <select id="srd_gguf_quant" name="srd_gguf_quant" class="field-select">
+                <option value="Q4_K_M" selected>Q4_K_M — 4-bit, recommended for inference</option>
+                <option value="Q5_K_M">Q5_K_M — 5-bit, slightly better quality</option>
+                <option value="Q6_K">Q6_K — 6-bit, near-lossless</option>
+                <option value="Q8_0">Q8_0 — 8-bit, highest quality</option>
+                <option value="none">none — skip GGUF extraction</option>
+              </select>
+            </div>
+
+          </div>
+        </details>
       </div>
     </div>
 

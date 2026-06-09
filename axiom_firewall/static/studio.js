@@ -102,8 +102,17 @@ function clearSlotForms(index) {
 function gatherConfig() {
   const modelId    = document.getElementById('model_id').value.trim();
   const hardware   = document.getElementById('hardware_map').value;
-  const quant      = document.getElementById('quant_scheme').value;
   const fmt        = _selectedExportFmt();
+
+  // SRD pack options (from <details> Pack Options section)
+  const alphaEl     = document.getElementById('srd_alpha');
+  const groupEl     = document.getElementById('srd_group_size');
+  const topKEl      = document.getElementById('srd_top_k_pct');
+  const ggufQuantEl = document.getElementById('srd_gguf_quant');
+  const alpha     = alphaEl     ? parseFloat(alphaEl.value)     : 0.0;
+  const groupSize = groupEl     ? parseInt(groupEl.value, 10)   : 64;
+  const topKPct   = topKEl      ? parseFloat(topKEl.value)      : 0.25;
+  const ggufQuant = ggufQuantEl ? ggufQuantEl.value             : 'Q4_K_M';
 
   const slots = [];
   for (const [idx, type] of Object.entries(slotTypes)) {
@@ -141,7 +150,10 @@ function gatherConfig() {
     slots,
     hardware_map:  hardware,
     export_format: fmt,
-    quant_scheme:  quant,
+    alpha:         alpha,
+    group_size:    groupSize,
+    top_k_pct:     topKPct,
+    gguf_quant:    ggufQuant,
   };
 }
 

@@ -471,3 +471,50 @@
     position: static;
   }
 }
+
+
+/* ── Pack Options (SRD flags details/summary) ───────────────────── */
+
+.pack-options {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pack-options-title {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pack-options-title::before {
+  content: '▶';
+  font-size: 0.65rem;
+  transition: transform 0.15s;
+}
+
+.pack-options[open] .pack-options-title::before {
+  transform: rotate(90deg);
+}
+
+.pack-options-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+  font-weight: 400;
+}

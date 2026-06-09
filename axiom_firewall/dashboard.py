@@ -1376,6 +1376,17 @@ async def billing_webhook(request: Request,
     return JSONResponse({"ok": True, "result": result})
 
 
+# ─── SRD results page (public) ───────────────────────────────────────────────
+
+@app.get("/srd", response_class=HTMLResponse)
+def srd_results(request: Request):
+    """Public SRD benchmark results page — no auth required."""
+    return templates.TemplateResponse(
+        request, "srd_results.html",
+        _ctx(request),
+    )
+
+
 # ─── Studio routes ───────────────────────────────────────────────────────────
 
 @app.get("/dashboard/studio", response_class=HTMLResponse)
