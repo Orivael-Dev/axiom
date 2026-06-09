@@ -34,7 +34,18 @@
         "latency_median_s": 1.8,
         "energy_per_token_j": 0.79,
         "cost_per_1m_tokens_usd": 0.035,
-        "vram_gb": 1.63
+        "vram_gb": 1.63,
+        "mobile": {
+          "device": "Android 12 GB RAM GPUOpenCL",
+          "app": "PocketPal",
+          "tg_ts": 6.20,
+          "pp_ts": 158.24,
+          "total_time_s": 72,
+          "peak_memory_gb": 3.0,
+          "peak_memory_pct": 23.4,
+          "flash_attention": false,
+          "timestamp": "2026-06-09T17:49:03"
+        }
       }
     },
     "gemma3_1b_q4km": {
