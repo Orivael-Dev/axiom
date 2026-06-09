@@ -89,6 +89,36 @@
       "timestamp": "2026-06-08"
     }
   ],
+  "met_sidecars": {
+    "qwen3_1b7_q4km": {
+      "source": "results/qwen3_1b7_met_sidecar.json",
+      "model": "Qwen/Qwen3-1.7B",
+      "gguf_mb": 1056,
+      "fingerprint": "35312123",
+      "architecture": {
+        "hidden_size": 2048,
+        "num_layers": 28,
+        "vocab_size": 151936,
+        "num_attention_heads": 16,
+        "num_kv_heads": 8
+      },
+      "met_hydration": {
+        "embedding_pinned_mb": 593.5,
+        "chunks_total_mb": 816,
+        "inform_only_mb": 768.5,
+        "clarify_refuse_mb": 943.5,
+        "harm_deceive_mb": 1409.5,
+        "savings_benign_vs_full_mb": 641,
+        "savings_benign_vs_full_pct": 45.5,
+        "between_met_floor_mb": 593.5,
+        "ufs_load_ms_inform": 116.7,
+        "ufs_load_ms_harm": 544.0
+      },
+      "hydration_policy_summary": "INFORM: early only (175MB). CLARIFY/REFUSE/UNCERTAIN: early+governance (350MB). HARM/DECEIVE: all 4 chunks (816MB).",
+      "notes": "Large vocab (151,936 tokens) means embedding dominates at 594MB F16. Transformer chunks are small relative to embedding — INFORM queries need only 29% of transformer weight (175/816MB) plus the always-pinned embedding.",
+      "timestamp": "2026-06-09T02:31:01Z"
+    }
+  },
   "srd_targets": {
     "description": "Expected SRD-4 results vs Q4_K_M baselines. NOTE: the '1.51 PPL improvement' claim in docs/SRD_RESULTS.md used cited K-quant numbers measured on the BASE model with a different stride. The measured Q4_K_M vs F16 gap on the v1.0 chat model is only +0.94% (statistically noise). SRD α=0 advantage over Q4_K_M must be re-measured with the same methodology before citing.",
     "tinyllama_1b": {

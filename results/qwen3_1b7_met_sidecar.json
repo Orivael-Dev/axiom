@@ -1,0 +1,173 @@
+{
+  "axiom_version": "1.4",
+  "generated_at": "2026-06-09T02:31:01Z",
+  "model_id": "Qwen/Qwen3-1.7B",
+  "gguf_path": "/content/qwen3_srd/qwen3_1b7_q4km.gguf",
+  "gguf_mb": 1056,
+  "fingerprint": "35312123",
+  "architecture": {
+    "hidden_size": 2048,
+    "num_layers": 28,
+    "vocab_size": 151936,
+    "num_attention_heads": 16,
+    "num_kv_heads": 8
+  },
+  "embedding_slot": {
+    "chunk": "embedding",
+    "mb": 593.5,
+    "precision": "F16",
+    "always_pinned": true,
+    "note": "151,936-token vocabulary \u2014 594 MB F16"
+  },
+  "transformer_chunks": {
+    "early": {
+      "layers": "0-5",
+      "first_layer": 0,
+      "last_layer": 5,
+      "mb": 175,
+      "precision": "Q4_K_M"
+    },
+    "factual": {
+      "layers": "6-11",
+      "first_layer": 6,
+      "last_layer": 11,
+      "mb": 175,
+      "precision": "Q4_K_M"
+    },
+    "reasoning": {
+      "layers": "12-21",
+      "first_layer": 12,
+      "last_layer": 21,
+      "mb": 291,
+      "precision": "Q4_K_M"
+    },
+    "governance": {
+      "layers": "22-27",
+      "first_layer": 22,
+      "last_layer": 27,
+      "mb": 175,
+      "precision": "Q4_K_M"
+    }
+  },
+  "chunk_map": {
+    "0": "early",
+    "1": "early",
+    "2": "early",
+    "3": "early",
+    "4": "early",
+    "5": "early",
+    "6": "factual",
+    "7": "factual",
+    "8": "factual",
+    "9": "factual",
+    "10": "factual",
+    "11": "factual",
+    "12": "reasoning",
+    "13": "reasoning",
+    "14": "reasoning",
+    "15": "reasoning",
+    "16": "reasoning",
+    "17": "reasoning",
+    "18": "reasoning",
+    "19": "reasoning",
+    "20": "reasoning",
+    "21": "reasoning",
+    "22": "governance",
+    "23": "governance",
+    "24": "governance",
+    "25": "governance",
+    "26": "governance",
+    "27": "governance"
+  },
+  "hydration_policy": {
+    "INFORM": [
+      "early"
+    ],
+    "CLARIFY": [
+      "early",
+      "governance"
+    ],
+    "REFUSE": [
+      "early",
+      "governance"
+    ],
+    "UNCERTAIN": [
+      "early",
+      "governance"
+    ],
+    "HARM": [
+      "early",
+      "factual",
+      "reasoning",
+      "governance"
+    ],
+    "DECEIVE": [
+      "early",
+      "factual",
+      "reasoning",
+      "governance"
+    ]
+  },
+  "intent_ram_budget": {
+    "INFORM": {
+      "chunks": [
+        "early"
+      ],
+      "transformer_mb": 175,
+      "total_mb": 768.5,
+      "ufs_load_ms": 116.7
+    },
+    "CLARIFY": {
+      "chunks": [
+        "early",
+        "governance"
+      ],
+      "transformer_mb": 350,
+      "total_mb": 943.5,
+      "ufs_load_ms": 233.3
+    },
+    "REFUSE": {
+      "chunks": [
+        "early",
+        "governance"
+      ],
+      "transformer_mb": 350,
+      "total_mb": 943.5,
+      "ufs_load_ms": 233.3
+    },
+    "UNCERTAIN": {
+      "chunks": [
+        "early",
+        "governance"
+      ],
+      "transformer_mb": 350,
+      "total_mb": 943.5,
+      "ufs_load_ms": 233.3
+    },
+    "HARM": {
+      "chunks": [
+        "early",
+        "factual",
+        "reasoning",
+        "governance"
+      ],
+      "transformer_mb": 816,
+      "total_mb": 1409.5,
+      "ufs_load_ms": 544.0
+    },
+    "DECEIVE": {
+      "chunks": [
+        "early",
+        "factual",
+        "reasoning",
+        "governance"
+      ],
+      "transformer_mb": 816,
+      "total_mb": 1409.5,
+      "ufs_load_ms": 544.0
+    }
+  },
+  "storage_speed_mbs": 1500,
+  "between_met_floor_mb": 593.5,
+  "peak_harm_mb": 1409.5
+}
