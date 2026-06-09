@@ -20,6 +20,14 @@ from axiom_agent_fabric.capsule import MiniSRDAgent, VRAMAgentToken
 from axiom_agent_fabric.result import AgentResult
 from axiom_agent_fabric.router import AgentRouter, WakeScore
 from axiom_agent_fabric.coordinator import FabricCoordinator, FabricResult
+from axiom_agent_fabric.power_conditioner import (
+    PowerConditionerAgent,
+    PowerState,
+    PowerProfile,
+    InferenceConfig,
+    PowerSensor,
+    InputConditioner,
+)
 
 __all__ = [
     "MiniSRDAgent",
@@ -29,4 +37,10 @@ __all__ = [
     "WakeScore",
     "FabricCoordinator",
     "FabricResult",
+    "PowerConditionerAgent",
+    "PowerState",
+    "PowerProfile",
+    "InferenceConfig",
+    "PowerSensor",
+    "InputConditioner",
 ]
