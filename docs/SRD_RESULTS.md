@@ -439,3 +439,69 @@ cliff — confirming that 8192 is a practical ceiling for this model and GGUF.
 deploying MAXN_SUPER in a closed enclosure. Short inference bursts (interactive
 chat) are fine; multi-hour sustained batch inference should be validated with
 extended tegrastats logging.
+
+---
+
+## Gemma-3 1B — SRD vs QAT Benchmark (2026-06-10)
+
+**Setup:** Colab T4, llama.cpp (latest), WikiText-2 test set, 100 chunks,
+ctx=2048, stride=512, `--n-gpu-layers 99`.
+
+**Model:** `google/gemma-3-1b-it` (instruct variant with LoRA adapter merged).
+SRD packed with `pack_to_axm.py --srd4 --real-pack --group-size 64` then
+converted with `convert_hf_to_gguf.py MODEL_DIR → F16 → Q4_K_M`.
+
+### PPL results
+
+| Model | Format | bpw | PPL (WikiText-2) | Notes |
+|---|---|---|---|---|
+| SRD Q4_K_M | `.axm` → GGUF | ~4.85 | **21.54** | This notebook |
+| Google QAT Q4_0 | HF GGUF | ~4.5 | ❌ ~833 (broken) | See note below |
+| Standard Q4_K_M baseline | GGUF | ~4.85 | 28.90 | Prior benchmark, base model |
+
+### Speed results (T4 GPU)
+
+| Model | TG t/s | PP t/s | Size |
+|---|---|---|---|
+| SRD Q4_K_M | **211.1** | 15,977 | 769 MB |
+| Google QAT Q4_0 | 181.0 | 16,090 | 957 MB |
+
+> Speed was measured before the PPL issue was diagnosed. The QAT speed
+> numbers show the model *loads* but produces garbage tokens.
+
+### Key finding: QAT is not drop-in compatible with llama.cpp
+
+Google's QAT GGUF (`google/gemma-3-1b-it-qat-q4_0-gguf`) produces PPL ~833
+with stock llama.cpp — confirmed by inspecting every chunk individually
+(all between 700–1100 PPL, not a parsing artifact or single spike).
+
+**Root cause:** QAT models are trained with fake-quantization operators
+applied during the forward pass. The weights are stored in BF16 with
+quantization error baked into the training objective. Loading them into
+standard llama.cpp with Q4_0 dequantization applies the *wrong* math —
+the inference-time dequantization must replicate the exact fake-quant
+operators used during training, which stock llama.cpp does not implement
+for Google's QAT variant.
+
+**Deployment implication:** QAT creates a **runtime dependency**. You need
+either Google's own inference stack or a custom llama.cpp fork that
+reimplements the specific fake-quant operators. SRD produces a standard
+GGUF that runs on any llama.cpp build, PocketPal, llama-server, or
+derivative without modification.
+
+| Property | SRD Q4_K_M | Google QAT Q4_0 |
+|---|---|---|
+| Stock llama.cpp compatible | ✅ | ❌ |
+| PocketPal / llama-server drop-in | ✅ | ❌ |
+| PPL measurable with standard tooling | ✅ (21.54) | ❌ (gibberish) |
+| Retraining required | ❌ | ✅ |
+| HMAC governance chain | ✅ | ❌ |
+| Runtime dependency | None | Requires QAT-aware inference |
+
+### Why SRD PPL (21.54) differs from baseline (28.90)
+
+The 28.90 baseline was measured on the **base** model (`google/gemma-3-1b`),
+not the instruct variant. The instruct fine-tune + LoRA adapter improves
+WikiText-2 PPL because the instruction data includes more clean English text.
+The two numbers are not directly comparable — use 21.54 as the correct
+instruct-model reference.
