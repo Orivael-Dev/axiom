@@ -456,18 +456,25 @@ converted with `convert_hf_to_gguf.py MODEL_DIR → F16 → Q4_K_M`.
 | Model | Format | bpw | PPL (WikiText-2) | Notes |
 |---|---|---|---|---|
 | SRD Q4_K_M | `.axm` → GGUF | ~4.85 | **21.54** | This notebook |
-| Google QAT Q4_0 | HF GGUF | ~4.5 | ❌ ~833 (broken) | See note below |
+| Standard Q4_0 (bartowski) | Community GGUF | ~4.0 | **23.23** | This notebook |
+| Google QAT Q4_0 | HF GGUF | ~4.0 | ❌ ~833 (broken) | See note below |
 | Standard Q4_K_M baseline | GGUF | ~4.85 | 28.90 | Prior benchmark, base model |
+
+SRD Q4_K_M (21.54) beats Standard Q4_0 (23.23) by **1.69 PPL** using 0.85 more
+bpw — a fair trade for the governance fingerprint and runtime α dial.
+Both beat the Q4_K_M base model baseline (28.90) because the instruct fine-tune
+improves WikiText-2 PPL independently of quantization.
 
 ### Speed results (T4 GPU)
 
-| Model | TG t/s | PP t/s | Size |
+| Model | TG t/s | PP t/s | Size (MB) |
 |---|---|---|---|
-| SRD Q4_K_M | **211.1** | 15,977 | 769 MB |
-| Google QAT Q4_0 | 181.0 | 16,090 | 957 MB |
+| SRD Q4_K_M | **211.1** | 15,977 | 769 |
+| Standard Q4_0 (bartowski) | 181.0 | 16,090 | — |
+| Google QAT Q4_0 | 181.0 (loads) | 16,090 (loads) | 957 |
 
-> Speed was measured before the PPL issue was diagnosed. The QAT speed
-> numbers show the model *loads* but produces garbage tokens.
+> QAT speed was measured before the PPL issue was diagnosed; the model
+> loads and generates tokens, but they are semantically garbage.
 
 ### Key finding: QAT is not drop-in compatible with llama.cpp
 
@@ -489,14 +496,14 @@ reimplements the specific fake-quant operators. SRD produces a standard
 GGUF that runs on any llama.cpp build, PocketPal, llama-server, or
 derivative without modification.
 
-| Property | SRD Q4_K_M | Google QAT Q4_0 |
-|---|---|---|
-| Stock llama.cpp compatible | ✅ | ❌ |
-| PocketPal / llama-server drop-in | ✅ | ❌ |
-| PPL measurable with standard tooling | ✅ (21.54) | ❌ (gibberish) |
-| Retraining required | ❌ | ✅ |
-| HMAC governance chain | ✅ | ❌ |
-| Runtime dependency | None | Requires QAT-aware inference |
+| Property | SRD Q4_K_M | Standard Q4_0 (bartowski) | Google QAT Q4_0 |
+|---|---|---|---|
+| Stock llama.cpp compatible | ✅ | ✅ | ❌ |
+| PocketPal / llama-server drop-in | ✅ | ✅ | ❌ |
+| PPL (WikiText-2) | **21.54** | 23.23 | ❌ ~833 (gibberish) |
+| Retraining required | ❌ | ❌ | ✅ |
+| HMAC governance chain | ✅ | ❌ | ❌ |
+| Runtime dependency | None | None | Requires QAT-aware inference |
 
 ### Why SRD PPL (21.54) differs from baseline (28.90)
 
