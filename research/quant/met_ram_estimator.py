@@ -40,6 +40,7 @@ Formula
 MLP style flags:
   --mlp-style swiglu   gate + up + down  (LLaMA / Qwen / Mistral)  default
   --mlp-style gated    same as swiglu
+  --mlp-style geglu    gate + up + down with GELU  (Gemma-3)  same param count as swiglu
   --mlp-style mlp      up + down only    (GPT-2, Falcon)
 """
 from __future__ import annotations
@@ -79,7 +80,7 @@ class ModelArch:
     num_heads:         int
     num_kv_heads:      int
     intermediate_size: int
-    mlp_style:         str = "swiglu"   # "swiglu" | "mlp"
+    mlp_style:         str = "swiglu"   # "swiglu" | "geglu" | "mlp"
     model_id:          str = ""
     bpw:               float = 4.85
 
@@ -106,7 +107,18 @@ def arch_from_config(path: Path, bpw: float = 4.85, mlp_style: str = "swiglu") -
     # Detect MLP style from config if not overridden
     if mlp_style == "swiglu":
         act = cfg.get("hidden_act", "").lower()
-        if act in ("gelu", "relu") and cfg.get("num_experts") is None:
+        has_gate = cfg.get("num_experts") is None  # MoE uses gates differently
+        if "gelu" in act and has_gate and cfg.get("gate_proj") is not None:
+            mlp_style = "geglu"
+        elif "gelu" in act and has_gate:
+            # Gemma-3 style: gelu activation + gate_proj/up_proj/down_proj
+            # Check for the gated structure by model_type
+            model_type = cfg.get("model_type", "").lower()
+            if model_type in ("gemma", "gemma2", "gemma3"):
+                mlp_style = "geglu"
+            else:
+                mlp_style = "mlp"
+        elif act in ("relu",) and has_gate:
             mlp_style = "mlp"
 
     return ModelArch(
@@ -143,7 +155,7 @@ def transformer_params(arch: ModelArch) -> int:
     )
 
     # MLP projections
-    if arch.mlp_style in ("swiglu", "gated"):
+    if arch.mlp_style in ("swiglu", "gated", "geglu"):
         # gate_proj + up_proj + down_proj  (SwiGLU / GeGLU)
         mlp = (
             arch.hidden_size * arch.intermediate_size +
@@ -378,9 +390,9 @@ def _parse_args(argv=None):
     ap.add_argument("--intermediate-size", type=int)
     ap.add_argument("--bpw",         type=float, default=4.85,
                     help="Target bits-per-weight (default 4.85 ≈ Q4_K_M)")
-    ap.add_argument("--mlp-style",   choices=["swiglu", "gated", "mlp"],
+    ap.add_argument("--mlp-style",   choices=["swiglu", "gated", "geglu", "mlp"],
                     default="swiglu",
-                    help="MLP variant: swiglu=gate+up+down (Qwen/LLaMA), mlp=up+down (GPT-2)")
+                    help="MLP variant: swiglu/geglu=gate+up+down (Qwen/LLaMA/Gemma-3), mlp=up+down (GPT-2)")
     ap.add_argument("--storage-speed-mbs", type=float, default=1500,
                     help="Storage read speed in MB/s for UFS latency (default 1500 = UFS 3.1)")
     ap.add_argument("--output", type=Path,
