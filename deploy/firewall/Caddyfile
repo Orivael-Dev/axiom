@@ -94,3 +94,35 @@
     }
 }
 
+{$MCP_HOST} {
+    encode gzip
+
+    # SSE connections are long-lived — set timeouts to 0 so Caddy never
+    # cuts the stream mid-session. The MCP client sends a keep-alive ping
+    # every 25 s so idle connections are detectable at the app layer.
+    reverse_proxy axiom-mcp:8006 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For   {remote_host}
+        header_up X-Accel-Buffering no
+        transport http {
+            response_header_timeout 0s
+            read_timeout            0s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        # Allow claude.ai to connect cross-origin (required for web MCP client)
+        Access-Control-Allow-Origin  "https://claude.ai"
+        Access-Control-Allow-Headers "Authorization, Content-Type"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
+

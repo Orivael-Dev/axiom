@@ -62,6 +62,7 @@ services:
       # research.acme.com PACKS_HOST=packs.acme.com).
       RESEARCH_HOST:  ${RESEARCH_HOST:-research.orivael.dev}
       PACKS_HOST:     ${PACKS_HOST:-packs.orivael.dev}
+      MCP_HOST:       ${MCP_HOST:-mcp.orivael.dev}
       BETA_AUTH_USER: ${BETA_AUTH_USER:-}
       BETA_AUTH_HASH: ${BETA_AUTH_HASH:-}
     volumes:

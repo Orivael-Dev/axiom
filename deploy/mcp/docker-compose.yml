@@ -1,0 +1,37 @@
+# Axiom MCP HTTP server — joins the existing axiom-net so the firewall
+# Caddy instance can route mcp.yourdomain.com to this container.
+#
+# Bring up AFTER the firewall stack (which creates axiom-net + axiom-caddy):
+#   docker compose -f deploy/firewall/docker-compose.yml --profile tls up -d
+#   docker compose -f deploy/mcp/docker-compose.yml up -d
+#
+# The firewall Caddyfile must include the MCP_HOST block (see Caddyfile.mcp).
+
+services:
+
+  axiom-mcp:
+    build:
+      context: ../..
+      dockerfile: deploy/mcp/Dockerfile
+    image: orivael/axiom-mcp:local
+    container_name: axiom-mcp
+    restart: unless-stopped
+    environment:
+      AXIOM_MASTER_KEY:   ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY}
+      AXIOM_MCP_TOKEN:    ${AXIOM_MCP_TOKEN:?run: openssl rand -hex 24}
+      AXIOM_FIREWALL_BETA_MODE: ${AXIOM_FIREWALL_BETA_MODE:-1}
+    ports:
+      - "127.0.0.1:8006:8006"   # localhost only — Caddy proxies externally
+    networks:
+      - axiom-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8006/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  axiom-net:
+    external: true   # must already exist (created by firewall stack)
+    name: axiom-net
