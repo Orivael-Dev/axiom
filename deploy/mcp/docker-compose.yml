@@ -16,11 +16,13 @@ services:
     image: orivael/axiom-mcp:local
     container_name: axiom-mcp
     restart: unless-stopped
+    # All runtime vars come from the firewall .env, loaded into the
+    # container at runtime: AXIOM_MASTER_KEY, AXIOM_MCP_TOKEN, and
+    # AXIOM_FIREWALL_BETA_MODE. No ${...} interpolation here — that
+    # would resolve at parse time against deploy/mcp/.env (which does
+    # not exist), not against the firewall .env loaded below.
     env_file:
-      - ../firewall/.env        # inherits AXIOM_MASTER_KEY + all firewall vars
-    environment:
-      AXIOM_MCP_TOKEN:          "${AXIOM_MCP_TOKEN:?generate one with openssl rand -hex 24}"
-      AXIOM_FIREWALL_BETA_MODE: "${AXIOM_FIREWALL_BETA_MODE:-1}"
+      - ../firewall/.env
     ports:
       - "127.0.0.1:8006:8006"   # localhost only — Caddy proxies externally
     networks:
