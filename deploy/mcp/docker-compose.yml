@@ -19,8 +19,8 @@ services:
     env_file:
       - ../firewall/.env        # inherits AXIOM_MASTER_KEY + all firewall vars
     environment:
-      AXIOM_MCP_TOKEN:          ${AXIOM_MCP_TOKEN:?run: openssl rand -hex 24}
-      AXIOM_FIREWALL_BETA_MODE: ${AXIOM_FIREWALL_BETA_MODE:-1}
+      AXIOM_MCP_TOKEN:          "${AXIOM_MCP_TOKEN:?generate one with openssl rand -hex 24}"
+      AXIOM_FIREWALL_BETA_MODE: "${AXIOM_FIREWALL_BETA_MODE:-1}"
     ports:
       - "127.0.0.1:8006:8006"   # localhost only — Caddy proxies externally
     networks:
