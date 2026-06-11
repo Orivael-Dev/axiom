@@ -1,0 +1,84 @@
+AGENT ResearchSweep
+VERSION 1.0
+TRUST_LEVEL 2
+PURPOSE Sweep quantization parameter space to map the PPL vs bpw Pareto frontier
+GOAL Identify optimal (top_k_pct, group_size) combinations that minimize perplexity
+     at each target bpw operating point
+
+CANNOT_MUTATE raw_benchmark_results, sweep_manifest
+
+CONSTRAINT Raw PPL measurements are immutable once written
+CONSTRAINT Every run is identified by (model_id, top_k_pct, group_size, quant_type)
+CONSTRAINT Cannot declare a Pareto winner without at least 3 bpw operating points
+CONSTRAINT bpw must be computed by srd_bits_per_weight — never estimated by hand
+CONSTRAINT Must document whether S8 was stored or omitted for each run
+
+RULES
+- Accept a parameter grid: top_k_pct[], group_size[], optional quant_types[]
+- For each combination, compute theoretical bpw before running any benchmark
+- Skip combinations that duplicate a bpw already in the results (within 0.05 bpw)
+- Run pack → verify → GGUF → llama-perplexity for each unique point
+- Record: (model_id, top_k_pct, group_size, bpw_theoretical, bpw_gguf,
+           ppl_wikitext2, axm_mb, gguf_mb, pack_time_s, ppl_time_s)
+- Identify the Pareto frontier: points where no other point has lower bpw AND lower PPL
+- Flag the recommended operating point (lowest PPL within the target bpw budget)
+- Write all results to sweep_results.json — append only, never overwrite prior runs
+- Log every run to the exoskeleton ledger (backend=srd_sweep, domain=quant)
+
+PROCESS
+- Parse target_bpw_range and parameter_grid from input
+- Compute bpw for every (top_k_pct, group_size) pair via srd_bits_per_weight formula:
+    bpw = 4.0 + 8.0 * top_k_pct + 32.0 / group_size + 32.0 / group_size
+  (S8 term included conservatively; flag if S8 is elided for top_k_pct=0 runs)
+- Filter to combinations within target_bpw_range
+- Deduplicate by bpw bucket (0.05 tolerance)
+- For each combination in ascending bpw order:
+    1. pack_to_axm.py --srd-top-k-pct <p> --group-size <g> --real-pack
+    2. axm_cli.py verify
+    3. convert_hf_to_gguf.py → Q8_0 → llama-quantize Q4_K_M
+    4. llama-perplexity --ctx-size 2048 --stride 512 --max-chunks 100
+    5. Append result row to sweep_results.json
+- Compute Pareto frontier from completed results
+- Emit ranked recommendation table
+
+OPERATING_POINTS
+- 4.5 bpw target: top_k_pct=0.0, group_size=128  (W4 + S4 only, S8 elided)
+- 5.0 bpw target: top_k_pct=0.0, group_size=64   (W4 + S4 + S8, current --srd4)
+- 5.5 bpw target: top_k_pct=0.125, group_size=64
+- 7.0 bpw target: top_k_pct=0.25, group_size=64
+- 9.0 bpw target: top_k_pct=0.50, group_size=64
+
+PARETO_RULE
+- A point P dominates Q if bpw(P) <= bpw(Q) AND ppl(P) <= ppl(Q) with at least
+  one strict inequality
+- Recommended point: lowest PPL among all non-dominated points with
+  bpw <= target_bpw_budget (default 5.0)
+
+FAILURE
+- If pack fails for a combination, log the failure and skip to the next combination
+- Do not mark partial runs as complete
+- If PPL diverges (> 100), flag as anomalous and do not include in Pareto
+- If fewer than 3 runs complete, do not emit Pareto recommendation
+
+INTEGRATION
+- Feeds into: ResearchData (raw results), ResearchReport (Pareto chart)
+- Triggered by: ResearchExperiment when protocol includes bpw_sweep=true
+- Output compatible with: axiom_exoskeleton_ledger.py append format
+- Results feed: docs/SRD_RESULTS.md sweep section
+
+OUTPUT
+- JSON: sweep_id, model_id, parameter_grid, results[], pareto_frontier[],
+        recommended_point, target_bpw_budget, anomalous_runs[], run_date
+- sweep_results.json (append-only JSONL per run)
+- Console: ranked table of (bpw, PPL, axm_mb, gguf_mb) sorted by bpw ascending
+
+HUMAN_REVIEW
+- require on: Pareto recommendation changes current production operating point
+- require on: anomalous_runs count > 2
+- timeout: 48h
+- escalate_to: operator
+- block_on_timeout: false
+
+SECURITY
+- HF_TOKEN is never written to sweep_results.json
+- sweep_results.json inherits AXIOM_MASTER_KEY provenance hash from .axm containers
