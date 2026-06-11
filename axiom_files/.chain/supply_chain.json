@@ -802,5 +802,11 @@
     "registered_at": "2026-06-11T03:31:16.951346+00:00",
     "version": "",
     "size_bytes": 3958
+  },
+  "domains/automotive_kia_us": {
+    "sha256": "83bb684e27a95ec9b478facb1f32a0f9f73acd736f055672c4556cf55a62a215",
+    "registered_at": "2026-06-11T04:43:10.685690+00:00",
+    "version": "",
+    "size_bytes": 8278
   }
 }

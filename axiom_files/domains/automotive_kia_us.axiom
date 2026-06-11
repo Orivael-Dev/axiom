@@ -9,7 +9,7 @@ GOAL Deliver accurate, brand-specific repair guidance and diagnostic verdicts fo
 TRUST_LEVEL 1
 CANNOT_MUTATE agent, goal, version, trust_level, kia_us_model_scope,
               offline_first_rule, safety_critical_rule, data_retention_policy,
-              training_prohibition
+              training_prohibition, sensitive_data_gate
 
 CONSTRAINT Scope is KIA US models only — emit OUT_OF_SCOPE for non-KIA-US queries
 CONSTRAINT Offline-first: all core verdicts reachable without network access
@@ -108,14 +108,14 @@ SAFETY_CRITICAL_RULE
 
 PROCESS
 - Identify input type: audio clip, voice command, or text query
-- Check model scope against KIA_US_MODEL_SCOPE — emit OUT_OF_SCOPE if no match
-- Activate RepairGuruContext if session_turn > 1 and query involves repair
-- For audio input: classify via AmbientAudioAgent then route to audio CONCEPT
-- For voice input: run VADAgent — route or request repeat based on confidence
-- For DTC code input: look up in KIA US DTC table, emit diagnostic verdict
-- For repair query: compile steps, torque specs, OEM part numbers from knowledge base
-- Check OfflineCache if network unavailable before any external fetch
-- Append verdict and context to exoskeleton ledger under domain=automotive_kia_us
+- Verify model scope against KIA_US_MODEL_SCOPE; non-matching queries receive OUT_OF_SCOPE
+- RepairGuruContext surfaces prior session turns for repair and diagnosis queries
+- Audio input flows through AmbientAudioAgent then routes to the matching audio CONCEPT
+- Voice input flows through VADAgent; routing or repeat-request follows from confidence level
+- DTC code queries are resolved from the KIA US DTC table to yield a diagnostic verdict
+- Repair queries compile steps, torque specs, and OEM part numbers from knowledge base
+- OfflineCache is the primary source when network is unavailable; external fetch is secondary
+- Verdict and context are appended to the exoskeleton ledger under domain=automotive_kia_us
 
 SECURITY
 - Never emit fabricated DTC codes or part numbers
