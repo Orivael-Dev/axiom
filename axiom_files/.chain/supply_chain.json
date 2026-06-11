@@ -820,5 +820,11 @@
     "registered_at": "2026-06-13T16:26:48.140353+00:00",
     "version": "",
     "size_bytes": 7965
+  },
+  "research/edge_trajectory": {
+    "sha256": "e5fc68c17346144b12dc0b92b2544cdb0614577b46f08a2c61052ae4cdec2942",
+    "registered_at": "2026-06-11T17:37:04.371500+00:00",
+    "version": "",
+    "size_bytes": 5480
   }
 }
