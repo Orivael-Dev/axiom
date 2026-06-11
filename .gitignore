@@ -50,6 +50,7 @@ efficiency_audit.jsonl
 *_log.jsonl
 *_audit.jsonl
 sovereign_state.json
+audio_harness_results.json
 axiom_proposals.json
 research_manifests.json
 axiom_agent_memory.jsonl
