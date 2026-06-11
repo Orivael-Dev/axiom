@@ -5,7 +5,7 @@ PURPOSE Sweep quantization parameter space to map the PPL vs bpw Pareto frontier
 GOAL Identify optimal (top_k_pct, group_size) combinations that minimize perplexity
      at each target bpw operating point
 
-CANNOT_MUTATE raw_benchmark_results, sweep_manifest
+CANNOT_MUTATE raw_benchmark_results, sweep_manifest, data_retention_policy, training_prohibition
 
 CONSTRAINT Raw PPL measurements are immutable once written
 CONSTRAINT Every run is identified by (model_id, top_k_pct, group_size, quant_type)
@@ -49,10 +49,9 @@ OPERATING_POINTS
 - 9.0 bpw target: top_k_pct=0.50, group_size=64
 
 PARETO_RULE
-- A point P dominates Q if bpw(P) <= bpw(Q) AND ppl(P) <= ppl(Q) with at least
-  one strict inequality
-- Recommended point: lowest PPL among all non-dominated points with
-  bpw <= target_bpw_budget (default 5.0)
+- Dominance: lower bpw with equal or better PPL, or lower PPL with equal or lower bpw
+- Recommended point: lowest PPL among non-dominated points within target_bpw_budget
+- Default target_bpw_budget: 5.0
 
 FAILURE
 - If pack fails for a combination, log the failure and skip to the next combination
@@ -63,7 +62,6 @@ FAILURE
 INTEGRATION
 - Feeds into: ResearchData (raw results), ResearchReport (Pareto chart)
 - Triggered by: ResearchExperiment when protocol includes bpw_sweep=true
-- Output compatible with: axiom_exoskeleton_ledger.py append format
 - Results feed: docs/SRD_RESULTS.md sweep section
 
 OUTPUT
