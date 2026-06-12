@@ -87,11 +87,13 @@ def cell2_build_llamacpp():
 # ════════════════════════════════════════════════════════════════════════════
 # CELL 3 — Helper: SRD quantize + convert to GGUF
 # ════════════════════════════════════════════════════════════════════════════
-def _srd_to_gguf(model_id: str, out_name: str, *, hf_token: str = "") -> Path:
+def _srd_to_gguf(model_id: str, out_name: str, *, hf_token: str = "",
+                  model_key: str = "") -> Path:
     """Load model from HF, apply SRD, save FP16, convert to GGUF Q4_K_M."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from research.quant.quantize_model import quantize_hf_model_inplace
+    from research.quant.check_srd_model import write_srd_sidecar
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype  = torch.float16 if device == "cuda" else torch.float32
@@ -145,6 +147,18 @@ def _srd_to_gguf(model_id: str, out_name: str, *, hf_token: str = "") -> Path:
 
     size_mb = gguf_out.stat().st_size / 1024**2
     print(f"  ✓  {gguf_out.name}  ({size_mb:.0f} MB)")
+
+    # Write SRD integrity sidecar
+    if model_key:
+        try:
+            commit = subprocess.check_output(
+                ["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
+                text=True,
+            ).strip()
+        except Exception:
+            commit = ""
+        write_srd_sidecar(gguf_out, model_key, pipeline_commit=commit)
+
     return gguf_out
 
 
@@ -155,6 +169,7 @@ def cell4_qwen():
     _srd_to_gguf(
         model_id="Qwen/Qwen2.5-Coder-0.5B-Instruct",
         out_name="qwen25_coder_0p5b_srd4_q4km",
+        model_key="qwen25-0p5b",
     )
 
 
@@ -166,6 +181,7 @@ def cell5_tinyllama():
     _srd_to_gguf(
         model_id="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
         out_name="tinyllama_1b_srd4_q4km",
+        model_key="tinyllama-1b",
     )
 
 
