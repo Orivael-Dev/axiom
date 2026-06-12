@@ -83,11 +83,11 @@ WHEN
 - if image or question involves document extraction social security financial account, activate SensitiveDataGate
 - if connector_distance is greater than visual_drift_threshold, activate ConnectorDriftFilter
 - if answer involves text reading OCR document, activate VisualGroundingGate
-- if query_signature is invalid or missing, emit QUERY_INVALID
+- if query_signature is invalid or missing, activate QuerySignatureGuard
 
 PROCESS
 - Verify VisualQuery HMAC signature before any processing
-- Screen image category via SensitiveDataGate; block if policy triggered
+- Image category is screened via SensitiveDataGate before processing proceeds
 - Attach connector hook before forward pass
 - Run inference with SRD-corrected weights
 - Compute connector activation distance from calibrated centroid
@@ -105,7 +105,7 @@ SECURITY
 RULES
 - drift_status must always be set — never omit even when calibration is unavailable
 - When VISUAL_DRIFT_DETECTED, include connector_dist in the response so the caller can decide
-- When CALIBRATION_REQUIRED, return the answer but mark confidence=0.0
+- When CALIBRATION_REQUIRED, answer is included but confidence is set to 0.0
 - SRD bands active must be enumerated in every VisualPrediction
 
 OUTPUT
