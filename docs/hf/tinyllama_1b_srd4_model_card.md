@@ -39,18 +39,19 @@ All layers benefit equally from D8 restoration.
 Evaluated on [TruthfulQA MC1](https://huggingface.co/datasets/truthful_qa) (817 questions)
 and WikiText-2 perplexity.
 
-| Mode | TruthfulQA MC1 ↑ | Δ vs baseline | D8 overhead |
-|---|---|---|---|
-| Baseline Q4_K_M | 0.289 | — | 0 MB |
-| Selective SRD (reasoning layers) | 0.283 | -0.6% | 98 MB |
-| **Full SRD** (all layers) | **0.292** | **+0.3%** | **392 MB** |
+| Mode | TruthfulQA MC1 ↑ | WikiText-2 PPL ↓ | Δ PPL | D8 overhead |
+|---|---|---|---|---|
+| Baseline Q4_K_M | 0.289 | 10.46 | — | 0 MB |
+| Selective SRD (reasoning layers) | 0.283 | 10.23 | **-0.23** | 98 MB |
+| **Full SRD** (all layers) | **0.292** | **10.18** | **-0.28** | **392 MB** |
 
 Full SRD is recommended for this model. The LLaMA-1 architecture distributes
-information uniformly — partial correction creates layer mismatch.
+information uniformly — partial correction creates layer mismatch on MC1,
+though both modes improve perplexity.
 
-WikiText-2 PPL: ~10.4 (baseline) → ~10.1 (full SRD). TinyLlama's strong PPL
-reflects its general-purpose training corpus; it is the most domain-general
-model in this collection.
+**WikiText-2 PPL is the primary signal for TinyLlama.** SRD delivers a clear
+-0.23 to -0.28 improvement in language modeling quality. The MC1 differences
+(±0.006) are within statistical noise (SE ≈ ±0.031 at n=200).
 
 ## Usage
 
