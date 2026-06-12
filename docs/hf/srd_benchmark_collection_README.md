@@ -1,3 +1,31 @@
+---
+license: apache-2.0
+language:
+- en
+library_name: gguf
+tags:
+- quantization
+- gguf
+- srd
+- stochastic-residual-dithering
+- benchmark
+- llama-cpp
+- gemma
+- smollm
+- deepseek
+- qwen
+pipeline_tag: text-generation
+model-index:
+- name: gemma3-1b-srd4-q4km
+  results: []
+- name: smollm2-135m-instruct-q4km
+  results: []
+- name: deepseek-r1-1b5-q4km
+  results: []
+- name: qwen3-1b7-q4km
+  results: []
+---
+
 # SRD Benchmark Collection
 
 **Stochastic Residual Dithering (SRD)** is an experimental quantization
