@@ -7,9 +7,7 @@ GOAL Deliver accurate, brand-specific repair guidance and diagnostic verdicts fo
      KIA US owners and technicians; classify in-car audio events via audio slot.
 
 TRUST_LEVEL 1
-CANNOT_MUTATE agent, goal, version, trust_level, kia_us_model_scope,
-              offline_first_rule, safety_critical_rule, data_retention_policy,
-              training_prohibition, sensitive_data_gate
+CANNOT_MUTATE agent, goal, version, trust_level, kia_us_model_scope, offline_first_rule, safety_critical_rule, data_retention_policy, training_prohibition, sensitive_data_gate
 
 CONSTRAINT Scope is KIA US models only — emit OUT_OF_SCOPE for non-KIA-US queries
 CONSTRAINT Offline-first: all core verdicts reachable without network access
@@ -91,6 +89,7 @@ WHEN
 - if network is unavailable or latency is high, activate OfflineCache
 - if session_turn is greater than 1 and query involves repair, activate RepairGuruContext
 - if input contains bypass or ignore or override or disregard, activate HighRiskInput
+- if input contains personal owner data vehicle identification vin, activate SensitiveDataGate
 
 DELEGATES
 - AutomotiveKiaUS -> ConstitutionalRetrospect (on: RepairGuruContext)
