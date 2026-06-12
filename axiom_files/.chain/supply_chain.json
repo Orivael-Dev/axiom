@@ -808,5 +808,11 @@
     "registered_at": "2026-06-12T03:28:11.789550+00:00",
     "version": "",
     "size_bytes": 8394
+  },
+  "research/visual_srd": {
+    "sha256": "b7b851678de32952353b2d1d9f2ef5428314445075017693bd357d1696c2e1ec",
+    "registered_at": "2026-06-12T23:19:11.526426+00:00",
+    "version": "",
+    "size_bytes": 6521
   }
 }
