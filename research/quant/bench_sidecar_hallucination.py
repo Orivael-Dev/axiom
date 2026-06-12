@@ -15,15 +15,13 @@ Models tested:
   SmolLM2-135M, Qwen2.5-Coder-0.5B, Gemma3-1B, TinyLlama-1.1B
 
 CLI:
-    # Single model, all three modes
+    # Single model — no sidecar files needed, residuals computed in-memory
     python -m research.quant.bench_sidecar_hallucination \\
-        --model HuggingFaceTB/SmolLM2-135M-Instruct \\
-        --sidecar /path/to/smollm2_135m.srd4 \\
+        --model smollm2-135m \\
         --output results/smollm2_sidecar_bench.json
 
-    # Full sweep (all 4 models) — requires sidecar files on disk
+    # Full sweep (all 4 models)
     python -m research.quant.bench_sidecar_hallucination --sweep \\
-        --sidecar-dir /path/to/srd4_files/ \\
         --output results/sidecar_hallucination_sweep.json
 
     # Dry run (checks imports, skips model load)
@@ -174,6 +172,33 @@ def _truthfulqa_mc1(
     return correct / total if total else 0.0
 
 
+# ── Helpers for selective in-memory correction ───────────────────────────
+
+def _count_transformer_layers(model: nn.Module) -> int:
+    """Count transformer layer blocks by scanning for 'layers.<int>' in names."""
+    seen: set = set()
+    for name, _ in model.named_modules():
+        parts = name.split(".")
+        for i, p in enumerate(parts):
+            if p == "layers" and i + 1 < len(parts):
+                try:
+                    seen.add(int(parts[i + 1]))
+                except ValueError:
+                    pass
+    return len(seen)
+
+
+def _layer_idx_from_name(name: str) -> Optional[int]:
+    parts = name.split(".")
+    for i, p in enumerate(parts):
+        if p == "layers" and i + 1 < len(parts):
+            try:
+                return int(parts[i + 1])
+            except ValueError:
+                pass
+    return None
+
+
 # ── Main benchmark runner ─────────────────────────────────────────────────
 
 def run_benchmark(
@@ -185,8 +210,21 @@ def run_benchmark(
     output_path: Optional[Path] = None,
     hf_token: str = "",
 ) -> List[dict]:
-    """Run all three modes for one model. Returns list of result dicts."""
+    """Run all three modes for one model. Returns list of result dicts.
+
+    Modes:
+      baseline  — alpha=0.0: pure Q4 fake-quant, no D8 residual at all
+      full_srd  — alpha=1.0: Q4 + D8 applied to every layer
+      selective — alpha=0.0 base, then D8 applied back to reasoning layers
+                  only (40–77% of depth). No .srd4 file required — residuals
+                  are computed in-memory from the same quantize pass.
+    """
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    from axiom_quant import srd_quantize, srd_dequantize
+    from research.quant.srd_selective_sidecar import (
+        apply_d8_correction, reasoning_layer_ids, sidecar_ram_mb,
+    )
+    from research.quant.quantize_model import _iter_linears, DEFAULT_SKIP_MODULES
 
     cfg    = MODELS[model_key]
     hf_id  = cfg["hf_id"]
@@ -201,46 +239,66 @@ def run_benchmark(
     if hf_token:
         load_kw["token"] = hf_token
 
+    tok = AutoTokenizer.from_pretrained(
+        hf_id, **({"token": hf_token} if hf_token else {})
+    )
+
     results = []
 
     for mode in ("baseline", "selective", "full_srd"):
         print(f"\n  Mode: {mode}")
 
-        tok = AutoTokenizer.from_pretrained(
-            hf_id, **({"token": hf_token} if hf_token else {})
-        )
         model = AutoModelForCausalLM.from_pretrained(hf_id, **load_kw)
         model.eval()
-
-        # Apply SRD quantization first (fake-quant to Q4-equivalent weights)
-        quantize_hf_model_inplace(model, alpha=1.0, group_size=64, progress=False)
 
         reasoning_corrected = 0
         d8_overhead_mb      = 0.0
 
-        if mode == "selective" and sidecar_path and sidecar_path.exists():
-            reasoning_corrected = apply_sidecar_to_reasoning_layers(
-                model, sidecar_path, verbose=True,
-            )
-            est = sidecar_ram_mb(
-                cfg["n_layers"], cfg["hidden"], cfg["intermediate"],
-            )
-            d8_overhead_mb = est["total_MB"]
+        if mode == "baseline":
+            # Pure Q4: quantize but add zero residual (alpha=0)
+            quantize_hf_model_inplace(model, alpha=0.0, group_size=64, progress=False)
 
-        elif mode == "full_srd" and sidecar_path and sidecar_path.exists():
-            # Apply D8 to ALL layers (not just reasoning chunk)
-            from research.quant.srd_selective_sidecar import (
-                load_sidecar, apply_d8_correction,
+        elif mode == "full_srd":
+            # Full SRD: quantize + restore 100% of D8 residual (alpha=1)
+            packed = quantize_hf_model_inplace(
+                model, alpha=1.0, group_size=64, progress=False
             )
-            sidecar = load_sidecar(sidecar_path)
+            reasoning_corrected = len(packed)
+            est = sidecar_ram_mb(cfg["n_layers"], cfg["hidden"], cfg["intermediate"],
+                                 top_k_pct=1.0)
+            d8_overhead_mb = est["d8_dense_MB"]
+
+        else:  # selective
+            # Step 1: degrade all layers to pure Q4 (alpha=0), keep packed tensors
+            packed = quantize_hf_model_inplace(
+                model, alpha=0.0, group_size=64, progress=False
+            )
+
+            # Step 2: identify reasoning chunk
+            n_layers     = _count_transformer_layers(model)
+            reasoning_ids = set(reasoning_layer_ids(n_layers))
+            print(f"  [selective] {n_layers} layers, reasoning chunk = "
+                  f"{min(reasoning_ids)}–{max(reasoning_ids)} "
+                  f"({len(reasoning_ids)} layers)")
+
+            # Step 3: apply D8 residual back to reasoning layers only
             for name, module in model.named_modules():
-                if isinstance(module, nn.Linear) and name in sidecar:
-                    D8, S8 = sidecar[name]
-                    with torch.no_grad():
-                        module.weight.data.copy_(
-                            apply_d8_correction(module.weight.data, D8, S8)
-                        )
-                    reasoning_corrected += 1
+                if not isinstance(module, nn.Linear):
+                    continue
+                if _layer_idx_from_name(name) not in reasoning_ids:
+                    continue
+                if name not in packed:
+                    continue
+                pack = packed[name]
+                with torch.no_grad():
+                    corrected_w = apply_d8_correction(
+                        module.weight.data, pack.D8, pack.S8, group_size=64,
+                    )
+                    module.weight.data.copy_(corrected_w)
+                reasoning_corrected += 1
+
+            est = sidecar_ram_mb(cfg["n_layers"], cfg["hidden"], cfg["intermediate"])
+            d8_overhead_mb = est["total_MB"]
 
         t0  = time.monotonic()
         ppl = _wikitext2_ppl(model, tok, n_tokens=n_wikitext_tokens, device=device)
