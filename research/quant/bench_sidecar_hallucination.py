@@ -264,9 +264,12 @@ def run_benchmark(
                 model, alpha=1.0, group_size=64, progress=False
             )
             reasoning_corrected = len(packed)
-            est = sidecar_ram_mb(cfg["n_layers"], cfg["hidden"], cfg["intermediate"],
-                                 top_k_pct=1.0)
-            d8_overhead_mb = est["d8_dense_MB"]
+            # Overhead = D8 for ALL layers (dense), not just reasoning chunk
+            n_layers_all   = cfg["n_layers"]
+            attn_p  = cfg["hidden"] * cfg["hidden"] * 4
+            mlp_p   = cfg["hidden"] * cfg["intermediate"] * 3
+            total_p = n_layers_all * (attn_p + mlp_p)
+            d8_overhead_mb = round(total_p / 1024**2, 1)   # 1 byte per int8 element
 
         else:  # selective
             # Step 1: degrade all layers to pure Q4 (alpha=0), keep packed tensors
@@ -338,22 +341,34 @@ def run_benchmark(
 
 
 def _print_summary(all_results: List[dict]) -> None:
-    print("\n" + "="*80)
-    print("SUMMARY — TruthfulQA MC1 (higher = less hallucination)\n")
-    print(f"  {'Model':<22} {'baseline':>10} {'selective':>10} {'full_srd':>10} {'Δ selective':>12}")
-    print("  " + "-"*68)
+    print("\n" + "="*100)
+    print("SUMMARY — TruthfulQA MC1 (↑ less hallucination)  |  D8 overhead = extra RAM at load time\n")
+    hdr = (f"  {'Model':<22} {'MC1 base':>9} {'MC1 sel':>9} {'MC1 full':>9}"
+           f" {'Δ sel':>7} {'sel MB':>8} {'full MB':>8} {'efficiency':>11}")
+    print(hdr)
+    print("  " + "-"*90)
 
     by_model: Dict[str, Dict[str, dict]] = {}
     for r in all_results:
         by_model.setdefault(r["model"], {})[r["mode"]] = r
 
     for model_key, modes in by_model.items():
-        base = modes.get("baseline", {}).get("truthfulqa_mc1", float("nan"))
-        sel  = modes.get("selective", {}).get("truthfulqa_mc1", float("nan"))
-        full = modes.get("full_srd",  {}).get("truthfulqa_mc1", float("nan"))
-        delta = sel - base if not math.isnan(sel) and not math.isnan(base) else float("nan")
-        print(f"  {model_key:<22} {base:>10.3f} {sel:>10.3f} {full:>10.3f} "
-              f"{delta:>+11.3f}")
+        base_mc1 = modes.get("baseline",  {}).get("truthfulqa_mc1",  float("nan"))
+        sel_mc1  = modes.get("selective", {}).get("truthfulqa_mc1",  float("nan"))
+        full_mc1 = modes.get("full_srd",  {}).get("truthfulqa_mc1",  float("nan"))
+        sel_mb   = modes.get("selective", {}).get("d8_overhead_mb",  float("nan"))
+        full_mb  = modes.get("full_srd",  {}).get("d8_overhead_mb",  float("nan"))
+
+        delta = sel_mc1 - base_mc1 if not (math.isnan(sel_mc1) or math.isnan(base_mc1)) else float("nan")
+
+        # Efficiency: same Δ MC1 at what fraction of full cost?
+        if not (math.isnan(sel_mb) or math.isnan(full_mb)) and full_mb > 0:
+            eff = f"{sel_mb / full_mb * 100:.0f}% RAM"
+        else:
+            eff = "—"
+
+        print(f"  {model_key:<22} {base_mc1:>9.3f} {sel_mc1:>9.3f} {full_mc1:>9.3f}"
+              f" {delta:>+7.3f} {sel_mb:>8.1f} {full_mb:>8.1f} {eff:>11}")
 
 
 def _parse_args() -> argparse.Namespace:
