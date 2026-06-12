@@ -15,6 +15,8 @@ tags:
 - deepseek
 - qwen
 pipeline_tag: text-generation
+size_categories:
+- 100M<n<1B
 model-index:
 - name: gemma3-1b-srd4-q4km
   results: []
@@ -42,12 +44,12 @@ baselines and tell us whether the gains are real.
 
 ## Models in this collection
 
-| File | Base model | Quantization | Size |
-|---|---|---|---|
-| `gemma3_1b_srd4_q4km.gguf` | Gemma 3 1B | **SRD4 → Q4_K_M** | 769 MB |
-| `smollm2_135m_instruct_q4km.gguf` | SmolLM2 135M Instruct | Q4_K_M | 119 MB |
-| `deepseek_r1_1b5_q4km.gguf` | DeepSeek-R1 1.5B | Q4_K_M | 1.0 GB |
-| `qwen3_1b7_q4km.gguf` | Qwen3 1.7B | Q4_K_M | 1.0 GB |
+| File | Base model | Params | Quantization | File size |
+|---|---|---|---|---|
+| `gemma3_1b_srd4_q4km.gguf` | Gemma 3 1B | 1.0B | **SRD4 → Q4_K_M** | 769 MB |
+| `smollm2_135m_instruct_q4km.gguf` | SmolLM2 135M Instruct | 135M | Q4_K_M | 119 MB |
+| `deepseek_r1_1b5_q4km.gguf` | DeepSeek-R1 1.5B | 1.5B | Q4_K_M | 1.0 GB |
+| `qwen3_1b7_q4km.gguf` | Qwen3 1.7B | 1.7B | Q4_K_M | 1.0 GB |
 
 The **Gemma 3 1B** file is the SRD showcase. The other three are Q4_K_M
 baselines at similar parameter counts — benchmark them the same way for
