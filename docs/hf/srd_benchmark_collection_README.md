@@ -70,6 +70,86 @@ preserved.
 
 ---
 
+## Technical specification
+
+### Algorithm
+
+SRD is a **two-stage residual quantization** scheme applied as a
+fake-quantization pre-processing step before GGUF conversion.
+
+**Stage 1 — 4-bit base (W4)**
+
+Per-block symmetric quantization with group size G = 64:
+
+```
+S4 = max(|W_block|) / 7          # per-block scale
+W4 = round(W / S4).clamp(-8, 7)  # INT4 in [-8, 7]
+W_base = W4 * S4                  # reconstructed base
+```
+
+**Stage 2 — 8-bit residue (D8)**
+
+```
+R  = W - W_base                   # residual
+S8 = max(|R_block|) / 127
+D8 = round(R / S8).clamp(-127, 127)
+```
+
+**Reconstruction (α-mixing)**
+
+```
+W_hat = W_base + α * (D8 * S8)   # α ∈ [0.0, 1.0]
+```
+
+α = 1.0 is the default (full residue). α = 0.0 reduces to plain INT4.
+
+**Bits-per-weight (honest, including scales)**
+
+| Component | Bits/weight (G=64) |
+|---|---|
+| W4 | 4.0 |
+| D8 (dense) | 8.0 |
+| S4 (float32 per block) | 32/64 = 0.5 |
+| S8 (float32 per block) | 32/64 = 0.5 |
+| **Total dense** | **13.0 bpw** |
+
+Optional top-k sparsity on D8 (retain fraction p of largest-magnitude
+residuals, zero the rest) produces operating points between 4.5 bpw
+(p=0) and 13.0 bpw (p=1.0), filling the dead zone between Q4_K_M and
+Q8_0 on the Pareto curve.
+
+### Relationship to prior work
+
+SRD is in the same family as **AQLM**, **QuIP#**, and residual k-means
+quantization — all decompose weight error into a base + residue. The
+distinction claimed here is the dither pre-processing that regularises
+the residual distribution before D8 quantization. The "stochastic" in
+the name refers to this step; the current implementation is
+**deterministic** (the dither schedule is fixed and reproducible).
+A noise-shaping filter (à la §2.2 of the original spec) is not
+implemented — this is an acknowledged gap.
+
+### Pipeline used for the GGUF files
+
+```
+FP16 weights → srd_quantize(group_size=64) → SRDPackedTensor
+    → fake-dequantize(α=1.0)              → FP16 (SRD-corrected)
+    → llama.cpp quantize -type q4_K_M     → GGUF
+```
+
+The SRD pre-processing modifies the weight distribution before llama.cpp
+applies its own Q4_K_M rounding. The GGUF files are standard Q4_K_M and
+run on any llama.cpp build — no custom kernels required.
+
+### Honest limitations
+
+- No fused inference kernels — bpw advantage is theoretical at this stage
+- Fake-quantization only — latency and memory benchmarks are not meaningful
+- No noise-shaping filter implemented (the dither is currently deterministic)
+- Results on Gemma 3 1B only — cross-architecture transfer is the open question
+
+---
+
 ## How to run
 
 Any llama.cpp build from mid-2024 onwards works out of the box.
