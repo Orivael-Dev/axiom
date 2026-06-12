@@ -174,10 +174,14 @@ def cell5_tinyllama():
 # Reads existing .axiom from Drive — no re-download of 7B weights needed
 # ════════════════════════════════════════════════════════════════════════════
 def cell6_mistral_reextract():
-    axiom_file = DRIVE_GGUF / "mistral_srd4_q4km.axiom"
-    if not axiom_file.exists():
-        print(f"ERROR: {axiom_file} not found on Drive")
-        print("Upload mistral_srd4_q4km.axiom to MyDrive/gguf/ and retry")
+    axiom_file = next(
+        (DRIVE_GGUF / f"mistral_srd4_q4km{ext}" for ext in (".axm", ".axiom")
+         if (DRIVE_GGUF / f"mistral_srd4_q4km{ext}").exists()),
+        None,
+    )
+    if axiom_file is None:
+        print(f"ERROR: mistral_srd4_q4km.axm/.axiom not found in {DRIVE_GGUF}")
+        print("Upload the file to MyDrive/gguf/ and retry")
         return
 
     gguf_out = OUT_DIR / "mistral_srd4_q4km_v2.gguf"
