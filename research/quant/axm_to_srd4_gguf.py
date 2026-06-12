@@ -82,7 +82,10 @@ from axiom_axm import AXMContainer, AXMError   # noqa: E402
 # Reuse slot/hydration definitions from add_axiom_gguf_meta.py
 from research.quant.add_axiom_gguf_meta import (  # noqa: E402
     SLOT_RANGES, HYDRATION_POLICY, AXIOM_VERSION,
-    write_annotated_gguf, _find_convert_script as _conv_script,
+    write_annotated_gguf,
+)
+from research.quant.axm_to_gguf import (          # noqa: E402
+    _find_convert_script as _conv_script,
 )
 from research.quant.srd_realpack import (          # noqa: E402
     is_real_packed, PACKED_FILE, DENSE_FILE, INDEX_FILE,
