@@ -103,7 +103,11 @@ def _wikitext2_ppl(
     """Sliding-window WikiText-2 perplexity (same method as bench_perplexity.py)."""
     from datasets import load_dataset
 
-    ds  = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+    # Newer huggingface_hub requires namespaced repo IDs; try both forms.
+    try:
+        ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+    except Exception:
+        ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="test")
     raw = "\n\n".join(t for t in ds["text"] if t.strip())
     enc = tokenizer(raw, return_tensors="pt")
     ids = enc.input_ids[0][:n_tokens].to(device)
