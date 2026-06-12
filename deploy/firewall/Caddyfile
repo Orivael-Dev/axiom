@@ -72,6 +72,64 @@
     }
 }
 
+# ── Static sites ─────────────────────────────────────────────────────────────
+
+{$ROOT_HOST}, www.{$ROOT_HOST} {
+    root * /opt/sites/orivael
+    file_server
+    encode gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+    log { output stdout; format json }
+}
+
+{$GOVERNANCE_HOST} {
+    root * /opt/sites/governance
+    file_server
+    encode gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+    log { output stdout; format json }
+}
+
+{$BENCHLAB_HOST} {
+    root * /opt/sites/benchlab
+    file_server
+    encode gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+    log { output stdout; format json }
+}
+
+{$SRDBUILD_HOST} {
+    root * /opt/sites/srdbuild
+    file_server
+    encode gzip
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+    log { output stdout; format json }
+}
+
 {$PACKS_HOST} {
     encode gzip
 
