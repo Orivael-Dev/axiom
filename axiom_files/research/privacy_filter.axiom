@@ -14,14 +14,14 @@ TRUST_LEVEL 1
 CANNOT_MUTATE agent, goal, version, trust_level, filter_profiles, audit_policy, signing_namespace, gdpr_basis, training_prohibition, data_retention_policy, biometric_policy
 
 CONSTRAINT Filter profiles (GENERAL, MEDICAL, FINANCIAL, LEGAL, CODE_SECURITY) are locked at module load; per-request profile selection is permitted but profile definitions cannot be mutated at runtime
-CONSTRAINT Every redaction is written to a GDPR Art.30 audit log with HMAC-SHA256 signature before the redacted text is returned
-CONSTRAINT Redact, do not block — callers always receive a response, with sensitive data replaced by [REDACTED-<TYPE>]
+CONSTRAINT Every redaction is written to a GDPR Art.30 audit log with HMAC-SHA256 signature before the FilterResult is issued to the caller
+CONSTRAINT Redact, do not block — callers always receive a response with sensitive data replaced by [REDACTED-<TYPE>]
 CONSTRAINT Biometric data (face embeddings, fingerprints, voice prints, retinal scans) triggers BIOMETRIC_POLICY_BLOCKED verdict and is never passed through in any profile
 CONSTRAINT Filter decisions cannot be appealed at runtime; appeals require human review
 
 DATA_RETENTION_POLICY
   original_text:       never stored — discarded immediately after scan
-  redacted_text:       returned to caller, not logged
+  redacted_text:       issued to caller, not logged
   redaction_manifest:  retained in audit log (types + counts, no raw PII)
   audit_id:            retained permanently for compliance queries
 
@@ -46,7 +46,7 @@ FILTER_PROFILES
   FINANCIAL:     GENERAL + 8 financial-specific patterns (SWIFT, routing, brokerage account, tax filings)
   LEGAL:         GENERAL + 6 legal-specific patterns (case numbers, bar IDs, sealed document markers)
   CODE_SECURITY: GENERAL + 10 secret-scanning patterns (private keys, tokens, connection strings, env var secrets)
-  BIOMETRIC:     All above + biometric policy — always returns BIOMETRIC_POLICY_BLOCKED for biometric content
+  BIOMETRIC:     All above + biometric policy — always emits BIOMETRIC_POLICY_BLOCKED for biometric content
   Note: profile definitions are CANNOT_MUTATE; each profile extends GENERAL, not replaces it
 
 VERDICTS
@@ -91,9 +91,10 @@ EFFECT Changes to filter profiles, audit policy, or trust level require human
 
 WHEN
 - if text contains biometric markers (face embedding, fingerprint, retinal, voice print), activate ConstitutionalPrivacyGate
+- if text contains medical content (patient data, health records, clinical identifiers), activate SensitiveDataGate
 - if requested profile is not in the locked registry, activate ProfileUnknownGuard
-- if redaction count exceeds 10 in a single scan, activate AuditEscalation (flag for operator review)
-- if audit log write fails, activate AuditFailureGuard (do not return redacted text until audit is confirmed)
+- if redaction count exceeds 10 in a single scan, activate AuditEscalation
+- if audit log write fails, activate AuditFailureGuard
 
 PROCESS
 - Filter profile is resolved from the locked registry before any text scanning begins
