@@ -331,6 +331,216 @@ RULESETS: Dict[str, dict] = {
             "say so — do not invent plausible-sounding identifiers."
         ),
     },
+
+    "deepseek-r1-1b5": {
+        "version":   "1.0",
+        "model_key": "deepseek-r1-1b5",
+        "srd": {
+            "applied":          True,
+            "correction_mode":  "selective",
+            "reasoning_layers": "11-21",
+            "overhead_mb":      None,   # measured at build time
+            "note": "Distilled reasoning model (Qwen2 backbone, 28 layers). "
+                    "Chain-of-thought lives in the reasoning chunk — SRD selective "
+                    "is highest-leverage here. <think>...</think> traces are intentional.",
+        },
+        "reasoning": {
+            "uncertainty_floor":       0.15,
+            "overclaim_ceiling":       0.85,
+            "chain_of_thought":        "required",
+            "multi_step_reliability":  "strong",
+            "note": "R1-distilled model — CoT traces are part of the output contract. "
+                    "Never suppress <think> blocks; they are the reasoning evidence.",
+        },
+        "grounding": {
+            "factual_claims":   "state_confidence_explicitly",
+            "mathematical":     "show_steps_in_think_block",
+            "temporal_claims":  "acknowledge_knowledge_cutoff",
+            "code_claims":      "test_mentally_before_asserting",
+        },
+        "prohibitions": [
+            "suppress_think_blocks",
+            "fabricate_citations",
+            "skip_chain_of_thought_on_multi_step",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
+        ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty, and tell the "
+                "user to verify before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier must trace back to one of the anchor types. "
+                "If a name cannot be anchored, prefix it with '[unverified]' or ask "
+                "the user to confirm. Never silently invent plausible-sounding symbols."
+            ),
+        },
+        "strengths":  ["multi-step reasoning", "math", "code", "logical deduction"],
+        "weaknesses": ["speed (thinking tokens add latency)", "non-reasoning factual recall",
+                       "very long contexts at 1.5B scale"],
+        "system_prompt_prefix": (
+            "You are a helpful reasoning assistant. "
+            "Think through problems step by step using <think>...</think> blocks. "
+            "Show your reasoning before giving the final answer. "
+            "When you are uncertain, say so explicitly. "
+            "Do not fabricate facts, citations, or code identifiers. "
+            "For code answers: if you cannot trace a function name to a known source, "
+            "mark it as [unverified]."
+        ),
+    },
+
+    "llama32-1b": {
+        "version":   "1.0",
+        "model_key": "llama32-1b",
+        "srd": {
+            "applied":          True,
+            "correction_mode":  "selective",
+            "reasoning_layers": "6-12",
+            "overhead_mb":      None,
+            "note": "LlamaForCausalLM, 16 layers. SRD selective targets mid-depth "
+                    "layers 6-12 where instruction-following coherence lives.",
+        },
+        "reasoning": {
+            "uncertainty_floor":       0.15,
+            "overclaim_ceiling":       0.85,
+            "chain_of_thought":        "encouraged",
+            "multi_step_reliability":  "moderate",
+            "note": "1B-scale general instruction model. Strong on short tasks and "
+                    "conversation; reliability drops on complex multi-step reasoning.",
+        },
+        "grounding": {
+            "factual_claims":   "flag_uncertainty_when_unsure",
+            "temporal_claims":  "acknowledge_knowledge_cutoff",
+            "mathematical":     "verify_simple_arithmetic_only",
+            "code_claims":      "test_mentally_before_asserting",
+        },
+        "prohibitions": [
+            "fabricate_citations",
+            "overclaim_on_multi_step_reasoning",
+            "present_guesses_as_facts",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
+        ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty, and tell the "
+                "user to verify before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier must trace back to one of the anchor types. "
+                "If a name cannot be anchored, prefix it with '[unverified]' or ask "
+                "the user to confirm. Never silently invent plausible-sounding symbols."
+            ),
+        },
+        "strengths":  ["instruction following", "conversation", "summarization", "short tasks"],
+        "weaknesses": ["complex multi-step reasoning", "math", "long-form generation"],
+        "system_prompt_prefix": (
+            "You are a helpful assistant. "
+            "Answer clearly and honestly. "
+            "When you are uncertain about a fact, say so rather than guessing. "
+            "Do not fabricate information or citations. "
+            "For code answers: if you are not confident in a function name or API, "
+            "say so — do not invent plausible-sounding identifiers."
+        ),
+    },
+
+    "qwen3-1b7": {
+        "version":   "1.0",
+        "model_key": "qwen3-1b7",
+        "srd": {
+            "applied":          True,
+            "correction_mode":  "selective",
+            "reasoning_layers": "11-21",
+            "overhead_mb":      None,
+            "note": "Qwen3 architecture, 28 layers. Supports /think and /no_think modes. "
+                    "SRD selective is highest-leverage in thinking mode — the reasoning "
+                    "chunk is where CoT coherence degrades under Q4.",
+        },
+        "reasoning": {
+            "uncertainty_floor":       0.15,
+            "overclaim_ceiling":       0.85,
+            "chain_of_thought":        "strongly_encouraged",
+            "multi_step_reliability":  "good_in_thinking_mode",
+            "thinking_mode":           "/think token enables <think>...</think> traces",
+            "note": "Thinking mode (/think) is significantly more reliable on complex "
+                    "tasks. Non-thinking mode (/no_think) is faster but less accurate.",
+        },
+        "grounding": {
+            "factual_claims":   "flag_uncertainty_when_unsure",
+            "code_claims":      "test_mentally_before_asserting",
+            "temporal_claims":  "acknowledge_knowledge_cutoff",
+            "mathematical":     "show_steps_in_thinking_mode",
+        },
+        "prohibitions": [
+            "fabricate_citations",
+            "overclaim_confidence",
+            "skip_uncertainty_acknowledgement",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
+        ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty, and tell the "
+                "user to verify before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier must trace back to one of the anchor types. "
+                "If a name cannot be anchored, prefix it with '[unverified]' or ask "
+                "the user to confirm. Never silently invent plausible-sounding symbols."
+            ),
+        },
+        "strengths":  ["code", "reasoning (thinking mode)", "multilingual", "instruction following"],
+        "weaknesses": ["non-thinking mode less accurate on complex tasks",
+                       "thinking tokens add latency", "1.7B scale limits deep factual recall"],
+        "system_prompt_prefix": (
+            "You are a helpful assistant with reasoning capabilities. "
+            "For complex problems, use /think to reason step by step before answering. "
+            "When you are uncertain, say so explicitly rather than guessing. "
+            "Do not fabricate facts, citations, or code identifiers. "
+            "For code answers: if you cannot trace a function name to a known source, "
+            "mark it as [unverified]."
+        ),
+    },
 }
 
 

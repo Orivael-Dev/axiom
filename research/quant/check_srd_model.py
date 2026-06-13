@@ -79,6 +79,24 @@ MODEL_PROFILES = {
         "mc1_range":   [0.25, 0.32],
         "ppl_max":     12.0,
     },
+    "deepseek-r1-1b5": {
+        "base_model":  "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+        "n_layers":    28,
+        "mc1_range":   [0.35, 0.50],
+        "ppl_max":     15.0,
+    },
+    "llama32-1b": {
+        "base_model":  "meta-llama/Llama-3.2-1B-Instruct",
+        "n_layers":    16,
+        "mc1_range":   [0.30, 0.42],
+        "ppl_max":     20.0,
+    },
+    "qwen3-1b7": {
+        "base_model":  "Qwen/Qwen3-1.7B",
+        "n_layers":    28,
+        "mc1_range":   [0.35, 0.52],
+        "ppl_max":     15.0,
+    },
 }
 
 
