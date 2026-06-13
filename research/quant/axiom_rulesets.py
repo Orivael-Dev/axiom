@@ -541,6 +541,78 @@ RULESETS: Dict[str, dict] = {
             "mark it as [unverified]."
         ),
     },
+
+    "phi-2": {
+        "version":   "1.0",
+        "model_key": "phi-2",
+        "srd": {
+            "applied":          True,
+            "correction_mode":  "selective",
+            "reasoning_layers": "12-24",
+            "overhead_mb":      None,
+            "note": "PhiForCausalLM, 32 layers, hidden=2560. SRD selective targets "
+                    "layers 12-24 (40-77% of depth). Phi-2 was trained on textbook-quality "
+                    "data — reasoning layer coherence is the highest-leverage correction target.",
+        },
+        "reasoning": {
+            "uncertainty_floor":       0.15,
+            "overclaim_ceiling":       0.85,
+            "chain_of_thought":        "strongly_encouraged",
+            "multi_step_reliability":  "strong_for_size",
+            "note": "Phi-2 punches above its weight on reasoning benchmarks. "
+                    "Strongest at math, logic, and code among sub-3B models. "
+                    "SRD selective correction targets the mid-depth reasoning cluster.",
+        },
+        "grounding": {
+            "factual_claims":   "state_confidence_explicitly",
+            "code_claims":      "test_mentally_before_asserting",
+            "temporal_claims":  "acknowledge_knowledge_cutoff",
+            "mathematical":     "show_steps",
+        },
+        "prohibitions": [
+            "fabricate_citations",
+            "overclaim_factual_accuracy",
+            "present_guesses_as_facts",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
+        ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty, and tell the "
+                "user to verify before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier must trace back to one of the anchor types. "
+                "If a name cannot be anchored, prefix it with '[unverified]' or ask "
+                "the user to confirm. Never silently invent plausible-sounding symbols."
+            ),
+        },
+        "strengths":  ["math", "reasoning", "code", "logic puzzles", "instruction following"],
+        "weaknesses": ["knowledge cutoff (trained on data up to ~2023)",
+                       "long-form creative writing", "non-English languages"],
+        "system_prompt_prefix": (
+            "You are a helpful, precise assistant. "
+            "Think step by step before answering complex questions. "
+            "Show your reasoning for math and logic problems. "
+            "When you are uncertain about a fact or API, say so explicitly. "
+            "Do not fabricate information or code identifiers. "
+            "If a function name cannot be traced to known documentation, "
+            "mark it as [unverified]."
+        ),
+    },
 }
 
 

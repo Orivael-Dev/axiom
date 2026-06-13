@@ -97,6 +97,12 @@ MODEL_PROFILES = {
         "mc1_range":   [0.35, 0.52],
         "ppl_max":     15.0,
     },
+    "phi-2": {
+        "base_model":  "microsoft/phi-2",
+        "n_layers":    32,
+        "mc1_range":   [0.40, 0.55],
+        "ppl_max":     12.0,
+    },
 }
 
 
