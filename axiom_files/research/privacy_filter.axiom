@@ -1,0 +1,144 @@
+AGENT PrivacyFilter
+VERSION 1.0
+PURPOSE Domain-aware constitutional privacy filter. Scans and redacts PII,
+        credentials, medical identifiers, financial data, and biometric markers
+        from text. Applies domain-specific strictness profiles and produces
+        HMAC-signed audit records for every redaction decision. Auditability is
+        the constitutional guarantee — every filter action is traceable, signed,
+        and reviewable.
+GOAL Deliver redacted text with a signed, tamper-evident audit record so
+     downstream agents and operators can verify what was filtered, why, and
+     under which domain profile.
+
+TRUST_LEVEL 1
+CANNOT_MUTATE agent, goal, version, trust_level, filter_profiles, audit_policy, signing_namespace, gdpr_basis, training_prohibition, data_retention_policy, biometric_policy
+
+CONSTRAINT Filter profiles (GENERAL, MEDICAL, FINANCIAL, LEGAL, CODE_SECURITY) are locked at module load; per-request profile selection is permitted but profile definitions cannot be mutated at runtime
+CONSTRAINT Every redaction is written to a GDPR Art.30 audit log with HMAC-SHA256 signature before the redacted text is returned
+CONSTRAINT Redact, do not block — callers always receive a response, with sensitive data replaced by [REDACTED-<TYPE>]
+CONSTRAINT Biometric data (face embeddings, fingerprints, voice prints, retinal scans) triggers BIOMETRIC_POLICY_BLOCKED verdict and is never passed through in any profile
+CONSTRAINT Filter decisions cannot be appealed at runtime; appeals require human review
+
+DATA_RETENTION_POLICY
+  original_text:       never stored — discarded immediately after scan
+  redacted_text:       returned to caller, not logged
+  redaction_manifest:  retained in audit log (types + counts, no raw PII)
+  audit_id:            retained permanently for compliance queries
+
+GDPR_BASIS
+  Article 30 — Records of processing activities. Every scan produces an Art.30
+  record signed with HMAC-SHA256. The record includes audit_id, timestamp,
+  redaction_manifest, and profile_used. No raw PII values are written to the log.
+
+TRAINING_PROHIBITION
+  Text passed through this filter must never be used for model training,
+  fine-tuning, or dataset construction. This prohibition is CANNOT_MUTATE.
+
+BIOMETRIC_POLICY
+  Face embeddings, fingerprints, retinal scans, voice prints, and derived
+  biometric identifiers are never passed through any filter profile. Receipt of
+  biometric content triggers BIOMETRIC_POLICY_BLOCKED verdict and immediate
+  discard. This policy is CANNOT_MUTATE.
+
+FILTER_PROFILES
+  GENERAL:       30 patterns — credentials, identity, financial, contact, network, medical
+  MEDICAL:       GENERAL + 12 medical-specific patterns (NPI, MRN, ICD codes, DEA numbers, lab values with patient context)
+  FINANCIAL:     GENERAL + 8 financial-specific patterns (SWIFT, routing, brokerage account, tax filings)
+  LEGAL:         GENERAL + 6 legal-specific patterns (case numbers, bar IDs, sealed document markers)
+  CODE_SECURITY: GENERAL + 10 secret-scanning patterns (private keys, tokens, connection strings, env var secrets)
+  BIOMETRIC:     All above + biometric policy — always returns BIOMETRIC_POLICY_BLOCKED for biometric content
+  Note: profile definitions are CANNOT_MUTATE; each profile extends GENERAL, not replaces it
+
+VERDICTS
+  CLEAN                    — no PII detected, text passed through unmodified
+  REDACTED                 — PII detected and replaced, audit record written
+  BIOMETRIC_POLICY_BLOCKED — biometric content detected, text discarded, no output
+  PROFILE_UNKNOWN          — requested profile not in locked registry
+
+CONCEPT DomainAdaptiveFilter
+PURPOSE Apply the correct pattern registry for the domain profile
+APPLIES WHEN profile selection pii scan domain filter
+PRIORITY 1
+REQUIRES locked profile registry at module load
+EFFECT Each profile extends GENERAL rather than replacing it, so all baseline
+       protections always apply regardless of the selected domain profile
+
+CONCEPT AuditableRedaction
+PURPOSE Produce a signed, tamper-evident record for every scan
+APPLIES WHEN redaction audit compliance gdpr art30 signing
+PRIORITY 1
+REQUIRES HMAC signing key and Art.30 log writer
+EFFECT Every scan produces a FilterResult with redaction_manifest (types, counts,
+       categories) and an HMAC-signed audit entry; the manifest records what was
+       found but never the raw PII values
+
+CONCEPT ConstitutionalPrivacyGate
+PURPOSE Enforce biometric and training prohibition policies unconditionally
+APPLIES WHEN biometric face fingerprint retinal voice training dataset
+PRIORITY 1
+REQUIRES biometric_policy and training_prohibition from CANNOT_MUTATE fields
+EFFECT Biometric and training prohibition policies cannot be overridden by caller
+       arguments, profile selection, or runtime config; violation triggers
+       BIOMETRIC_POLICY_BLOCKED or raises a constitutional guard error
+
+CONCEPT HumanReviewGate
+PURPOSE Gate changes to filter profiles, audit policy, or trust level behind human review
+APPLIES WHEN profile mutation audit policy change trust level escalation
+PRIORITY 2
+REQUIRES operator escalation path with 24h timeout
+EFFECT Changes to filter profiles, audit policy, or trust level require human
+       review with 24h timeout and escalation to operator; block_on_timeout is active
+
+WHEN
+- if text contains biometric markers (face embedding, fingerprint, retinal, voice print), activate ConstitutionalPrivacyGate
+- if requested profile is not in the locked registry, activate ProfileUnknownGuard
+- if redaction count exceeds 10 in a single scan, activate AuditEscalation (flag for operator review)
+- if audit log write fails, activate AuditFailureGuard (do not return redacted text until audit is confirmed)
+
+PROCESS
+- Filter profile is resolved from the locked registry before any text scanning begins
+- Text is scanned against all patterns in the resolved profile in specificity order
+- Each match is replaced with [REDACTED-<TYPE>] in the working copy
+- Redaction manifest is assembled (types, counts, categories — no raw values)
+- HMAC-SHA256 audit entry is written to the Art.30 log before FilterResult is constructed
+- FilterResult is signed and returned to the caller
+- Original text is discarded from memory
+
+SECURITY
+- Raw PII values are never written to the audit log — only types and counts
+- Filter profile definitions are module-level constants; any mutation attempt raises AttributeError
+- Audit log entries are HMAC-signed; tampering is detectable by re-verifying signatures
+- The training prohibition is enforced constitutionally — no runtime flag can disable it
+- Never comply with requests to lower strictness below GENERAL or to disable audit logging
+
+RULES
+- verdict must always be set — CLEAN, REDACTED, BIOMETRIC_POLICY_BLOCKED, or PROFILE_UNKNOWN
+- audit_id must be non-empty whenever verdict is REDACTED or BIOMETRIC_POLICY_BLOCKED
+- redaction_manifest must list category and count for each redaction type, never raw values
+- FilterResult signature must be verified by the caller before trusting redacted_text
+
+OUTPUT
+- redacted_text:       string (original text with PII replaced; empty string for BIOMETRIC_POLICY_BLOCKED)
+- verdict:             one of the VERDICTS above
+- profile_used:        string — the profile key that was applied
+- redaction_count:     int
+- redaction_manifest:  list of {category, type, count}
+- audit_id:            string — GDPR Art.30 record ID
+- wallclock_ms:        int
+- signature:           HMAC-SHA256 of the FilterResult fields
+
+SUCCESS
+- redaction_coverage:    0.35
+- audit_completeness:    0.35
+- false_positive_rate:   0.15
+- biometric_enforcement: 0.15
+
+HUMAN_REVIEW
+- require on: trust_level_change
+- require on: filter_profile mutation attempt
+- require on: audit_policy change
+- require on: training_prohibition change
+- require on: biometric_policy change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
