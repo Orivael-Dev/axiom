@@ -814,5 +814,11 @@
     "registered_at": "2026-06-12T23:19:11.526426+00:00",
     "version": "",
     "size_bytes": 6521
+  },
+  "research/privacy_filter": {
+    "sha256": "03d3a5b61121d9de50eb129b6847b26e26deeed4c3937a13d4dc1958e79c3b8f",
+    "registered_at": "2026-06-13T16:26:48.140353+00:00",
+    "version": "",
+    "size_bytes": 7965
   }
 }
