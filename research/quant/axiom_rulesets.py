@@ -115,6 +115,19 @@ RULESETS: Dict[str, dict] = {
             "reasoning_layers": "9-18",
             "overhead_mb":      35,
         },
+        "datasets": [
+            {
+                "name":          "synthetic-coding-security",
+                "type":          "synthetic",
+                "hf_dataset_id": None,
+                "split":         "train",
+                "n_examples":    0,           # filled after generation
+                "generator":     "Qwen2.5-Coder-0.5B-Instruct self-play",
+                "topics":        ["secure coding", "vulnerability detection",
+                                  "code review", "cryptography", "authentication"],
+                "license":       "synthetic — no upstream license",
+            },
+        ],
         "reasoning": {
             "uncertainty_floor":       0.15,
             "overclaim_ceiling":       0.85,
