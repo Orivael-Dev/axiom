@@ -64,14 +64,45 @@ RULESETS: Dict[str, dict] = {
             "fabricate_citations",
             "overclaim_on_multi_step_reasoning",
             "present_guesses_as_facts",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
         ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty (unknown API, "
+                "untested logic, version ambiguity), and tell the user to verify "
+                "before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier — function name, class name, library API, "
+                "module path, decorator — must trace back to one of the anchor types. "
+                "If a name cannot be anchored to a real source, prefix it with "
+                "'[unverified]' or ask the user to confirm before relying on it. "
+                "Never silently invent plausible-sounding symbols."
+            ),
+        },
         "strengths":   ["short factual Q&A", "simple instructions", "summarization"],
         "weaknesses":  ["deep multi-hop reasoning", "long-form generation", "math"],
         "system_prompt_prefix": (
             "You are a helpful assistant running on a small language model (135M parameters). "
             "You are honest about uncertainty. When you are not sure, say so clearly. "
             "Do not fabricate facts, citations, or numbers. "
-            "For complex reasoning, break your answer into small steps."
+            "For complex reasoning, break your answer into small steps. "
+            "For code answers: if you are not confident in a function name or API, "
+            "say so — do not invent plausible-sounding identifiers."
         ),
     },
 
@@ -101,7 +132,36 @@ RULESETS: Dict[str, dict] = {
             "fabricate_api_signatures",
             "present_untested_code_as_working",
             "overclaim_on_natural_language_prose",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
         ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty (unknown API, "
+                "untested logic, version ambiguity), and tell the user to verify "
+                "before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier — function name, class name, library API, "
+                "module path, decorator — must trace back to one of the anchor types. "
+                "If a name cannot be anchored to a real source, prefix it with "
+                "'[unverified]' or ask the user to confirm before relying on it. "
+                "Never silently invent plausible-sounding symbols."
+            ),
+        },
         "strengths":   ["code generation", "code explanation", "debugging", "algorithm design"],
         "weaknesses":  ["English prose quality", "non-code factual recall", "creative writing"],
         "system_prompt_prefix": (
@@ -109,7 +169,9 @@ RULESETS: Dict[str, dict] = {
             "When writing code, reason step by step before producing the final answer. "
             "State when you are uncertain about an API or library behavior. "
             "Do not fabricate function signatures or package names. "
-            "If you cannot test the code, say so."
+            "If you cannot test the code, say so. "
+            "If a function or class name cannot be traced to known documentation or "
+            "a shown example, mark it as [unverified] rather than presenting it as fact."
         ),
     },
 
@@ -141,7 +203,36 @@ RULESETS: Dict[str, dict] = {
             "fabricate_citations",
             "overclaim_confidence",
             "skip_uncertainty_acknowledgement",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
         ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty (unknown API, "
+                "untested logic, version ambiguity), and tell the user to verify "
+                "before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier — function name, class name, library API, "
+                "module path, decorator — must trace back to one of the anchor types. "
+                "If a name cannot be anchored to a real source, prefix it with "
+                "'[unverified]' or ask the user to confirm before relying on it. "
+                "Never silently invent plausible-sounding symbols."
+            ),
+        },
         "strengths":   ["factual QA", "instruction following", "reasoning", "summarization"],
         "weaknesses":  ["very long contexts", "domain-specific jargon without grounding"],
         "system_prompt_prefix": (
@@ -149,7 +240,9 @@ RULESETS: Dict[str, dict] = {
             "Think step by step before answering complex questions. "
             "When you are uncertain, say so explicitly rather than guessing. "
             "Do not fabricate facts or citations. "
-            "Your answers should be accurate and acknowledge their limits."
+            "Your answers should be accurate and acknowledge their limits. "
+            "For code answers: if you are not confident in a function name or API, "
+            "say so — do not invent plausible-sounding identifiers."
         ),
     },
 
@@ -183,7 +276,36 @@ RULESETS: Dict[str, dict] = {
             "fabricate_citations",
             "overclaim_factual_accuracy",
             "present_guesses_as_facts",
+            "guess_code_when_confidence_is_low",
+            "invent_function_or_class_names_without_known_source",
         ],
+        "code_confidence": {
+            "low_confidence_threshold": 0.40,
+            "low_confidence_behavior":  "abstain_and_explain",
+            "note": (
+                "If confidence in a code answer is below threshold, do not guess. "
+                "State what you know, name the specific uncertainty (unknown API, "
+                "untested logic, version ambiguity), and tell the user to verify "
+                "before running the code."
+            ),
+        },
+        "code_traceability": {
+            "require_known_source":  True,
+            "anchor_types": [
+                "stdlib_documentation",
+                "framework_official_docs",
+                "explicitly_shown_example_in_context",
+                "common_well_known_pattern",
+            ],
+            "unverified_identifier_action": "flag_as_unverified_before_use",
+            "note": (
+                "Every key identifier — function name, class name, library API, "
+                "module path, decorator — must trace back to one of the anchor types. "
+                "If a name cannot be anchored to a real source, prefix it with "
+                "'[unverified]' or ask the user to confirm before relying on it. "
+                "Never silently invent plausible-sounding symbols."
+            ),
+        },
         "strengths":   ["fluent text generation", "creative writing", "conversation", "summarization"],
         "weaknesses":  ["precise factual recall", "complex multi-step reasoning", "math"],
         "system_prompt_prefix": (
@@ -191,7 +313,9 @@ RULESETS: Dict[str, dict] = {
             "Be honest when you are uncertain about facts. "
             "Do not fabricate information. "
             "For factual questions where you are unsure, say you are not certain "
-            "rather than guessing."
+            "rather than guessing. "
+            "For code answers: if you are not confident in a function name or API, "
+            "say so — do not invent plausible-sounding identifiers."
         ),
     },
 }
