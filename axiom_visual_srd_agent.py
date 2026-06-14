@@ -220,7 +220,15 @@ class VisualSRDAgent:
 
     def load(self) -> "VisualSRDAgent":
         import torch
-        from transformers import AutoProcessor, AutoModelForVision2Seq
+        try:
+            from transformers import AutoProcessor, AutoModelForVision2Seq
+        except ImportError as _e:
+            import transformers as _tf
+            raise RuntimeError(
+                f"transformers {_tf.__version__} does not have AutoModelForVision2Seq "
+                f"(removed in v5.x). Pin with: "
+                f"pip install \"transformers==4.44.2\" accelerate"
+            ) from _e
         from research.quant.quantize_model import quantize_hf_model_inplace
         from research.quant.srd_multimodal import (
             apply_multiband_srd, detect_components,
@@ -382,7 +390,14 @@ if __name__ == "__main__":
 
     print("Visual SRD Agent — smoke test (dry component check only)")
     import torch
-    from transformers import AutoModelForVision2Seq
+    try:
+        from transformers import AutoModelForVision2Seq
+    except ImportError as _e:
+        import transformers as _tf
+        raise RuntimeError(
+            f"transformers {_tf.__version__} does not have AutoModelForVision2Seq. "
+            f"Pin with: pip install \"transformers==4.44.2\" accelerate"
+        ) from _e
     from research.quant.srd_multimodal import detect_components
 
     model = AutoModelForVision2Seq.from_pretrained(

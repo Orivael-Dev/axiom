@@ -326,7 +326,15 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    from transformers import AutoProcessor, AutoModelForVision2Seq
+    try:
+        from transformers import AutoProcessor, AutoModelForVision2Seq
+    except ImportError as _e:
+        import transformers as _tf
+        raise RuntimeError(
+            f"transformers {_tf.__version__} does not have AutoModelForVision2Seq "
+            f"(removed in v5.x). Pin with: "
+            f"pip install \"transformers==4.44.2\" accelerate"
+        ) from _e
 
     dtype  = torch.float16 if torch.cuda.is_available() else torch.float32
     device = "cuda" if torch.cuda.is_available() else "cpu"
