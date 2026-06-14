@@ -144,7 +144,16 @@ def run_benchmark(
     hf_token: str = "",
     dry_run: bool = False,
 ) -> List[dict]:
-    from transformers import AutoProcessor, AutoModelForVision2Seq
+    try:
+        from transformers import AutoProcessor, AutoModelForVision2Seq
+    except ImportError as _e:
+        import transformers as _tf
+        raise RuntimeError(
+            f"transformers {_tf.__version__} is too old — AutoModelForVision2Seq "
+            f"requires >= 4.36.0 (SmolVLM/Idefics3 support).\n"
+            f"Fix: run  !pip install -q --upgrade 'transformers>=4.36.0' accelerate  "
+            f"then restart the Colab runtime and re-run."
+        ) from _e
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype  = torch.float16 if device == "cuda" else torch.float32
