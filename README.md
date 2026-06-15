@@ -443,6 +443,67 @@ Key finding: the absolute charter looks perfectly reasonable line-by-line. Text 
 
 ---
 
+## Constitutional World Model (ORVL-014)
+
+The CWM is a 5-layer simulation engine that treats the financial constitutional spec as literal world physics: blocks are state vectors, the causal graph is Newton's laws, and interventions must pass a pre-authorization simulation before they can be applied. No speculative fix touches the live world without proof it improves things.
+
+**Causal graph (finance.axiom physics):**
+
+```
+auth_block ─────────────┐
+                         ▼
+risk_block ──────► transaction_block ──► audit_block ──► compliance_block
+```
+
+**Five patent claims:**
+
+| Claim | What it proves |
+|-------|---------------|
+| 1 — Spec = world model | `finance.axiom` CANNOT_MUTATE invariants are the physics; immutable, HMAC-pinned |
+| 2 — Monte Carlo manifold | `GameWatcher` samples the 15-dim constitutional manifold; theoretical valid fraction 1.07×10⁻⁶ → **931,323× denser sampling** than brute force |
+| 3 — Intervention gate | `simulate_intervention()` runs world with/without fix; fix is authorized only if simulation shows improvement |
+| 4 — MonotonicGate | Branch survives only if every forward step keeps constitutional distance ≥ current; regressing branches killed |
+| 5 — HMAC-signed result | `WorldState` + `SimulationResult` both signed; `find_causal_root()` traces the compromise source |
+
+**Synthetic demo (5 claims, no model required):**
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+python3 axiom_cwm_demo.py
+```
+
+Cascades `auth_block` failure through the causal graph: `auth 1.00→0.00`, `transaction→0.28`, `audit→0.55`, `compliance→0.64`. `simulate_forward(n_steps=3, n_branches=4)` projects the degraded state; `simulate_intervention()` confirms the fix before authorizing it.
+
+**Local agent — real model assesses block health from a world event (Qwen3-1.7B SRD4):**
+
+The model receives a natural-language event description and returns per-block health scores (0.00–1.00) plus a proposed constitutional fix. Those scores become the actual `WorldState` vectors fed to the CWM pipeline — not hand-crafted.
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+
+# Authentication outage event
+python3 axiom_cwm_local_agent.py \
+  --event "The authentication service returned 403 errors on 40% of login attempts"
+
+# Compliance event
+python3 axiom_cwm_local_agent.py \
+  --event "A FINRA audit flagged 12 transactions missing required suitability checks"
+```
+
+**Pipeline stages:**
+
+1. **Layer 2 — Agent Simulation:** model assesses each block's health (0.00–1.00) from the described event
+2. **Layer 3 — Causal Graph:** BFS propagation from the lowest-health block; compromise decays by `COMPROMISE_DECAY = 0.65` per hop downstream
+3. **Layer 4 — Forward Simulation:** `simulate_forward(n_steps=3, n_branches=4)` on the real `WorldState`; `MonotonicGate` kills regressing branches
+4. **Claim 3 — Intervention gate:** model proposes a fix; `simulate_intervention()` runs with/without fix; fix authorized only if no regression
+5. **Claim 5 — Diagnostic:** `find_causal_root()` compared to model's own lowest-health block assessment
+
+Key finding: on a clear single-block failure (auth outage) the model correctly assigns auth a low score and leaves risk\_block high — producing a cascade that matches the causal graph exactly. On a vague event scores are diffuse — calibrated uncertainty, not overclaim.
+
+> **License note:** `axiom_cwm_local_agent.py` when used with SRD4 GGUFs is for **non-commercial use only**.
+
+---
+
 ## Intent Typing (ORVL-016) + CMAA (ORVL-017)
 
 Constitutional Intent Typing classifies every prompt and every cloud response into one of six classes — `INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN` — using lexical signals plus trajectory geometry. `HARM` and `DECEIVE` are block classes. Confidence floor `0.30`, ceiling `0.95` (never claim certainty). Every verdict is HMAC-signed.
