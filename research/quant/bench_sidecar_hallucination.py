@@ -86,6 +86,19 @@ MODELS = {
         "sidecar": "tinyllama_1b_srd4.srd4",
         "n_layers": 22, "hidden": 2048, "intermediate": 5632,
     },
+    # Gemma 4 12B — architecture read from config.json at runtime; values below
+    # are estimates. Verify n_layers/hidden/intermediate from config.json Cell 2
+    # of gemma4_12b_srd_benchmark.ipynb before running. The chunk boundaries
+    # (start_frac=0.40, end_frac=0.77) are the current defaults; run
+    # bench_gemma4_12b_chunk_sweep.py to get architecture-fingerprinted values.
+    "gemma4-12b": {
+        "hf_id":   "google/gemma-4-12b-it",
+        "sidecar": "gemma4_12b_srd4.srd4",
+        "n_layers": 28, "hidden": 3072, "intermediate": 24576,
+        # Calibrated chunk fracs (updated after sweep; None → use module defaults)
+        "start_frac": None,
+        "end_frac":   None,
+    },
 }
 
 # ── WikiText-2 perplexity ─────────────────────────────────────────────────
@@ -277,9 +290,13 @@ def run_benchmark(
                 model, alpha=0.0, group_size=64, progress=False
             )
 
-            # Step 2: identify reasoning chunk
+            # Step 2: identify reasoning chunk (use calibrated fracs if set)
             n_layers     = _count_transformer_layers(model)
-            reasoning_ids = set(reasoning_layer_ids(n_layers))
+            reasoning_ids = set(reasoning_layer_ids(
+                n_layers,
+                start_frac=cfg.get("start_frac"),
+                end_frac=cfg.get("end_frac"),
+            ))
             print(f"  [selective] {n_layers} layers, reasoning chunk = "
                   f"{min(reasoning_ids)}–{max(reasoning_ids)} "
                   f"({len(reasoning_ids)} layers)")
