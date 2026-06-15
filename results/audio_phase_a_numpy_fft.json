@@ -1,0 +1,272 @@
+{
+  "clips_total": 19,
+  "clips_positive": 12,
+  "clips_background": 2,
+  "clips_tempo": 5,
+  "material_accuracy": 1.0,
+  "per_label": {
+    "fabric-like": {
+      "expected": 2,
+      "predicted": 2,
+      "true_positive": 2,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "glass-like": {
+      "expected": 4,
+      "predicted": 4,
+      "true_positive": 4,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "metal-like": {
+      "expected": 3,
+      "predicted": 3,
+      "true_positive": 3,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "wood-like": {
+      "expected": 3,
+      "predicted": 3,
+      "true_positive": 3,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  },
+  "latency_ms": {
+    "mean": 9.24,
+    "median": 8.14,
+    "p95": 15.81,
+    "p99": 15.81,
+    "max": 15.81
+  },
+  "false_positive_rate": 0.0,
+  "false_positives": 0,
+  "gates": {
+    "material_accuracy": {
+      "value": 1.0,
+      "threshold": 0.8,
+      "pass": true
+    },
+    "latency_p95_ms": {
+      "value": 15.81,
+      "threshold": 100.0,
+      "pass": true
+    },
+    "false_positive_rate": {
+      "value": 0.0,
+      "threshold": 0.05,
+      "pass": true
+    },
+    "tempo_accuracy": {
+      "value": 1.0,
+      "threshold": 0.8,
+      "pass": true
+    }
+  },
+  "overall_pass": true,
+  "results": [
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/background/background_00.wav",
+      "expected_material": null,
+      "is_background": true,
+      "predicted_material": "unknown",
+      "predicted_impact": "sustained",
+      "predicted_decay": "reverberant",
+      "confidence": 0.368,
+      "latency_ms": 8.5,
+      "hit": null
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/background/background_01.wav",
+      "expected_material": null,
+      "is_background": true,
+      "predicted_material": "unknown",
+      "predicted_impact": "sustained",
+      "predicted_decay": "reverberant",
+      "confidence": 0.366,
+      "latency_ms": 8.21,
+      "hit": null
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/fabric-like/fabric-like_00.wav",
+      "expected_material": "fabric-like",
+      "is_background": false,
+      "predicted_material": "fabric-like",
+      "predicted_impact": "soft_transient",
+      "predicted_decay": "smooth_decay",
+      "confidence": 0.8,
+      "latency_ms": 4.57,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/fabric-like/fabric-like_01.wav",
+      "expected_material": "fabric-like",
+      "is_background": false,
+      "predicted_material": "fabric-like",
+      "predicted_impact": "soft_transient",
+      "predicted_decay": "smooth_decay",
+      "confidence": 0.8,
+      "latency_ms": 4.53,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/glass-like/glass-like_00.wav",
+      "expected_material": "glass-like",
+      "is_background": false,
+      "predicted_material": "glass-like",
+      "predicted_impact": "sharp_transient",
+      "predicted_decay": "scattered_fragments",
+      "confidence": 0.875,
+      "latency_ms": 8.12,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/glass-like/glass-like_01.wav",
+      "expected_material": "glass-like",
+      "is_background": false,
+      "predicted_material": "glass-like",
+      "predicted_impact": "sharp_transient",
+      "predicted_decay": "scattered_fragments",
+      "confidence": 0.875,
+      "latency_ms": 8.13,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/glass-like/glass-like_02.wav",
+      "expected_material": "glass-like",
+      "is_background": false,
+      "predicted_material": "glass-like",
+      "predicted_impact": "sharp_transient",
+      "predicted_decay": "smooth_decay",
+      "confidence": 0.875,
+      "latency_ms": 8.09,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/glass-like/glass-like_03.wav",
+      "expected_material": "glass-like",
+      "is_background": false,
+      "predicted_material": "glass-like",
+      "predicted_impact": "sharp_transient",
+      "predicted_decay": "scattered_fragments",
+      "confidence": 0.875,
+      "latency_ms": 8.15,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/metal-like/metal-like_00.wav",
+      "expected_material": "metal-like",
+      "is_background": false,
+      "predicted_material": "metal-like",
+      "predicted_impact": "soft_transient",
+      "predicted_decay": "unknown",
+      "confidence": 0.725,
+      "latency_ms": 8.16,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/metal-like/metal-like_01.wav",
+      "expected_material": "metal-like",
+      "is_background": false,
+      "predicted_material": "metal-like",
+      "predicted_impact": "soft_transient",
+      "predicted_decay": "unknown",
+      "confidence": 0.725,
+      "latency_ms": 8.13,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/metal-like/metal-like_02.wav",
+      "expected_material": "metal-like",
+      "is_background": false,
+      "predicted_material": "metal-like",
+      "predicted_impact": "soft_transient",
+      "predicted_decay": "unknown",
+      "confidence": 0.725,
+      "latency_ms": 8.14,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/wood-like/wood-like_00.wav",
+      "expected_material": "wood-like",
+      "is_background": false,
+      "predicted_material": "wood-like",
+      "predicted_impact": "sharp_transient",
+      "predicted_decay": "smooth_decay",
+      "confidence": 0.8,
+      "latency_ms": 5.12,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/wood-like/wood-like_01.wav",
+      "expected_material": "wood-like",
+      "is_background": false,
+      "predicted_material": "wood-like",
+      "predicted_impact": "sharp_transient",
+      "predicted_decay": "smooth_decay",
+      "confidence": 0.8,
+      "latency_ms": 5.11,
+      "hit": true
+    },
+    {
+      "path": "/tmp/axiom_audio_demo_hkcttqrm/wood-like/wood-like_02.wav",
+      "expected_material": "wood-like",
+      "is_background": false,
+      "predicted_material": "wood-like",
+      "predicted_impact": "sharp_transient",
+      "predicted_decay": "smooth_decay",
+      "confidence": 0.8,
+      "latency_ms": 5.11,
+      "hit": true
+    }
+  ],
+  "tempo": {
+    "clips": 5,
+    "accuracy": 1.0,
+    "tolerance_bpm": 3.0,
+    "per_clip": [
+      {
+        "path": "/tmp/axiom_audio_demo_hkcttqrm/tempo-120/metronome_120bpm.wav",
+        "expected_bpm": 120.0,
+        "predicted_bpm": 120.0,
+        "stability": 0.878,
+        "confidence": 0.878,
+        "hit": true
+      },
+      {
+        "path": "/tmp/axiom_audio_demo_hkcttqrm/tempo-150/metronome_150bpm.wav",
+        "expected_bpm": 150.0,
+        "predicted_bpm": 150.0,
+        "stability": 0.9,
+        "confidence": 0.9,
+        "hit": true
+      },
+      {
+        "path": "/tmp/axiom_audio_demo_hkcttqrm/tempo-180/metronome_180bpm.wav",
+        "expected_bpm": 180.0,
+        "predicted_bpm": 181.82,
+        "stability": 0.787,
+        "confidence": 0.787,
+        "hit": true
+      },
+      {
+        "path": "/tmp/axiom_audio_demo_hkcttqrm/tempo-60/metronome_60bpm.wav",
+        "expected_bpm": 60.0,
+        "predicted_bpm": 60.0,
+        "stability": 0.729,
+        "confidence": 0.365,
+        "hit": true
+      },
+      {
+        "path": "/tmp/axiom_audio_demo_hkcttqrm/tempo-90/metronome_90bpm.wav",
+        "expected_bpm": 90.0,
+        "predicted_bpm": 89.55,
+        "stability": 0.677,
+        "confidence": 0.564,
+        "hit": true
+      }
+    ]
+  }
+}

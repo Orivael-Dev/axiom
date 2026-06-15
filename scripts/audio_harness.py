@@ -293,6 +293,24 @@ def discover_clips(
     return material, tempo
 
 
+def warmup(
+    material_clips: list[tuple[Path, Optional[str], bool]],
+    tempo_clips: list[tuple[Path, float]],
+) -> None:
+    """Run each pipeline once, untimed, before the measured loops.
+
+    The first classify call in a process pays one-off import + FFT-plan
+    warmup cost that lands in the latency tail (p95==p99==max on a single
+    cold clip) and is not representative of steady-state per-clip latency.
+    Discard one call per pipeline on a real clip so the gate measures the
+    warm path the <100 ms target actually describes."""
+    from axiom_audio import classify_clip, classify_tempo_clip
+    if material_clips:
+        classify_clip(str(material_clips[0][0]))
+    if tempo_clips:
+        classify_tempo_clip(str(tempo_clips[0][0]))
+
+
 def evaluate_clip(path: Path, expected: Optional[str], is_bg: bool) -> ClipResult:
     from axiom_audio import classify_clip
     t0 = time.perf_counter()
@@ -588,6 +606,10 @@ def main() -> int:
         if not material_clips and not tempo_clips:
             sys.exit(f"No .wav files found under {dataset_root}. "
                      "Pass --demo to run the synthetic suite, or populate the directory.")
+
+        # Untimed warmup so the latency gate reflects steady-state, not
+        # the one-off cold-start cost of the first classify call.
+        warmup(material_clips, tempo_clips)
 
         results: list[ClipResult] = [
             evaluate_clip(path, expected, is_bg)

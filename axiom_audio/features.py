@@ -107,7 +107,19 @@ def detect_onsets(env: Sequence[float], *, rel_threshold: float = 2.0) -> list[i
     return onsets
 
 
-# ─── FFT (Cooley-Tukey radix-2, pure Python) ────────────────────────────
+# ─── FFT ────────────────────────────────────────────────────────────────
+#
+# numpy.fft.rfft when numpy is present (10-100x faster on the ~16 k-sample
+# frames the classifier handles — the difference between meeting and missing
+# the <100 ms/clip latency gate); pure-Python radix-2 Cooley-Tukey fallback
+# when it is not, so the module keeps zero hard dependencies. Both paths Hann-
+# window, zero-pad to the next power of 2, and return the first N/2+1 magnitude
+# bins identically.
+
+try:
+    import numpy as _np
+except Exception:  # pragma: no cover - exercised only on numpy-less hosts
+    _np = None
 
 
 def _next_pow2(n: int) -> int:
@@ -123,6 +135,24 @@ def fft_magnitude(samples: Sequence[float]) -> list[float]:
     Zero-pads to the next power of 2. Returns the first N/2+1 bins
     (the unique half of the symmetric spectrum). O(N log N).
     """
+    if _np is not None:
+        return _fft_magnitude_np(samples)
+    return _fft_magnitude_py(samples)
+
+
+def _fft_magnitude_np(samples: Sequence[float]) -> list[float]:
+    n = _next_pow2(len(samples))
+    arr = _np.asarray(samples, dtype=_np.float64)
+    # Hann window — np.hanning(M) is 0.5*(1 - cos(2*pi*i/(M-1))), matching the
+    # pure-Python path exactly. Skip for length <= 1 (np.hanning(1) == [1.0],
+    # but keep parity with the fallback's explicit guard).
+    if arr.size > 1:
+        arr = arr * _np.hanning(arr.size)
+    # rfft zero-pads/truncates to n and returns n//2+1 complex bins.
+    return _np.abs(_np.fft.rfft(arr, n=n)).tolist()
+
+
+def _fft_magnitude_py(samples: Sequence[float]) -> list[float]:
     n = _next_pow2(len(samples))
     # Apply a Hann window first to reduce spectral leakage.
     if len(samples) > 1:
