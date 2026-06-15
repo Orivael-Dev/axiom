@@ -349,6 +349,30 @@ python axiom_mkb_demo.py --task "Write a HIPAA-compliant PII guard"
 
 The demo certifies six real `.axiom` spec files as knowledge blocks, registers them in the fleet, routes a healthcare task through the constitutional router, composes two compatible blocks (CBV pass), and proves the CANNOT_MUTATE boundary rejects `TRUST_LEVEL = 99` with `AttributeError`.
 
+**Constitutional inference — local Qwen model (`axiom_mkb_local_agent.py`):**
+
+Extends the demo with an execution stage: the router selects and composes blocks, the merged constraint set becomes the system prompt, and a local GGUF model answers the task while constitutionally bound.
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+# requires llama.cpp built at ~/llama.cpp and models/axiom-qwen3-1.7b-srd4-Q4_K_M.gguf
+python3 axiom_mkb_local_agent.py --task "Write a HIPAA-compliant PII guard"
+
+# custom model or binary:
+python3 axiom_mkb_local_agent.py \
+  --task "Audit a financial transaction log for SOX violations" \
+  --model models/axiom-qwen3-1.7b-srd4-Q4_K_M.gguf \
+  --bin ~/llama.cpp/build/bin/llama-completion \
+  -n 512
+```
+
+Or via Ollama (uses the same ChatML template and `num_ctx 2048`):
+
+```bash
+ollama create axiom-qwen3 -f models/Modelfile
+ollama run axiom-qwen3 "Write a HIPAA-compliant PII guard"
+```
+
 ---
 
 ## Guard API
