@@ -474,33 +474,44 @@ python3 axiom_cwm_demo.py
 
 Cascades `auth_block` failure through the causal graph: `auth 1.00→0.00`, `transaction→0.28`, `audit→0.55`, `compliance→0.64`. `simulate_forward(n_steps=3, n_branches=4)` projects the degraded state; `simulate_intervention()` confirms the fix before authorizing it.
 
-**Local agent — real model assesses block health from a world event (Qwen3-1.7B SRD4):**
-
-The model receives a natural-language event description and returns per-block health scores (0.00–1.00) plus a proposed constitutional fix. Those scores become the actual `WorldState` vectors fed to the CWM pipeline — not hand-crafted.
+**Local agent v1 — model assesses all five blocks (Qwen3-1.7B SRD4):**
 
 ```bash
 export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-
-# Authentication outage event
 python3 axiom_cwm_local_agent.py \
   --event "The authentication service returned 403 errors on 40% of login attempts"
+```
 
-# Compliance event
-python3 axiom_cwm_local_agent.py \
+**Local agent v2 — point-of-impact prototype (recommended):**
+
+`axiom_cwm_local_agent_prototype.py` fixes a key architectural issue in v1: if the model scores all five blocks it implicitly bakes the cascade in, leaving Layer 3 with nothing to do (every Δ = 0.0000) and the intervention gate with no signal. The prototype separates the two concerns cleanly:
+
+- **Layer 2 (model):** identifies only the *single directly-hit block* and its health at impact — nothing downstream
+- **Layer 3 (constitution):** every other block starts at its healthy baseline; the causal graph cascades the damage forward with `COMPROMISE_DECAY = 0.65` per hop — this is the constitution doing its own job
+- **`axiom_world_model.py`** updated with `CONSTITUTIONAL_FLOOR = 0.50` (CANNOT_MUTATE): dynamics are now floor-aware — blocks above the floor recover slowly (+6% relax), blocks below collapse fast (−25% relax); a compromised parent drags children down, a healthy parent stabilizes them
+
+```bash
+python3 axiom_cwm_local_agent_prototype.py \
+  --event "The authentication service returned 403 errors on 40% of login attempts"
+# auth 1.00→0.10  transaction 0.93→0.345  audit 0.97→0.590  compliance 0.91→0.663
+# simulate_forward: 0 survivors, 4 branches killed (compromised world fails gate)
+# simulate_intervention: 4 survivors, 0 killed, conf=1.0000 → AUTHORIZED
+
+python3 axiom_cwm_local_agent_prototype.py \
   --event "A FINRA audit flagged 12 transactions missing required suitability checks"
 ```
 
-**Pipeline stages:**
+**Pipeline stages (prototype):**
 
-1. **Layer 2 — Agent Simulation:** model assesses each block's health (0.00–1.00) from the described event
-2. **Layer 3 — Causal Graph:** BFS propagation from the lowest-health block; compromise decays by `COMPROMISE_DECAY = 0.65` per hop downstream
-3. **Layer 4 — Forward Simulation:** `simulate_forward(n_steps=3, n_branches=4)` on the real `WorldState`; `MonotonicGate` kills regressing branches
-4. **Claim 3 — Intervention gate:** model proposes a fix; `simulate_intervention()` runs with/without fix; fix authorized only if no regression
-5. **Claim 5 — Diagnostic:** `find_causal_root()` compared to model's own lowest-health block assessment
+1. **Layer 2 — Point of impact:** model names the ONE block the event directly hits and its post-impact health
+2. **Layer 3 — Causal cascade:** constitution propagates from healthy baseline; only downstream blocks are degraded
+3. **Layer 4 — Forward simulation:** `simulate_forward(n_steps=3, n_branches=4)` + floor-aware dynamics; MonotonicGate kills compromised branches
+4. **Claim 3 — Intervention gate:** `simulate_intervention()` with and without fix; authorized only if no regression
+5. **Claim 5 — Diagnostic:** `find_causal_root()` confirms the model's point-of-impact assessment
 
-Key finding: on a clear single-block failure (auth outage) the model correctly assigns auth a low score and leaves risk\_block high — producing a cascade that matches the causal graph exactly. On a vague event scores are diffuse — calibrated uncertainty, not overclaim.
+Key finding: separation of model (point of impact) from constitution (cascade) is the correct architecture. The model knows *where* the hit landed; the constitutional physics computes *what breaks next*. Merging the two collapses the gate signal to zero.
 
-> **License note:** `axiom_cwm_local_agent.py` when used with SRD4 GGUFs is for **non-commercial use only**.
+> **License note:** `axiom_cwm_local_agent.py` and `axiom_cwm_local_agent_prototype.py` when used with SRD4 GGUFs are for **non-commercial use only**.
 
 ---
 
