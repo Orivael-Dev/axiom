@@ -40,10 +40,16 @@ ISOLATION: bool = True
 SIMULATION_DEPTH: int = 5
 MIN_BRANCH_PROBABILITY: float = 0.02
 CAUSAL_DECAY: float = 0.85
+# Separatrix of the valid constitutional state space: forward dynamics pull a
+# block above the floor toward stability (recovery) and a block below it toward
+# zero (collapse). A compromised world therefore loses constitutional distance
+# and trips the monotonic gate; a healthy or repaired one survives.
+CONSTITUTIONAL_FLOOR: float = 0.50
 
 _FROZEN: frozenset = frozenset({
     "TRUST_LEVEL", "ISOLATION",
     "SIMULATION_DEPTH", "MIN_BRANCH_PROBABILITY", "CAUSAL_DECAY",
+    "CONSTITUTIONAL_FLOOR",
 })
 
 
@@ -132,24 +138,37 @@ class ConstitutionalWorldModel:
 
     def _step_state(self, state: WorldState, rng: random.Random,
                     perturbation: float = 0.05) -> WorldState:
-        """Advance one step: propagate causal influences with decay + noise."""
+        """Advance one step of constitutional dynamics about CONSTITUTIONAL_FLOOR.
+
+        Influence is signed about the floor: a parent above the floor stabilizes
+        its children, a compromised parent (below it) drags them down — the
+        cascade runs forward in time, not just spatially. Each block then relaxes
+        away from the floor — recovering slowly when above it, collapsing fast
+        when below it (asymmetric). So a compromised world loses constitutional
+        distance and trips the monotonic gate, while a healthy or repaired one
+        climbs and survives.
+        """
         new_blocks: Dict[str, List[float]] = {}
         graph = state.causal_graph if state.causal_graph else self._causal_graph
+        floor = CONSTITUTIONAL_FLOOR
 
         for block_id, vec in state.block_states.items():
             influence = [0.0] * len(vec)
-            # Accumulate causal influence from parents
+            # Accumulate causal influence from parents, signed about the floor
             for parent_id, children in graph.items():
                 if block_id in children and parent_id in state.block_states:
                     parent_vec = state.block_states[parent_id]
                     for j in range(min(len(influence), len(parent_vec))):
-                        influence[j] += parent_vec[j] * CAUSAL_DECAY
+                        influence[j] += (parent_vec[j] - floor) * CAUSAL_DECAY
 
-            new_vec = [
-                v + influence[j] * 0.1 + rng.uniform(-perturbation, perturbation)
-                for j, v in enumerate(vec)
-            ]
-            new_blocks[block_id] = [round(x, 6) for x in new_vec]
+            new_vec = []
+            for j, v in enumerate(vec):
+                gap = v - floor
+                relax = gap * (0.06 if gap >= 0.0 else 0.25)   # asymmetric
+                nv = (v + influence[j] * 0.1 + relax
+                      + rng.uniform(-perturbation, perturbation))
+                new_vec.append(round(max(0.0, nv), 6))         # health floored at 0
+            new_blocks[block_id] = new_vec
 
         ts = datetime.now(timezone.utc).isoformat()
         dist = _aggregate_distance(new_blocks)
