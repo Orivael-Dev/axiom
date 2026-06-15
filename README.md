@@ -378,6 +378,71 @@ Key findings:
 
 ---
 
+## Quantum Reasoning Forecast (ORVL-009)
+
+QRF converts the N-branch superposition into a calibrated probability distribution — normalized weights, sorted by constitutional quality, collapsed to a `HIGH / MODERATE / LOW / UNCERTAIN` confidence band. `DOMAIN_BRANCH_COUNTS` selects N by domain: medical=8 (life-safety gets the most evidence branches), financial/security=6, supply_chain/hr=4. `FastBranch` is constitutionally ineligible in life-safety domains and scored 0 / killed before the forecast is built. Every `QRFResult` is HMAC-signed.
+
+**Local agent — real branch generations (Qwen3-1.7B SRD4):**
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+python3 axiom_qrf_local_agent.py --domain medical --question "Should I take aspirin daily?"
+```
+
+**Live results — Jetson Orin Nano** (`results/orvl009_qrf_local_agent.json`):
+
+| Branch | Score | Probability | Status |
+|--------|-------|-------------|--------|
+| SkepticBranch | 0.913 | 16.8% | live — top branch |
+| SafetyBranch | 0.884 | 16.3% | live |
+| CautionBranch | 0.884 | 16.3% | live |
+| DetailBranch | 0.827 | 15.2% | live |
+| EvidenceBranch | 0.770 | 14.2% | live |
+| RivalBranch | 0.635 | 11.7% | live |
+| CreativeBranch | 0.513 | 9.4% | live |
+| **FastBranch** | **0.000** | **0.000** | **killed — ineligible in life-safety** |
+
+**Probability band: LOW** (top weight 16.8% < 30% threshold). Key finding: on a genuinely contested life-safety question the eight real branches spread into a diffuse distribution — QRF correctly returns LOW confidence instead of a single false-confident answer. Calibrated humility, not overclaim.
+
+> **License note:** `axiom_qrf_local_agent.py` when used with SRD4 GGUFs is for **non-commercial use only**.
+
+---
+
+## Constitutional Boundary Validation (ORVL-010)
+
+CBV runs a 4-check certification pipeline on any constraint set before it enters the constitutional registry: `non_overlap` (intent-vector sampling), `layering_order` (priority analysis), `bounded_scope` (predicate scan), `monotonicity` (trajectory ordering). `DEFAULT_N_SAMPLES = 1000` is CANNOT_MUTATE. Every `CBVReport` is HMAC-signed.
+
+**Local agent — certify an LLM-written constitution (Qwen3-1.7B SRD4):**
+
+The model drafts operating rules for an agent role under two framings. CBV certifies each. This is the realistic threat: LLM-authored constitutions shipped without formal boundary analysis.
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+python3 axiom_cbv_local_agent.py --role "a medical triage assistant"
+```
+
+**Live results — Jetson Orin Nano** (`results/orvl010_cbv_local_agent.json`):
+
+Same role, same model, two framings:
+
+| Check | Operational rulebook | Absolute always/never charter |
+|-------|---------------------|-------------------------------|
+| non_overlap | PASS | **CERT_FAIL** — 11,947 violations / 1,000 samples |
+| layering_order | PASS | **CERT_WARN** — 12 conflicting pairs lack priority |
+| bounded_scope | PASS | PASS |
+| monotonicity | PASS | PASS |
+| **Verdict** | **CERTIFIED** | **BLOCKED** |
+
+Example conflicts caught in the absolute charter:
+- `"Always respond to every patient call"` (scope_always) vs `"Never provide care outside licensed scope"` (scope_never) — conflicting action domains on the same input
+- Same `"always respond"` rule collides with every `"never ..."` prohibition
+
+Key finding: the absolute charter looks perfectly reasonable line-by-line. Text review misses the contradictions entirely. CBV's intent-vector sampling proves several rules mandate conflicting actions on the same inputs — the `"help everything vs refuse everything"` boundary collapse the patent describes. **Same model, same role, opposite verdicts.** CBV discriminates on boundary structure, not surface wording.
+
+> **License note:** `axiom_cbv_local_agent.py` when used with SRD4 GGUFs is for **non-commercial use only**.
+
+---
+
 ## Intent Typing (ORVL-016) + CMAA (ORVL-017)
 
 Constitutional Intent Typing classifies every prompt and every cloud response into one of six classes — `INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN` — using lexical signals plus trajectory geometry. `HARM` and `DECEIVE` are block classes. Confidence floor `0.30`, ceiling `0.95` (never claim certainty). Every verdict is HMAC-signed.
