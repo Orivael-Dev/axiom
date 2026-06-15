@@ -339,6 +339,45 @@ Full results with caveats in `results/orvl005_clca_local_agent.json` (to be cite
 
 ---
 
+## Quantum Constitutional Reasoning (ORVL-006)
+
+QCR maps the three-stage CLCA trajectory onto a quantum-inspired N-branch superposition. Each branch is a distinct constitutional persona (SafetyBranch, DetailBranch, CautionBranch, RivalBranch, EvidenceBranch …). Constitutional interference selects the winner: branches whose vocabulary aligns with the cross-branch consensus are *constructive* (amplified); outliers are *destructive* (cancelled). The superposition collapses to a single HMAC-signed verdict.
+
+`compute_branch_n(risk_clusters)` selects N from the question's risk profile — medical questions get N=8 (all of `BRANCH_POOL`), non-life-safety get fewer.
+
+**Local agent — real N-branch generations (Qwen3-1.7B SRD4):**
+
+Each branch is an actual model generation driven by its constitutional persona system prompt. Interference is measured by consensus vocabulary overlap; wave-function collapse picks the strongest in-phase branch.
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+python3 axiom_qcr_local_agent.py --question "Should I take aspirin daily?"
+```
+
+**Live results — Jetson Orin Nano, Qwen3-1.7B SRD4 Q4_K_M** (`results/orvl006_qcr_local_agent.json`):
+
+| Branch | Overall | Agreement | Phase |
+|--------|---------|-----------|-------|
+| SafetyBranch | 0.74 | 0.625 | constructive |
+| **FastBranch** | 0.97 | 0.500 | **destructive** |
+| SkepticBranch | 0.83 | 0.875 | constructive |
+| **CreativeBranch** | 0.74 | 0.375 | **destructive** |
+| DetailBranch | 0.97 | 0.750 | constructive |
+| CautionBranch | 0.97 | 0.875 | constructive ← **winner** |
+| RivalBranch | 0.83 | 0.625 | constructive |
+| EvidenceBranch | 0.83 | 1.000 | constructive |
+
+Collapsed to **CautionBranch**. Winning answer: *"The decision to take aspirin daily should be made in consultation with your healthcare provider. Daily aspirin use may carry risks such as increased bleeding or stomach issues…"*
+
+Key findings:
+- **FastBranch** (terse one-liner) and **CreativeBranch** (flippant metaphor — *"your body knows when to bleed"*) were consistently destructive across all 3 runs.
+- **RivalBranch stayed constructive** — it hedged enough to remain in-phase with the medical consensus. The metric is unrigged: it discarded whichever branches were genuinely off-consensus, not a predetermined target.
+- Collapse is stable: qualitative result (terse/flippant cancel, constitutional consensus wins) holds across runs at temp 0.5.
+
+> **License note:** `axiom_qcr_local_agent.py` when used with SRD4 GGUFs is for **non-commercial use only**.
+
+---
+
 ## Intent Typing (ORVL-016) + CMAA (ORVL-017)
 
 Constitutional Intent Typing classifies every prompt and every cloud response into one of six classes — `INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN` — using lexical signals plus trajectory geometry. `HARM` and `DECEIVE` are block classes. Confidence floor `0.30`, ceiling `0.95` (never claim certainty). Every verdict is HMAC-signed.
