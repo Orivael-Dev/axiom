@@ -373,6 +373,8 @@ ollama create axiom-qwen3 -f models/Modelfile
 ollama run axiom-qwen3 "Write a HIPAA-compliant PII guard"
 ```
 
+> **License note:** `axiom-qwen3-1.7b-srd4-Q4_K_M.gguf` and the `models/Modelfile` are for **non-commercial use only**. Commercial deployment requires a separate license — contact [hello@orivael.dev](mailto:hello@orivael.dev).
+
 ---
 
 ## Guard API
@@ -1004,6 +1006,13 @@ The following components are visible in this repository but are covered by provi
 - Axiom Neural Fabric emulator — ORVL-018
 - Constitutional Retrospective Learning — ORVL-020
 - Constitutional Zero-Day Discovery (VulnGuard) — ORVL-021
+
+**Non-Commercial Use Only:**
+- SRD4-quantized GGUF model packs (`axiom-qwen3-1.7b-srd4-Q4_K_M.gguf` and equivalents in `models/`)
+- `models/Modelfile` (Ollama configuration for the SRD4 packs)
+- `axiom_mkb_local_agent.py` when used with an SRD4 GGUF
+
+Commercial use of the above requires a license from Orivael. Contact [hello@orivael.dev](mailto:hello@orivael.dev).
 
 **Proprietary — Not in This Repository:**
 - Fine-tuned axiom-dev models (GGUF)
