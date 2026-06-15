@@ -306,6 +306,51 @@ Reachable via `POST /gate/check`, `POST /cmaa/route`, `GET /cmaa/fleet`, `POST /
 
 ---
 
+## Modular Constitutional Knowledge Blocks (ORVL-004)
+
+Knowledge Blocks are the atomic unit of constitutional governance: independently defined, per-block HMAC-SHA256 certified, and composed at runtime only when the Constitutional Boundary Validator (ORVL-010) confirms no constraint overlap. Five patent claims:
+
+1. **Runtime composition** — blocks registered in an append-only signed registry are composed into a merged constraint set on demand.
+2. **CANNOT_MUTATE boundaries** — `TRUST_LEVEL`, `BLOCK_TYPES`, and all manifest constants are frozen at import; mutation raises `AttributeError`.
+3. **Constitutional router** — `ConstitutionalRouter.route(task, registry)` selects blocks whose `PURPOSE` and `CONSTRAINT` lines match the task domain; only certified, non-overlapping blocks are returned.
+4. **Fleet governance** — `BlockRegistry` maintains a sovereign append-only JSONL ledger; every entry is HMAC-signed; `list_blocks()` replays and re-verifies the chain.
+5. **Per-block certification** — `block.certify()` hashes the block spec under a derived key and sets `cert.passed`; blocks that fail certification are excluded before composition.
+
+```python
+from axiom_mkb import BlockRegistry, load_from_axiom
+from axiom_mkb_router import ConstitutionalRouter
+from axiom_signing import derive_key
+
+key      = derive_key(b"axiom-mkb-demo-v1")
+registry = BlockRegistry(key)
+router   = ConstitutionalRouter(key)
+
+block = load_from_axiom("axiom_files/domains/healthcare.axiom", key)
+cert  = block.certify()                   # HMAC-SHA256 — Claim 5
+if cert.passed:
+    registry.register(block)              # append-only ledger — Claim 4
+
+selected = router.route(                  # constitutional selection — Claim 3
+    "Write a HIPAA-compliant PII guard",
+    registry,
+)
+composed = registry.compose(*selected)    # CBV-validated merge — Claim 1
+print(composed.hmac_signature[:32])       # signed composition proof
+```
+
+**Run the full demo (all five claims):**
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+python axiom_mkb_demo.py
+# custom task:
+python axiom_mkb_demo.py --task "Write a HIPAA-compliant PII guard"
+```
+
+The demo certifies six real `.axiom` spec files as knowledge blocks, registers them in the fleet, routes a healthcare task through the constitutional router, composes two compatible blocks (CBV pass), and proves the CANNOT_MUTATE boundary rejects `TRUST_LEVEL = 99` with `AttributeError`.
+
+---
+
 ## Guard API
 
 ```bash
