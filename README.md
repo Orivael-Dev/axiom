@@ -290,6 +290,41 @@ Kill records are HMAC-signed and appended to `axiom_gate_kill_log.jsonl`. Two co
 
 ---
 
+## Continuous Latent Constitutional AI (ORVL-005)
+
+CLCA measures every reasoning trajectory against a constitutional manifold M — a bounded region in confidence × rival-hypothesis space. Each of the three reasoning stages (preflight, mid_chain, final_synthesis) is a coordinate inside M. The MonotonicGate kills non-converging trajectories. The projection operator P_M snaps any out-of-bounds coordinate back to the nearest valid point on the manifold.
+
+Key constants (CANNOT_MUTATE): `UNCERTAINTY_FLOOR = 0.15`, `OVERCLAIM_CEILING = 0.85`, `DRIFT_THRESHOLD = 0.10`. Every trajectory is HMAC-signed as a `LatentTraceV2` manifest.
+
+**Synthetic demo (all five claims):**
+
+```bash
+export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+python axiom_clca_demo.py
+```
+
+**Local agent — self-report confidence (Qwen3-1.7B SRD4):**
+
+The model answers a question and self-reports confidence + rival-hypothesis presence at each stage. That real trajectory is measured against M, drift-detected, HMAC-signed, and any out-of-bounds stage is projected back via P_M.
+
+```bash
+python3 axiom_clca_local_agent.py --question "Should I take aspirin daily?"
+```
+
+**Local agent — measured token-probability confidence (`axiom_clca_logprob_agent.py`):**
+
+Uses `llama-server` `/completion` with `n_probs` to derive confidence from real token logprobs — not self-report. Two signals: mean `exp(logprob)` over emitted tokens, and distributional entropy over top-20 logprobs. Both are live internal model quantities.
+
+```bash
+python3 axiom_clca_logprob_agent.py --question "Should I take aspirin daily?"
+```
+
+Validated results (Jetson Orin Nano, Qwen3-1.7B SRD4 Q4_K_M, CUDA 12.6) in `results/orvl005_clca_local_agent.json`. Key finding: a fluent 1.7B model is token-level overconfident even when its content is epistemically hedged — the overclaim ceiling (`0.85`) catches fluent overconfidence and P_M corrects it. When the model is genuinely uncertain the entropy signal drops and the manifold responds proportionally.
+
+> **License note:** `axiom_clca_local_agent.py` and `axiom_clca_logprob_agent.py` when used with SRD4 GGUFs are for **non-commercial use only**.
+
+---
+
 ## Intent Typing (ORVL-016) + CMAA (ORVL-017)
 
 Constitutional Intent Typing classifies every prompt and every cloud response into one of six classes — `INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN` — using lexical signals plus trajectory geometry. `HARM` and `DECEIVE` are block classes. Confidence floor `0.30`, ceiling `0.95` (never claim certainty). Every verdict is HMAC-signed.
