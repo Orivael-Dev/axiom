@@ -30,24 +30,42 @@ low_density_edges=1, triggering FRAGILE vertex class and the 0.2 Nm
 CANNOT_EXCEED ceiling. On a stable metal cylinder it should output METAL +
 vertical_clusters=2, CYLINDRICAL, 2.0 Nm ceiling.
 
-Run:
+Rocksi integration (--state / --state-file):
+  Run tools/rocksi_bridge.js in the Rocksi browser console (F12) to capture
+  live joint angles, TCP position samples, and SimObject geometry.  Pass the
+  resulting JSON to bypass the model perception step and drive the CPI
+  pipeline with real 3D simulator state.
+
+  # 1. In Rocksi browser console:
+  #    paste + run tools/rocksi_bridge.js → JSON copied to clipboard
+  # 2. On the Jetson:
+  python3 axiom_cpi_local_agent.py \\
+    --state '{"robot_name":"franka_panda","arm_joints":[...],...}' \\
+    --scene "Red cube on the table, roughly 8x8x8 cm"
+  # or from a saved file:
+  python3 axiom_cpi_local_agent.py \\
+    --state-file tools/rocksi_state.json \\
+    --scene "Red cube on the table"
+
+Run (model-only, no Rocksi):
   export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
   python3 axiom_cpi_local_agent.py \\
     --scene "A tall wine glass: thin-walled borosilicate, 22 cm height, 8 cm base"
-  # or a stable object:
   python3 axiom_cpi_local_agent.py \\
     --scene "A steel thermos flask: 500 ml, 20 cm tall, 7 cm diameter, heavy cap"
 """
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import os
 import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -185,6 +203,91 @@ def _parse_stability(text: str) -> List[float]:
     return scores
 
 
+def _rocksi_state_to_cpi(state: dict, scene_hint: str
+                         ) -> Tuple[str, Dict, float, str]:
+    """Map a Rocksi JSON state blob → (material, features, grip_nm, scene_desc).
+
+    SimObject shape/size/mass → vertex geometry features.
+    Color hex → material heuristic (fallback: UNKNOWN + model uses scene_hint).
+    Mass → grip force via F = m·g·μ (μ≈0.15 for typical dry-contact gripper).
+    """
+    obj = (state.get("sim_objects") or [{}])[0]
+    shape  = (obj.get("shape") or "box").lower().replace("cube", "box")
+    size   = obj.get("size") or {"x": 0.08, "y": 0.08, "z": 0.08}
+    mass   = float(obj.get("mass") or 0.3)
+    color  = (obj.get("color") or "").lower().strip()
+
+    # Color → material heuristic
+    material = "UNKNOWN"
+    if color.startswith("#") and len(color) >= 7:
+        try:
+            r = int(color[1:3], 16) / 255.0
+            g = int(color[3:5], 16) / 255.0
+            b = int(color[5:7], 16) / 255.0
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            if lum > 0.80:
+                material = "GLASS"      # very bright / white → glass
+            elif r > 0.45 and g > 0.30 and b < 0.25:
+                material = "WOOD"       # brownish
+            elif lum > 0.35:
+                material = "METAL"      # mid-gray / silver
+            else:
+                material = "UNKNOWN"
+        except ValueError:
+            pass
+
+    # Shape → vertex geometry features
+    min_dim = min(size.get("x", 0.08), size.get("y", 0.08), size.get("z", 0.08))
+    features: Dict = {
+        "vertical_clusters":    2 if shape == "cylinder" else 0,
+        "horizontal_planes":    1 if shape == "box" else 0,
+        "isolated_protrusions": 0,
+        "low_density_edges":    1 if min_dim < 0.04 else 0,   # thin = fragile
+        "shape_variance":       0.5 if shape == "sphere" else 0.0,
+    }
+
+    # Grip force from mass: N = m·g·friction_factor, clamped to 0.1–5.0 Nm
+    grip_nm = round(max(0.1, min(5.0, mass * 9.81 * 0.15)), 2)
+
+    # Scene description for logs
+    w, h, d = size.get("x", "?"), size.get("y", "?"), size.get("z", "?")
+    robot   = state.get("robot_name", "unknown")
+    scene_desc = (
+        scene_hint
+        or f"Rocksi {robot}: {shape} "
+           f"{w:.3f}×{h:.3f}×{d:.3f} m, {mass:.3f} kg, color={color}"
+    )
+    return material, features, grip_nm, scene_desc
+
+
+def _tcp_to_stability(tcp_samples: List[dict], fracture_p: float) -> List[float]:
+    """Convert 5 Rocksi TCP position samples → normalized stability scores.
+
+    Stability proxy: per-sample displacement from the previous sample,
+    normalised by 0.05 m (5 cm at 100 ms = 0.5 m/s, a fast pickup move).
+    Static arm (all same position) → near 1.0, reduced by fracture_p.
+    Fast / jerky motion → lower scores, triggering MonotonicGate reflexes.
+    """
+    if len(tcp_samples) < 2:
+        base = round(0.90 - fracture_p * 0.30, 3)
+        return [round(max(0.05, base - fracture_p * 0.04 * i), 3) for i in range(5)]
+
+    pts = [(s["tcp"]["x"], s["tcp"]["y"], s["tcp"]["z"]) for s in tcp_samples[:5]]
+    scores: List[float] = []
+    for i, pt in enumerate(pts):
+        if i == 0:
+            disp = 0.0
+        else:
+            prev = pts[i - 1]
+            disp = math.sqrt(sum((a - b) ** 2 for a, b in zip(pt, prev)))
+        instability = min(1.0, disp / 0.05 * 0.5 + fracture_p * 0.30)
+        scores.append(round(max(0.05, 1.0 - instability), 3))
+
+    while len(scores) < 5:
+        scores.append(scores[-1])
+    return scores[:5]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="ORVL-022 CPI + local agent")
     ap.add_argument("--scene",
@@ -194,34 +297,79 @@ def main() -> int:
     ap.add_argument("--bin",    dest="binary", default=_DEFAULT_BIN)
     ap.add_argument("-n", "--n-predict", type=int, default=200)
     ap.add_argument("--temp",   type=float, default=0.3)
+    # Rocksi bridge inputs (bypass model perception when provided)
+    ap.add_argument("--state",      default=None,
+                    help="Rocksi JSON state string from tools/rocksi_bridge.js")
+    ap.add_argument("--state-file", default=None, dest="state_file",
+                    help="Path to saved Rocksi JSON state file")
     args = ap.parse_args()
 
     if not os.environ.get("AXIOM_MASTER_KEY"):
         print("Set AXIOM_MASTER_KEY first.", file=sys.stderr)
         return 2
 
-    # ── Layer 0: model perceives the 3D object ────────────────────────────
-    _header("Layer 0 — 3D Perception: model assesses object from scene")
-    print(f"  model : {args.model}")
-    print(f"  scene : \"{args.scene}\"\n")
+    # ── Rocksi state (optional) — bypasses model perception ───────────────
+    rocksi_state: Optional[dict] = None
+    if args.state_file:
+        try:
+            rocksi_state = json.loads(Path(args.state_file).read_text())
+        except Exception as e:
+            print(f"[ERROR] could not load --state-file: {e}", file=sys.stderr)
+            return 2
+    elif args.state:
+        try:
+            rocksi_state = json.loads(args.state)
+        except Exception as e:
+            print(f"[ERROR] could not parse --state JSON: {e}", file=sys.stderr)
+            return 2
 
-    raw_p = _call_model(_build_perception_prompt(args.scene),
-                        args.model, args.binary, args.n_predict, args.temp)
-    if not raw_p:
-        return 1
+    # ── Layer 0: perception — Rocksi state OR model ────────────────────────
+    if rocksi_state is not None:
+        _header("Layer 0 — 3D Perception: Rocksi live state (bridge mode)")
+        robot_name = rocksi_state.get("robot_name", "unknown")
+        n_joints   = len(rocksi_state.get("arm_joints", []))
+        n_samples  = len(rocksi_state.get("tcp_samples", []))
+        n_objects  = len(rocksi_state.get("sim_objects", []))
+        print(f"  robot   : {robot_name}  ({n_joints} arm joints)")
+        print(f"  tcp     : {n_samples} position samples")
+        print(f"  objects : {n_objects} SimObject(s) detected")
+        if rocksi_state.get("arm_joints"):
+            print(f"\n  Joint angles (rad):")
+            for j in rocksi_state["arm_joints"]:
+                bar = "█" * int(abs(j["angle_rad"]) / 3.14 * 20)
+                print(f"    {j['name']:<6} {j['angle_rad']:+.4f}  [{bar}]")
+        material, features, grip_force, concern = _rocksi_state_to_cpi(
+            rocksi_state, args.scene)
+        print(f"\n  Derived from SimObject:")
+        print(f"    material           : {material}")
+        for k, v in features.items():
+            print(f"    {k:<22} : {v}")
+        print(f"    GRIP_FORCE_NM      : {grip_force:.2f}")
+        print(f"    scene              : {concern}")
+        rocksi_ticks: Optional[List[float]] = None   # filled after Layer 1
+    else:
+        _header("Layer 0 — 3D Perception: model assesses object from scene")
+        print(f"  model : {args.model}")
+        print(f"  scene : \"{args.scene}\"\n")
 
-    print("  --- model output ---")
-    for line in raw_p.splitlines():
-        print(f"  | {line}")
+        raw_p = _call_model(_build_perception_prompt(args.scene),
+                            args.model, args.binary, args.n_predict, args.temp)
+        if not raw_p:
+            return 1
 
-    material, features, grip_force, concern = _parse_perception(raw_p)
-    print(f"\n  Parsed perception:")
-    print(f"    material           : {material}")
-    for k, v in features.items():
-        print(f"    {k:<22} : {v}")
-    print(f"    GRIP_FORCE_NM      : {grip_force:.2f}")
-    if concern:
-        print(f"    STABILITY_CONCERN  : {concern}")
+        print("  --- model output ---")
+        for line in raw_p.splitlines():
+            print(f"  | {line}")
+
+        material, features, grip_force, concern = _parse_perception(raw_p)
+        print(f"\n  Parsed perception:")
+        print(f"    material           : {material}")
+        for k, v in features.items():
+            print(f"    {k:<22} : {v}")
+        print(f"    GRIP_FORCE_NM      : {grip_force:.2f}")
+        if concern:
+            print(f"    STABILITY_CONCERN  : {concern}")
+        rocksi_ticks = None
 
     # ── Layer 1: Material Sim (N-branch contact forecast) ─────────────────
     _header("Layer 1 — Material Sim: N-branch contact forecast")
@@ -277,27 +425,41 @@ def main() -> int:
               f"supervised_grip = {plan['supervised_grip_force']:.3f} Nm")
     print(f"  HMAC            : {sup['signature'][:24]}...")
 
-    # ── Layer 4: Stability Ticks (model-generated) ─────────────────────────
-    _header("Layer 4 — Stability Ticks: model simulates 5-tick pickup motion")
-    applied_nm  = plan["applied_grip_force"]
-    fracture_p  = sim["fracture_probability"]
-    vertex_cls  = vtx["vertex_class"]
+    # ── Layer 4: Stability Ticks — Rocksi TCP samples OR model ────────────
+    _header("Layer 4 — Stability Ticks: 5-tick pickup motion")
+    applied_nm = plan["applied_grip_force"]
+    fracture_p = sim["fracture_probability"]
+    vertex_cls = vtx["vertex_class"]
 
-    raw_s = _call_model(
-        _build_stability_prompt(args.scene, material, vertex_cls,
-                                applied_nm, fracture_p),
-        args.model, args.binary, 80, args.temp)
+    if rocksi_state is not None:
+        tcp_samples = rocksi_state.get("tcp_samples", [])
+        ticks = _tcp_to_stability(tcp_samples, fracture_p)
+        print(f"  source : Rocksi TCP samples ({len(tcp_samples)} points → 5 ticks)")
+        if tcp_samples:
+            print(f"  TCP trajectory:")
+            for s in tcp_samples[:5]:
+                t = s["tcp"]
+                print(f"    t={s.get('t','?')}  "
+                      f"({t['x']:+.4f}, {t['y']:+.4f}, {t['z']:+.4f})")
+        print(f"  derived stability ticks: {ticks}")
+    else:
+        print(f"  source : Qwen3 model inference")
+        raw_s = _call_model(
+            _build_stability_prompt(args.scene, material, vertex_cls,
+                                    applied_nm, fracture_p),
+            args.model, args.binary, 80, args.temp)
 
-    if raw_s:
-        print("  --- model output ---")
-        for line in raw_s.splitlines():
-            print(f"  | {line}")
+        if raw_s:
+            print("  --- model output ---")
+            for line in raw_s.splitlines():
+                print(f"  | {line}")
 
-    ticks = _parse_stability(raw_s) if raw_s else []
-    if len(ticks) < 5:
-        base = round(0.90 - fracture_p * 0.30, 3)
-        ticks = [round(max(0.0, base - fracture_p * 0.04 * i), 3) for i in range(5)]
-        print(f"\n  [fallback ticks from fracture_p={fracture_p:.3f}]: {ticks}")
+        ticks = _parse_stability(raw_s) if raw_s else []
+        if len(ticks) < 5:
+            base = round(0.90 - fracture_p * 0.30, 3)
+            ticks = [round(max(0.0, base - fracture_p * 0.04 * i), 3)
+                     for i in range(5)]
+            print(f"\n  [fallback ticks from fracture_p={fracture_p:.3f}]: {ticks}")
 
     print(f"\n  PhysicalMonotonicGate — 5-tick pickup trajectory:")
     gate   = PhysicalMonotonicGate()
