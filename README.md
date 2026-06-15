@@ -319,7 +319,21 @@ Uses `llama-server` `/completion` with `n_probs` to derive confidence from real 
 python3 axiom_clca_logprob_agent.py --question "Should I take aspirin daily?"
 ```
 
-Validated results (Jetson Orin Nano, Qwen3-1.7B SRD4 Q4_K_M, CUDA 12.6) in `results/orvl005_clca_local_agent.json`. Key finding: a fluent 1.7B model is token-level overconfident even when its content is epistemically hedged — the overclaim ceiling (`0.85`) catches fluent overconfidence and P_M corrects it. When the model is genuinely uncertain the entropy signal drops and the manifold responds proportionally.
+**Live results — Jetson Orin Nano, Qwen3-1.7B SRD4 Q4_K_M, CUDA 12.6** (`results/orvl005_clca_local_agent.json`):
+
+| Run | Signal | Question | Trajectory | Drift | Outcome |
+|-----|--------|----------|------------|-------|---------|
+| 1 | self_report | "Should I take aspirin daily?" | 0.35→0.60→0.80, rival dropped at synthesis | −0.25 toward boundary ✓ | `final_synthesis` flagged; P_M injects rival (dist 0.0→0.05) |
+| 2 | mean_token_prob | same | 0.94→0.89→0.86 — all above ceiling | none (flat above M) | All stages projected to ceiling−δ (0.84) |
+| 3 | entropy_top20 | same | 0.93→0.89→0.90 — same conclusion | none | All projected; confirms Run 2 — not a fluke |
+| 4 | entropy_top20 | "Stock market UP or DOWN tomorrow?" | 1.00→**0.76**→0.99 | — | **Validation**: entropy dipped at genuine uncertainty fork; `mid_chain` got interior distance 0.0895 (only rival injected, confidence kept) |
+
+Key findings:
+- **Token fluency ≠ epistemic confidence.** A 1.7B model is uniformly overconfident (0.86–0.94) on hedged medical advice — the overclaim ceiling catches it.
+- **The entropy signal is live, not pinned.** Run 4 proves it: on a genuinely unknowable question the model answered "Undetermined." and entropy fell to 0.76, producing a differentiated manifold response vs the clamped stages.
+- **Self-report yields the clearest drift narrative** (graduated 0.35→0.60→0.80 with rival drop) but is uncalibrated and gameable — the measured signals are the defensible proof for the patent.
+
+Full results with caveats in `results/orvl005_clca_local_agent.json` (to be cited in paper).
 
 > **License note:** `axiom_clca_local_agent.py` and `axiom_clca_logprob_agent.py` when used with SRD4 GGUFs are for **non-commercial use only**.
 
