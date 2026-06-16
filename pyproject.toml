@@ -89,6 +89,7 @@ axiom          = "axiom_constitutional.cli:main"
 axiom-validate = "axiom_constitutional.cli:validate_cmd"
 axiom-certify  = "axiom_constitutional.cli:certify_cmd"
 axm            = "axm_cli:main"
+axiom-bench    = "axiom_bench.cli:main"
 
 [project.urls]
 Homepage   = "https://orivael.dev"
@@ -97,7 +98,12 @@ PyPI       = "https://pypi.org/project/axiom-constitutional/"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files*"]
+include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files*", "axiom_bench*"]
+
+# Top-level single-file modules needed by the `axm` console script.
+# axm_cli imports axiom_axm (container) and lazily research.quant.* (run/pack).
+[tool.setuptools]
+py-modules = ["axm_cli", "axiom_axm", "axiom_quant", "axiom_signing"]
 
 # Top-level single-file modules needed by the `axm` console script.
 # axm_cli imports axiom_axm (container) and lazily research.quant.* (run/pack).

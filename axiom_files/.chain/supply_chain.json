@@ -685,19 +685,19 @@
   },
   "core/axiom_cas_orchestrator": {
     "sha256": "e42d061e23f6814c703623934acbf79db631c65995cd6cc3bc6d3c62321895ff",
-    "registered_at": "2026-05-07T16:47:12.136784+00:00",
-    "version": "0.1.0",
+    "registered_at": "2026-06-15T00:43:13.766583+00:00",
+    "version": "",
     "size_bytes": 5511
   },
   "core/axiom_qrf": {
     "sha256": "89fa1325a27fa9e6534e69a32c353e0f4e3892ee71d8f696b5c2782cf11b41a0",
-    "registered_at": "2026-05-07T20:04:34.494757+00:00",
-    "version": "0.1.0",
+    "registered_at": "2026-06-15T01:12:57.618739+00:00",
+    "version": "",
     "size_bytes": 4465
   },
   "core/axiom_cbv": {
     "sha256": "05f6bd0c96a50218c384a10482cf17c940279f5ab1f9fb2e83e71919847f1738",
-    "registered_at": "2026-05-08T16:47:08.828007+00:00",
+    "registered_at": "2026-06-15T01:20:59.820272+00:00",
     "version": "",
     "size_bytes": 5687
   },
@@ -796,5 +796,41 @@
     "registered_at": "2026-05-14T12:13:25.058070+00:00",
     "version": "",
     "size_bytes": 4217
+  },
+  "research/research_sweep": {
+    "sha256": "14441811af4575a48b4ae64b893598971ee3ef8e030c6b18ad8d26c8004110f9",
+    "registered_at": "2026-06-11T03:31:16.951346+00:00",
+    "version": "",
+    "size_bytes": 3958
+  },
+  "domains/automotive_kia_us": {
+    "sha256": "583a1860eafa6d60b16b84c64981ebcf4f92ec1f1f022c8d906a0e57e550c216",
+    "registered_at": "2026-06-12T03:28:11.789550+00:00",
+    "version": "",
+    "size_bytes": 8394
+  },
+  "research/visual_srd": {
+    "sha256": "b7b851678de32952353b2d1d9f2ef5428314445075017693bd357d1696c2e1ec",
+    "registered_at": "2026-06-12T23:19:11.526426+00:00",
+    "version": "",
+    "size_bytes": 6521
+  },
+  "research/privacy_filter": {
+    "sha256": "03d3a5b61121d9de50eb129b6847b26e26deeed4c3937a13d4dc1958e79c3b8f",
+    "registered_at": "2026-06-13T16:26:48.140353+00:00",
+    "version": "",
+    "size_bytes": 7965
+  },
+  "research/edge_trajectory": {
+    "sha256": "e5fc68c17346144b12dc0b92b2544cdb0614577b46f08a2c61052ae4cdec2942",
+    "registered_at": "2026-06-11T17:37:04.371500+00:00",
+    "version": "",
+    "size_bytes": 5480
+  },
+  "research/general_agent": {
+    "sha256": "5a06e72a00240574f94d06c959472d5a138d8b105ad995e7fb0ef2fd63b45f4c",
+    "registered_at": "2026-06-16T02:01:26.628511+00:00",
+    "version": "",
+    "size_bytes": 6382
   }
 }

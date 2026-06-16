@@ -1,0 +1,94 @@
+{
+  "description": "Qwen3-1.7B Q4_K_M vs Gemma-3-1B Q4_K_M head-to-head benchmark. WikiText-2 perplexity + llama-bench speed + energy + cost.",
+  "device": {
+    "gpu": "GTX 1660 Ti",
+    "vram_gb": 6,
+    "platform": "CUDA"
+  },
+  "benchmark_config": {
+    "ppl_dataset": "wikitext-2",
+    "ppl_context": 512,
+    "ppl_note": "Instruct-tuned models scored over raw WikiText text — absolute PPL inflated by = Heading = markup and chat formatting mismatch. Use for relative comparison only.",
+    "speed_tool": "llama-bench"
+  },
+  "models": {
+    "qwen3_1b7_q4km": {
+      "hf_id": "Qwen/Qwen3-1.7B",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "gguf_mb": 1056,
+      "fingerprint": "35312123",
+      "architecture": {
+        "hidden_size": 2048,
+        "num_layers": 28,
+        "vocab_size": 151936,
+        "num_attention_heads": 16,
+        "num_kv_heads": 8
+      },
+      "results": {
+        "ppl": 21.19,
+        "ppl_error": 0.48,
+        "tg_ts": 84.8,
+        "pp_ts": 526,
+        "ttft_ms": 347,
+        "latency_median_s": 1.8,
+        "energy_per_token_j": 0.79,
+        "cost_per_1m_tokens_usd": 0.035,
+        "vram_gb": 1.63,
+        "mobile": {
+          "device": "Android 12 GB RAM GPUOpenCL",
+          "app": "PocketPal",
+          "tg_ts": 6.20,
+          "pp_ts": 158.24,
+          "total_time_s": 72,
+          "peak_memory_gb": 3.0,
+          "peak_memory_pct": 23.4,
+          "flash_attention": false,
+          "timestamp": "2026-06-09T17:49:03"
+        }
+      }
+    },
+    "gemma3_1b_q4km": {
+      "hf_id": "bartowski/gemma-3-1b-it-GGUF",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "gguf_mb": 815,
+      "architecture": {
+        "params_b": 1.0
+      },
+      "results": {
+        "ppl": 28.90,
+        "ppl_error": 0.65,
+        "tg_ts": 56.7,
+        "pp_ts": 387,
+        "ttft_ms": 481,
+        "latency_median_s": 3.2,
+        "energy_per_token_j": 0.79,
+        "cost_per_1m_tokens_usd": 0.036,
+        "vram_gb": 1.09
+      }
+    }
+  },
+  "comparison": {
+    "ppl_delta": 7.71,
+    "ppl_delta_pct": 26.7,
+    "ppl_winner": "qwen3_1b7",
+    "ppl_significant": true,
+    "ppl_note": "Confidence intervals do not overlap (±0.48 vs ±0.65). 27% lower perplexity is real quality, not noise.",
+    "tg_delta_pct": 49.6,
+    "pp_delta_pct": 35.9,
+    "ttft_delta_pct": 27.9,
+    "latency_delta_pct": 43.8,
+    "speed_winner": "qwen3_1b7",
+    "latency_winner": "qwen3_1b7",
+    "energy_winner": "tie",
+    "energy_note": "0.79 J/token for both — identical electricity cost at Q4_K_M on this GPU.",
+    "cost_winner": "tie",
+    "cost_note": "$0.035 vs $0.036 per 1M tokens — rounding distance, not a real difference.",
+    "vram_winner": "gemma3_1b",
+    "vram_delta_gb": 0.54,
+    "overall_verdict": "Qwen3-1.7B Q4_K_M wins quality, speed, and latency. Energy and cost are a dead tie. Gemma-3-1B's only edge is 0.54 GB less VRAM — irrelevant with 4 GB headroom on a 6 GB card. Qwen3-1.7B is the clear pick.",
+    "vram_headroom_note": "Both models fit in 6 GB with ~4 GB headroom. VRAM tradeoff doesn't matter on this device."
+  },
+  "timestamp": "2026-06-09"
+}

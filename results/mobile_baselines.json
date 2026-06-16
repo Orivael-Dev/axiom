@@ -1,0 +1,175 @@
+{
+  "description": "PocketPal mobile inference baselines — Q4_K_M GGUF on-device benchmarks. Used as reference for SRD pack comparisons.",
+  "device": {
+    "ram_gb": 12,
+    "gpu": "GPUOpenCL",
+    "cpu_threads": 6,
+    "gpu_layers": 99,
+    "app": "PocketPal",
+    "flash_attention": false,
+    "cache_types": "f16/f16"
+  },
+  "benchmark_config": {
+    "pp": 512,
+    "tg": 128,
+    "pl": 1,
+    "repetitions": 3,
+    "context": 2048,
+    "batch": 512,
+    "ubatch": 512
+  },
+  "baselines": [
+    {
+      "id": "smollm2_135m_q4km_mobile",
+      "model": "smollm2_135m_instruct",
+      "file": "smollm2_135m_instruct_q4km.gguf",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "size_mb": 103.67,
+      "params_m": 134.52,
+      "results": {
+        "prompt_processing_ts": 261.30,
+        "token_generation_ts": 4.82,
+        "total_time_s": 96,
+        "peak_memory_pct": 8.9,
+        "peak_memory_gb": 1.0
+      },
+      "notes": "Baseline for MiniSRDAgent capsule size class (params_m=135). TG limited by OpenCL pipeline underutilisation at 135M scale.",
+      "timestamp": "2026-06-08T12:01:59"
+    },
+    {
+      "id": "tinyllama_1b_q4km_mobile",
+      "model": "tinyllama-1.1b-chat-v1.0",
+      "file": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "size_mb": 636,
+      "params_m": 1100,
+      "results": {
+        "prompt_processing_ts": 106.23,
+        "token_generation_ts": 12.03,
+        "total_time_s": 47,
+        "peak_memory_pct": 13.8,
+        "peak_memory_gb": 2.0
+      },
+      "ppl": {
+        "value": 19.385,
+        "error": 0.399,
+        "dataset": "wikitext-2",
+        "chunks": 100,
+        "delta_vs_f16_pct": 0.94,
+        "statistically_significant": false,
+        "note": "Error bars overlap with F16 — delta is at noise floor on 100 chunks"
+      },
+      "notes": "Primary SRD benchmark target. TG 2.5x faster than 135M despite 8x more params — OpenCL saturates better at 1B scale.",
+      "timestamp": "2026-06-08T15:00:28"
+    },
+    {
+      "id": "qwen3_1b7_q4km_mobile",
+      "model": "Qwen/Qwen3-1.7B",
+      "file": "qwen3_1b7_q4km.gguf",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "size_mb": 1100,
+      "params_b": 1.72,
+      "results": {
+        "prompt_processing_ts": 158.24,
+        "token_generation_ts": 6.20,
+        "total_time_s": 72,
+        "peak_memory_pct": 23.4,
+        "peak_memory_gb": 3.0
+      },
+      "notes": "Real PocketPal run. TG 6.20 t/s — bandwidth estimate was 7.3 t/s (15% high). PP fast at 158 t/s. Flash Attention disabled; enabling may give +10-15% PP.",
+      "timestamp": "2026-06-09T17:49:03"
+    },
+    {
+      "id": "deepseek_r1_1b5_q4km_mobile",
+      "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "file": "deepseek_r1_1b5_q4km.gguf",
+      "quant": "Q4_K_M",
+      "bpw_approx": 4.85,
+      "size_mb": 1137,
+      "params_b": 1.78,
+      "results": {
+        "prompt_processing_ts": 96.46,
+        "token_generation_ts": 9.22,
+        "total_time_s": 58,
+        "peak_memory_pct": 20.1,
+        "peak_memory_gb": 2.0
+      },
+      "notes": "TG 9.22 t/s — 49% faster than Qwen3-1.7B (6.20 t/s) despite similar size. Driver: num_kv_heads=2 (vs Qwen3's 8) → tiny KV cache → faster attention during TG on memory-bandwidth-limited OpenCL GPU. PP slower than Qwen3 (96 vs 158 t/s) — larger vocab (151936) and architecture overhead. Same 2 GB peak RAM as TinyLlama-1.1B.",
+      "timestamp": "2026-06-09T18:20:47"
+    },
+    {
+      "id": "tinyllama_1b_f16_ppl",
+      "model": "tinyllama-1.1b-chat-v1.0",
+      "file": "tinyllama-1.1b-chat-v1.0.F16.gguf",
+      "quant": "F16",
+      "bpw_approx": 16.0,
+      "size_mb": 2200,
+      "params_m": 1100,
+      "results": {
+        "prompt_processing_ts": null,
+        "token_generation_ts": null,
+        "note": "Speed not benchmarked on device. Estimated TG ~3-4 t/s based on 3.3x bandwidth vs Q4_K_M."
+      },
+      "ppl": {
+        "value": 19.205,
+        "error": 0.404,
+        "dataset": "wikitext-2",
+        "chunks": 100,
+        "delta_vs_f16_pct": 0.0,
+        "note": "Reference baseline. v1.0 chat PPL ~19.2 vs v0.6 chat ~9.88 — v1.0 is chat-aligned, worse at raw text continuation."
+      },
+      "notes": "F16 PPL reference only — no mobile speed run. Use Q4_K_M for deployment: 3.5x smaller, 1.5x faster TG, <1% quality loss.",
+      "timestamp": "2026-06-08"
+    }
+  ],
+  "met_sidecars": {
+    "qwen3_1b7_q4km": {
+      "source": "results/qwen3_1b7_met_sidecar.json",
+      "model": "Qwen/Qwen3-1.7B",
+      "gguf_mb": 1056,
+      "fingerprint": "35312123",
+      "architecture": {
+        "hidden_size": 2048,
+        "num_layers": 28,
+        "vocab_size": 151936,
+        "num_attention_heads": 16,
+        "num_kv_heads": 8
+      },
+      "met_hydration": {
+        "embedding_pinned_mb": 593.5,
+        "chunks_total_mb": 816,
+        "inform_only_mb": 768.5,
+        "clarify_refuse_mb": 943.5,
+        "harm_deceive_mb": 1409.5,
+        "savings_benign_vs_full_mb": 641,
+        "savings_benign_vs_full_pct": 45.5,
+        "between_met_floor_mb": 593.5,
+        "ufs_load_ms_inform": 116.7,
+        "ufs_load_ms_harm": 544.0
+      },
+      "hydration_policy_summary": "INFORM: early only (175MB). CLARIFY/REFUSE/UNCERTAIN: early+governance (350MB). HARM/DECEIVE: all 4 chunks (816MB).",
+      "notes": "Large vocab (151,936 tokens) means embedding dominates at 594MB F16. Transformer chunks are small relative to embedding — INFORM queries need only 29% of transformer weight (175/816MB) plus the always-pinned embedding.",
+      "timestamp": "2026-06-09T02:31:01Z"
+    }
+  },
+  "srd_targets": {
+    "description": "Expected SRD-4 results vs Q4_K_M baselines. NOTE: the '1.51 PPL improvement' claim in docs/SRD_RESULTS.md used cited K-quant numbers measured on the BASE model with a different stride. The measured Q4_K_M vs F16 gap on the v1.0 chat model is only +0.94% (statistically noise). SRD α=0 advantage over Q4_K_M must be re-measured with the same methodology before citing.",
+    "tinyllama_1b": {
+      "quant": "SRD-4",
+      "bpw_target": 4.5,
+      "ppl_improvement_vs_q4km_claimed": "~1.51 PPL absolute (docs/SRD_RESULTS.md)",
+      "ppl_improvement_vs_q4km_status": "NEEDS_RECHECK — original claim used base model cited numbers; measured Q4_K_M gap to F16 is only 0.18 PPL (0.94%) on v1.0 chat",
+      "size_reduction_vs_q4km_pct": "~7",
+      "tg_target_ts": ">=12.03",
+      "action": "Re-run SRD α=0 PPL measurement against Q4_K_M on same model/dataset/stride to get a fair delta"
+    }
+  },
+  "key_findings": {
+    "q4km_vs_f16_actual": "Q4_K_M loses only 0.18 PPL (0.94%) vs F16 on TinyLlama-1.1B v1.0 chat — error bars overlap, difference is statistical noise on 100 chunks. 3.5x size reduction for essentially zero quality loss.",
+    "v10_vs_v06": "v1.0 chat PPL ~19.2, v0.6 chat PPL ~9.88 on wikitext-2. v1.0 is more chat-aligned but worse at raw text completion — expected for instruction-tuned models.",
+    "srd_claim_status": "The +1.51 PPL SRD vs Q4_K_M claim in docs/SRD_RESULTS.md was based on cited K-quant numbers from the base model with stride mismatch. Real measured Q4_K_M gap to F16 is much smaller. SRD advantage needs re-measurement on the same setup."
+  }
+}

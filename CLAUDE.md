@@ -87,6 +87,34 @@ TinyLlama-1.1B, measure WikiText-2 perplexity vs Q4_K_M / Q5_K_M / Q6_K
 at matched bpw. If real, SRD becomes Axiom's first weight-quant kernel
 and `quant_map` widens from `str` to a structured dict.
 
+**Next-step hint (post-SRD).** The current SRD selective sidecar uses
+fixed MET chunk boundaries (40-77% of depth) as the correction target —
+a flat EQ preset. This works for general instruction models but is the
+wrong curve for specialized architectures:
+
+- Code models (e.g. Qwen Coder): precision-sensitive layers are earlier
+  (~15-50%); syntax and identifier encoding lives in factual chunk, not
+  reasoning chunk. Current boundaries undershoots.
+- Chat/instruction models (e.g. Gemma3): reasoning chunk is correctly
+  targeted — validated by TruthfulQA MC1 results (selective +1.9%).
+- Tiny models (<200M): insufficient layer specialization for chunk-based
+  correction; uniform correction or no correction preferred.
+- Multimodal models: the cross-modal connector is the highest-leverage
+  correction target, not a standard MET layer range at all.
+
+The pattern mirrors audio EQ: not all music is mixed the same. Bass-heavy
+genres (code, early-layer precision) need a different curve than
+vocal-forward genres (reasoning, mid-depth layers).
+
+**Architecture-fingerprinted chunk detection** is the next research step:
+derive correction boundaries from per-layer activation variance or
+gradient norms during a short calibration pass, rather than hardcoding
+40-77%. Each architecture tells you where its precision-sensitive bands
+actually live. This makes `quant_map` genuinely elastic — the structured
+dict would carry per-layer correction weights, not a single chunk range.
+See `research/quant/srd_selective_sidecar.py:_REASONING_START_FRAC` and
+`research/quant/bench_sidecar_hallucination.py` for current baselines.
+
 ### Theme 3 — Continuous evaluation / smart routing
 
 **Observation.** Software has CI/CD; AI needs **Continuous Evaluation**

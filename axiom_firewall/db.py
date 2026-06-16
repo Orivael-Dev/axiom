@@ -1,5 +1,11 @@
 """SQLite-per-tenant data layer.
 
+Includes:
+  tenants/registry.db    — master tenant registry
+  tenants/{id}.db        — per-tenant api_keys, usage_records,
+                           decisions (flight recorder), agent_access_rules
+
+
 Per docs/PHASE_1_DECISIONS.md §3.
 
 Layout:
@@ -11,8 +17,12 @@ decision events or a customer requires multi-region replication.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 import sqlite3
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -105,6 +115,39 @@ def init_tenant_db(tenant_id: str) -> None:
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage_records(timestamp)")
+        # Flight Recorder — full decision log
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS decisions (
+                decision_id   TEXT PRIMARY KEY,
+                tenant_id     TEXT NOT NULL,
+                api_key_id    TEXT NOT NULL,
+                endpoint      TEXT NOT NULL,
+                verdict       TEXT NOT NULL,
+                intent_class  TEXT NOT NULL,
+                confidence    REAL NOT NULL,
+                latency_ms    REAL NOT NULL,
+                input_text    TEXT,
+                output_text   TEXT,
+                pattern_matched TEXT,
+                constitutional_block INTEGER NOT NULL DEFAULT 0,
+                ftc_reportable INTEGER NOT NULL DEFAULT 0,
+                manifest_id   TEXT,
+                signature     TEXT,
+                timestamp     TEXT NOT NULL
+            )
+        """)
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dec_ts "
+            "ON decisions(timestamp)"
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dec_intent "
+            "ON decisions(intent_class, timestamp)"
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dec_verdict "
+            "ON decisions(verdict, timestamp)"
+        )
     _migrate_api_keys_to_hashed(tenant_id)
 
 
@@ -374,6 +417,200 @@ def insert_usage(u: UsageRecord) -> None:
                 u.timestamp.isoformat(),
             ),
         )
+
+
+# ── Flight Recorder ───────────────────────────────────────────────────────
+
+def insert_decision(d: dict) -> None:
+    """Write a full decision record to the per-tenant decisions table."""
+    tenant_id = d["tenant_id"]
+    init_tenant_db(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        c.execute(
+            """INSERT OR IGNORE INTO decisions
+               (decision_id, tenant_id, api_key_id, endpoint, verdict,
+                intent_class, confidence, latency_ms, input_text,
+                output_text, pattern_matched, constitutional_block,
+                ftc_reportable, manifest_id, signature, timestamp)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                d.get("decision_id") or str(uuid.uuid4()),
+                tenant_id,
+                d.get("api_key_id", ""),
+                d.get("endpoint", ""),
+                d.get("verdict", ""),
+                d.get("intent_class", ""),
+                float(d.get("confidence", 0.0)),
+                float(d.get("latency_ms", 0.0)),
+                d.get("input_text"),
+                d.get("output_text"),
+                d.get("pattern_matched"),
+                int(bool(d.get("constitutional_block", False))),
+                int(bool(d.get("ftc_reportable", False))),
+                d.get("manifest_id"),
+                d.get("signature"),
+                d.get("timestamp") or datetime.utcnow().isoformat(),
+            ),
+        )
+
+
+def get_decision(tenant_id: str, decision_id: str) -> dict | None:
+    init_tenant_db(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        row = c.execute(
+            "SELECT * FROM decisions WHERE decision_id = ? AND tenant_id = ?",
+            (decision_id, tenant_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def query_decisions(
+    tenant_id: str,
+    *,
+    verdict: str | None = None,
+    intent_class: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    """Filtered query over the decisions table. Returns rows as dicts."""
+    init_tenant_db(tenant_id)
+    clauses = ["tenant_id = ?"]
+    params: list = [tenant_id]
+    if verdict:
+        clauses.append("verdict = ?")
+        params.append(verdict)
+    if intent_class:
+        clauses.append("intent_class = ?")
+        params.append(intent_class)
+    if since:
+        clauses.append("timestamp >= ?")
+        params.append(since)
+    if until:
+        clauses.append("timestamp <= ?")
+        params.append(until)
+    params += [limit, offset]
+    sql = (
+        "SELECT * FROM decisions WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    )
+    with _conn(_tenant_path(tenant_id)) as c:
+        rows = c.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Right-to-erasure ──────────────────────────────────────────────────────
+
+def _hmac_cert(payload: str) -> str:
+    """HMAC-SHA256 over a payload using AXIOM_MASTER_KEY.  Falls back to
+    a zero-key if the env var is absent (so erasure never silently fails)."""
+    key = bytes.fromhex(
+        os.environ.get("AXIOM_MASTER_KEY", "0" * 64)
+    )
+    return hmac.new(key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def erase_subject_data(
+    tenant_id: str,
+    subject_id: str,
+) -> dict:
+    """Locate and delete all decisions whose input_text or output_text
+    contains subject_id (simple substring match).  Returns a signed
+    deletion certificate.
+
+    Note: this operates only on the structured decision log.  Latent
+    encodings in model weights are outside the scope of this erasure.
+    """
+    init_tenant_db(tenant_id)
+    erased: list[str] = []
+    with _conn(_tenant_path(tenant_id)) as c:
+        rows = c.execute(
+            "SELECT decision_id, input_text, output_text FROM decisions "
+            "WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchall()
+        for r in rows:
+            text = (r["input_text"] or "") + " " + (r["output_text"] or "")
+            if subject_id in text:
+                c.execute(
+                    "DELETE FROM decisions WHERE decision_id = ?",
+                    (r["decision_id"],),
+                )
+                erased.append(r["decision_id"])
+
+    cert_payload = json.dumps({
+        "cert_id": str(uuid.uuid4()),
+        "tenant_id": tenant_id,
+        "subject_id_hash": hashlib.sha256(subject_id.encode()).hexdigest(),
+        "records_erased": len(erased),
+        "erased_ids": erased,
+        "erased_at": datetime.utcnow().isoformat(),
+        "scope": "decision_log_only",
+        "limitation": (
+            "Latent encodings in model weights are outside scope of this erasure. "
+            "Model retraining required for complete weight-level erasure."
+        ),
+    }, sort_keys=True)
+
+    return {
+        **json.loads(cert_payload),
+        "signature": _hmac_cert(cert_payload),
+    }
+
+
+def init_studio_containers(tenant_id: str) -> None:
+    """Ensure the studio_containers table exists in the tenant DB."""
+    init_tenant_db(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS studio_containers (
+                container_id  TEXT PRIMARY KEY,
+                tenant_id     TEXT NOT NULL,
+                name          TEXT NOT NULL,
+                config_json   TEXT NOT NULL,
+                created_at    TEXT NOT NULL
+            )
+        """)
+
+
+def count_studio_containers(tenant_id: str) -> int:
+    init_studio_containers(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        return c.execute("SELECT COUNT(*) FROM studio_containers").fetchone()[0]
+
+
+def list_studio_containers(tenant_id: str) -> list[dict]:
+    init_studio_containers(tenant_id)
+    with _conn(_tenant_path(tenant_id)) as c:
+        rows = c.execute(
+            "SELECT container_id, name, config_json, created_at "
+            "FROM studio_containers ORDER BY created_at DESC"
+        ).fetchall()
+        return [
+            {
+                "container_id": r["container_id"],
+                "name": r["name"],
+                "config": json.loads(r["config_json"]),
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+
+def insert_studio_container(tenant_id: str, name: str, config: dict) -> str:
+    init_studio_containers(tenant_id)
+    container_id = uuid.uuid4().hex
+    with _conn(_tenant_path(tenant_id)) as c:
+        c.execute(
+            "INSERT INTO studio_containers "
+            "(container_id, tenant_id, name, config_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (container_id, tenant_id, name, json.dumps(config),
+             datetime.utcnow().isoformat()),
+        )
+    return container_id
 
 
 def usage_summary(tenant_id: str) -> dict:

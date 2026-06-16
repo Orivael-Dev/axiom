@@ -1,0 +1,41 @@
+{
+  "run_date": "2026-06-06",
+  "model": "unsloth/Llama-3.2-1B-Instruct",
+  "pipeline": "SRD-alpha0-g64 -> AXM -> GGUF Q4_K_M",
+  "hardware": "Jetson Orin (15W mode)",
+  "llamacpp_build": "b9460+",
+  "flag_note": "--n-gpu-layers used (b9460+ rejects --ngl)",
+  "benchmarks": {
+    "bench1_cognitive_shift": {
+      "description": "~3k-token predictable prefix then abrupt pivot to complex reasoning",
+      "prefill_latency_s": 2.5,
+      "prefill_context_tokens": 3000,
+      "generation_tok_per_s": 31.8
+    },
+    "bench2_breadcrumb_memory": {
+      "description": "Unique facts seeded at depth; recalled after extended context",
+      "results": [
+        {"context_window_tokens": 2048, "breadcrumbs_recalled": 1, "breadcrumbs_total": 5},
+        {"context_window_tokens": 4096, "breadcrumbs_recalled": 2, "breadcrumbs_total": 5},
+        {"context_window_tokens": 8192, "breadcrumbs_recalled": 1, "breadcrumbs_total": 5,
+         "note": "8192 was failing before --n-gpu-layers flag fix"}
+      ]
+    },
+    "bench3_power_reasoning": {
+      "description": "Sustained nuanced reasoning (debug loops, riddles) under tegrastats monitoring",
+      "generation_tok_per_s": 34.0,
+      "power_peak_w": 12.5,
+      "power_avg_w": 11.5,
+      "ram_peak_gb": 3.8,
+      "power_mode_w": 15,
+      "tokens_per_watt_avg": 2.96
+    }
+  },
+  "edge_verdict": "viable",
+  "notes": [
+    "31-34 tok/s exceeds ~20 tok/s human reading threshold — real-time interactive use confirmed",
+    "12.5W peak stays inside 15W TDP with 2.5W headroom",
+    "3.8GB RAM peak: tight on 4GB Nano, comfortable on 8GB Orin",
+    "Recall quality at 1B scale is the primary constraint for memory-intensive tasks"
+  ]
+}

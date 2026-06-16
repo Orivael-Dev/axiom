@@ -62,12 +62,18 @@ services:
       # research.acme.com PACKS_HOST=packs.acme.com).
       RESEARCH_HOST:  ${RESEARCH_HOST:-research.orivael.dev}
       PACKS_HOST:     ${PACKS_HOST:-packs.orivael.dev}
-      BETA_AUTH_USER: ${BETA_AUTH_USER:-}
-      BETA_AUTH_HASH: ${BETA_AUTH_HASH:-}
+      MCP_HOST:       ${MCP_HOST:-mcp.orivael.dev}
+      BETA_AUTH_USER:     ${BETA_AUTH_USER:-}
+      BETA_AUTH_HASH:     ${BETA_AUTH_HASH:-}
+      ROOT_HOST:          ${ROOT_HOST:-orivael.dev}
+      GOVERNANCE_HOST:    ${GOVERNANCE_HOST:-governance.orivael.dev}
+      BENCHLAB_HOST:      ${BENCHLAB_HOST:-benchlab.orivael.dev}
+      SRDBUILD_HOST:      ${SRDBUILD_HOST:-srdbuild.orivael.dev}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+      - /opt/sites:/opt/sites:ro
     networks:
       - axiom-net
     depends_on:

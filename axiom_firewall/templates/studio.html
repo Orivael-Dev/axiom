@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% block title %}Studio · Axiom{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="/static/studio.css">
+
+<div class="studio-layout">
+
+  <!-- Left: Module Palette -->
+  <aside class="palette" id="palette">
+    <h3 class="palette-title">Modules</h3>
+
+    <div class="palette-card" draggable="true" data-slot="governance">
+      <span class="palette-icon">&#x1F3DB;</span>
+      <span>Governance</span>
+    </div>
+
+    {% if "audio" in locked_slots %}
+    <div class="palette-card locked" data-slot="audio" data-locked="true">
+      <span class="palette-icon">&#x1F3B5;</span>
+      <span>Audio</span>
+      <span class="lock-icon">&#x1F512;</span>
+    </div>
+    {% else %}
+    <div class="palette-card" draggable="true" data-slot="audio">
+      <span class="palette-icon">&#x1F3B5;</span>
+      <span>Audio</span>
+    </div>
+    {% endif %}
+
+    {% if "video" in locked_slots %}
+    <div class="palette-card locked" data-slot="video" data-locked="true">
+      <span class="palette-icon">&#x1F4F9;</span>
+      <span>Video</span>
+      <span class="lock-icon">&#x1F512;</span>
+    </div>
+    {% else %}
+    <div class="palette-card" draggable="true" data-slot="video">
+      <span class="palette-icon">&#x1F4F9;</span>
+      <span>Video</span>
+    </div>
+    {% endif %}
+
+    {% if "physics" in locked_slots %}
+    <div class="palette-card locked" data-slot="physics" data-locked="true">
+      <span class="palette-icon">&#x1F52C;</span>
+      <span>Physics</span>
+      <span class="lock-icon">&#x1F512;</span>
+    </div>
+    {% else %}
+    <div class="palette-card" draggable="true" data-slot="physics">
+      <span class="palette-icon">&#x1F52C;</span>
+      <span>Physics</span>
+    </div>
+    {% endif %}
+
+    {% if "adapter" in locked_slots %}
+    <div class="palette-card locked" data-slot="adapter" data-locked="true">
+      <span class="palette-icon">&#x1F50C;</span>
+      <span>Adapter</span>
+      <span class="lock-icon">&#x1F512;</span>
+    </div>
+    {% else %}
+    <div class="palette-card" draggable="true" data-slot="adapter">
+      <span class="palette-icon">&#x1F50C;</span>
+      <span>Adapter</span>
+    </div>
+    {% endif %}
+
+    <div class="palette-hint">Drag a module onto a slot in the canvas.</div>
+  </aside>
+
+  <!-- Centre: Container Canvas -->
+  <section class="canvas" id="canvas">
+    <h2 class="canvas-title">Axiom Container</h2>
+
+    <!-- Always-present Text Model slot -->
+    <div class="slot slot-text slot-active" id="slot-0">
+      <div class="slot-header">
+        <span class="slot-badge text-badge">Text Model</span>
+        <span class="slot-label">always present</span>
+      </div>
+      <div class="slot-body">
+        <label class="field-label" for="model_id">HuggingFace model ID</label>
+        <input
+          type="text"
+          id="model_id"
+          name="model_id"
+          class="field-input"
+          placeholder="e.g. unsloth/Llama-3.2-1B-Instruct"
+          list="model-presets"
+          autocomplete="off"
+        >
+        <datalist id="model-presets">
+          {% for preset in model_presets %}
+          <option value="{{ preset }}">
+          {% endfor %}
+        </datalist>
+
+        <div class="field-row">
+          <label class="field-label" for="hardware_map">Hardware</label>
+          <select id="hardware_map" name="hardware_map" class="field-select">
+            <option value="gpu">GPU (CUDA)</option>
+            <option value="cpu">CPU only</option>
+            <option value="compile_on_load">Compile on load</option>
+          </select>
+        </div>
+
+        <details class="pack-options" id="pack-options">
+          <summary class="pack-options-title">Pack Options (SRD flags)</summary>
+          <div class="pack-options-body">
+
+            <div class="field-row">
+              <label class="field-label" for="srd_alpha">
+                α (alpha)
+                <span class="field-hint">0 = pure 4-bit (4.5 bpw) · 0.5 = balanced · 1.0 = full residue (13 bpw)</span>
+              </label>
+              <select id="srd_alpha" name="srd_alpha" class="field-select">
+                <option value="0.0" selected>0.0 — pure 4-bit, best size (recommended)</option>
+                <option value="0.5">0.5 — balanced quality/size</option>
+                <option value="1.0">1.0 — near-FP16 quality, 13 bpw</option>
+              </select>
+            </div>
+
+            <div class="field-row">
+              <label class="field-label" for="srd_group_size">
+                Group size
+                <span class="field-hint">Quantization block size — smaller = finer granularity, higher bpw overhead</span>
+              </label>
+              <select id="srd_group_size" name="srd_group_size" class="field-select">
+                <option value="32">32 — fine-grained, highest overhead</option>
+                <option value="64" selected>64 — balanced (recommended)</option>
+                <option value="128">128 — coarse, lowest overhead</option>
+              </select>
+            </div>
+
+            <div class="field-row">
+              <label class="field-label" for="srd_top_k_pct">
+                Top-k layers (%)
+                <span class="field-hint">Fraction of layers to SRD-pack; others kept FP16</span>
+              </label>
+              <select id="srd_top_k_pct" name="srd_top_k_pct" class="field-select">
+                <option value="0.10">10% — top layers only</option>
+                <option value="0.25" selected>25% — recommended</option>
+                <option value="0.50">50% — half all layers</option>
+                <option value="1.0">100% — all layers</option>
+              </select>
+            </div>
+
+            <div class="field-row">
+              <label class="field-label" for="srd_gguf_quant">
+                GGUF output format
+                <span class="field-hint">Quantization applied after AXM extraction</span>
+              </label>
+              <select id="srd_gguf_quant" name="srd_gguf_quant" class="field-select">
+                <option value="Q4_K_M" selected>Q4_K_M — 4-bit, recommended for inference</option>
+                <option value="Q5_K_M">Q5_K_M — 5-bit, slightly better quality</option>
+                <option value="Q6_K">Q6_K — 6-bit, near-lossless</option>
+                <option value="Q8_0">Q8_0 — 8-bit, highest quality</option>
+                <option value="none">none — skip GGUF extraction</option>
+              </select>
+            </div>
+
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Drop zones 2–N -->
+    {% for i in range(1, slot_limit) %}
+    <div class="slot slot-empty" id="slot-{{ i }}"
+         data-index="{{ i }}"
+         ondragover="event.preventDefault(); this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleDrop(event, {{ i }})">
+      <div class="slot-placeholder">
+        <span class="plus-icon">+</span>
+        <span>Drop a module here</span>
+      </div>
+
+      <!-- Governance form (hidden until activated) -->
+      <div class="slot-form" data-type="governance" hidden>
+        <div class="slot-header">
+          <span class="slot-badge gov-badge">&#x1F3DB; Governance</span>
+          <button class="slot-remove" onclick="removeSlot({{ i }})">&#x2715;</button>
+        </div>
+        <div class="slot-body">
+          <p class="slot-desc">Evaluates all other slots — built-in to every container.</p>
+          <label class="field-label">
+            <input type="checkbox" name="gov_strict_{{ i }}" value="1" checked>
+            Strict mode (reject on any HMAC mismatch)
+          </label>
+        </div>
+      </div>
+
+      <!-- Audio form -->
+      <div class="slot-form" data-type="audio" hidden>
+        <div class="slot-header">
+          <span class="slot-badge audio-badge">&#x1F3B5; Audio</span>
+          <button class="slot-remove" onclick="removeSlot({{ i }})">&#x2715;</button>
+        </div>
+        <div class="slot-body">
+          <div class="field-row">
+            <label class="field-label">Impact profile</label>
+            <select name="audio_impact_{{ i }}" class="field-select">
+              <option value="sharp_transient">Sharp transient</option>
+              <option value="rolling">Rolling</option>
+              <option value="sustained">Sustained</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label class="field-label">Material signature</label>
+            <select name="audio_material_{{ i }}" class="field-select">
+              <option value="glass-like">Glass-like</option>
+              <option value="wood">Wood</option>
+              <option value="metal">Metal</option>
+              <option value="fabric">Fabric</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video form -->
+      <div class="slot-form" data-type="video" hidden>
+        <div class="slot-header">
+          <span class="slot-badge video-badge">&#x1F4F9; Video</span>
+          <button class="slot-remove" onclick="removeSlot({{ i }})">&#x2715;</button>
+        </div>
+        <div class="slot-body">
+          <div class="field-row">
+            <label class="field-label">Motion class</label>
+            <select name="video_motion_{{ i }}" class="field-select">
+              <option value="downward">Downward</option>
+              <option value="lateral">Lateral</option>
+              <option value="rotational">Rotational</option>
+              <option value="static">Static</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label class="field-label">
+              <input type="checkbox" name="video_impact_{{ i }}" value="1">
+              Impact detected
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Physics form -->
+      <div class="slot-form" data-type="physics" hidden>
+        <div class="slot-header">
+          <span class="slot-badge physics-badge">&#x1F52C; Physics</span>
+          <button class="slot-remove" onclick="removeSlot({{ i }})">&#x2715;</button>
+        </div>
+        <div class="slot-body">
+          <div class="field-row">
+            <label class="field-label">Material</label>
+            <select name="physics_material_{{ i }}" class="field-select">
+              <option value="brittle_glass">Brittle glass</option>
+              <option value="metal">Metal</option>
+              <option value="ceramic">Ceramic</option>
+              <option value="plastic">Plastic</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label class="field-label">Surface</label>
+            <select name="physics_surface_{{ i }}" class="field-select">
+              <option value="hard_surface">Hard surface</option>
+              <option value="soft_surface">Soft surface</option>
+              <option value="water">Water</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Adapter form -->
+      <div class="slot-form" data-type="adapter" hidden>
+        <div class="slot-header">
+          <span class="slot-badge adapter-badge">&#x1F50C; Adapter</span>
+          <button class="slot-remove" onclick="removeSlot({{ i }})">&#x2715;</button>
+        </div>
+        <div class="slot-body">
+          <label class="field-label" for="adapter_type_{{ i }}">Adapter type</label>
+          <select id="adapter_type_{{ i }}" name="adapter_type_{{ i }}" class="field-select">
+            <option value="security">Security</option>
+            <option value="translation">Translation</option>
+            <option value="compression">Compression</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Upgrade banner (shown by JS when free-tier hits slot limit) -->
+    <div class="upgrade-banner" id="upgrade-banner" hidden>
+      Free tier: {{ slot_limit }}-slot limit reached.
+      <a href="/billing">Upgrade</a> for up to 5 slots + all export formats.
+    </div>
+  </section>
+
+  <!-- Right: Export Panel -->
+  <aside class="export-panel" id="export-panel">
+    <h3 class="panel-title">Export</h3>
+
+    <div class="export-btns">
+      {% set fmts = export_fmts %}
+
+      <button class="export-btn {% if 'colab' not in fmts %}export-locked{% endif %}"
+              data-fmt="colab"
+              {% if 'colab' not in fmts %}disabled title="Upgrade to access"{% endif %}
+              onclick="doExport('colab')">
+        <span class="export-icon">&#x2B21;</span> Colab Notebook
+        {% if 'colab' not in fmts %}<span class="lock-icon">&#x1F512;</span>{% endif %}
+      </button>
+
+      <button class="export-btn {% if 'jupyter' not in fmts %}export-locked{% endif %}"
+              data-fmt="jupyter"
+              {% if 'jupyter' not in fmts %}disabled title="Upgrade to access"{% endif %}
+              onclick="doExport('jupyter')">
+        <span class="export-icon">&#x1F4D3;</span> Jupyter Notebook
+        {% if 'jupyter' not in fmts %}<span class="lock-icon">&#x1F512;</span>{% endif %}
+      </button>
+
+      <button class="export-btn {% if 'python' not in fmts %}export-locked{% endif %}"
+              data-fmt="python"
+              {% if 'python' not in fmts %}disabled title="Upgrade to access"{% endif %}
+              onclick="doExport('python')">
+        <span class="export-icon">&#x1F40D;</span> Python Script
+        {% if 'python' not in fmts %}<span class="lock-icon">&#x1F512;</span>{% endif %}
+      </button>
+
+      <button class="export-btn {% if 'json' not in fmts %}export-locked{% endif %}"
+              data-fmt="json"
+              {% if 'json' not in fmts %}disabled title="Upgrade to access"{% endif %}
+              onclick="doExport('json')">
+        <span class="export-icon">&#x007B;&#x007D;</span> JSON Config
+        {% if 'json' not in fmts %}<span class="lock-icon">&#x1F512;</span>{% endif %}
+      </button>
+    </div>
+
+    {% if tier == "free" %}
+    <div class="tier-note">
+      Free tier: Colab only.
+      <a href="/billing">Upgrade</a> for Python / Jupyter / JSON.
+    </div>
+    {% endif %}
+
+    <hr class="panel-divider">
+
+    <!-- Fingerprint / Verify -->
+    <h3 class="panel-title">Fingerprint</h3>
+    <div class="fingerprint-zone" id="fp-zone">
+      <div class="fp-badge fp-unverified" id="fp-badge">Unverified</div>
+      <label class="fp-upload-label" for="axm-upload">
+        Drop or click to upload .axm
+        <input type="file" id="axm-upload" accept=".axm" class="fp-file-input">
+      </label>
+      <div class="fp-hint">
+        Max 64 MB. Larger containers must be verified locally with
+        <code>axm_cli.py verify</code>.
+      </div>
+      <div class="fp-spinner" id="fp-spinner" hidden>Verifying...</div>
+      <div class="fp-detail" id="fp-detail" hidden></div>
+    </div>
+
+    <hr class="panel-divider">
+
+    <!-- Save config -->
+    <h3 class="panel-title">Saved Configs</h3>
+    {% if tier == "free" %}
+    <div class="tier-note" id="container-cap-note">
+      Free: {{ container_count }}/{{ container_cap }} saved configs used.
+    </div>
+    {% endif %}
+    <button class="save-btn" id="save-btn" onclick="saveContainer()">
+      Save container config
+    </button>
+    <div class="save-result" id="save-result" hidden></div>
+  </aside>
+</div>
+
+<!-- Toast for upgrade prompts -->
+<div class="toast" id="toast" hidden></div>
+
+<script>
+  const SLOT_LIMIT   = {{ slot_limit }};
+  const LOCKED_SLOTS = {{ locked_slots | tojson }};
+  const TIER         = "{{ tier }}";
+  const CONTAINER_CAP = {{ container_cap if container_cap is not none else "null" }};
+</script>
+<script src="/static/studio.js"></script>
+{% endblock %}

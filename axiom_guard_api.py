@@ -127,6 +127,43 @@ try:
 except ImportError:
     OS_SHIELD_AVAILABLE = False
 
+# ── Flight Recorder ──────────────────────────────────────────
+try:
+    from axiom_firewall.flight_recorder import (
+        record_decision,
+        search_decisions,
+        fetch_decision,
+        replay_decision,
+        export_decisions,
+        set_alert_config,
+        get_alert_config,
+        AlertConfig,
+    )
+    FLIGHT_RECORDER_AVAILABLE = True
+except ImportError:
+    FLIGHT_RECORDER_AVAILABLE = False
+
+# ── Data Policy ───────────────────────────────────────────────
+try:
+    from axiom_firewall.data_policy import (
+        is_allowed as _dp_is_allowed,
+        save_agent_rule,
+        get_agent_rule,
+        list_agent_rules,
+        delete_agent_rule,
+        AgentAccessRule,
+    )
+    DATA_POLICY_AVAILABLE = True
+except ImportError:
+    DATA_POLICY_AVAILABLE = False
+
+# ── Right-to-erasure ─────────────────────────────────────────
+try:
+    from axiom_firewall.db import erase_subject_data
+    ERASURE_AVAILABLE = True
+except ImportError:
+    ERASURE_AVAILABLE = False
+
 # ── Constants ─────────────────────────────────────────────────
 from axiom_signing import derive_key
 SIGNING_KEY      = derive_key(b"axiom-guard-api-v1")
@@ -1195,6 +1232,225 @@ async def vulnguard_status():
         "top_vulnerabilities": _vulnguard_state["last_candidates"][:10],
         "scan_count":          _vulnguard_state["scan_count"],
     }
+
+
+# ════════════════════════════════════════════════════════════
+# FLIGHT RECORDER ENDPOINTS
+# ════════════════════════════════════════════════════════════
+
+class _FRSearchParams(BaseModel):
+    verdict: Optional[str] = None
+    intent_class: Optional[str] = None
+    since: Optional[str] = None
+    until: Optional[str] = None
+    limit: int = Field(default=100, ge=1, le=10000)
+    offset: int = Field(default=0, ge=0)
+
+
+@app.post("/flight_recorder/search")
+async def fr_search(params: _FRSearchParams,
+                    x_axiom_tenant: Optional[str] = Header(None)):
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    return search_decisions(
+        tenant_id,
+        verdict=params.verdict,
+        intent_class=params.intent_class,
+        since=params.since,
+        until=params.until,
+        limit=params.limit,
+        offset=params.offset,
+    )
+
+
+@app.get("/flight_recorder/decision/{decision_id}")
+async def fr_get_decision(decision_id: str,
+                          x_axiom_tenant: Optional[str] = Header(None)):
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    rec = fetch_decision(tenant_id, decision_id)
+    if not rec:
+        raise HTTPException(404, f"Decision not found: {decision_id}")
+    return rec
+
+
+@app.post("/flight_recorder/replay/{decision_id}")
+async def fr_replay(decision_id: str,
+                    x_axiom_tenant: Optional[str] = Header(None)):
+    """Re-evaluate a logged decision against the current loaded policy."""
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    classifier = _classifier if "_classifier" in dir() else None
+    return replay_decision(tenant_id, decision_id, current_classifier=classifier)
+
+
+@app.get("/flight_recorder/export")
+async def fr_export(
+    fmt: str = "json",
+    verdict: Optional[str] = None,
+    intent_class: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = 10000,
+    x_axiom_tenant: Optional[str] = Header(None),
+):
+    """Export decisions as JSON lines, CSV, Splunk HEC, or Datadog Logs."""
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    content, content_type = export_decisions(
+        tenant_id, fmt,
+        verdict=verdict,
+        intent_class=intent_class,
+        since=since,
+        until=until,
+        limit=limit,
+    )
+    from fastapi.responses import Response
+    return Response(content=content, media_type=content_type)
+
+
+class _AlertConfigBody(BaseModel):
+    webhook_url: Optional[str] = None
+    slack_webhook_url: Optional[str] = None
+    email_to: Optional[str] = None
+    email_from: Optional[str] = None
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    alert_on_verdicts: list[str] = ["block"]
+    alert_on_intents: list[str] = []
+
+
+@app.put("/flight_recorder/alerts")
+async def fr_set_alerts(body: _AlertConfigBody,
+                        x_axiom_tenant: Optional[str] = Header(None)):
+    """Configure outbound alert destinations (webhook / email / Slack)."""
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    cfg = AlertConfig(**body.dict())
+    set_alert_config(tenant_id, cfg)
+    return {"status": "ok", "tenant_id": tenant_id}
+
+
+@app.get("/flight_recorder/alerts")
+async def fr_get_alerts(x_axiom_tenant: Optional[str] = Header(None)):
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    cfg = get_alert_config(tenant_id)
+    d = cfg.__dict__.copy()
+    d.pop("smtp_password", None)  # never echo back credentials
+    return {"tenant_id": tenant_id, "alert_config": d}
+
+
+# ════════════════════════════════════════════════════════════
+# DATA POLICY ENDPOINTS
+# ════════════════════════════════════════════════════════════
+
+class _AgentRuleBody(BaseModel):
+    agent_id: str
+    allowed_data_classes: list[str] = []
+    blocked_data_classes: list[str] = []
+    allowed_actions: list[str] = []
+    blocked_actions: list[str] = []
+
+
+@app.put("/data_policy/rule")
+async def dp_save_rule(body: _AgentRuleBody,
+                       x_axiom_tenant: Optional[str] = Header(None)):
+    """Create or replace an agent access rule."""
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    rule = AgentAccessRule(
+        rule_id=str(uuid.uuid4()),
+        agent_id=body.agent_id,
+        allowed_data_classes=body.allowed_data_classes,
+        blocked_data_classes=body.blocked_data_classes,
+        allowed_actions=body.allowed_actions,
+        blocked_actions=body.blocked_actions,
+    )
+    saved = save_agent_rule(tenant_id, rule)
+    return saved.to_dict()
+
+
+@app.get("/data_policy/rules")
+async def dp_list_rules(x_axiom_tenant: Optional[str] = Header(None)):
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    rules = list_agent_rules(tenant_id)
+    return {"rules": [r.to_dict() for r in rules]}
+
+
+@app.get("/data_policy/rule/{agent_id}")
+async def dp_get_rule(agent_id: str,
+                      x_axiom_tenant: Optional[str] = Header(None)):
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    rule = get_agent_rule(tenant_id, agent_id)
+    if not rule:
+        raise HTTPException(404, f"No rule for agent: {agent_id}")
+    return rule.to_dict()
+
+
+@app.delete("/data_policy/rule/{agent_id}")
+async def dp_delete_rule(agent_id: str,
+                         x_axiom_tenant: Optional[str] = Header(None)):
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    deleted = delete_agent_rule(tenant_id, agent_id)
+    return {"deleted": deleted, "agent_id": agent_id}
+
+
+@app.post("/data_policy/check")
+async def dp_check(
+    agent_id: str,
+    action: str,
+    data_class: str,
+    x_axiom_tenant: Optional[str] = Header(None),
+):
+    """Check whether an agent is allowed to perform action on a data class."""
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    verdict = _dp_is_allowed(tenant_id, agent_id, action, data_class)
+    return {
+        "allowed": verdict.allowed,
+        "agent_id": verdict.agent_id,
+        "action": verdict.action,
+        "data_class": verdict.data_class,
+        "reason": verdict.reason,
+    }
+
+
+# ════════════════════════════════════════════════════════════
+# RIGHT-TO-ERASURE ENDPOINT
+# ════════════════════════════════════════════════════════════
+
+@app.delete("/data_gate/erasure")
+async def data_gate_erasure(
+    subject_id: str,
+    x_axiom_tenant: Optional[str] = Header(None),
+):
+    """Erase all decision records containing subject_id.
+
+    Returns a signed deletion certificate.  Operates on the structured
+    decision log only — model weight erasure requires retraining.
+    """
+    if not ERASURE_AVAILABLE:
+        raise HTTPException(503, "Erasure not available")
+    tenant_id = x_axiom_tenant or "default"
+    cert = erase_subject_data(tenant_id, subject_id)
+    return cert
 
 
 # ── Entry point ───────────────────────────────────────────────

@@ -26,7 +26,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Optional
 
-from fastapi import FastAPI, Form, Header, HTTPException, Request, status
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile, status
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -42,15 +42,16 @@ from starlette.middleware.sessions import SessionMiddleware
 from axiom_intent_classifier import IntentClassifier
 from axiom_signing import derive_key
 
-from . import billing, policy as policy_mod, registry_client, skill_pack
+from . import billing, policy as policy_mod, registry_client, skill_pack, studio as studio_mod
 from .auth import (
     TIER_PRICE_USD, TIER_RATE_LIMITS,
     authenticate, check_password, generate_recovery_code, hash_password,
     normalize_recovery_code, record_call,
 )
 from .db import (
-    delete_tenant, find_tenant_by_email, find_tenant_by_id, init_registry,
-    insert_api_key, insert_tenant, list_api_keys, revoke_api_key,
+    count_studio_containers, delete_tenant, find_tenant_by_email, find_tenant_by_id,
+    init_registry, insert_api_key, insert_studio_container, insert_tenant,
+    list_api_keys, list_studio_containers, revoke_api_key,
     update_tenant_password, update_tenant_recovery_hash, usage_summary,
 )
 from .limits import (
@@ -1373,3 +1374,169 @@ async def billing_webhook(request: Request,
         raise HTTPException(400, f"Webhook signature verification failed: {e}")
     result = billing.handle_event(event)
     return JSONResponse({"ok": True, "result": result})
+
+
+# ─── SRD results page (public) ───────────────────────────────────────────────
+
+@app.get("/srd", response_class=HTMLResponse)
+def srd_results(request: Request):
+    """Public SRD benchmark results page — no auth required."""
+    return templates.TemplateResponse(
+        request, "srd_results.html",
+        _ctx(request),
+    )
+
+
+# ─── Studio routes ───────────────────────────────────────────────────────────
+
+@app.get("/dashboard/studio", response_class=HTMLResponse)
+def studio_get(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    tier       = t.tier
+    slot_limit = studio_mod.SLOT_LIMITS.get(tier, 3)
+    export_fmts = studio_mod.EXPORT_FMTS.get(tier, ["colab"])
+    locked_slots = list(studio_mod.LOCKED_SLOTS)
+    cap        = studio_mod.CONTAINER_CAP.get(tier)
+    count      = count_studio_containers(t.tenant_id) if cap is not None else 0
+
+    return templates.TemplateResponse(
+        request, "studio.html",
+        _ctx(
+            request,
+            tier=tier,
+            slot_limit=slot_limit,
+            export_fmts=export_fmts,
+            locked_slots=locked_slots,
+            model_presets=studio_mod.MODEL_PRESETS,
+            container_cap=cap,
+            container_count=count,
+        ),
+    )
+
+
+@app.post("/dashboard/studio/export")
+async def studio_export(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    try:
+        cfg = studio_mod.config_from_dict(body)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Bad config: {e}")
+
+    if not cfg.model_id:
+        raise HTTPException(status_code=400, detail="model_id is required")
+
+    allowed_fmts = studio_mod.EXPORT_FMTS.get(t.tier, ["colab"])
+    if cfg.export_format not in allowed_fmts:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Export format '{cfg.export_format}' requires a paid tier",
+        )
+
+    from fastapi.responses import Response as _Response
+
+    if cfg.export_format == "colab":
+        data      = studio_mod.generate_colab_notebook(cfg)
+        media     = "application/x-ipynb+json"
+        ext       = ".ipynb"
+    elif cfg.export_format == "jupyter":
+        data      = studio_mod.generate_jupyter_notebook(cfg)
+        media     = "application/x-ipynb+json"
+        ext       = ".ipynb"
+    elif cfg.export_format == "python":
+        data      = studio_mod.generate_python_script(cfg)
+        media     = "text/x-python"
+        ext       = ".py"
+    elif cfg.export_format == "json":
+        data      = studio_mod.generate_json_config(cfg)
+        media     = "application/json"
+        ext       = ".json"
+    else:
+        raise HTTPException(status_code=400, detail="Unknown export format")
+
+    slug = cfg.model_id.split("/")[-1].lower().replace(".", "-")
+    filename = f"axiom_{slug}_{cfg.export_format}{ext}"
+    return _Response(
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/dashboard/studio/verify")
+async def studio_verify(request: Request, axm: UploadFile = File(...)):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    data = await axm.read(studio_mod.MAX_AXM_UPLOAD_BYTES + 1)
+    if len(data) > studio_mod.MAX_AXM_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="AXM file too large (max 64 MB). Verify locally with axm_cli.py verify",
+        )
+
+    result = studio_mod.verify_axm_bytes(data)
+    return JSONResponse(result)
+
+
+@app.get("/dashboard/studio/containers")
+def studio_containers_list(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    containers = list_studio_containers(t.tenant_id)
+    cap        = studio_mod.CONTAINER_CAP.get(t.tier)
+    return JSONResponse({"containers": containers, "count": len(containers), "cap": cap})
+
+
+@app.post("/dashboard/studio/containers")
+async def studio_containers_save(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    cap = studio_mod.CONTAINER_CAP.get(t.tier)
+    if cap is not None:
+        count = count_studio_containers(t.tenant_id)
+        if count >= cap:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Free tier limit: {cap} saved configs. Upgrade to save more.",
+            )
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    try:
+        cfg = studio_mod.config_from_dict(body)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Bad config: {e}")
+
+    if not cfg.model_id:
+        raise HTTPException(status_code=400, detail="model_id is required")
+
+    name = cfg.model_id.split("/")[-1] + "_srd"
+    config_dict = {
+        "model_id": cfg.model_id,
+        "slots": [{"slot_type": s.slot_type, "params": s.params} for s in cfg.slots],
+        "hardware_map": cfg.hardware_map,
+        "export_format": cfg.export_format,
+        "quant_scheme": cfg.quant_scheme,
+    }
+    insert_studio_container(t.tenant_id, name, config_dict)
+    new_count = count_studio_containers(t.tenant_id)
+    return JSONResponse({"name": name, "count": new_count, "cap": cap})
