@@ -4,7 +4,7 @@ TRUST_LEVEL 4
 PURPOSE General-purpose autonomous task execution with latent reasoning and retrospect learning
 GOAL Complete any task domain (research/writing/coding/planning/analysis/creative/data) constitutionally
 
-CANNOT_MUTATE trust_level, latent_rejection_threshold, efficiency_decay, max_steps, domain_list, pattern_library_integrity
+CANNOT_MUTATE trust_level, latent_rejection_threshold, efficiency_decay, max_steps, domain_list, pattern_library_integrity, data_retention_policy, training_prohibition
 
 CONSTRAINT Trust level is 4 — constitutional filter applied to every approach candidate
 CONSTRAINT Approaches scoring below LATENT_REJECTION_THRESHOLD (0.10 manifold distance) are rejected
@@ -64,7 +64,7 @@ PROCESS
 - Highest-distance non-rejected approach is selected; all thoughts are logged with distance and rationale
 - Selected approach is expanded into ordered step list via domain×approach template
 - Each step is executed with LLM-backed or heuristic completion; action, result, and elapsed_ms are recorded
-- TaskOutcome is signed with HMAC before any storage or return path is activated
+- TaskOutcome is HMAC-signed before storage or delivery to caller proceeds
 - PatternLibrary is updated via EWMA upsert after TaskOutcome is signed
 
 SECURITY
@@ -79,6 +79,26 @@ RULES
 - Domain fallback is always research when keyword scoring produces zero matches
 - LLM backend is optional — heuristic mode produces valid signed outcomes for planning purposes
 - Pattern efficiency must remain in [0.0, 1.0] after every EWMA update
+
+DATA_RETENTION_POLICY
+  task_text: retained in signed TaskOutcome for audit purposes
+  step_results: retained per run in TaskOutcome steps array
+  pattern_library: HMAC-signed JSONL persisted across sessions
+  task_fingerprint: SHA256[:16] of task keywords — no full text stored in pattern key
+
+TRAINING_PROHIBITION
+  Task inputs, step results, and retrospect patterns must never be used for
+  model training, fine-tuning, or dataset construction without explicit operator
+  consent. This prohibition is CANNOT_MUTATE.
+
+HUMAN_REVIEW
+- require on: trust_level_change
+- require on: latent_rejection_threshold change
+- require on: efficiency_decay change
+- require on: training_prohibition change
+- timeout: 24h
+- escalate_to: operator
+- block_on_timeout: true
 
 OUTPUT
 - task_id: string — unique run identifier
