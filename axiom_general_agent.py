@@ -5,7 +5,9 @@ Handles any task domain — not just coding. The agent:
      analysis / creative / data)
   2. Queries a persistent PatternLibrary for historically efficient approaches
   3. Runs a latent-reasoning pass: evaluates N candidate approaches through
-     the ManifoldChecker constitutional filter, picks the lowest-distance one
+     the ManifoldChecker constitutional filter, picks the highest-margin one
+     (manifold distance = safety headroom inside the [floor, ceiling] band;
+     higher is better, approaches below LATENT_REJECTION_THRESHOLD are rejected)
   4. Plans and executes step-by-step, optionally delegating to an LLM backend
   5. Records the outcome and updates the PatternLibrary via EWMA efficiency
 
@@ -621,11 +623,24 @@ def _llm_execute_step(step: str, task: str, model_bin: Optional[str]) -> str:
         return f"[heuristic] Completed: {step}"
 
     import subprocess
+    # Chat-templated so an instruct model answers the SPECIFIC step rather
+    # than re-answering the overall task; /no_think suppresses Qwen-style
+    # reasoning preambles (stripped below as a belt-and-braces fallback).
+    system = (
+        "You are an execution agent completing ONE step of a larger task. "
+        "Answer only the specific step you are given — not the overall task — "
+        "in 1-2 concise sentences. Output the step result only, no preamble. "
+        "/no_think"
+    )
+    user = (
+        f"Overall task (context only): {task}\n"
+        f"The single step to complete now: {step}\n\n"
+        f"Output for this step:"
+    )
     prompt = (
-        f"You are completing one step of a larger task.\n\n"
-        f"Task: {task}\n"
-        f"Current step: {step}\n\n"
-        f"Complete this step concisely. Output the result only."
+        f"<|im_start|>system\n{system}<|im_end|>\n"
+        f"<|im_start|>user\n{user}<|im_end|>\n"
+        f"<|im_start|>assistant\n"
     )
     try:
         proc = subprocess.run(
@@ -633,7 +648,15 @@ def _llm_execute_step(step: str, task: str, model_bin: Optional[str]) -> str:
              "-p", prompt],
             capture_output=True, text=True, timeout=60,
         )
-        return proc.stdout.strip() or f"[llm] no output for: {step}"
+        out = proc.stdout.strip()
+        # Strip thinking blocks if the model emits them despite /no_think.
+        if "</think>" in out:
+            out = out.rsplit("</think>", 1)[1].strip()
+        elif "<think>" in out:
+            out = out.split("<think>", 1)[0].strip()
+        # Drop llama.cpp's trailing interactive EOF marker.
+        out = out.replace("> EOF by user", "").strip()
+        return out or f"[llm] no output for: {step}"
     except Exception as exc:
         return f"[llm-error] {exc}"
 
