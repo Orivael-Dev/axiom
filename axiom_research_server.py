@@ -50,6 +50,11 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
 REPO_ROOT  = Path(__file__).resolve().parent
+
+# Environment variables that activate the CVE fast-path:
+#   AXIOM_CVE_DB_PATH    — path to the cve_fts5.db built by CVERetriever
+#   AXIOM_CVE_CACHE_PATH — path for the VerifiedAnswerCache SQLite file
+#                          (defaults to <db_path>.cache.db when unset)
 HTML_PATH  = REPO_ROOT / "web" / "research_console.html"
 LEDGER_HTML_PATH = REPO_ROOT / "web" / "ledger_viewer.html"
 HELP_MD_PATH = REPO_ROOT / "docs" / "research_engine.md"
@@ -103,7 +108,8 @@ class _ServerState:
         self.ledger_path    = None      # Path
         self.backend_label  = "unknown"
         self.pack_origin    = "(unbuilt)"
-        self.retriever      = None      # LocalRetriever
+        self.retriever      = None      # LocalRetriever / DomainRoutedRetriever
+        self.cve_retriever  = None      # CachedCVERetriever (optional fast-path)
         self._qrf_cache     = {}        # domain → QRFEngine
 
     def ensure(self) -> None:
@@ -128,6 +134,25 @@ class _ServerState:
         self.backend_label  = f"{backend.name} · {backend.model}"
         self.pack_origin    = "default-pack (built in tempdir on first request)"
         self.retriever      = default_retriever()
+
+        # CVE fast-path: only wired when AXIOM_CVE_DB_PATH is set.
+        cve_db = os.environ.get("AXIOM_CVE_DB_PATH", "").strip()
+        if cve_db:
+            try:
+                from axiom_cve_retriever import CVERetriever, CachedCVERetriever
+                from axiom_verified_answer_cache import VerifiedAnswerCache
+                cve_cache_path = os.environ.get(
+                    "AXIOM_CVE_CACHE_PATH",
+                    str(Path(cve_db).with_suffix(".cache.db")),
+                )
+                self.cve_retriever = CachedCVERetriever(
+                    CVERetriever(cve_db),
+                    VerifiedAnswerCache(db_path=cve_cache_path),
+                )
+                LOG.info("CVE fast-path wired: db=%s cache=%s", cve_db, cve_cache_path)
+            except Exception as exc:
+                LOG.warning("CVE fast-path skipped: %s", exc)
+
         LOG.info("research server ready: backend=%s ledger=%s",
                  self.backend_label, ledger_path)
 
@@ -254,12 +279,42 @@ def _short_tldr(text: str, *, max_chars: int = 320) -> str:
 
 
 def _retrieve_sources(query: str, domain: str, *, k: int = 5) -> tuple[list[dict], bool]:
-    """Run the live LocalRetriever. Returns (sources, is_real).
+    """Run the live retriever. Returns (sources, is_real).
 
-    Falls back to a single STUB entry only if the retriever is missing
-    or returns no hits — keeping the UI populated so the user can see
-    what happened.
+    CVE fast-path: when AXIOM_CVE_DB_PATH is set and the query contains a
+    CVE identifier, the CachedCVERetriever is tried first.
+      - Cache hit  → returns in ~0 ms; FTS5 and LLM are bypassed entirely.
+      - Cache miss → FTS5 query (~3 ms); result recorded for future promotion.
+
+    Falls back to a single STUB entry only if no retriever is wired or
+    returns no hits — keeping the UI populated so the user can see what
+    happened.
     """
+    # ── CVE fast-path ─────────────────────────────────────────────────────
+    if _state.cve_retriever is not None:
+        from axiom_cve_retriever import CVE_PATTERN
+        m = CVE_PATTERN.search(query)
+        if m:
+            try:
+                text, from_cache = _state.cve_retriever.answer(query)
+            except Exception as exc:
+                LOG.warning("cve_retriever.answer raised: %s", exc)
+                text, from_cache = None, False
+            if text:
+                cve_id = m.group(0).upper()
+                kind   = "cache · cve" if from_cache else "fts5 · cve"
+                return [
+                    {
+                        "title":    cve_id,
+                        "uri":      f"cve-fts5://local/{cve_id}",
+                        "kind":     kind,
+                        "score":    1.0,
+                        "snippet":  text[:600],
+                        "provider": "cve-cache" if from_cache else "cve-fts5",
+                    }
+                ], True
+
+    # ── general BM25 / DomainRoutedRetriever path ─────────────────────────
     if _state.retriever is None:
         return _fallback_source_stubs(query, domain), False
     try:

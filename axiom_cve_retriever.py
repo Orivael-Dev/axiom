@@ -44,8 +44,11 @@ from typing import List, Optional, Tuple
 
 from axiom_research_retriever import RetrievedSource
 
-_CVE_RE = re.compile(r"CVE-\d{4}-\d+", re.IGNORECASE)
-_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+# Public — import this in axiom_research_server to detect CVE queries.
+CVE_PATTERN = re.compile(r"CVE-\d{4}-\d+", re.IGNORECASE)
+
+_CVE_RE     = CVE_PATTERN          # internal alias kept for compatibility
+_TOKEN_RE   = re.compile(r"[A-Za-z0-9]+")
 
 
 def _fts_query(text: str) -> str:
@@ -80,7 +83,12 @@ class CVERetriever:
 
     def _connect(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous  = NORMAL")
+            conn.execute("PRAGMA cache_size    = -20000")  # ~20 MB page cache
+            conn.execute("PRAGMA temp_store    = MEMORY")
+            self._conn = conn
         return self._conn
 
     @staticmethod
@@ -147,6 +155,42 @@ class CVERetriever:
         conn.execute("INSERT INTO cve(cve) VALUES('optimize')")  # merge b-trees
         conn.commit()
         return rows
+
+    # ── live ingestion (WAL-safe, no rebuild) ─────────────────────────────
+
+    def insert_entry(self, cve_id: str, question: str, answer: str) -> None:
+        """Append a single CVE row to the live FTS5 index.
+
+        WAL mode means concurrent readers are never blocked. Safe to call
+        from a background thread while queries are running.
+        """
+        conn = self._connect()
+        conn.execute(
+            "INSERT INTO cve(cve_id, question, answer) VALUES (?,?,?)",
+            (cve_id, question, answer),
+        )
+        conn.commit()
+        self._common = None   # invalidate high-DF cache after schema change
+
+    def insert_batch(
+        self,
+        entries: List[Tuple[str, str, str]],
+    ) -> int:
+        """Append a batch of (cve_id, question, answer) tuples. Returns count.
+
+        Uses a single transaction for throughput. Caller should keep batches
+        ≤10 000 rows so the WAL file doesn't grow unbounded between checkpoints.
+        """
+        if not entries:
+            return 0
+        conn = self._connect()
+        conn.executemany(
+            "INSERT INTO cve(cve_id, question, answer) VALUES (?,?,?)",
+            entries,
+        )
+        conn.commit()
+        self._common = None
+        return len(entries)
 
     # ── query building (optimizations) ────────────────────────────────────
 
