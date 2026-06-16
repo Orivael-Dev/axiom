@@ -1,4 +1,4 @@
-"""Legal RAG Bench — FTS5 BM25 + optional SPLADE hybrid evaluation.
+"""Legal RAG Bench — FTS5 BM25 + query rewrite + optional SPLADE hybrid.
 
 Baseline result (FTS5 BM25, k=10, 4876 passages, 100 questions):
   Hit@1  0.160   Hit@3  0.320   Hit@5  0.380   Hit@10  0.440
@@ -10,23 +10,37 @@ Analysis:
   are the semantic gap — correct passage exists but the question
   paraphrases the content using different vocabulary.
 
-Hybrid strategy:
-  FTS5 with high k (--fts5-k 100) surfaces far more candidates at
-  still ~6ms.  SPLADE reranks 100→k with sparse neural expansion,
-  closing the semantic gap without GPU or dense embeddings.
+Three-tier hybrid strategy:
+  1. Legal synonym expansion — free, zero latency (--expand, on by default)
+  2. LLM query rewrite — SLM rewrites question into 3 legal-vocab variants,
+     all tokens OR-joined for FTS5. Adds ~100ms per question. (--rewrite)
+  3. SPLADE reranker — sparse neural 100→k rerank, closes remaining gap. (--splade)
 
-The benchmark reports two rows when --splade is set:
-  BM25 only (FTS5 k=fts5_k, report at k=1/3/5/10)
-  BM25+SPLADE (FTS5 k=fts5_k → SPLADE → report at k=1/3/5/10)
+The benchmark reports up to four columns:
+  BM25        — FTS5 k=fts5_k baseline
+  BM25+R      — with LLM query rewrite (--rewrite)
+  BM25+SPLADE — with SPLADE rerank (--splade --fts5-k 100)
+  BM25+R+S    — rewrite + SPLADE together (all flags)
 
 Run — BM25 only:
     python3 research/legal/legal_rag_bench.py \\
       --db /tmp/legal.db --hf-token $HF_TOKEN
 
+Run — BM25 + LLM rewrite (Ollama must be running):
+    python3 research/legal/legal_rag_bench.py \\
+      --db /tmp/legal.db --skip-build --rewrite \\
+      --rewrite-model qwen2.5:0.5b
+
 Run — BM25 + SPLADE (install transformers first):
     pip install transformers torch
     python3 research/legal/legal_rag_bench.py \\
       --db /tmp/legal.db --hf-token $HF_TOKEN \\
+      --splade --fts5-k 100 --k 10
+
+Run — full pipeline (rewrite + SPLADE):
+    python3 research/legal/legal_rag_bench.py \\
+      --db /tmp/legal.db --skip-build \\
+      --rewrite --rewrite-model qwen2.5:0.5b \\
       --splade --fts5-k 100 --k 10
 
 Run — skip build (use existing db):
@@ -46,6 +60,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from axiom_cve_retriever import CVERetriever
+from axiom_query_rewriter import QueryRewriter, LEGAL_SYSTEM_PROMPT
 
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -136,8 +151,28 @@ def fts5_retrieve(
     *,
     k: int,
     expand: bool = True,
+    rewriter: Optional[QueryRewriter] = None,
 ) -> Tuple[List[str], float]:
-    """Return (ranked passage_ids, latency_ms)."""
+    """Return (ranked passage_ids, latency_ms).
+
+    When ``rewriter`` is set, the SLM rewrites the question into 3 legal-vocab
+    variants; all tokens are OR-joined into the FTS5 MATCH expression.  This
+    replaces both synonym expansion and _match_for — the rewriter's output IS
+    the MATCH expression.  Latency includes the SLM call time.
+    """
+    if rewriter is not None:
+        t0    = time.perf_counter()
+        match = rewriter.rewrite(question, domain="legal")
+        if not match:
+            return [], 0.0
+        cur = conn.execute(
+            "SELECT cve_id FROM cve WHERE cve MATCH ? ORDER BY bm25(cve) LIMIT ?",
+            (match, k),
+        )
+        ids = [r[0] for r in cur.fetchall()]
+        ms  = (time.perf_counter() - t0) * 1000
+        return ids, ms
+
     q = _expand_query(question) if expand else question
     match = retriever._match_for(q)
     if not match:
@@ -230,6 +265,7 @@ def run_benchmark(
     fts5_k: int = 10,
     final_k: int = 10,
     splade: Optional[SPLADEReranker] = None,
+    rewriter: Optional[QueryRewriter] = None,
     expand: bool = True,
 ) -> dict:
     retriever = CVERetriever(str(db_path))
@@ -242,16 +278,16 @@ def run_benchmark(
         cur = conn.execute("SELECT cve_id, answer FROM cve")
         passage_text = {r[0]: r[1] for r in cur.fetchall()}
 
-    bm25_results, hybrid_results = [], []
+    bm25_results, rewrite_results, hybrid_results, hybrid_rewrite_results = [], [], [], []
 
     for row in qa_rows:
         qid        = str(row.get("id", ""))
         question   = row.get("question", "")
         passage_id = str(row.get("relevant_passage_id", ""))
 
+        # Track 1: plain BM25 (with optional synonym expansion)
         ids, fts5_ms = fts5_retrieve(conn, retriever, question,
                                      k=fts5_k, expand=expand)
-
         bm25_results.append({
             "id": qid, "relevant_id": passage_id,
             "retrieved": ids,
@@ -259,6 +295,18 @@ def run_benchmark(
             "fts5_ms": round(fts5_ms, 2),
         })
 
+        # Track 2: LLM query rewrite → BM25 (includes SLM latency in ms)
+        if rewriter is not None:
+            r_ids, r_ms = fts5_retrieve(conn, retriever, question,
+                                        k=fts5_k, expand=False, rewriter=rewriter)
+            rewrite_results.append({
+                "id": qid, "relevant_id": passage_id,
+                "retrieved": r_ids,
+                "rr": rr(r_ids, passage_id),
+                "fts5_ms": round(r_ms, 2),
+            })
+
+        # Track 3: BM25 → SPLADE rerank
         if splade is not None:
             candidates = [(pid, passage_text.get(pid, "")) for pid in ids]
             reranked, splade_ms = splade.rerank(question, candidates)
@@ -270,11 +318,27 @@ def run_benchmark(
                 "splade_ms": round(splade_ms, 2),
             })
 
+        # Track 4: rewrite → BM25 → SPLADE rerank
+        if rewriter is not None and splade is not None:
+            r_cands = [(pid, passage_text.get(pid, "")) for pid in r_ids]
+            rs_ids, rs_ms = splade.rerank(question, r_cands)
+            hybrid_rewrite_results.append({
+                "id": qid, "relevant_id": passage_id,
+                "retrieved": rs_ids,
+                "rr": rr(rs_ids, passage_id),
+                "fts5_ms":   round(r_ms, 2),
+                "splade_ms": round(rs_ms, 2),
+            })
+
     conn.close()
     return {
-        "bm25":   _aggregate(bm25_results,   final_k, latency_field="fts5_ms"),
-        "hybrid": _aggregate(hybrid_results,  final_k, latency_field="splade_ms")
-                  if hybrid_results else None,
+        "bm25":          _aggregate(bm25_results,          final_k, latency_field="fts5_ms"),
+        "rewrite":       _aggregate(rewrite_results,       final_k, latency_field="fts5_ms")
+                         if rewrite_results else None,
+        "hybrid":        _aggregate(hybrid_results,        final_k, latency_field="splade_ms")
+                         if hybrid_results else None,
+        "hybrid_rewrite": _aggregate(hybrid_rewrite_results, final_k, latency_field="splade_ms")
+                          if hybrid_rewrite_results else None,
     }
 
 
@@ -311,36 +375,59 @@ def _pct(v: float) -> str:
 
 
 def print_comparison(data: dict, fts5_k: int) -> None:
-    bm  = data["bm25"]
-    hyb = data["hybrid"]
+    bm   = data["bm25"]
+    rew  = data.get("rewrite")
+    hyb  = data.get("hybrid")
+    hyb_r = data.get("hybrid_rewrite")
 
-    cols = ["BM25"]
+    # Build column list from present tracks
+    col_data = [("BM25", bm)]
+    if rew:
+        col_data.append(("BM25+Rewrite", rew))
     if hyb:
-        cols.append("BM25+SPLADE")
+        col_data.append(("BM25+SPLADE", hyb))
+    if hyb_r:
+        col_data.append(("BM25+R+SPLADE", hyb_r))
 
-    w = 14
+    w = 16
     print()
     print(f"  Legal RAG Bench — FTS5 k={fts5_k} → final k=10")
     print()
-    print(f"  {'Metric':<12}  " + "  ".join(f"{c:>{w}}" for c in cols))
-    print(f"  {'-'*12}  " + "  ".join("-" * w for _ in cols))
+    header = f"  {'Metric':<12}  " + "  ".join(f"{c:>{w}}" for c, _ in col_data)
+    print(header)
+    print(f"  {'-'*12}  " + "  ".join("-" * w for _ in col_data))
     for metric in ["MRR", "Hit@1", "Hit@3", "Hit@5", "Hit@10"]:
-        row = f"  {metric:<12}  {_pct(bm[metric]):>{w}}"
-        if hyb:
-            delta = hyb[metric] - bm[metric]
-            sign  = "+" if delta >= 0 else ""
-            row  += f"  {_pct(hyb[metric]):>{w}}  ({sign}{delta:.3f})"
+        row = f"  {metric:<12}"
+        baseline_val = bm[metric]
+        for i, (_, d) in enumerate(col_data):
+            val = d[metric]
+            cell = _pct(val)
+            if i > 0:
+                delta = val - baseline_val
+                sign  = "+" if delta >= 0 else ""
+                cell  = f"{_pct(val)} ({sign}{delta:.3f})"
+            row += f"  {cell:>{w}}"
         print(row)
-    print(f"  {'Misses':<12}  {bm['n_misses']:>{w}}", end="")
-    if hyb:
-        print(f"  {hyb['n_misses']:>{w}}", end="")
+
+    # Misses row
+    row = f"  {'Misses':<12}"
+    for _, d in col_data:
+        row += f"  {d['n_misses']:>{w}}"
+    print(row)
     print()
-    print()
+
+    # Latency summary
     print(f"  Latency (FTS5)  mean={bm['latency']['mean']} ms  "
           f"p50={bm['latency']['p50']} ms  p95={bm['latency']['p95']} ms")
+    if rew and rew.get("latency"):
+        print(f"  Latency (Rewrite+FTS5)  mean={rew['latency']['mean']} ms  "
+              f"p50={rew['latency']['p50']} ms  p95={rew['latency']['p95']} ms")
     if hyb and hyb.get("latency"):
-        print(f"  Latency (SPLADE) mean={hyb['latency']['mean']} ms  "
+        print(f"  Latency (SPLADE)  mean={hyb['latency']['mean']} ms  "
               f"p50={hyb['latency']['p50']} ms  p95={hyb['latency']['p95']} ms")
+    if hyb_r and hyb_r.get("latency"):
+        print(f"  Latency (R+SPLADE)  mean={hyb_r['latency']['mean']} ms  "
+              f"p50={hyb_r['latency']['p50']} ms  p95={hyb_r['latency']['p95']} ms")
 
     if bm["n_misses"]:
         fails = [r for r in bm["per_question"]
@@ -367,6 +454,16 @@ def main(argv=None) -> int:
     ap.add_argument("--splade-model", default="naver/splade-v3")
     ap.add_argument("--no-expand",  action="store_true",
                     help="Disable legal synonym query expansion")
+    ap.add_argument("--rewrite",    action="store_true",
+                    help="Enable LLM query rewrite pass (Ollama must be running)")
+    ap.add_argument("--rewrite-backend", default="local",
+                    choices=["local", "nim", "deepseek", "custom"],
+                    help="Backend for query rewriter (default: local/Ollama)")
+    ap.add_argument("--rewrite-model", default=None,
+                    help="Model for rewriter, e.g. qwen2.5:0.5b (Ollama) or "
+                         "meta/llama-3.1-8b-instruct (NIM)")
+    ap.add_argument("--rewrite-url",  default=None,
+                    help="Ollama URL override for rewriter (default: http://localhost:11434)")
     ap.add_argument("--hf-token",   default=None)
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--results",    type=Path, default=RESULTS_PATH)
@@ -399,6 +496,36 @@ def main(argv=None) -> int:
         print(f"ERROR loading QA: {exc}")
         return 1
 
+    # ── optional query rewriter ───────────────────────────────────────────────
+    rewriter = None
+    if args.rewrite:
+        print(f"\nLoading query rewriter ({args.rewrite_backend})…")
+        try:
+            import os
+            from axiom_event_token.backends import (
+                LocalNanoBackend, NIMBackend, DeepSeekBackend, CustomBackend,
+            )
+            _backend_map = {
+                "local":    lambda: LocalNanoBackend(
+                                model=args.rewrite_model or os.environ.get("OLLAMA_MODEL", "llama3.2:3b"),
+                                url=args.rewrite_url or os.environ.get("OLLAMA_URL", "http://localhost:11434"),
+                            ),
+                "nim":      lambda: NIMBackend(model=args.rewrite_model) if not args.rewrite_model
+                                    else NIMBackend(model=args.rewrite_model),
+                "deepseek": lambda: DeepSeekBackend(model=args.rewrite_model) if args.rewrite_model
+                                    else DeepSeekBackend(),
+                "custom":   lambda: CustomBackend(model=args.rewrite_model) if args.rewrite_model
+                                    else CustomBackend(),
+            }
+            backend  = _backend_map[args.rewrite_backend]()
+            rewriter = QueryRewriter(backend, system_prompt=LEGAL_SYSTEM_PROMPT)
+            # Quick connectivity check — rewrite one dummy question
+            _ = rewriter.rewrite("test query", domain="legal")
+            print(f"  Rewriter ready ({args.rewrite_backend})")
+        except Exception as exc:
+            print(f"  Rewriter unavailable: {exc} — running without rewrite")
+            rewriter = None
+
     # ── optional SPLADE ───────────────────────────────────────────────────────
     splade = None
     if args.splade:
@@ -414,13 +541,21 @@ def main(argv=None) -> int:
 
     # ── run ───────────────────────────────────────────────────────────────────
     expand = not args.no_expand
+    tracks = []
+    if expand:
+        tracks.append("synonym-expand")
+    if rewriter:
+        tracks.append("llm-rewrite")
+    if splade:
+        tracks.append("splade")
     print(f"\nRunning benchmark (fts5-k={args.fts5_k}, final-k={args.k}, "
-          f"expand={'yes' if expand else 'no'})…")
+          f"tracks=[{', '.join(tracks) or 'bm25-only'}])…")
     data = run_benchmark(
         args.db, qa,
         fts5_k=args.fts5_k,
         final_k=args.k,
         splade=splade,
+        rewriter=rewriter,
         expand=expand,
     )
 
@@ -431,8 +566,9 @@ def main(argv=None) -> int:
     for key, val in data.items():
         if val is None:
             continue
-        pq = val.pop("per_question", [])
-        save[key] = {**val, "n_per_question": len(pq)}
+        v  = dict(val)
+        pq = v.pop("per_question", [])
+        save[key] = {**v, "n_per_question": len(pq)}
     args.results.parent.mkdir(parents=True, exist_ok=True)
     args.results.write_text(json.dumps(save, indent=2))
     print(f"\n  Results → {args.results}")

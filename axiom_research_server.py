@@ -110,6 +110,7 @@ class _ServerState:
         self.pack_origin    = "(unbuilt)"
         self.retriever      = None      # LocalRetriever / DomainRoutedRetriever
         self.shard_router   = None      # ShardRouter (optional; replaces cve_retriever)
+        self.query_rewriter = None      # QueryRewriter (optional; AXIOM_QUERY_REWRITE=<domain>)
         self._qrf_cache     = {}        # domain → QRFEngine
 
     def ensure(self) -> None:
@@ -179,6 +180,18 @@ class _ServerState:
                     LOG.info("CVE shard wired from AXIOM_CVE_DB_PATH: %s", cve_db)
                 except Exception as exc:
                     LOG.warning("CVE shard skipped: %s", exc)
+
+        # Optional query rewriter: AXIOM_QUERY_REWRITE=legal|obd|medical|1
+        rewrite_domain = os.environ.get("AXIOM_QUERY_REWRITE", "").strip().lower()
+        if rewrite_domain and rewrite_domain not in ("0", "false", "off"):
+            try:
+                from axiom_query_rewriter import QueryRewriter, from_env as _qr_from_env
+                rewriter = _qr_from_env(domain=rewrite_domain)
+                if rewriter is not None:
+                    self.query_rewriter = rewriter
+                    LOG.info("query rewriter enabled for domain: %s", rewrite_domain)
+            except Exception as exc:
+                LOG.warning("query rewriter init failed: %s", exc)
 
         LOG.info("research server ready: backend=%s ledger=%s",
                  self.backend_label, ledger_path)
@@ -319,8 +332,28 @@ def _retrieve_sources(query: str, domain: str, *, k: int = 5) -> tuple[list[dict
     """
     # ── Shard router fast-path (Tier 3 federated FTS5) ────────────────────
     if _state.shard_router is not None:
+        # Optional query rewrite pre-pass (AXIOM_QUERY_REWRITE=<domain>).
+        # The rewriter expands vocabulary before FTS5; the rewritten text
+        # is passed to shard_router.query() as the effective query string.
+        effective_query = query
+        if _state.query_rewriter is not None:
+            try:
+                from axiom_query_rewriter import _build_fts5_match, _parse_variants
+                result = _state.query_rewriter._backend.generate(
+                    system=_state.query_rewriter._system_prompt or "",
+                    prompt=query,
+                    max_output_tokens=_state.query_rewriter._max_tokens,
+                    timeout_s=_state.query_rewriter._timeout_s,
+                )
+                variants = _parse_variants(result.text)
+                # Build a natural-language summary of all variants for the
+                # shard router (which re-tokenises internally via _match_for)
+                if variants:
+                    effective_query = query + " " + " ".join(variants)
+            except Exception as exc:
+                LOG.debug("query rewriter skipped: %s", exc)
         try:
-            hits = _state.shard_router.query(query, k=k)
+            hits = _state.shard_router.query(effective_query, k=k)
         except Exception as exc:
             LOG.warning("shard_router.query raised: %s", exc)
             hits = []
