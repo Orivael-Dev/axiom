@@ -46,11 +46,14 @@ from __future__ import annotations
 import math
 import struct
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
 # MET chunk boundaries (matches met_ram_estimator.CHUNK_FRACS)
+# These are the *fallback* values used when no calibrated quant_map is available.
+# Architecture-fingerprinted calibration (calibrate_layer_alphas.py) replaces
+# these with per-layer alpha values derived from the model's own weight structure.
 _REASONING_START_FRAC = 0.40   # layers before this = early + factual
 _REASONING_END_FRAC   = 0.77   # layers after  this = output
 
@@ -62,6 +65,98 @@ def reasoning_layer_ids(n_layers: int) -> List[int]:
     start = math.floor(n_layers * _REASONING_START_FRAC)
     end   = math.floor(n_layers * _REASONING_END_FRAC)
     return list(range(start, end))
+
+
+def layer_alphas_from_quant_map(
+    quant_map: Any,
+    layer_names: List[str],
+    *,
+    n_layers: int = 0,
+) -> Dict[str, float]:
+    """Extract per-layer alpha values from a calibrated quant_map dict.
+
+    If ``quant_map`` contains a ``layer_alpha_map`` key (produced by
+    ``calibrate_layer_alphas.build_quant_map``), returns it directly.
+
+    Falls back to the fixed 40-77% MET chunk boundaries when:
+      - ``quant_map`` is a plain string (legacy AXM files)
+      - ``quant_map`` is a dict without ``layer_alpha_map``
+      - ``layer_names`` is empty
+
+    The fallback assigns alpha=1.0 to reasoning-chunk layers and 0.0 to
+    all others, matching the existing ``apply_sidecar_to_reasoning_layers``
+    behaviour.
+    """
+    # ── Calibrated path ───────────────────────────────────────────────────
+    if isinstance(quant_map, dict) and "layer_alpha_map" in quant_map:
+        calibrated: Dict[str, float] = quant_map["layer_alpha_map"]
+        if calibrated:
+            result: Dict[str, float] = {}
+            for name in layer_names:
+                if name in calibrated:
+                    result[name] = calibrated[name]
+                else:
+                    best = _substring_match(name, calibrated)
+                    result[name] = best if best is not None else 0.0
+            return result
+
+    # ── Fallback: hardcoded MET chunk ─────────────────────────────────────
+    if not layer_names:
+        return {}
+
+    # Detect n_layers from the quant_map metadata or layer name indices.
+    if n_layers <= 0 and isinstance(quant_map, dict):
+        n_layers = quant_map.get("architecture", {}).get("n_layers", 0)
+    if n_layers <= 0:
+        max_idx = 0
+        for name in layer_names:
+            for part in name.split("."):
+                try:
+                    max_idx = max(max_idx, int(part))
+                except ValueError:
+                    pass
+        n_layers = max_idx + 1 if max_idx > 0 else len(layer_names)
+
+    # Use calibrated chunk fracs if partially present in the map.
+    if isinstance(quant_map, dict):
+        start_frac = quant_map.get("derived_chunk_start_frac", _REASONING_START_FRAC)
+        end_frac   = quant_map.get("derived_chunk_end_frac",   _REASONING_END_FRAC)
+    else:
+        start_frac, end_frac = _REASONING_START_FRAC, _REASONING_END_FRAC
+
+    high_ids = set(reasoning_layer_ids(n_layers))
+    # Override with calibrated boundaries if available.
+    if start_frac != _REASONING_START_FRAC or end_frac != _REASONING_END_FRAC:
+        high_ids = set(range(
+            math.floor(n_layers * start_frac),
+            math.floor(n_layers * end_frac),
+        ))
+
+    result = {}
+    for name in layer_names:
+        idx = _layer_index_from_name(name)
+        result[name] = 1.0 if (idx is not None and idx in high_ids) else 0.0
+    return result
+
+
+def _substring_match(name: str, alpha_map: Dict[str, float]) -> Optional[float]:
+    """Match ``name`` against alpha_map keys by longest-substring."""
+    best_key: Optional[str] = None
+    best_len = 0
+    for key in alpha_map:
+        if key in name and len(key) > best_len:
+            best_key, best_len = key, len(key)
+    return alpha_map[best_key] if best_key is not None else None
+
+
+def _layer_index_from_name(name: str) -> Optional[int]:
+    """Extract the first integer segment from a dotted layer name."""
+    for part in name.split("."):
+        try:
+            return int(part)
+        except ValueError:
+            pass
+    return None
 
 
 # ── Sidecar loader (reads the binary .srd4 produced by axm_to_srd4_gguf) ──
