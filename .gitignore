@@ -106,3 +106,6 @@ tests/_tmp_bonded_pair_server_logs/
 # deploys point this at /data/tenants via env; this directory only ever
 # exists when tests/imports run from the repo root.
 tenants/
+
+# Cached corpus embeddings for legal RAG dense experiment (regenerable)
+research/legal/*.npz
