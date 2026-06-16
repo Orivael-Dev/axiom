@@ -105,11 +105,6 @@ include = ["axiom_constitutional*", "axiom_constitutional.guards*", "axiom_files
 [tool.setuptools]
 py-modules = ["axm_cli", "axiom_axm", "axiom_quant", "axiom_signing"]
 
-# Top-level single-file modules needed by the `axm` console script.
-# axm_cli imports axiom_axm (container) and lazily research.quant.* (run/pack).
-[tool.setuptools]
-py-modules = ["axm_cli", "axiom_axm", "axiom_quant", "axiom_signing"]
-
 [tool.setuptools.package-data]
 "axiom_files" = ["*.axiom", "core/*.axiom", "domains/*.axiom", "research/*.axiom"]
 
