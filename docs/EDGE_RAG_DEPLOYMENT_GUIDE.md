@@ -161,11 +161,27 @@ domain is a separate `.db` file; the shard router dispatches by pattern.
 | `errors` | `ERR-*`, `FAULT-*` | Industrial / OT error codes |
 | `obd` | `P0000` | Automotive OBD-II diagnostic codes |
 | `medical` | `ICD-*` | Clinical decision support |
+| `legal` | `42 U.S.C. §`, `Smith v. Jones`, `2024 WL 123456`, `GDPR Art.17` | Case law, statute retrieval (isaacus/legal-rag-bench validated) |
 | `regulatory` | `FINRA`, `GDPR`, `ISO` | Compliance agent |
 | `runbooks` | `ECONNRESET`, `SIGABRT` | Software ops runbooks |
 | `tsb` | `TSB-NN-NNN` | Technical service bulletins |
 
 **Build a shard for any domain:**
+
+**Legal corpus (isaacus/legal-rag-bench):**
+
+```bash
+# Build directly from the HuggingFace dataset (requires HF login + datasets library)
+pip install datasets
+python3 research/legal/legal_rag_bench.py --db /data/legal_fts5.db --hf-token $HF_TOKEN
+
+# Run the full retrieval benchmark (MRR, Recall@1/5/10 vs 100 gold QA pairs)
+python3 research/legal/legal_rag_bench.py --db /data/legal_fts5.db --skip-build --k 10
+```
+
+Wire it as a shard: `AXIOM_SHARD_LEGAL=/data/legal_fts5.db`
+
+**For other custom domains:**
 
 ```bash
 # Same build command — just point at the right JSONL and a new db path.

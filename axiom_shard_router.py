@@ -69,6 +69,16 @@ DEFAULT_SHARD_PATTERNS: Dict[str, re.Pattern] = {
     "errors":     re.compile(r"\b(?:ERR|FAULT|ERROR)-[\w\d]+\b", re.IGNORECASE),
     "obd":        re.compile(r"\bP\d{4}\b"),
     "medical":    re.compile(r"\bICD-?[\dA-Z][A-Z0-9.]{1,6}\b", re.IGNORECASE),
+    "legal":      re.compile(
+                      r"\b(?:"
+                      r"\d+\s+(?:U\.S\.C|CFR|F\.\d|F\dth|U\.S)\b"  # federal citations
+                      r"|[A-Z][a-z]+ v\. [A-Z][a-z]+"               # case names
+                      r"|\d{4} WL \d+"                               # Westlaw
+                      r"|\d{4} U\.S\. LEXIS"                         # LexisNexis
+                      r"|(?:FINRA|SEC|GDPR|ISO|HIPAA|CCPA)\s+[\w./:\-]+"  # regulatory
+                      r")",
+                      re.IGNORECASE,
+                  ),
     "runbooks":   re.compile(
                       r"\b(?:ECONNRESET|OOM[-_]KILLER|SIGABRT|SIGSEGV|SIGKILL)\b",
                       re.IGNORECASE,
