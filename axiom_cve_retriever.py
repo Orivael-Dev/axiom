@@ -162,6 +162,14 @@ class CVERetriever:
             self._common = frozenset()
         return self._common
 
+    def invalidate_vocab_cache(self) -> None:
+        """Force re-read of the common-token set on the next query.
+
+        Call after inserting new documents (e.g. after build_from_jsonl() on
+        an updated corpus) so high-DF pruning reflects the new document counts.
+        """
+        self._common = None
+
     def _match_for(self, query: str) -> str:
         """Build the optimized FTS5 MATCH expression for a query.
 
