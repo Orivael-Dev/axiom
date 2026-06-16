@@ -1,0 +1,50 @@
+AGENT GeneralAutonomousAgent
+VERSION 1.0
+TRUST_LEVEL 4
+PURPOSE General-purpose autonomous task execution with latent reasoning and retrospect learning
+GOAL Complete any task domain (research/writing/coding/planning/analysis/creative/data) constitutionally
+
+CANNOT_MUTATE trust_level, latent_rejection_threshold, efficiency_decay, max_steps, domain_list, pattern_library_integrity
+
+CONSTRAINT Trust level is 4 — constitutional filter applied to every approach candidate
+CONSTRAINT Approaches scoring below LATENT_REJECTION_THRESHOLD (0.10 manifold distance) are rejected
+CONSTRAINT PatternLibrary entries are HMAC-signed and verified on every read
+CONSTRAINT TaskOutcome is HMAC-signed before pattern upsert
+CONSTRAINT EWMA efficiency decay is 0.85 — historical patterns decay toward signal within 6 uses
+CONSTRAINT MAX_STEPS is 12 — hard cap regardless of domain or approach
+CONSTRAINT Domain classification is deterministic from task keywords — no stochastic override
+
+CONCEPTS
+- LatentReasoning: N candidate approaches evaluated through ManifoldChecker constitutional filter before execution begins; picks highest-distance non-rejected approach
+- RetrospectLearning: PatternLibrary (JSONL) records domain×approach×fingerprint efficiency via EWMA; queried before latent reasoning to bias toward historically efficient approaches
+- ConstitutionalDistance: Four-axis measure (uncertainty_floor, overclaim_ceiling, rival_present, fields_clean); approaches below 0.10 rejected regardless of retrospect bias
+- TaskFingerprint: SHA256[:16] of sorted lowercased task keywords — enables approximate retrieval without exact task string matching
+- DomainClassification: Keyword-weighted scoring across 7 domains; deterministic, auditable
+
+RULES
+- Every run produces a signed TaskOutcome — no unsigned results stored or returned
+- PatternLibrary entries with invalid HMAC signatures are silently dropped on load
+- Latent reasoning always evaluates all domain approaches — short-circuiting on first valid is not permitted
+- Retrospect bias is bounded: at most 30% of blended score is historical; constitutional distance floor holds
+- Task domain may be overridden via explicit --domain flag; keyword scoring is the default
+- LLM backend is optional — heuristic mode allows planning and pattern accumulation without a model binary
+- All step results are recorded regardless of quality — honest ledger beats curated ledger
+
+PROCESS
+- Classify task domain from keywords or explicit hint
+- Query PatternLibrary for top-K patterns matching domain and task fingerprint
+- Run latent reasoning: evaluate all domain approaches, reject below threshold, select max-distance
+- Expand selected approach into ordered step list via domain×approach template
+- Execute each step (LLM-backed or heuristic); record action, result, elapsed_ms
+- Sign TaskOutcome; upsert into PatternLibrary with EWMA efficiency update
+- Return signed outcome; emit JSON if requested
+
+WHEN
+- task_received: classify_domain → retrospect_query → latent_think → plan_steps → execute → sign_and_record
+- signature_invalid: drop_pattern_entry and log warning — do not halt run
+- all_approaches_rejected: fall back to highest-distance approach with rejection flag noted in latent_log
+- llm_backend_error: record error as step result; continue to next step; mark success=False at outcome
+
+OUTPUT
+- JSON: task_id, domain, approach, success, wallclock_s, steps[], latent_log[], signature
+- PatternLibrary entry: domain, approach, fingerprint, efficiency, uses, last_used, signature

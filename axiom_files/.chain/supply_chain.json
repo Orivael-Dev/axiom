@@ -826,5 +826,11 @@
     "registered_at": "2026-06-11T17:37:04.371500+00:00",
     "version": "",
     "size_bytes": 5480
+  },
+  "research/general_agent": {
+    "sha256": "6102a54bf9c157a84b6edab56f787c678daa6bb78a4e8ebebdcf3f1eebf8ac47",
+    "registered_at": "2026-06-16T01:58:14.784805+00:00",
+    "version": "",
+    "size_bytes": 3557
   }
 }
