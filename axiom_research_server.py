@@ -109,7 +109,7 @@ class _ServerState:
         self.backend_label  = "unknown"
         self.pack_origin    = "(unbuilt)"
         self.retriever      = None      # LocalRetriever / DomainRoutedRetriever
-        self.cve_retriever  = None      # CachedCVERetriever (optional fast-path)
+        self.shard_router   = None      # ShardRouter (optional; replaces cve_retriever)
         self._qrf_cache     = {}        # domain → QRFEngine
 
     def ensure(self) -> None:
@@ -135,23 +135,50 @@ class _ServerState:
         self.pack_origin    = "default-pack (built in tempdir on first request)"
         self.retriever      = default_retriever()
 
-        # CVE fast-path: only wired when AXIOM_CVE_DB_PATH is set.
-        cve_db = os.environ.get("AXIOM_CVE_DB_PATH", "").strip()
-        if cve_db:
+        # Shard router: load from RAG bundle or individual AXIOM_SHARD_* env vars.
+        # Priority: AXIOM_RAG_BUNDLE > per-shard env vars > single AXIOM_CVE_DB_PATH.
+        bundle_path = os.environ.get("AXIOM_RAG_BUNDLE", "").strip()
+        if bundle_path:
             try:
-                from axiom_cve_retriever import CVERetriever, CachedCVERetriever
-                from axiom_verified_answer_cache import VerifiedAnswerCache
-                cve_cache_path = os.environ.get(
-                    "AXIOM_CVE_CACHE_PATH",
-                    str(Path(cve_db).with_suffix(".cache.db")),
-                )
-                self.cve_retriever = CachedCVERetriever(
-                    CVERetriever(cve_db),
-                    VerifiedAnswerCache(db_path=cve_cache_path),
-                )
-                LOG.info("CVE fast-path wired: db=%s cache=%s", cve_db, cve_cache_path)
+                from axiom_shard_router import RAGBundle
+                self.shard_router = RAGBundle.load_router(Path(bundle_path))
+                LOG.info("shard router loaded from bundle: %s", bundle_path)
             except Exception as exc:
-                LOG.warning("CVE fast-path skipped: %s", exc)
+                LOG.warning("RAG bundle load failed: %s", exc)
+
+        if self.shard_router is None:
+            try:
+                from axiom_shard_router import ShardRouter
+                router = ShardRouter.from_env()
+                if router is not None:
+                    self.shard_router = router
+                    LOG.info("shard router wired from env vars: %d shard(s)",
+                             len(router._shards))
+            except Exception as exc:
+                LOG.warning("shard router from_env failed: %s", exc)
+
+        # Legacy single-CVE fallback: AXIOM_CVE_DB_PATH without shard vars.
+        if self.shard_router is None:
+            cve_db = os.environ.get("AXIOM_CVE_DB_PATH", "").strip()
+            if cve_db:
+                try:
+                    from axiom_cve_retriever import CVERetriever, CachedCVERetriever
+                    from axiom_verified_answer_cache import VerifiedAnswerCache
+                    from axiom_shard_router import ShardRouter, ShardConfig, DEFAULT_SHARD_PATTERNS
+                    cve_cache_path = os.environ.get(
+                        "AXIOM_CVE_CACHE_PATH",
+                        str(Path(cve_db).with_suffix(".cache.db")),
+                    )
+                    retriever = CachedCVERetriever(
+                        CVERetriever(cve_db),
+                        VerifiedAnswerCache(db_path=cve_cache_path),
+                    )
+                    self.shard_router = ShardRouter([
+                        ShardConfig("cve", DEFAULT_SHARD_PATTERNS["cve"], retriever)
+                    ])
+                    LOG.info("CVE shard wired from AXIOM_CVE_DB_PATH: %s", cve_db)
+                except Exception as exc:
+                    LOG.warning("CVE shard skipped: %s", exc)
 
         LOG.info("research server ready: backend=%s ledger=%s",
                  self.backend_label, ledger_path)
@@ -290,29 +317,15 @@ def _retrieve_sources(query: str, domain: str, *, k: int = 5) -> tuple[list[dict
     returns no hits — keeping the UI populated so the user can see what
     happened.
     """
-    # ── CVE fast-path ─────────────────────────────────────────────────────
-    if _state.cve_retriever is not None:
-        from axiom_cve_retriever import CVE_PATTERN
-        m = CVE_PATTERN.search(query)
-        if m:
-            try:
-                text, from_cache = _state.cve_retriever.answer(query)
-            except Exception as exc:
-                LOG.warning("cve_retriever.answer raised: %s", exc)
-                text, from_cache = None, False
-            if text:
-                cve_id = m.group(0).upper()
-                kind   = "cache · cve" if from_cache else "fts5 · cve"
-                return [
-                    {
-                        "title":    cve_id,
-                        "uri":      f"cve-fts5://local/{cve_id}",
-                        "kind":     kind,
-                        "score":    1.0,
-                        "snippet":  text[:600],
-                        "provider": "cve-cache" if from_cache else "cve-fts5",
-                    }
-                ], True
+    # ── Shard router fast-path (Tier 3 federated FTS5) ────────────────────
+    if _state.shard_router is not None:
+        try:
+            hits = _state.shard_router.query(query, k=k)
+        except Exception as exc:
+            LOG.warning("shard_router.query raised: %s", exc)
+            hits = []
+        if hits:
+            return [h.to_dict() for h in hits], True
 
     # ── general BM25 / DomainRoutedRetriever path ─────────────────────────
     if _state.retriever is None:
