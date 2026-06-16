@@ -243,6 +243,122 @@ class SPLADEReranker:
         return [pid for _, pid in scored], ms
 
 
+# ── Dense retriever (bi-encoder first-stage) ──────────────────────────────────
+
+# BGE instruction prefix — boosts retrieval quality for asymmetric tasks.
+# Applied only to queries, never to passages.
+_BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+
+def _dense_index_prefix(db_path: Path, model_name: str) -> Path:
+    """Derive the prefix for .npy / .ids.json index files from the db path."""
+    slug = model_name.replace("/", "_").replace("-", "_")
+    return db_path.parent / f"{db_path.stem}_dense_{slug}"
+
+
+class DenseRetriever:
+    """Bi-encoder first-stage retriever using sentence-transformers.
+
+    Encodes all passages at index time into a (N, dim) float32 matrix stored
+    alongside the FTS5 db as two files:
+        <db_stem>_dense_<model_slug>.npy        — embedding matrix
+        <db_stem>_dense_<model_slug>.ids.json   — passage_id list (row order)
+
+    Query time: one forward pass + matrix-vector dot product → top-k.
+    At 4876 passages × 768 dims: <1 ms for the dot product, ~25 ms for encoding.
+    """
+
+    def __init__(self, model_name: str = "BAAI/bge-base-en-v1.5") -> None:
+        self._model_name = model_name
+        self._model      = None
+        self._matrix     = None   # np.ndarray (N, dim) float32, L2-normalised
+        self._ids: List[str] = []
+        self._ready      = False
+        self._is_bge     = "bge" in model_name.lower()
+
+    def load_model(self) -> bool:
+        try:
+            from sentence_transformers import SentenceTransformer
+            import numpy as np
+            self._np    = np
+            self._model = SentenceTransformer(self._model_name)
+            self._ready = True
+            return True
+        except ImportError:
+            print("  [Dense] pip install sentence-transformers")
+            return False
+        except Exception as exc:
+            print(f"  [Dense] model load failed: {exc}")
+            return False
+
+    def build_index(
+        self,
+        passages: List[Tuple[str, str]],   # (passage_id, text)
+        index_prefix: Path,
+        *,
+        batch_size: int = 128,
+    ) -> None:
+        """Encode passages and write .npy + .ids.json to disk."""
+        texts = [t for _, t in passages]
+        print(f"  Encoding {len(texts):,} passages with {self._model_name}…")
+        embs = self._model.encode(
+            texts, batch_size=batch_size,
+            normalize_embeddings=True, show_progress_bar=True,
+        )
+        self._matrix = self._np.array(embs, dtype=self._np.float32)
+        self._ids    = [pid for pid, _ in passages]
+        self._np.save(str(index_prefix) + ".npy", self._matrix)
+        Path(str(index_prefix) + ".ids.json").write_text(
+            json.dumps(self._ids), encoding="utf-8"
+        )
+        print(f"  Dense index saved → {index_prefix}.npy  "
+              f"({self._matrix.shape[0]:,} × {self._matrix.shape[1]})")
+
+    def load_index(self, index_prefix: Path) -> bool:
+        npy  = Path(str(index_prefix) + ".npy")
+        ids  = Path(str(index_prefix) + ".ids.json")
+        if not npy.exists() or not ids.exists():
+            return False
+        import numpy as np
+        self._np     = np
+        self._matrix = np.load(str(npy))
+        self._ids    = json.loads(ids.read_text(encoding="utf-8"))
+        return True
+
+    def retrieve(self, question: str, *, k: int = 100) -> Tuple[List[str], float]:
+        """Return (ranked passage_ids, latency_ms)."""
+        if not self._ready or self._matrix is None:
+            return [], 0.0
+        query = (_BGE_QUERY_PREFIX + question) if self._is_bge else question
+        t0     = time.perf_counter()
+        q_emb  = self._model.encode(query, normalize_embeddings=True)
+        scores = self._matrix @ q_emb
+        top_k  = self._np.argsort(-scores)[:k]
+        ms     = (time.perf_counter() - t0) * 1000
+        return [self._ids[i] for i in top_k], ms
+
+
+# ── RRF merge ─────────────────────────────────────────────────────────────────
+
+def rrf_merge(
+    *ranked_lists: List[str],
+    k_rrf: int = 60,
+    final_k: int = 10,
+) -> List[str]:
+    """Reciprocal Rank Fusion across any number of ranked lists.
+
+    score(d) = Σ_i  1 / (k_rrf + rank_i(d) + 1)
+
+    k_rrf=60 is the standard Robertson/Cormack default.  Results are
+    sorted by descending RRF score; ties broken by order of first list.
+    """
+    scores: Dict[str, float] = {}
+    for ranked in ranked_lists:
+        for rank, pid in enumerate(ranked):
+            scores[pid] = scores.get(pid, 0.0) + 1.0 / (k_rrf + rank + 1)
+    return sorted(scores, key=lambda p: -scores[p])[:final_k]
+
+
 # ── metrics ───────────────────────────────────────────────────────────────────
 
 def rr(retrieved: List[str], relevant: str) -> float:
@@ -266,6 +382,8 @@ def run_benchmark(
     final_k: int = 10,
     splade: Optional[SPLADEReranker] = None,
     rewriter: Optional[QueryRewriter] = None,
+    dense: Optional[DenseRetriever] = None,
+    k_rrf: int = 60,
     expand: bool = True,
 ) -> dict:
     retriever = CVERetriever(str(db_path))
@@ -278,7 +396,8 @@ def run_benchmark(
         cur = conn.execute("SELECT cve_id, answer FROM cve")
         passage_text = {r[0]: r[1] for r in cur.fetchall()}
 
-    bm25_results, rewrite_results, hybrid_results, hybrid_rewrite_results = [], [], [], []
+    (bm25_results, rewrite_results, hybrid_results,
+     hybrid_rewrite_results, dense_results, rrf_results) = [], [], [], [], [], []
 
     for row in qa_rows:
         qid        = str(row.get("id", ""))
@@ -330,15 +449,41 @@ def run_benchmark(
                 "splade_ms": round(rs_ms, 2),
             })
 
+        # Track 5: dense bi-encoder first-stage (no BM25)
+        d_ids, dense_ms = (dense.retrieve(question, k=fts5_k)
+                           if dense is not None else ([], 0.0))
+        if dense is not None:
+            dense_results.append({
+                "id": qid, "relevant_id": passage_id,
+                "retrieved": d_ids,
+                "rr": rr(d_ids, passage_id),
+                "dense_ms": round(dense_ms, 2),
+            })
+
+        # Track 6: BM25 + Dense RRF fusion
+        if dense is not None:
+            merged = rrf_merge(ids, d_ids, k_rrf=k_rrf, final_k=final_k)
+            rrf_ms = round(fts5_ms + dense_ms, 2)
+            rrf_results.append({
+                "id": qid, "relevant_id": passage_id,
+                "retrieved": merged,
+                "rr": rr(merged, passage_id),
+                "rrf_ms": rrf_ms,
+            })
+
     conn.close()
     return {
-        "bm25":          _aggregate(bm25_results,          final_k, latency_field="fts5_ms"),
-        "rewrite":       _aggregate(rewrite_results,       final_k, latency_field="fts5_ms")
-                         if rewrite_results else None,
-        "hybrid":        _aggregate(hybrid_results,        final_k, latency_field="splade_ms")
-                         if hybrid_results else None,
+        "bm25":           _aggregate(bm25_results,           final_k, latency_field="fts5_ms"),
+        "rewrite":        _aggregate(rewrite_results,        final_k, latency_field="fts5_ms")
+                          if rewrite_results else None,
+        "hybrid":         _aggregate(hybrid_results,         final_k, latency_field="splade_ms")
+                          if hybrid_results else None,
         "hybrid_rewrite": _aggregate(hybrid_rewrite_results, final_k, latency_field="splade_ms")
                           if hybrid_rewrite_results else None,
+        "dense":          _aggregate(dense_results,          final_k, latency_field="dense_ms")
+                          if dense_results else None,
+        "rrf":            _aggregate(rrf_results,            final_k, latency_field="rrf_ms")
+                          if rrf_results else None,
     }
 
 
@@ -381,6 +526,9 @@ def print_comparison(data: dict, fts5_k: int) -> None:
     hyb_r = data.get("hybrid_rewrite")
 
     # Build column list from present tracks
+    den  = data.get("dense")
+    rrf  = data.get("rrf")
+
     col_data = [("BM25", bm)]
     if rew:
         col_data.append(("BM25+Rewrite", rew))
@@ -388,6 +536,10 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         col_data.append(("BM25+SPLADE", hyb))
     if hyb_r:
         col_data.append(("BM25+R+SPLADE", hyb_r))
+    if den:
+        col_data.append(("Dense", den))
+    if rrf:
+        col_data.append(("BM25+Dense RRF", rrf))
 
     w = 16
     print()
@@ -428,6 +580,12 @@ def print_comparison(data: dict, fts5_k: int) -> None:
     if hyb_r and hyb_r.get("latency"):
         print(f"  Latency (R+SPLADE)  mean={hyb_r['latency']['mean']} ms  "
               f"p50={hyb_r['latency']['p50']} ms  p95={hyb_r['latency']['p95']} ms")
+    if den and den.get("latency"):
+        print(f"  Latency (Dense)  mean={den['latency']['mean']} ms  "
+              f"p50={den['latency']['p50']} ms  p95={den['latency']['p95']} ms")
+    if rrf and rrf.get("latency"):
+        print(f"  Latency (BM25+Dense RRF)  mean={rrf['latency']['mean']} ms  "
+              f"p50={rrf['latency']['p50']} ms  p95={rrf['latency']['p95']} ms")
 
     if bm["n_misses"]:
         fails = [r for r in bm["per_question"]
@@ -464,6 +622,17 @@ def main(argv=None) -> int:
                          "meta/llama-3.1-8b-instruct (NIM)")
     ap.add_argument("--rewrite-url",  default=None,
                     help="Ollama URL override for rewriter (default: http://localhost:11434)")
+    ap.add_argument("--dense",       action="store_true",
+                    help="Enable dense bi-encoder retrieval (requires sentence-transformers)")
+    ap.add_argument("--dense-model", default="BAAI/bge-base-en-v1.5",
+                    help="HuggingFace sentence-transformers model for dense index "
+                         "(default: BAAI/bge-base-en-v1.5; also try thenlper/gte-base)")
+    ap.add_argument("--rrf",         action="store_true",
+                    help="Enable BM25 + Dense RRF fusion (implies --dense)")
+    ap.add_argument("--rrf-k",       type=int, default=60,
+                    help="RRF constant k (default 60)")
+    ap.add_argument("--skip-dense-build", action="store_true",
+                    help="Skip dense index build if .npy already exists")
     ap.add_argument("--hf-token",   default=None)
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--results",    type=Path, default=RESULTS_PATH)
@@ -540,6 +709,35 @@ def main(argv=None) -> int:
             print(f"  TIP: --fts5-k 100 gives SPLADE more candidates to rerank")
 
     # ── run ───────────────────────────────────────────────────────────────────
+    # ── optional dense retriever (bi-encoder first-stage + RRF) ──────────────
+    dense_retriever = None
+    use_dense = args.dense or args.rrf
+    if use_dense:
+        print(f"\nLoading dense model ({args.dense_model})…")
+        dense_retriever = DenseRetriever(args.dense_model)
+        if not dense_retriever.load_model():
+            print("  Dense model load failed — running without dense")
+            dense_retriever = None
+        else:
+            index_prefix = _dense_index_prefix(args.db, args.dense_model)
+            loaded = False
+            if args.skip_dense_build:
+                loaded = dense_retriever.load_index(index_prefix)
+                if loaded:
+                    print(f"  Dense index loaded from {index_prefix}.npy  "
+                          f"({len(dense_retriever._ids):,} passages)")
+            if not loaded:
+                # Build from the FTS5 db — pull all (id, text) pairs
+                conn_tmp = sqlite3.connect(str(args.db))
+                passages = [(r[0], r[1]) for r in
+                            conn_tmp.execute("SELECT cve_id, answer FROM cve").fetchall()]
+                conn_tmp.close()
+                t0 = time.perf_counter()
+                dense_retriever.build_index(passages, index_prefix)
+                print(f"  Dense index built in {time.perf_counter()-t0:.1f}s")
+            print("  Dense retriever ready")
+
+    # ── run ───────────────────────────────────────────────────────────────────
     expand = not args.no_expand
     tracks = []
     if expand:
@@ -548,6 +746,10 @@ def main(argv=None) -> int:
         tracks.append("llm-rewrite")
     if splade:
         tracks.append("splade")
+    if dense_retriever:
+        tracks.append(f"dense({args.dense_model.split('/')[-1]})")
+    if args.rrf:
+        tracks.append(f"rrf(k={args.rrf_k})")
     print(f"\nRunning benchmark (fts5-k={args.fts5_k}, final-k={args.k}, "
           f"tracks=[{', '.join(tracks) or 'bm25-only'}])…")
     data = run_benchmark(
@@ -556,6 +758,8 @@ def main(argv=None) -> int:
         final_k=args.k,
         splade=splade,
         rewriter=rewriter,
+        dense=dense_retriever,
+        k_rrf=args.rrf_k,
         expand=expand,
     )
 
