@@ -29,7 +29,7 @@ from .backends import (
     NIMBackend, LocalNanoBackend, ChainedBackend,
     make_backend, default_backend,
 )
-from .router import DelegateRouter, RoutingDecision
+from .router import DelegateRouter, RoutingDecision, RouterPolicy, LatencyAwareRouter
 from .delegate_runtime import DelegateAgent
 from .kv_cache import (
     KVCacheEntry, KVCacheStore, LAYER_SLOTS,
@@ -42,7 +42,7 @@ __all__ = [
     "SLMBackend", "BackendResult", "BackendError",
     "NIMBackend", "LocalNanoBackend", "ChainedBackend",
     "make_backend", "default_backend",
-    "DelegateRouter", "RoutingDecision",
+    "DelegateRouter", "RoutingDecision", "RouterPolicy", "LatencyAwareRouter",
     "DelegateAgent",
     "KVCacheEntry", "KVCacheStore", "LAYER_SLOTS",
     "KVBlockKey", "KVCacheBlock", "KVCacheDAG",
