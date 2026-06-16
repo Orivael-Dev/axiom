@@ -58,6 +58,8 @@ axiom_mkb_registry.jsonl
 axiom_sim_log.jsonl
 axiom_redact_log.jsonl
 crl_reward_log.jsonl
+axiom_mkb_registry.jsonl
+audio_harness_results.json
 
 # Models — too large for GitHub
 *.gguf
