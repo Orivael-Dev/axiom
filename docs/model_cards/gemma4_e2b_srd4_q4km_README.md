@@ -8,10 +8,11 @@ tags:
   - quantized
   - moe
   - gemma
+  - multimodal
   - orivael
 language:
   - en
-pipeline_tag: text-generation
+pipeline_tag: image-text-to-text
 ---
 
 # Gemma 4 E2B-it — SRD-4 Q4_K_M GGUF

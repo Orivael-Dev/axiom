@@ -12,9 +12,10 @@ tags:
   - quantized
   - q4_k_m
   - instruction-tuned
+  - multimodal
   - orivael
 library_name: gguf
-pipeline_tag: text-generation
+pipeline_tag: image-text-to-text
 ---
 
 # orivael/gemma-4-12b-it-SRD4-Q4_K_M
