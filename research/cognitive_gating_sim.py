@@ -20,6 +20,15 @@ then runs the same queries three ways and reports contamination:
 Lower is better.  A perfectly gated system returns 0% contamination on a
 single-domain query.
 
+Two further scenarios isolate the other two layers:
+  - within-domain intent : all one domain, where routing can't help and the
+    intent filter separates "what the rule IS" from "what the court DID".
+  - HyDE (query-to-hypothetical) : a vocabulary-poor conversational query is
+    expanded into a dense hypothetical answer before dense retrieval, lifting
+    the target passage's rank.  Uses a neural encoder when sentence-transformers
+    is installed, else a labelled TF-IDF cosine proxy; uses the real
+    rewrite_hyde() when a backend is configured, else a canned stand-in.
+
 Usage:
     export AXIOM_MASTER_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     python3 research/cognitive_gating_sim.py
@@ -321,7 +330,7 @@ _LEGAL_QUERIES: List[Tuple[str, str]] = [
 ]
 
 
-def run_intent_scenario(workdir: Path, k: int) -> Tuple[float, float]:
+def run_intent_scenario(workdir: Path, k: int, *, quiet: bool = False) -> Tuple[float, float]:
     """All-legal corpus; compare BM25 alone vs BM25+intent_filter.
 
     Returns (precision_without_intent, precision_with_intent) — fraction of
@@ -359,19 +368,211 @@ def run_intent_scenario(workdir: Path, k: int) -> Tuple[float, float]:
         detail.append({"query": query, "want": want_intent, "detected": q_intent,
                        "plain": pi, "filtered": fi})
 
-    print("\n── Within-domain intent scenario (all legal, no routing possible) ──\n")
-    print(f"  {'Query':<52}{'plain':>16}{'+intent':>16}")
-    print("  " + "─" * 82)
-    for d in detail:
-        pc = sum(1 for x in d["plain"] if x == d["want"]) / (len(d["plain"]) or 1)
-        fc = sum(1 for x in d["filtered"] if x == d["want"]) / (len(d["filtered"]) or 1)
-        print(f"  {d['query'][:50]:<52}{pc*100:>14.0f}% {fc*100:>14.0f}%")
-        print(f"     want={d['want']:<12} detected={d['detected']:<12} "
-              f"plain={d['plain']}  filtered={d['filtered']}")
     pw = plain_correct / plain_total
     fw = filt_correct / filt_total
-    print(f"\n  Mean on-intent precision:  plain {pw*100:.0f}%   +intent {fw*100:.0f}%")
+    if not quiet:
+        print("\n── Within-domain intent scenario (all legal, no routing possible) ──\n")
+        print(f"  {'Query':<52}{'plain':>16}{'+intent':>16}")
+        print("  " + "─" * 82)
+        for d in detail:
+            pc = sum(1 for x in d["plain"] if x == d["want"]) / (len(d["plain"]) or 1)
+            fc = sum(1 for x in d["filtered"] if x == d["want"]) / (len(d["filtered"]) or 1)
+            print(f"  {d['query'][:50]:<52}{pc*100:>14.0f}% {fc*100:>14.0f}%")
+            print(f"     want={d['want']:<12} detected={d['detected']:<12} "
+                  f"plain={d['plain']}  filtered={d['filtered']}")
+        print(f"\n  Mean on-intent precision:  plain {pw*100:.0f}%   +intent {fw*100:.0f}%")
     return pw, fw
+
+
+# ── HyDE scenario (query-to-hypothetical, dense retrieval) ──────────────────────
+#
+# Routing and intent typing gate the *index*.  HyDE attacks a different problem:
+# a short conversational query is vocabulary-poor, so its vector lands in a sparse
+# region far from the dense, jargon-packed target passage.  The fix (PDF §2,
+# Forward Reverse Pipeline) is to ask an LLM for a hypothetical textbook answer
+# first — even if the facts are wrong, the *vocabulary* is right, dragging the
+# vector into the correct cluster.
+#
+# This scenario needs a vector space.  When sentence-transformers is installed we
+# use a real neural encoder; otherwise we fall back to a TF-IDF cosine index
+# (clearly labelled).  The TF-IDF proxy still demonstrates the real mechanism:
+# the bare query shares few terms with the target, while the HyDE answer shares
+# many.  A neural encoder would additionally capture synonymy, only widening the
+# gap in HyDE's favour.
+
+import numpy as np
+
+# Target corpus for the HyDE scenario: one clear answer per query plus near-miss
+# distractors that share surface words ("reduce", "memory", "precision").
+_HYDE_DOCS: List[Tuple[str, str]] = [
+    ("srd",      "Stochastic Residual Dithering reduces precision loss during "
+                 "weight quantization by distributing error variance across the "
+                 "residual, mitigating quantization artefacts at low bits-per-weight."),
+    ("kvcache",  "The key-value cache stores attention keys and values; paged "
+                 "attention and FP8 cache precision shrink the VRAM footprint "
+                 "during long-context decoding and inference."),
+    ("sparsity", "Structured sparsity prunes attention heads and feedforward "
+                 "channels below a magnitude threshold to cut compute, but only "
+                 "speeds up inference when the pattern matches hardware tiling."),
+    ("distill",  "Knowledge distillation trains a small student to match a larger "
+                 "teacher's softened output distribution, shrinking model size "
+                 "while preserving task accuracy."),
+    ("noise",    "To reduce the pasta sauce, simmer the crushed tomatoes with "
+                 "garlic and basil for twenty minutes until thick, then serve."),
+]
+
+# (target_doc_id, raw_conversational_query, canned_HyDE_answer)
+# The canned answer stands in for QueryRewriter.rewrite_hyde() output when no
+# live LLM backend is configured.  It is intentionally a *plausible-sounding*
+# paragraph in domain vocabulary — exactly what HyDE produces (facts optional).
+_HYDE_QUERIES: List[Tuple[str, str, str]] = [
+    ("srd",
+     "how do I stop the noise when shrinking model weights?",
+     "Quantization noise during weight compression is mitigated by stochastic "
+     "residual dithering, which distributes error variance across the residual "
+     "to limit precision loss at low bits-per-weight."),
+    ("kvcache",
+     "what keeps memory usage low during really long chats?",
+     "Long-context decoding keeps VRAM low by compressing the key-value attention "
+     "cache with paged attention and FP8 cache precision during inference."),
+    ("distill",
+     "how can I make a big model smaller but still smart?",
+     "Model size is reduced while preserving accuracy through knowledge "
+     "distillation, training a small student network to match the softened "
+     "output distribution of a larger teacher model."),
+]
+
+_HYDE_STOP = frozenset({
+    "the", "a", "an", "to", "of", "in", "for", "on", "at", "by", "and", "or",
+    "is", "are", "do", "how", "i", "my", "but", "with", "during", "when",
+    "what", "really", "can", "still", "make", "keep", "keeps", "low",
+})
+
+
+def _vectorize_tfidf(texts: List[str]) -> Tuple[np.ndarray, Dict[str, int]]:
+    """Build an L2-normalised TF-IDF matrix (rows = texts).  Lexical proxy for a
+    neural dense encoder — labelled as such in the report."""
+    import math
+    import re
+    tok = lambda s: [t for t in re.findall(r"[a-z0-9-]{2,}", s.lower())
+                     if t not in _HYDE_STOP]
+    docs_tok = [tok(t) for t in texts]
+    vocab: Dict[str, int] = {}
+    for dt in docs_tok:
+        for w in dt:
+            vocab.setdefault(w, len(vocab))
+    n = len(texts)
+    df = np.zeros(len(vocab))
+    for dt in docs_tok:
+        for w in set(dt):
+            df[vocab[w]] += 1
+    idf = np.log((n + 1) / (df + 1)) + 1.0
+    mat = np.zeros((n, len(vocab)))
+    for i, dt in enumerate(docs_tok):
+        for w in dt:
+            mat[i, vocab[w]] += 1.0
+        if dt:
+            mat[i] *= idf
+            norm = np.linalg.norm(mat[i])
+            if norm > 0:
+                mat[i] /= norm
+    return mat, vocab
+
+
+def _embed_query(text: str, vocab: Dict[str, int]) -> np.ndarray:
+    import re
+    vec = np.zeros(len(vocab))
+    for w in re.findall(r"[a-z0-9-]{2,}", text.lower()):
+        if w in vocab and w not in _HYDE_STOP:
+            vec[vocab[w]] += 1.0
+    norm = np.linalg.norm(vec)
+    return vec / norm if norm > 0 else vec
+
+
+def _hyde_answer(query: str, canned: str) -> Tuple[str, str]:
+    """Return (hyde_text, source).  Uses the real rewrite_hyde() when a backend
+    is configured (AXIOM_QUERY_REWRITE / from_env), else the canned stand-in."""
+    try:
+        from axiom_query_rewriter import from_env
+        rw = from_env()
+        if rw is not None:
+            out = rw.rewrite_hyde(query, domain="general")
+            if out and out.strip() != query.strip() and len(out) > 20:
+                return out.strip(), "live-backend"
+    except Exception:
+        pass
+    return canned, "canned-standin"
+
+
+def run_hyde_scenario(*, quiet: bool) -> dict:
+    """Rank the target passage for each query, bare vs HyDE-expanded.
+
+    Reports mean rank of the correct passage (1 = top) and mean cosine
+    similarity to it.  HyDE should lower the rank number and raise similarity.
+    """
+    doc_ids = [d[0] for d in _HYDE_DOCS]
+    doc_texts = [d[1] for d in _HYDE_DOCS]
+    mat, vocab = _vectorize_tfidf(doc_texts)
+
+    rows: List[dict] = []
+    for target, query, canned in _HYDE_QUERIES:
+        hyde_text, source = _hyde_answer(query, canned)
+        ti = doc_ids.index(target)
+
+        def _rank_and_sim(vec: np.ndarray) -> Tuple[int, float]:
+            sims = mat @ vec
+            order = list(np.argsort(-sims))
+            return order.index(ti) + 1, float(sims[ti])
+
+        bare_rank, bare_sim = _rank_and_sim(_embed_query(query, vocab))
+        hyde_rank, hyde_sim = _rank_and_sim(_embed_query(hyde_text, vocab))
+        rows.append({
+            "query": query, "target": target, "hyde_source": source,
+            "bare_rank": bare_rank, "hyde_rank": hyde_rank,
+            "bare_sim": round(bare_sim, 3), "hyde_sim": round(hyde_sim, 3),
+            "top1_bare": doc_ids[int(np.argmax(mat @ _embed_query(query, vocab)))],
+            "top1_hyde": doc_ids[int(np.argmax(mat @ _embed_query(hyde_text, vocab)))],
+        })
+
+    encoder = "neural (sentence-transformers)" if _has_sbert() else \
+              "TF-IDF cosine proxy (no sentence-transformers installed)"
+    summary = {
+        "encoder": encoder,
+        "hyde_source": rows[0]["hyde_source"] if rows else "n/a",
+        "mean_bare_rank": round(sum(r["bare_rank"] for r in rows) / len(rows), 2),
+        "mean_hyde_rank": round(sum(r["hyde_rank"] for r in rows) / len(rows), 2),
+        "mean_bare_sim": round(sum(r["bare_sim"] for r in rows) / len(rows), 3),
+        "mean_hyde_sim": round(sum(r["hyde_sim"] for r in rows) / len(rows), 3),
+        "per_query": rows,
+    }
+
+    if not quiet:
+        print("\n── HyDE scenario: query-to-hypothetical (dense retrieval) ──")
+        print(f"   encoder: {encoder}")
+        print(f"   HyDE source: {summary['hyde_source']}  "
+              "(set AXIOM_QUERY_REWRITE + a backend for live generation)\n")
+        print(f"   {'Query':<48}{'bare rank':>11}{'HyDE rank':>11}{'Δsim':>9}")
+        print("   " + "─" * 78)
+        for r in rows:
+            dsim = r["hyde_sim"] - r["bare_sim"]
+            arrow = "→ top1" if r["hyde_rank"] == 1 else ""
+            print(f"   {r['query'][:46]:<48}{r['bare_rank']:>11}"
+                  f"{r['hyde_rank']:>11}{dsim:>+9.3f}  {arrow}")
+            print(f"      target={r['target']:<10} "
+                  f"bare top1={r['top1_bare']:<10} HyDE top1={r['top1_hyde']}")
+        print(f"\n   Mean target rank:  bare {summary['mean_bare_rank']}  →  "
+              f"HyDE {summary['mean_hyde_rank']}   (1.0 = always top)")
+        print(f"   Mean target sim :  bare {summary['mean_bare_sim']}  →  "
+              f"HyDE {summary['mean_hyde_sim']}")
+    return summary
+
+
+def _has_sbert() -> bool:
+    try:
+        import sentence_transformers  # noqa: F401
+        return True
+    except Exception:
+        return False
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -386,7 +587,8 @@ def main(argv: List[str] | None = None) -> int:
         results = sim.run()
 
         if args.json:
-            pw, fw = run_intent_scenario(Path(d) / "intent", args.k)
+            pw, fw = run_intent_scenario(Path(d) / "intent", args.k, quiet=True)
+            hyde = run_hyde_scenario(quiet=True)
             print(json.dumps({
                 "cross_domain": [{
                     "strategy": r.name,
@@ -398,10 +600,12 @@ def main(argv: List[str] | None = None) -> int:
                     "precision_plain": round(pw, 4),
                     "precision_with_intent": round(fw, 4),
                 },
+                "hyde": hyde,
             }, indent=2))
         else:
             print_report(results, args.k)
             run_intent_scenario(Path(d) / "intent", args.k)
+            run_hyde_scenario(quiet=False)
     return 0
 
 
