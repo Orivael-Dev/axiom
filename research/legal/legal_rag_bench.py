@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sqlite3
 import time
@@ -572,6 +573,84 @@ def role_boost_rerank(
     return [pid for _, _, pid in scored]
 
 
+# ── buoyancy re-rank (continuous distance-from-actor) ────────────────────────────
+#
+# role_boost_rerank uses a BINARY chapter penalty (is it Chapter 7? ×(1-penalty)).
+# Buoyancy generalises that to a CONTINUOUS weight: a chunk's "heaviness" is how
+# far its vocabulary sits from the query's actor.  Offence-dominated chunks are
+# heavy and sink; actor-aligned chunks are light and float — regardless of which
+# chapter they live in.  A chunk that merely mentions the offence in passing but
+# is centred on the actor stays buoyant; one that is all offence vocabulary sinks.
+#
+# OFFENCE_TERMS are the "heavy" distractor words (the loud nouns that pull
+# retrieval toward Chapter 7-9).  Edit alongside ACTOR_ROLES.
+
+OFFENCE_TERMS: List[str] = [
+    "murder", "manslaughter", "homicide", "kill",
+    "arson", "bushfire", "firebomb",
+    "burglary", "burgle", "home invasion",
+    "robbery", "carjacking", "carjack",
+    "theft", "stolen", "handling of goods",
+    "assault", "wound", "grievous",
+    "rape", "sexual penetration", "sexual assault", "incest",
+    "traffick", "cultivat", "narcotic", "cannabis", "cocaine", "drug",
+    "fraud", "dishonest", "obtaining a financial",
+    "stalk", "kidnap", "false imprisonment", "deprivation of liberty",
+]
+
+_OFFENCE_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(t) for t in OFFENCE_TERMS) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def _actor_heaviness(text: str, query_roles: set) -> float:
+    """How far a chunk's vocabulary sits from the query's actor, in [-1, +1].
+
+    +1  pure offence vocabulary, no actor terms  → heavy, sinks
+     0  balanced (or nothing to weigh)
+    -1  pure actor vocabulary, no offence terms   → light, floats
+    """
+    if not query_roles or not text:
+        return 0.0
+    actor_hits = sum(len(_ROLE_RE[tag].findall(text)) for tag in query_roles)
+    offence_hits = len(_OFFENCE_RE.findall(text))
+    total = actor_hits + offence_hits
+    if total == 0:
+        return 0.0
+    return (offence_hits - actor_hits) / total
+
+
+def buoyancy_rerank(
+    merged_ids: List[str],
+    query: str,
+    passage_text: Dict[str, str],
+    *,
+    gravity: float = 1.5,
+) -> List[str]:
+    """Re-rank by buoyancy: heavy (offence-far-from-actor) chunks sink.
+
+    No-op when the query carries no actor-role (returns input order) — same
+    safety property as role_boost_rerank: offence-element questions, whose gold
+    genuinely is a Chapter 7 section, are never demoted.
+
+    adjusted = reciprocal_rank * exp(-gravity * heaviness)
+      heaviness=+1 (pure offence) → *exp(-gravity)  (sinks)
+      heaviness=-1 (pure actor)   → *exp(+gravity)  (floats)
+    """
+    query_roles = _extract_roles(query)
+    if not query_roles:
+        return list(merged_ids)
+    scored = []
+    for rank, pid in enumerate(merged_ids):
+        base = 1.0 / (rank + 1)
+        h = _actor_heaviness(passage_text.get(pid, ""), query_roles)
+        base *= math.exp(-gravity * h)
+        scored.append((base, rank, pid))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return [pid for _, _, pid in scored]
+
+
 # ── deep-recall diagnostic ──────────────────────────────────────────────────────
 #
 # Parent-child and role-boost are POOL-REORDERING — they can only promote what
@@ -697,6 +776,8 @@ def run_benchmark(
     role_boost: bool = False,
     role_boost_weight: float = 1.0,
     offence_penalty: float = 0.5,
+    buoyancy: bool = False,
+    gravity: float = 1.5,
 ) -> dict:
     retriever = CVERetriever(str(db_path))
     conn = sqlite3.connect(str(db_path))
@@ -704,14 +785,15 @@ def run_benchmark(
 
     # Pre-load passage text for rerankers that need raw text
     passage_text: Dict[str, str] = {}
-    if splade is not None or cross_encoder is not None or role_boost:
+    if splade is not None or cross_encoder is not None or role_boost or buoyancy:
         cur = conn.execute("SELECT cve_id, answer FROM cve")
         passage_text = {r[0]: r[1] for r in cur.fetchall()}
 
     (bm25_results, rewrite_results, hybrid_results, hybrid_rewrite_results,
      dense_results, rrf_results, rrf_ce_results, srd_rrf_ce_results,
-     bm25_pc_results, rrf_pc_results, rrf_pc_role_results) = (
-        [], [], [], [], [], [], [], [], [], [], []
+     bm25_pc_results, rrf_pc_results, rrf_pc_role_results,
+     rrf_pc_buoy_results) = (
+        [], [], [], [], [], [], [], [], [], [], [], []
     )
 
     for row in qa_rows:
@@ -819,7 +901,7 @@ def run_benchmark(
         # parent sections), scored at section granularity vs the gold's parent.
         # The wide pool is computed once and shared by the plain parent-child
         # tracks and the role-boost track.
-        if parent_child or role_boost:
+        if parent_child or role_boost or buoyancy:
             gold_parent = _parent_of(passage_id)
 
             # Wide BM25 pool (shared)
@@ -867,6 +949,19 @@ def run_benchmark(
                     "query_roles": sorted(_extract_roles(question)),
                 })
 
+            # RRF + parent-child + buoyancy: continuous distance-from-actor
+            # re-rank — heavy (offence) chunks sink, light (actor) chunks float.
+            if buoyancy and dense is not None:
+                buoy_ranked = buoyancy_rerank(
+                    wide_merged, question, passage_text, gravity=gravity)
+                buoy_parents = collapse_to_parents(buoy_ranked, final_k=final_k)
+                rrf_pc_buoy_results.append({
+                    "id": qid, "relevant_id": gold_parent,
+                    "retrieved": buoy_parents,
+                    "rr": rr(buoy_parents, gold_parent),
+                    "pc_ms": round(wide_ms + wide_d_ms, 2),
+                })
+
     conn.close()
     return {
         "bm25":           _aggregate(bm25_results,           final_k, latency_field="fts5_ms"),
@@ -890,6 +985,8 @@ def run_benchmark(
                           if rrf_pc_results else None,
         "rrf_pc_role":    _aggregate(rrf_pc_role_results,    final_k, latency_field="pc_ms")
                           if rrf_pc_role_results else None,
+        "rrf_pc_buoy":    _aggregate(rrf_pc_buoy_results,    final_k, latency_field="pc_ms")
+                          if rrf_pc_buoy_results else None,
     }
 
 
@@ -972,6 +1069,7 @@ def print_comparison(data: dict, fts5_k: int) -> None:
     bm25_pc = data.get("bm25_pc")
     rrf_pc  = data.get("rrf_pc")
     rrf_pc_role = data.get("rrf_pc_role")
+    rrf_pc_buoy = data.get("rrf_pc_buoy")
 
     if den:
         col_data.append(("Dense", den))
@@ -987,6 +1085,8 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         col_data.append(("RRF parent-child", rrf_pc))
     if rrf_pc_role:
         col_data.append(("RRF+PC+role", rrf_pc_role))
+    if rrf_pc_buoy:
+        col_data.append(("RRF+PC+buoyancy", rrf_pc_buoy))
 
     w = 16
     print()
@@ -1130,6 +1230,13 @@ def main(argv=None) -> int:
     ap.add_argument("--offence-penalty",   type=float, default=0.5,
                     help="Multiplicative penalty for offence-chapter chunks when a "
                          "procedural role is present (default 0.5)")
+    ap.add_argument("--buoyancy",          action="store_true",
+                    help="Continuous distance-from-actor re-rank: offence-dominated "
+                         "chunks sink, actor-aligned chunks float (vs role-boost's "
+                         "binary chapter penalty). Implies parent-child + dense.")
+    ap.add_argument("--gravity",           type=float, default=1.5,
+                    help="Buoyancy strength: adjusted = rank * exp(-gravity*heaviness) "
+                         "(default 1.5)")
     ap.add_argument("--gold-rank-report",  action="store_true",
                     help="Deep-recall diagnostic: bucket each query by where its "
                          "gold SECTION lands in a deep RRF pool (in_pool/reachable/"
@@ -1216,7 +1323,7 @@ def main(argv=None) -> int:
     # ── optional dense retriever (bi-encoder first-stage + RRF) ──────────────
     dense_retriever = None
     use_dense = (args.dense or args.rrf or args.cross_encoder or args.role_boost
-                 or args.gold_rank_report)
+                 or args.buoyancy or args.gold_rank_report)
     if use_dense:
         print(f"\nLoading dense model ({args.dense_model})…")
         dense_retriever = DenseRetriever(args.dense_model)
@@ -1283,6 +1390,8 @@ def main(argv=None) -> int:
         tracks.append(f"parent-child(pool={args.pc_pool})")
     if args.role_boost:
         tracks.append(f"role-boost(w={args.role_boost_weight},pen={args.offence_penalty})")
+    if args.buoyancy:
+        tracks.append(f"buoyancy(g={args.gravity})")
     print(f"\nRunning benchmark (fts5-k={args.fts5_k}, final-k={args.k}, "
           f"tracks=[{', '.join(tracks) or 'bm25-only'}])…")
     data = run_benchmark(
@@ -1301,6 +1410,8 @@ def main(argv=None) -> int:
         role_boost=args.role_boost,
         role_boost_weight=args.role_boost_weight,
         offence_penalty=args.offence_penalty,
+        buoyancy=args.buoyancy,
+        gravity=args.gravity,
     )
 
     print_comparison(data, fts5_k=args.fts5_k)
