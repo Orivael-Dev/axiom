@@ -57,7 +57,12 @@ PATTERN_LIBRARY_PATH         = Path("axiom_general_agent_patterns.jsonl")
 RAG_DEFAULT_CORPUS  = Path(os.environ.get("AXIOM_RAG_CORPUS", "/mnt/nvme/axiom/datasets"))
 RAG_DEFAULT_TOP_K   = 3      # snippets injected into the step prompt
 RAG_MAX_RECORDS     = int(os.environ.get("AXIOM_RAG_MAX_RECORDS", "5000"))
-RAG_SNIPPET_CHARS   = 500    # per-snippet truncation in the prompt
+RAG_SNIPPET_CHARS   = 500    # hard per-snippet truncation backstop in the prompt
+# Snippet extraction budget. key_sentence extraction retains the answer-bearing
+# sentence at a tight budget (validated: keeps short AND long-record answers at
+# ~180 chars where a fixed window misses long-record answers), so the default
+# is small to control RAG token bloat. Raise for more context per snippet.
+RAG_SNIPPET_MAX_CHARS = int(os.environ.get("AXIOM_RAG_SNIPPET_CHARS", "160"))
 # Retrieval is per-step: each step's query is the step label anchored by the
 # task (generic step labels alone retrieve noise; the task carries the specific
 # terms). The min-score floor skips injecting context into steps the corpus has
@@ -660,6 +665,8 @@ def build_rag_retriever(
     *,
     max_records: int = RAG_MAX_RECORDS,
     include_axiom_knowledge: bool = True,
+    snippet_strategy: str = "key_sentence",
+    snippet_max_chars: int = RAG_SNIPPET_MAX_CHARS,
     verbose: bool = False,
 ):
     """Build a local BM25 retriever over the corpus + Axiom knowledge.
@@ -682,7 +689,11 @@ def build_rag_retriever(
             print(f"  [rag] retrieval stack unavailable ({exc}); RAG disabled")
         return None
 
-    retriever = LocalRetriever(roots=[])     # empty; filled incrementally
+    retriever = LocalRetriever(            # empty; filled incrementally
+        roots=[],
+        snippet_strategy=snippet_strategy,
+        snippet_max_chars=snippet_max_chars,
+    )
     retriever.build()
     ingester = DatasheetIngester(retriever=retriever, max_records=max_records)
 
@@ -845,6 +856,7 @@ class AutonomousGeneralAgent:
         rag_max_records: int = RAG_MAX_RECORDS,
         rag_axiom_knowledge: bool = True,
         rag_min_score: float = RAG_MIN_SCORE,
+        rag_snippet_mode: str = "key_sentence",
     ) -> None:
         self._model_bin  = model_bin
         self._model_path = model_path
@@ -859,6 +871,7 @@ class AutonomousGeneralAgent:
         self._retriever = (
             build_rag_retriever(rag_corpus, max_records=rag_max_records,
                                 include_axiom_knowledge=rag_axiom_knowledge,
+                                snippet_strategy=rag_snippet_mode,
                                 verbose=verbose)
             if rag else None
         )
@@ -970,6 +983,7 @@ def _cmd_run(args) -> int:
         rag_max_records=args.rag_max_records,
         rag_axiom_knowledge=not args.no_axiom_knowledge,
         rag_min_score=args.rag_min_score,
+        rag_snippet_mode=args.rag_snippet_mode,
     )
     outcome = agent.run(task=args.task, domain_hint=args.domain)
     if args.json:
@@ -1040,6 +1054,9 @@ def main(argv=None):
                        help="max snippets to retrieve per step")
     p_run.add_argument("--rag-min-score", type=float, default=RAG_MIN_SCORE,
                        help="BM25 floor; skip injecting context below it (0=off)")
+    p_run.add_argument("--rag-snippet-mode", default="key_sentence",
+                       choices=["window", "key_sentence", "sliding"],
+                       help="snippet extraction: window | key_sentence | sliding")
     p_run.add_argument("--rag-max-records", type=int, default=RAG_MAX_RECORDS,
                        help="per-file cap on JSONL records indexed")
     p_run.add_argument("--no-axiom-knowledge", action="store_true",

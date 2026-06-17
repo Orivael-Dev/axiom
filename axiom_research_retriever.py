@@ -53,6 +53,15 @@ def _tokenize(text: str) -> List[str]:
             if t.lower() not in _STOPWORDS]
 
 
+# Split on sentence terminators or newlines. Flattened JSONL records join
+# fields with newlines, so newline is a real boundary here.
+_SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|[\n\r]+")
+
+
+def _split_sentences(text: str) -> List[str]:
+    return [s.strip() for s in _SENT_SPLIT_RE.split(text) if s.strip()]
+
+
 def _safe_read(path: Path) -> Optional[str]:
     try:
         if path.stat().st_size > _MAX_BYTES:
@@ -121,11 +130,20 @@ class LocalRetriever:
         *,
         include_exts: Optional[Iterable[str]] = None,
         max_files:    int = 4000,
+        snippet_strategy: str = "window",
+        snippet_max_chars: int = 400,
     ) -> None:
         self._roots = [Path(p).resolve() for p in roots if p]
         self._include_exts = (set(include_exts) if include_exts is not None
                                                 else _INCLUDE_EXTS)
         self._max_files = max_files
+        # Snippet extraction: "window" (legacy, chars around the first hit),
+        # "key_sentence" (highest-idf sentences containing query terms), or
+        # "sliding" (densest idf-weighted token window). The latter two trim
+        # snippets to what's actually relevant — controls RAG token bloat
+        # without an extra model.
+        self._snippet_strategy = snippet_strategy
+        self._snippet_max_chars = snippet_max_chars
         self._docs:    List[IndexedDocument] = []
         self._idf:     dict[str, float] = {}
         self._avg_len: float = 1.0
@@ -309,7 +327,7 @@ class LocalRetriever:
             score = self._score(d, q_terms)
             if score <= 0 or score < min_score:
                 continue
-            snippet = self._snippet(d, q_terms)
+            snippet = self._make_snippet(d, q_terms)
             scored.append((score, d, snippet))
         scored.sort(key=lambda x: -x[0])
         out: List[RetrievedSource] = []
@@ -362,6 +380,79 @@ class LocalRetriever:
         if ext == ".rst":
             return "internal-doc · rst"
         return "internal-text"
+
+    def _make_snippet(self, doc: IndexedDocument, q_terms: List[str]) -> str:
+        """Dispatch to the configured snippet strategy."""
+        if self._snippet_strategy == "key_sentence":
+            return self._key_sentence_snippet(doc, q_terms)
+        if self._snippet_strategy == "sliding":
+            return self._sliding_window_snippet(doc, q_terms)
+        return self._snippet(doc, q_terms)
+
+    def _key_sentence_snippet(self, doc: IndexedDocument,
+                              q_terms: List[str]) -> str:
+        """Keep only the highest-value sentences that contain query terms.
+
+        Each sentence is scored by the summed IDF of the distinct query terms
+        it contains; the top sentences are taken greedily up to the char
+        budget, then re-ordered to reading order. This drops the boilerplate
+        a fixed-width window would carry, so the injected context is mostly
+        on-topic — the no-model way to cut RAG token bloat.
+        """
+        max_chars = self._snippet_max_chars
+        qset = set(q_terms)
+        sents = _split_sentences(doc.content)
+        scored: list[tuple[float, int, str]] = []
+        for i, s in enumerate(sents):
+            hits = qset & set(_tokenize(s))
+            if not hits:
+                continue
+            score = sum(self._idf.get(t, 0.0) for t in hits)
+            scored.append((score, i, s))
+        if not scored:
+            return re.sub(r"\s+", " ", doc.content.strip()[:max_chars])
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        picked: list[tuple[int, str]] = []
+        total = 0
+        for _, i, s in scored:
+            if picked and total + len(s) + 1 > max_chars:
+                break
+            picked.append((i, s))
+            total += len(s) + 1
+        picked.sort(key=lambda x: x[0])     # restore reading order
+        out = " ".join(s for _, s in picked)
+        return re.sub(r"\s+", " ", out).strip()[:max_chars]
+
+    def _sliding_window_snippet(self, doc: IndexedDocument,
+                                q_terms: List[str], *, window: int = 45) -> str:
+        """Return the densest IDF-weighted query-term window in the document.
+
+        Slides a fixed word-count window and keeps the one whose query-term
+        mass (IDF-weighted) is highest — finds the best *passage* rather than
+        centring on the first hit like the legacy window. Robust when relevant
+        terms span sentence boundaries (datasheets, code, tables).
+        """
+        max_chars = self._snippet_max_chars
+        words = doc.content.split()
+        if not words:
+            return ""
+        qset = set(q_terms)
+        vals = [sum(self._idf.get(t, 0.0) for t in _tokenize(w) if t in qset)
+                for w in words]
+        n = len(words)
+        win = min(window, n)
+        cur = sum(vals[:win])
+        best, best_i = cur, 0
+        for i in range(1, n - win + 1):
+            cur += vals[i + win - 1] - vals[i - 1]
+            if cur > best:
+                best, best_i = cur, i
+        snippet = " ".join(words[best_i:best_i + win])
+        if best_i > 0:
+            snippet = "…" + snippet
+        if best_i + win < n:
+            snippet = snippet + "…"
+        return re.sub(r"\s+", " ", snippet).strip()[:max_chars]
 
     @staticmethod
     def _snippet(doc: IndexedDocument, q_terms: List[str],
