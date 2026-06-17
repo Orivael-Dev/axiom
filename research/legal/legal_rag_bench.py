@@ -359,6 +359,72 @@ def rrf_merge(
     return sorted(scores, key=lambda p: -scores[p])[:final_k]
 
 
+
+# ── Cross-encoder reranker ────────────────────────────────────────────────────
+
+class CrossEncoderReranker:
+    """Cross-encoder joint query-passage scorer for final reranking.
+
+    Pairs naturally with DenseRetriever: BGE family uses
+    ``BAAI/bge-reranker-base`` (same pretraining, complementary scoring).
+
+    Takes the RRF top-N candidates, scores each (query, passage) pair
+    jointly, returns them reordered by relevance score.  This fixes the
+    RRF rank-1 regression: RRF optimises recall, cross-encoder restores
+    precision at the top slot.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "BAAI/bge-reranker-base",
+        max_length: int = 512,
+    ) -> None:
+        self._model_name = model_name
+        self._max_length = max_length
+        self._model      = None
+        self._ready      = False
+
+    def load(self) -> bool:
+        try:
+            from sentence_transformers import CrossEncoder
+            self._model = CrossEncoder(
+                self._model_name,
+                max_length=self._max_length,
+            )
+            self._ready = True
+            return True
+        except ImportError:
+            print("  [CE] pip install sentence-transformers")
+            return False
+        except Exception as exc:
+            print(f"  [CE] model load failed: {exc}")
+            return False
+
+    def rerank(
+        self,
+        question: str,
+        candidates: List[Tuple[str, str]],   # (passage_id, passage_text)
+        *,
+        top_n: Optional[int] = None,
+    ) -> Tuple[List[str], float]:
+        """Return (reranked_ids, latency_ms).
+
+        ``top_n`` caps the input list before scoring — pass 20 to score
+        only the RRF top-20 rather than all k=100 candidates.
+        Falls back to original order when model unavailable.
+        """
+        if not self._ready or not candidates:
+            return [pid for pid, _ in candidates], 0.0
+        pool = candidates[:top_n] if top_n else candidates
+        pairs = [[question, txt] for _, txt in pool]
+        t0     = time.perf_counter()
+        scores = self._model.predict(pairs, show_progress_bar=False)
+        ms     = (time.perf_counter() - t0) * 1000
+        ranked = sorted(zip(scores, [pid for pid, _ in pool]),
+                        reverse=True)
+        return [pid for _, pid in ranked], round(ms, 2)
+
+
 # ── metrics ───────────────────────────────────────────────────────────────────
 
 def rr(retrieved: List[str], relevant: str) -> float:
@@ -383,6 +449,8 @@ def run_benchmark(
     splade: Optional[SPLADEReranker] = None,
     rewriter: Optional[QueryRewriter] = None,
     dense: Optional[DenseRetriever] = None,
+    cross_encoder: Optional[CrossEncoderReranker] = None,
+    ce_top_n: int = 20,
     k_rrf: int = 60,
     expand: bool = True,
 ) -> dict:
@@ -390,14 +458,16 @@ def run_benchmark(
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode = WAL")
 
-    # Pre-load passage text for SPLADE (needs raw text for encoding)
+    # Pre-load passage text for rerankers that need raw text
     passage_text: Dict[str, str] = {}
-    if splade is not None:
+    if splade is not None or cross_encoder is not None:
         cur = conn.execute("SELECT cve_id, answer FROM cve")
         passage_text = {r[0]: r[1] for r in cur.fetchall()}
 
-    (bm25_results, rewrite_results, hybrid_results,
-     hybrid_rewrite_results, dense_results, rrf_results) = [], [], [], [], [], []
+    (bm25_results, rewrite_results, hybrid_results, hybrid_rewrite_results,
+     dense_results, rrf_results, rrf_ce_results, srd_rrf_ce_results) = (
+        [], [], [], [], [], [], [], []
+    )
 
     for row in qa_rows:
         qid        = str(row.get("id", ""))
@@ -471,6 +541,35 @@ def run_benchmark(
                 "rrf_ms": rrf_ms,
             })
 
+        # Track 7: BM25 + Dense RRF → cross-encoder rerank
+        if dense is not None and cross_encoder is not None:
+            # Use a wider pool (ce_top_n) before scoring — ensures the
+            # correct passage is present even if RRF ranked it just outside
+            # final_k.  We re-merge at final_k+ce_top_n then score.
+            wide = rrf_merge(ids, d_ids, k_rrf=k_rrf, final_k=ce_top_n)
+            ce_cands = [(pid, passage_text.get(pid, "")) for pid in wide]
+            ce_ids, ce_ms = cross_encoder.rerank(question, ce_cands)
+            ce_total_ms = round(fts5_ms + dense_ms + ce_ms, 2)
+            rrf_ce_results.append({
+                "id": qid, "relevant_id": passage_id,
+                "retrieved": ce_ids[:final_k],
+                "rr": rr(ce_ids[:final_k], passage_id),
+                "ce_ms": ce_total_ms,
+            })
+
+        # Track 8: SRD rewrite + Dense RRF → cross-encoder rerank
+        if rewriter is not None and dense is not None and cross_encoder is not None:
+            wide_srd = rrf_merge(r_ids, d_ids, k_rrf=k_rrf, final_k=ce_top_n)
+            srd_cands = [(pid, passage_text.get(pid, "")) for pid in wide_srd]
+            srd_ce_ids, srd_ce_ms = cross_encoder.rerank(question, srd_cands)
+            srd_ce_total_ms = round(r_ms + dense_ms + srd_ce_ms, 2)
+            srd_rrf_ce_results.append({
+                "id": qid, "relevant_id": passage_id,
+                "retrieved": srd_ce_ids[:final_k],
+                "rr": rr(srd_ce_ids[:final_k], passage_id),
+                "ce_ms": srd_ce_total_ms,
+            })
+
     conn.close()
     return {
         "bm25":           _aggregate(bm25_results,           final_k, latency_field="fts5_ms"),
@@ -484,6 +583,10 @@ def run_benchmark(
                           if dense_results else None,
         "rrf":            _aggregate(rrf_results,            final_k, latency_field="rrf_ms")
                           if rrf_results else None,
+        "rrf_ce":         _aggregate(rrf_ce_results,         final_k, latency_field="ce_ms")
+                          if rrf_ce_results else None,
+        "srd_rrf_ce":     _aggregate(srd_rrf_ce_results,     final_k, latency_field="ce_ms")
+                          if srd_rrf_ce_results else None,
     }
 
 
@@ -536,10 +639,17 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         col_data.append(("BM25+SPLADE", hyb))
     if hyb_r:
         col_data.append(("BM25+R+SPLADE", hyb_r))
+    rrf_ce  = data.get("rrf_ce")
+    srd_ce  = data.get("srd_rrf_ce")
+
     if den:
         col_data.append(("Dense", den))
     if rrf:
         col_data.append(("BM25+Dense RRF", rrf))
+    if rrf_ce:
+        col_data.append(("RRF+CrossEnc", rrf_ce))
+    if srd_ce:
+        col_data.append(("SRD+RRF+CE", srd_ce))
 
     w = 16
     print()
@@ -586,6 +696,12 @@ def print_comparison(data: dict, fts5_k: int) -> None:
     if rrf and rrf.get("latency"):
         print(f"  Latency (BM25+Dense RRF)  mean={rrf['latency']['mean']} ms  "
               f"p50={rrf['latency']['p50']} ms  p95={rrf['latency']['p95']} ms")
+    if rrf_ce and rrf_ce.get("latency"):
+        print(f"  Latency (RRF+CrossEnc)  mean={rrf_ce['latency']['mean']} ms  "
+              f"p50={rrf_ce['latency']['p50']} ms  p95={rrf_ce['latency']['p95']} ms")
+    if srd_ce and srd_ce.get("latency"):
+        print(f"  Latency (SRD+RRF+CE)  mean={srd_ce['latency']['mean']} ms  "
+              f"p50={srd_ce['latency']['p50']} ms  p95={srd_ce['latency']['p95']} ms")
 
     if bm["n_misses"]:
         fails = [r for r in bm["per_question"]
@@ -633,6 +749,12 @@ def main(argv=None) -> int:
                     help="RRF constant k (default 60)")
     ap.add_argument("--skip-dense-build", action="store_true",
                     help="Skip dense index build if .npy already exists")
+    ap.add_argument("--cross-encoder",    action="store_true",
+                    help="Enable cross-encoder rerank after RRF (implies --rrf + --dense)")
+    ap.add_argument("--ce-model",         default="BAAI/bge-reranker-base",
+                    help="Cross-encoder model (default: BAAI/bge-reranker-base)")
+    ap.add_argument("--ce-top-n",         type=int, default=20,
+                    help="Candidates fed to cross-encoder from RRF pool (default 20)")
     ap.add_argument("--hf-token",   default=None)
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--results",    type=Path, default=RESULTS_PATH)
@@ -711,7 +833,7 @@ def main(argv=None) -> int:
     # ── run ───────────────────────────────────────────────────────────────────
     # ── optional dense retriever (bi-encoder first-stage + RRF) ──────────────
     dense_retriever = None
-    use_dense = args.dense or args.rrf
+    use_dense = args.dense or args.rrf or args.cross_encoder
     if use_dense:
         print(f"\nLoading dense model ({args.dense_model})…")
         dense_retriever = DenseRetriever(args.dense_model)
@@ -737,6 +859,17 @@ def main(argv=None) -> int:
                 print(f"  Dense index built in {time.perf_counter()-t0:.1f}s")
             print("  Dense retriever ready")
 
+    # ── optional cross-encoder reranker ───────────────────────────────────────
+    cross_encoder = None
+    if args.cross_encoder:
+        print(f"\nLoading cross-encoder ({args.ce_model})…")
+        cross_encoder = CrossEncoderReranker(args.ce_model)
+        if not cross_encoder.load():
+            print("  Cross-encoder load failed — running without CE")
+            cross_encoder = None
+        else:
+            print(f"  Cross-encoder ready (top-n={args.ce_top_n})")
+
     # ── run ───────────────────────────────────────────────────────────────────
     expand = not args.no_expand
     tracks = []
@@ -748,8 +881,10 @@ def main(argv=None) -> int:
         tracks.append("splade")
     if dense_retriever:
         tracks.append(f"dense({args.dense_model.split('/')[-1]})")
-    if args.rrf:
+    if args.rrf or args.cross_encoder:
         tracks.append(f"rrf(k={args.rrf_k})")
+    if cross_encoder:
+        tracks.append(f"ce({args.ce_model.split('/')[-1]},top{args.ce_top_n})")
     print(f"\nRunning benchmark (fts5-k={args.fts5_k}, final-k={args.k}, "
           f"tracks=[{', '.join(tracks) or 'bm25-only'}])…")
     data = run_benchmark(
@@ -759,6 +894,8 @@ def main(argv=None) -> int:
         splade=splade,
         rewriter=rewriter,
         dense=dense_retriever,
+        cross_encoder=cross_encoder,
+        ce_top_n=args.ce_top_n,
         k_rrf=args.rrf_k,
         expand=expand,
     )
