@@ -111,6 +111,7 @@ class _ServerState:
         self.retriever      = None      # LocalRetriever / DomainRoutedRetriever
         self.shard_router   = None      # ShardRouter (optional; replaces cve_retriever)
         self.query_rewriter = None      # QueryRewriter (optional; AXIOM_QUERY_REWRITE=<domain>)
+        self.user_cookie    = None      # UserContextCookie (optional; AXIOM_USER_COOKIE=path)
         self._qrf_cache     = {}        # domain → QRFEngine
 
     def ensure(self) -> None:
@@ -180,6 +181,17 @@ class _ServerState:
                     LOG.info("CVE shard wired from AXIOM_CVE_DB_PATH: %s", cve_db)
                 except Exception as exc:
                     LOG.warning("CVE shard skipped: %s", exc)
+
+        # Optional user context cookie: AXIOM_USER_COOKIE=~/.axiom/user.cookie.json
+        try:
+            from axiom_user_cookie import from_env as _cookie_from_env
+            cookie = _cookie_from_env()
+            if cookie is not None:
+                self.user_cookie = cookie
+                LOG.info("user cookie loaded: project=%r style=%r",
+                         cookie.active_project, cookie.style)
+        except Exception as exc:
+            LOG.warning("user cookie load failed: %s", exc)
 
         # Optional query rewriter: AXIOM_QUERY_REWRITE=legal|obd|medical|1
         rewrite_domain = os.environ.get("AXIOM_QUERY_REWRITE", "").strip().lower()
@@ -627,10 +639,14 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     # backend — falls through harmlessly.
     from axiom_event_token.backends import domain_context
 
+    # Merge user cookie into extra_context (empty dict = no-op)
+    user_ctx = _state.user_cookie.to_extra_context() if _state.user_cookie else {}
+
     t0 = time.monotonic()
     try:
         with domain_context(req.domain):
-            token = exo.invoke(delegate_name, req.query)
+            token = exo.invoke(delegate_name, req.query,
+                               extra_context=user_ctx or None)
     except Exception as e:
         LOG.exception("exoskeleton invoke failed")
         raise HTTPException(status_code=502,
