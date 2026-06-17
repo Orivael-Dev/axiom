@@ -572,6 +572,111 @@ def role_boost_rerank(
     return [pid for _, _, pid in scored]
 
 
+# ── deep-recall diagnostic ──────────────────────────────────────────────────────
+#
+# Parent-child and role-boost are POOL-REORDERING — they can only promote what
+# the first-stage RRF pool already contains.  This report finds, for every
+# query, the rank at which the gold SECTION first appears in a deep RRF ordering,
+# and buckets the result.  It bounds how much a wider --pc-pool can buy and
+# separates reachable misses (a wider pool fixes them) from true recall gaps
+# (the gold never appears → only query expansion / HyDE can reach them).
+
+def _rank_bucket(sec_rank: Optional[int], *, pool_threshold: int) -> str:
+    """Classify a gold-section rank into a reachability bucket.
+
+    None (gold section never appears) -> "absent" (true recall gap).
+    """
+    if sec_rank is None:
+        return "absent"
+    if sec_rank < pool_threshold:
+        return "in_pool"
+    if sec_rank < 100:
+        return "reachable"
+    return "deep"
+
+
+def gold_rank_report(
+    db_path: Path,
+    qa_rows: list,
+    *,
+    dense: Optional[DenseRetriever] = None,
+    deep_pool: int = 200,
+    k_rrf: int = 60,
+    expand: bool = True,
+    pool_threshold: int = 30,
+) -> dict:
+    """Bucket each query by where its gold SECTION lands in a deep RRF pool.
+
+    Buckets (by section rank in the deep RRF list):
+      in_pool      rank < pool_threshold     — reordering (PC/role) can reach it
+      reachable    pool_threshold..100       — a wider pool would admit it
+      deep         100..deep_pool            — needs a very wide pool
+      absent       gold section never appears — TRUE recall gap (HyDE territory)
+    """
+    retriever = CVERetriever(str(db_path))
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode = WAL")
+
+    buckets = {"in_pool": 0, "reachable": 0, "deep": 0, "absent": 0}
+    rows: list = []
+    for row in qa_rows:
+        qid      = str(row.get("id", ""))
+        question = row.get("question", "")
+        gold     = str(row.get("relevant_passage_id", ""))
+        gold_parent = _parent_of(gold)
+
+        b_ids, _ = fts5_retrieve(conn, retriever, question, k=deep_pool, expand=expand)
+        d_ids, _ = (dense.retrieve(question, k=deep_pool) if dense is not None
+                    else ([], 0.0))
+        merged = (rrf_merge(b_ids, d_ids, k_rrf=k_rrf, final_k=deep_pool)
+                  if d_ids else b_ids[:deep_pool])
+
+        sec_rank   = next((i for i, pid in enumerate(merged)
+                           if _parent_of(pid) == gold_parent), None)
+        chunk_rank = next((i for i, pid in enumerate(merged) if pid == gold), None)
+
+        bucket = _rank_bucket(sec_rank, pool_threshold=pool_threshold)
+        buckets[bucket] += 1
+        rows.append({"id": qid, "gold_section": gold_parent,
+                     "section_rank": sec_rank, "chunk_rank": chunk_rank,
+                     "bucket": bucket})
+
+    conn.close()
+    return {"buckets": buckets, "deep_pool": deep_pool,
+            "pool_threshold": pool_threshold, "n": len(qa_rows), "rows": rows}
+
+
+def print_gold_rank_report(report: dict) -> None:
+    b = report["buckets"]
+    n = report["n"]
+    thr = report["pool_threshold"]
+    dp = report["deep_pool"]
+    print(f"\n  Deep-recall diagnostic — gold SECTION rank in a {dp}-deep RRF pool "
+          f"({n} queries)\n")
+    print(f"  {'bucket':<12}{'count':>7}   meaning")
+    print("  " + "-" * 70)
+    print(f"  {'in_pool':<12}{b['in_pool']:>7}   rank < {thr}: "
+          f"reordering (parent-child / role-boost) can already reach it")
+    print(f"  {'reachable':<12}{b['reachable']:>7}   rank {thr}-99: "
+          f"a wider --pc-pool would ADMIT it (role-boost then promotes)")
+    print(f"  {'deep':<12}{b['deep']:>7}   rank 100-{dp}: "
+          f"needs a very wide pool; diminishing returns")
+    print(f"  {'absent':<12}{b['absent']:>7}   gold section never appears: "
+          f"TRUE recall gap — only query expansion / HyDE reaches it")
+    reachable = b["reachable"] + b["deep"]
+    print(f"\n  Wider-pool ceiling: up to {reachable} miss(es) are reachable by "
+          f"enlarging the pool;\n  {b['absent']} are out of lexical+dense reach "
+          f"(HyDE / query rewrite territory).")
+    # Show the absent + deep ones so the operator can eyeball them
+    far = [r for r in report["rows"] if r["bucket"] in ("absent", "deep")]
+    if far:
+        print(f"\n  Out-of-pool golds (bucket=deep/absent):")
+        for r in far[:20]:
+            rk = "—" if r["section_rank"] is None else r["section_rank"]
+            print(f"    [{r['id']}] {r['gold_section']:<14} section_rank={rk} "
+                  f"({r['bucket']})")
+
+
 # ── benchmark loop ────────────────────────────────────────────────────────────
 
 def run_benchmark(
@@ -1025,6 +1130,13 @@ def main(argv=None) -> int:
     ap.add_argument("--offence-penalty",   type=float, default=0.5,
                     help="Multiplicative penalty for offence-chapter chunks when a "
                          "procedural role is present (default 0.5)")
+    ap.add_argument("--gold-rank-report",  action="store_true",
+                    help="Deep-recall diagnostic: bucket each query by where its "
+                         "gold SECTION lands in a deep RRF pool (in_pool/reachable/"
+                         "deep/absent). Bounds what a wider --pc-pool can buy. "
+                         "Runs instead of the benchmark.")
+    ap.add_argument("--deep-pool",          type=int, default=200,
+                    help="Pool depth for the gold-rank diagnostic (default 200)")
     ap.add_argument("--hf-token",   default=None)
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--results",    type=Path, default=RESULTS_PATH)
@@ -1103,7 +1215,8 @@ def main(argv=None) -> int:
     # ── run ───────────────────────────────────────────────────────────────────
     # ── optional dense retriever (bi-encoder first-stage + RRF) ──────────────
     dense_retriever = None
-    use_dense = args.dense or args.rrf or args.cross_encoder or args.role_boost
+    use_dense = (args.dense or args.rrf or args.cross_encoder or args.role_boost
+                 or args.gold_rank_report)
     if use_dense:
         print(f"\nLoading dense model ({args.dense_model})…")
         dense_retriever = DenseRetriever(args.dense_model)
@@ -1139,6 +1252,17 @@ def main(argv=None) -> int:
             cross_encoder = None
         else:
             print(f"  Cross-encoder ready (top-n={args.ce_top_n})")
+
+    # ── deep-recall diagnostic (runs instead of the benchmark) ────────────────
+    if args.gold_rank_report:
+        print(f"\nDeep-recall diagnostic (deep-pool={args.deep_pool})…")
+        report = gold_rank_report(
+            args.db, qa, dense=dense_retriever,
+            deep_pool=args.deep_pool, k_rrf=args.rrf_k,
+            expand=not args.no_expand, pool_threshold=args.pc_pool,
+        )
+        print_gold_rank_report(report)
+        return 0
 
     # ── run ───────────────────────────────────────────────────────────────────
     expand = not args.no_expand
