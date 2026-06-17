@@ -112,6 +112,8 @@ class _ServerState:
         self.shard_router   = None      # ShardRouter (optional; replaces cve_retriever)
         self.query_rewriter = None      # QueryRewriter (optional; AXIOM_QUERY_REWRITE=<domain>)
         self.user_cookie    = None      # UserContextCookie (optional; AXIOM_USER_COOKIE=path)
+        self.gating         = None      # CognitiveGatingPipeline (optional; see axiom_cognitive_gating)
+        self.last_gating_telemetry = {} # dict — what the last gating retrieve() did
         self._qrf_cache     = {}        # domain → QRFEngine
 
     def ensure(self) -> None:
@@ -204,6 +206,22 @@ class _ServerState:
                     LOG.info("query rewriter enabled for domain: %s", rewrite_domain)
             except Exception as exc:
                 LOG.warning("query rewriter init failed: %s", exc)
+
+        # Optional cognitive gating pipeline: ties semantic routing + intent
+        # filtering + HyDE + knowledge cookie into one retrieval flow. Active
+        # only when at least one of AXIOM_DOMAIN_STORE / AXIOM_KNOWLEDGE_COOKIE
+        # / AXIOM_HYDE is set; otherwise it stays a no-op and the legacy
+        # shard-router / LocalRetriever path below is used unchanged.
+        try:
+            from axiom_cognitive_gating import CognitiveGatingPipeline
+            gating = CognitiveGatingPipeline.from_env(
+                fallback_retriever=self.retriever)
+            if gating.active:
+                self.gating = gating
+                LOG.info("cognitive gating enabled: layers=%s session=%s",
+                         gating.layers(), gating.session_id)
+        except Exception as exc:
+            LOG.warning("cognitive gating init failed: %s", exc)
 
         LOG.info("research server ready: backend=%s ledger=%s",
                  self.backend_label, ledger_path)
@@ -342,6 +360,19 @@ def _retrieve_sources(query: str, domain: str, *, k: int = 5) -> tuple[list[dict
     returns no hits — keeping the UI populated so the user can see what
     happened.
     """
+    # ── Cognitive gating fast-path (router + intent + HyDE + knowledge) ───
+    # Active only when AXIOM_DOMAIN_STORE / AXIOM_KNOWLEDGE_COOKIE / AXIOM_HYDE
+    # are configured. Records retrieved fragments into the knowledge cookie and
+    # surfaces telemetry on _state for the receipt block.
+    if _state.gating is not None:
+        try:
+            hits, tel = _state.gating.retrieve(query, k=k, domain=domain)
+            _state.last_gating_telemetry = tel.to_dict()
+            if hits:
+                return [h.to_dict() for h in hits], True
+        except Exception as exc:
+            LOG.warning("cognitive gating retrieve raised: %s", exc)
+
     # ── Shard router fast-path (Tier 3 federated FTS5) ────────────────────
     if _state.shard_router is not None:
         # Optional query rewrite pre-pass (AXIOM_QUERY_REWRITE=<domain>).
@@ -639,8 +670,14 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     # backend — falls through harmlessly.
     from axiom_event_token.backends import domain_context
 
-    # Merge user cookie into extra_context (empty dict = no-op)
+    # Merge user cookie + promoted hot-knowledge into extra_context.
+    # Both return {} when unwired, so this is a no-op in the default config.
     user_ctx = _state.user_cookie.to_extra_context() if _state.user_cookie else {}
+    if _state.gating is not None:
+        try:
+            user_ctx = {**user_ctx, **_state.gating.extra_context()}
+        except Exception as exc:
+            LOG.debug("gating extra_context failed: %s", exc)
 
     t0 = time.monotonic()
     try:
@@ -713,6 +750,8 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
             "retriever_indexed_files": (_state.retriever.stats().get("indexed_files", 0)
                                           if _state.retriever else 0),
             "ledger_write":            "appended",
+            "cognitive_gating":        (_state.last_gating_telemetry
+                                          if _state.gating is not None else None),
         },
     }
 
