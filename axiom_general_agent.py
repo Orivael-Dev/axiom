@@ -54,6 +54,12 @@ PATTERN_LIBRARY_PATH         = Path("axiom_general_agent_patterns.jsonl")
 # Ground each LLM step in a local BM25 corpus. Off unless explicitly enabled
 # (--rag, or AXIOM_RAG=1). Local-only: a fresh in-process LocalRetriever fed by
 # the datasheet/JSONL ingester — no external providers, no network, air-gapped.
+#
+# PROTOTYPE (v0.1.0): BM25 retrieval + per-step relevance gate + key_sentence
+# extraction, tuned for the memory-constrained Jetson (no extra model at
+# inference). Cross-encoder reranking is deferred to a higher-memory host; the
+# rerank seam is _retrieve_context (BM25 wide pool → CE rerank → top-k → gate).
+RAG_VERSION         = "0.1.0-prototype"
 RAG_DEFAULT_CORPUS  = Path(os.environ.get("AXIOM_RAG_CORPUS", "/mnt/nvme/axiom/datasets"))
 RAG_DEFAULT_TOP_K   = 3      # snippets injected into the step prompt
 RAG_MAX_RECORDS     = int(os.environ.get("AXIOM_RAG_MAX_RECORDS", "5000"))
