@@ -473,6 +473,105 @@ def collapse_to_parents(retrieved: List[str], *, final_k: int = 10) -> List[str]
     return seen[:final_k]
 
 
+# ── actor-role layer ("actors on a stage") ──────────────────────────────────────
+#
+# Many residual misses are crime-scenario distraction: the query narrates an
+# offence (arson, robbery, drugs) but the gold is a PROCEDURE / EVIDENCE section
+# keyed on WHO is on the trial stage and what procedural act they perform — a
+# juror, a child witness, the accused giving evidence, an alibi.  The offence is
+# the SETTING; the actor-role is the SIGNAL.  Surface keywords drag BM25 and
+# dense to Chapter 7-9 offence sections; routing on the actor-role lifts the
+# Chapter 1-5 procedural section the question is actually about.
+#
+# Edit ACTOR_ROLES to tune.  Each tag maps to word-boundary terms; a query or a
+# chunk "has" a role if any of its terms matches.  Multi-word phrases are fine.
+
+ACTOR_ROLES: Dict[str, List[str]] = {
+    "juror":           ["juror", "jurors", "jury", "foreperson", "deliberat",
+                        "jury room", "verdict", "majority verdict"],
+    "view":            ["view", "views", "inspection", "demonstration",
+                        "experiment", "re-enact", "premises", "crime scene"],
+    "child_witness":   ["child", "children", "minor", "infant", "juvenile",
+                        "young person", "years old", "year-old", "year old"],
+    "witness":         ["witness", "witnesses", "testify", "testifies",
+                        "testimony", "gives evidence", "give evidence"],
+    "accused_witness": ["accused gives evidence", "accused testif",
+                        "defendant testif", "accused as a witness",
+                        "enters the witness", "witness box"],
+    "alibi":           ["alibi", "was elsewhere", "somewhere else",
+                        "not present at"],
+    "admission":       ["admission", "admissions", "confession", "confessed",
+                        "admitted", "told police", "told the police"],
+    "identification":  ["identification", "identify", "recognise", "recognize",
+                        "line-up", "lineup", "photograph", "cctv", "picked out"],
+    "silence":         ["silence", "silent", "right to remain", "said nothing",
+                        "no comment"],
+    "opinion_expert":  ["expert", "opinion", "specialist", "qualified",
+                        "professional opinion", "forensic"],
+    "circumstantial":  ["circumstantial", "inference", "infer",
+                        "indirect evidence"],
+}
+
+# Chapters 7-9 are substantive OFFENCES — the distractors. Procedural / evidence
+# doctrine (the answers for the crime-scenario-distraction misses) lives in 1-6.
+OFFENCE_CHAPTERS = frozenset({"7", "8", "9"})
+
+_ROLE_RE: Dict[str, "re.Pattern"] = {
+    tag: re.compile(r"\b(?:" + "|".join(re.escape(t) for t in terms) + r")\b",
+                    re.IGNORECASE)
+    for tag, terms in ACTOR_ROLES.items()
+}
+
+
+def _extract_roles(text: str) -> set:
+    """Return the set of actor-role tags whose terms appear in `text`."""
+    if not text:
+        return set()
+    return {tag for tag, rx in _ROLE_RE.items() if rx.search(text)}
+
+
+def _chapter_of(chunk_id: str) -> str:
+    """Top-level chapter of a chunk id: '7.5.10-c2-s1' -> '7', '1.5-c5-s1' -> '1'."""
+    return _parent_of(chunk_id).split(".")[0]
+
+
+def _is_offence_chunk(chunk_id: str) -> bool:
+    return _chapter_of(chunk_id) in OFFENCE_CHAPTERS
+
+
+def role_boost_rerank(
+    merged_ids: List[str],
+    query: str,
+    passage_text: Dict[str, str],
+    *,
+    boost: float = 1.0,
+    penalty: float = 0.5,
+) -> List[str]:
+    """Re-rank a candidate chunk pool by actor-role match.
+
+    No-op when the query carries no procedural actor-role (returns the input
+    order unchanged) — so offence-element questions, where the gold genuinely
+    is a Chapter 7 section, are never demoted.
+
+    When a role IS present: chunks whose text shares that role are multiplied up
+    by (1+boost); offence-chapter chunks are multiplied down by (1-penalty).
+    Reciprocal rank is the base score; original rank breaks ties (stable).
+    """
+    query_roles = _extract_roles(query)
+    if not query_roles:
+        return list(merged_ids)
+    scored = []
+    for rank, pid in enumerate(merged_ids):
+        score = 1.0 / (rank + 1)
+        if query_roles & _extract_roles(passage_text.get(pid, "")):
+            score *= (1.0 + boost)
+        if _is_offence_chunk(pid):
+            score *= (1.0 - penalty)
+        scored.append((score, rank, pid))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return [pid for _, _, pid in scored]
+
+
 # ── benchmark loop ────────────────────────────────────────────────────────────
 
 def run_benchmark(
@@ -490,6 +589,9 @@ def run_benchmark(
     expand: bool = True,
     parent_child: bool = False,
     pc_pool: int = 30,
+    role_boost: bool = False,
+    role_boost_weight: float = 1.0,
+    offence_penalty: float = 0.5,
 ) -> dict:
     retriever = CVERetriever(str(db_path))
     conn = sqlite3.connect(str(db_path))
@@ -497,14 +599,14 @@ def run_benchmark(
 
     # Pre-load passage text for rerankers that need raw text
     passage_text: Dict[str, str] = {}
-    if splade is not None or cross_encoder is not None:
+    if splade is not None or cross_encoder is not None or role_boost:
         cur = conn.execute("SELECT cve_id, answer FROM cve")
         passage_text = {r[0]: r[1] for r in cur.fetchall()}
 
     (bm25_results, rewrite_results, hybrid_results, hybrid_rewrite_results,
      dense_results, rrf_results, rrf_ce_results, srd_rrf_ce_results,
-     bm25_pc_results, rrf_pc_results) = (
-        [], [], [], [], [], [], [], [], [], []
+     bm25_pc_results, rrf_pc_results, rrf_pc_role_results) = (
+        [], [], [], [], [], [], [], [], [], [], []
     )
 
     for row in qa_rows:
@@ -608,35 +710,56 @@ def run_benchmark(
                 "ce_ms": srd_ce_total_ms,
             })
 
-        # Track 9/10: parent-child retrieval (deeper child pool → collapse to
-        # parent sections).  Scored at section granularity vs the gold's parent.
-        # This is the production architecture: retrieve on granular chunks, then
-        # return the parent section.  Recovers "right section, wrong chunk" misses.
-        if parent_child:
+        # Tracks 9-11: parent-child retrieval (deeper child pool → collapse to
+        # parent sections), scored at section granularity vs the gold's parent.
+        # The wide pool is computed once and shared by the plain parent-child
+        # tracks and the role-boost track.
+        if parent_child or role_boost:
             gold_parent = _parent_of(passage_id)
 
-            # Wide BM25 pool → collapse to parents
+            # Wide BM25 pool (shared)
             wide_ids, wide_ms = fts5_retrieve(conn, retriever, question,
                                               k=pc_pool, expand=expand)
-            bm25_parents = collapse_to_parents(wide_ids, final_k=final_k)
-            bm25_pc_results.append({
-                "id": qid, "relevant_id": gold_parent,
-                "retrieved": bm25_parents,
-                "rr": rr(bm25_parents, gold_parent),
-                "pc_ms": round(wide_ms, 2),
-            })
-
-            # Wide RRF pool (BM25 + dense) → collapse to parents
+            # Wide dense + RRF pool (shared), when dense is available
+            wide_merged: List[str] = []
+            wide_d_ms = 0.0
             if dense is not None:
                 wide_d_ids, wide_d_ms = dense.retrieve(question, k=pc_pool)
                 wide_merged = rrf_merge(wide_ids, wide_d_ids,
                                         k_rrf=k_rrf, final_k=pc_pool)
-                rrf_parents = collapse_to_parents(wide_merged, final_k=final_k)
-                rrf_pc_results.append({
+
+            if parent_child:
+                # BM25 parent-child
+                bm25_parents = collapse_to_parents(wide_ids, final_k=final_k)
+                bm25_pc_results.append({
                     "id": qid, "relevant_id": gold_parent,
-                    "retrieved": rrf_parents,
-                    "rr": rr(rrf_parents, gold_parent),
+                    "retrieved": bm25_parents,
+                    "rr": rr(bm25_parents, gold_parent),
+                    "pc_ms": round(wide_ms, 2),
+                })
+                # RRF parent-child
+                if dense is not None:
+                    rrf_parents = collapse_to_parents(wide_merged, final_k=final_k)
+                    rrf_pc_results.append({
+                        "id": qid, "relevant_id": gold_parent,
+                        "retrieved": rrf_parents,
+                        "rr": rr(rrf_parents, gold_parent),
+                        "pc_ms": round(wide_ms + wide_d_ms, 2),
+                    })
+
+            # RRF + parent-child + actor-role boost: re-rank the wide pool by
+            # actor-role match before collapsing to parent sections.
+            if role_boost and dense is not None:
+                role_ranked = role_boost_rerank(
+                    wide_merged, question, passage_text,
+                    boost=role_boost_weight, penalty=offence_penalty)
+                role_parents = collapse_to_parents(role_ranked, final_k=final_k)
+                rrf_pc_role_results.append({
+                    "id": qid, "relevant_id": gold_parent,
+                    "retrieved": role_parents,
+                    "rr": rr(role_parents, gold_parent),
                     "pc_ms": round(wide_ms + wide_d_ms, 2),
+                    "query_roles": sorted(_extract_roles(question)),
                 })
 
     conn.close()
@@ -660,6 +783,8 @@ def run_benchmark(
                           if bm25_pc_results else None,
         "rrf_pc":         _aggregate(rrf_pc_results,         final_k, latency_field="pc_ms")
                           if rrf_pc_results else None,
+        "rrf_pc_role":    _aggregate(rrf_pc_role_results,    final_k, latency_field="pc_ms")
+                          if rrf_pc_role_results else None,
     }
 
 
@@ -741,6 +866,7 @@ def print_comparison(data: dict, fts5_k: int) -> None:
 
     bm25_pc = data.get("bm25_pc")
     rrf_pc  = data.get("rrf_pc")
+    rrf_pc_role = data.get("rrf_pc_role")
 
     if den:
         col_data.append(("Dense", den))
@@ -754,6 +880,8 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         col_data.append(("BM25 parent-child", bm25_pc))
     if rrf_pc:
         col_data.append(("RRF parent-child", rrf_pc))
+    if rrf_pc_role:
+        col_data.append(("RRF+PC+role", rrf_pc_role))
 
     w = 16
     print()
@@ -888,6 +1016,15 @@ def main(argv=None) -> int:
     ap.add_argument("--pc-pool",          type=int, default=30,
                     help="Child chunk pool depth before collapsing to parents "
                          "(default 30; needs > final-k to fill k unique sections)")
+    ap.add_argument("--role-boost",       action="store_true",
+                    help="Actor-role re-rank before parent collapse: boost chunks "
+                         "matching the query's trial role (juror/witness/alibi/...), "
+                         "demote offence-chapter chunks. Implies parent-child + dense.")
+    ap.add_argument("--role-boost-weight", type=float, default=1.0,
+                    help="Multiplicative boost for role-matched chunks (default 1.0)")
+    ap.add_argument("--offence-penalty",   type=float, default=0.5,
+                    help="Multiplicative penalty for offence-chapter chunks when a "
+                         "procedural role is present (default 0.5)")
     ap.add_argument("--hf-token",   default=None)
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--results",    type=Path, default=RESULTS_PATH)
@@ -966,7 +1103,7 @@ def main(argv=None) -> int:
     # ── run ───────────────────────────────────────────────────────────────────
     # ── optional dense retriever (bi-encoder first-stage + RRF) ──────────────
     dense_retriever = None
-    use_dense = args.dense or args.rrf or args.cross_encoder
+    use_dense = args.dense or args.rrf or args.cross_encoder or args.role_boost
     if use_dense:
         print(f"\nLoading dense model ({args.dense_model})…")
         dense_retriever = DenseRetriever(args.dense_model)
@@ -1020,6 +1157,8 @@ def main(argv=None) -> int:
         tracks.append(f"ce({args.ce_model.split('/')[-1]},top{args.ce_top_n})")
     if args.parent_child:
         tracks.append(f"parent-child(pool={args.pc_pool})")
+    if args.role_boost:
+        tracks.append(f"role-boost(w={args.role_boost_weight},pen={args.offence_penalty})")
     print(f"\nRunning benchmark (fts5-k={args.fts5_k}, final-k={args.k}, "
           f"tracks=[{', '.join(tracks) or 'bm25-only'}])…")
     data = run_benchmark(
@@ -1035,6 +1174,9 @@ def main(argv=None) -> int:
         expand=expand,
         parent_child=args.parent_child,
         pc_pool=args.pc_pool,
+        role_boost=args.role_boost,
+        role_boost_weight=args.role_boost_weight,
+        offence_penalty=args.offence_penalty,
     )
 
     print_comparison(data, fts5_k=args.fts5_k)
