@@ -12,6 +12,7 @@ of the system won't notice.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -64,11 +65,13 @@ def _safe_read(path: Path) -> Optional[str]:
 
 @dataclass(frozen=True)
 class IndexedDocument:
-    path:         Path
-    relative:     str          # path relative to the indexer's primary root
-    content:      str
-    token_count:  int
-    token_freq:   dict         # token → frequency in this doc
+    path:          Path
+    relative:      str          # path relative to the indexer's primary root
+    content:       str
+    token_count:   int
+    token_freq:    dict         # token → frequency in this doc
+    intent_type:   str                = "general"
+    vocab_anchors: tuple[str, ...] = ()   # tuple (not list) since frozen=True
 
 
 @dataclass(frozen=True)
@@ -86,6 +89,8 @@ class RetrievedSource:
     # looked up against axiom_medical_safety.EVIDENCE_TIER_REGISTRY by
     # URI host. None for local-corpus hits with no public domain.
     evidence_tier:   Optional[int] = None
+    intent_type:     str                = "general"
+    vocab_anchors:   tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         d = {
@@ -98,6 +103,10 @@ class RetrievedSource:
         }
         if self.evidence_tier is not None:
             d["evidence_tier"] = self.evidence_tier
+        if self.intent_type != "general":
+            d["intent_type"] = self.intent_type
+        if self.vocab_anchors:
+            d["vocab_anchors"] = list(self.vocab_anchors)
         return d
 
 
@@ -168,9 +177,23 @@ class LocalRetriever:
                     rel = str(path.relative_to(self.primary_root))
                 except ValueError:
                     rel = str(path)
+
+                # Load intent typing + vocab anchors from sidecar if present
+                intent_type = "general"
+                vocab_anchors: tuple[str, ...] = ()
+                meta_path = path.with_name(path.stem + ".meta.json")
+                if meta_path.exists():
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                        intent_type = meta.get("intent_type", "general")
+                        vocab_anchors = tuple(meta.get("vocab_anchors", []))
+                    except (json.JSONDecodeError, OSError):
+                        pass
+
                 self._docs.append(IndexedDocument(
                     path=path, relative=rel, content=content,
                     token_count=len(tokens), token_freq=freq,
+                    intent_type=intent_type, vocab_anchors=vocab_anchors,
                 ))
                 files_seen += 1
 
@@ -216,6 +239,7 @@ class LocalRetriever:
         *,
         k: int = 5,
         domain: Optional[str] = None,
+        intent_filter: Optional[str] = None,
     ) -> List[RetrievedSource]:
         # `domain` is accepted (and ignored) on the plain retriever so
         # the call site in axiom_research_server can pass it
@@ -229,8 +253,13 @@ class LocalRetriever:
         q_terms = _tokenize(query)
         if not q_terms:
             return []
+        docs = (
+            [d for d in self._docs if d.intent_type == intent_filter]
+            if intent_filter
+            else self._docs
+        )
         scored: list[tuple[float, IndexedDocument, str]] = []
-        for d in self._docs:
+        for d in docs:
             score = self._score(d, q_terms)
             if score <= 0:
                 continue
@@ -247,6 +276,8 @@ class LocalRetriever:
                 kind=self._kind_for(doc),
                 score=norm,
                 snippet=snippet,
+                intent_type=doc.intent_type,
+                vocab_anchors=doc.vocab_anchors,
             ))
         return out
 

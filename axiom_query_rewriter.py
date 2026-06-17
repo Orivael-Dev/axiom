@@ -11,6 +11,15 @@ The rewriter is:
   - Fail-safe: any exception falls back to the original query unchanged
   - Domain-pluggable: system prompt is passed in; a legal prompt differs from OBD
 
+HyDE mode (Hypothetical Document Embeddings):
+    rewrite_hyde() implements the Forward Reverse Pipeline from the Orivael RAG paper:
+        User Query → LLM generates a "Fake" Textbook Answer → Dense Vector Search → Real Statement
+    Instead of expanding the query into BM25 search terms, it generates a complete
+    hypothetical answer in domain vocabulary for use with a dense encoder.  Even if
+    the LLM hallucinates facts, the vocabulary will be domain-correct, steering the
+    embedding toward the right knowledge cluster.  Use rewrite_with_hyde() to obtain
+    both retrieval signals in a single call.
+
 Usage (standalone):
     from axiom_query_rewriter import QueryRewriter
     from axiom_event_token.backends import LocalNanoBackend
@@ -21,6 +30,17 @@ Usage (standalone):
         domain="legal",
     )
     # expanded → FTS5 MATCH string: '"plaintiff" OR "claimant" OR "prove" OR ...'
+
+Usage (HyDE / dense retrieval):
+    rewriter = QueryRewriter(LocalNanoBackend())
+    hyde_text = rewriter.rewrite_hyde(
+        "What must a plaintiff prove for wrongful termination?",
+        domain="legal",
+    )
+    # hyde_text → prose paragraph in legal vocabulary; pass to a dense encoder
+
+Usage (combined BM25 + HyDE):
+    bm25_expr, hyde_text = rewriter.rewrite_with_hyde(question, domain="legal")
 
 Usage (in benchmark):
     from axiom_query_rewriter import QueryRewriter, LEGAL_SYSTEM_PROMPT
@@ -35,7 +55,7 @@ Usage (in research server):
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Shared alphanumeric tokeniser — same pattern as axiom_cve_retriever._TOKEN_RE
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
@@ -90,6 +110,48 @@ _DOMAIN_PROMPTS = {
     "medical": MEDICAL_SYSTEM_PROMPT,
 }
 
+# ── HyDE prompts (generate hypothetical answer, not alternative phrasings) ──
+
+HYDE_LEGAL_PROMPT = (
+    "You are a legal reference author. "
+    "Given a legal question, write a dense 2-3 sentence paragraph that a legal textbook "
+    "or court opinion would contain in answer to this question. "
+    "Use precise legal vocabulary: statutes, doctrines, case law terminology. "
+    "Write as factual reference text, not as a question. "
+    "Output ONLY the hypothetical answer paragraph, nothing else."
+)
+
+HYDE_MEDICAL_PROMPT = (
+    "You are a clinical reference author. "
+    "Given a medical question, write a dense 2-3 sentence paragraph from a clinical "
+    "reference manual that answers this question. "
+    "Use ICD-10 codes, SNOMED CT terms, and clinical nomenclature where appropriate. "
+    "Output ONLY the hypothetical answer paragraph, nothing else."
+)
+
+HYDE_OBD_PROMPT = (
+    "You are an automotive diagnostics reference author. "
+    "Given a diagnostic query, write a dense 2-3 sentence paragraph from an OBD-II "
+    "service manual that addresses this fault. "
+    "Use SAE J1979 terms, DTC codes, and manufacturer diagnostic vocabulary. "
+    "Output ONLY the hypothetical answer paragraph, nothing else."
+)
+
+HYDE_GENERAL_PROMPT = (
+    "You are a technical reference author. "
+    "Given a question, write a dense 2-3 sentence paragraph that would appear in a "
+    "technical reference document or textbook answering this question. "
+    "Use precise domain vocabulary and specific technical terminology. "
+    "Output ONLY the hypothetical answer paragraph, nothing else."
+)
+
+_HYDE_PROMPTS: Dict[str, str] = {
+    "legal":    HYDE_LEGAL_PROMPT,
+    "medical":  HYDE_MEDICAL_PROMPT,
+    "obd":      HYDE_OBD_PROMPT,
+    "general":  HYDE_GENERAL_PROMPT,
+}
+
 
 # ── Core rewriter ─────────────────────────────────────────────────────────────
 
@@ -116,6 +178,30 @@ class QueryRewriter:
         self._system_prompt = system_prompt
         self._max_tokens    = max_tokens
         self._timeout_s     = timeout_s
+
+    # ── private helpers ───────────────────────────────────────────────────────
+
+    def _call_backend(self, prompt: str, *, max_tokens: Optional[int] = None) -> str:
+        """Invoke the backend and return the raw text response.
+
+        Parameters
+        ----------
+        prompt     : full prompt string (system + user content combined)
+        max_tokens : token cap for this call; defaults to self._max_tokens
+
+        Returns
+        -------
+        Raw text string from the backend.  Raises on any backend error —
+        callers are responsible for exception handling.
+        """
+        tokens = max_tokens if max_tokens is not None else self._max_tokens
+        result = self._backend.generate(
+            system="",
+            prompt=prompt,
+            max_output_tokens=tokens,
+            timeout_s=self._timeout_s,
+        )
+        return result.text
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -176,6 +262,58 @@ class QueryRewriter:
         except Exception:
             variants = []
         return [question] + variants
+
+    def rewrite_hyde(
+        self,
+        question: str,
+        *,
+        domain: str = "general",
+    ) -> str:
+        """Generate a hypothetical textbook answer for dense-embedding retrieval (HyDE).
+
+        Unlike rewrite() which returns a BM25 MATCH expression, this returns a
+        full prose paragraph in domain vocabulary. The caller passes this to a
+        dense encoder (not FTS5) to retrieve semantically similar passages.
+
+        Falls back to the original question on any error (same fail-safe as rewrite()).
+
+        Parameters
+        ----------
+        question : The user's raw question.
+        domain   : "legal" | "medical" | "obd" | "general" (default)
+
+        Returns
+        -------
+        A 2-3 sentence hypothetical answer in domain vocabulary, or the original
+        question unchanged if the backend call fails.
+        """
+        system = _HYDE_PROMPTS.get(domain, HYDE_GENERAL_PROMPT)
+        prompt = f"{system}\n\nQuestion: {question}\n\nHypothetical answer:"
+        try:
+            result = self._call_backend(prompt, max_tokens=200)
+            if result and len(result.strip()) > 20:
+                return result.strip()
+        except Exception:
+            pass
+        return question
+
+    def rewrite_with_hyde(
+        self,
+        question: str,
+        *,
+        domain: str = "general",
+    ) -> Tuple[str, str]:
+        """Return both the BM25 MATCH expression and the HyDE hypothetical answer.
+
+        Convenience method for pipelines that use both retrieval modes in parallel.
+
+        Returns
+        -------
+        Tuple of (bm25_match_expr, hyde_answer)
+        """
+        bm25 = self.rewrite(question, domain=domain)
+        hyde = self.rewrite_hyde(question, domain=domain)
+        return bm25, hyde
 
 
 # ── Parsing + FTS5 expression builder ────────────────────────────────────────

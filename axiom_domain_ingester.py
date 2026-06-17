@@ -32,6 +32,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import time
 import uuid
@@ -64,6 +65,21 @@ class ChunkConfig:
 # IngestedChunk
 # ---------------------------------------------------------------------------
 
+_ANCHOR_STOP: frozenset[str] = frozenset({
+    "this", "that", "with", "from", "have", "been", "will", "would", "could",
+    "should", "their", "there", "these", "those", "which", "where", "when",
+    "what", "about", "into", "they", "more", "also", "some", "such", "each",
+    "only", "both", "then", "than", "them", "were", "said", "does", "like",
+    "other", "after", "over", "under", "between",
+})
+
+QUESTION_GENERATION_PROMPT = (
+    "You are a retrieval expert. Given the following text segment, output exactly 3 "
+    "specific questions that this text directly answers. Use precise domain vocabulary. "
+    "Output ONLY the 3 questions, one per line, no numbers or bullets.\n\nText:\n{chunk}"
+)
+
+
 @dataclass
 class IngestedChunk:
     """A single text chunk produced from an ingested document."""
@@ -72,6 +88,8 @@ class IngestedChunk:
     content: str        # the chunk text
     char_count: int
     content_hash: str   # SHA256[:16] of content
+    intent_type: str = "general"          # classified content type
+    vocab_anchors: List[str] = field(default_factory=list)  # extracted domain vocabulary
 
 
 # ---------------------------------------------------------------------------
@@ -321,13 +339,16 @@ class DomainIngester:
 
             if len(content) >= cfg.min_chars:
                 content_hash = _sha256_prefix(content)
-                chunks.append(IngestedChunk(
+                chunk = IngestedChunk(
                     source_path=source_path,
                     chunk_idx=chunk_idx,
                     content=content,
                     char_count=len(content),
                     content_hash=content_hash,
-                ))
+                    intent_type=self._classify_intent(content),
+                    vocab_anchors=self._extract_vocab_anchors(content),
+                )
+                chunks.append(chunk)
                 chunk_idx += 1
 
             # Advance with overlap — next chunk starts overlap_chars before end
@@ -344,16 +365,151 @@ class DomainIngester:
     def _write_chunk(self, chunk: IngestedChunk) -> Optional[Path]:
         """Write chunk content to index_dir/<content_hash>.txt.
 
-        Idempotent — skips writing if the file already exists.
+        Idempotent — skips writing if the file already exists.  Always
+        writes (or refreshes) the companion ``.meta.json`` sidecar.
 
         Returns the file path, or None if the chunk was already present (so
         callers can distinguish new vs cached writes).
         """
         dest = self.index_dir / f"{chunk.content_hash}.txt"
         if dest.exists():
+            self._write_chunk_meta(chunk, self.domain)
             return None
         dest.write_text(chunk.content, encoding="utf-8")
+        self._write_chunk_meta(chunk, self.domain)
         return dest
+
+    def _classify_intent(self, text: str) -> str:
+        """Rule-based intent classifier — no LLM required.
+
+        Checks a prioritised list of keyword patterns against the text
+        (case-insensitive) and returns the first matching label.
+        Falls back to "general" when nothing matches.
+        """
+        lower = text.lower()
+
+        definition_signals = ("means ", "is defined as", "refers to", "defined as", "is the process of")
+        if any(sig in lower for sig in definition_signals):
+            return "definition"
+
+        procedure_signals = ("step 1", "step one", "first,", "then,", "how to",
+                             "in order to", "procedure:", "follow these", "instructions:")
+        if any(sig in lower for sig in procedure_signals):
+            return "procedure"
+
+        ruling_signals = ("held that", "the court", "ruled that", "decided that",
+                          "judgment", "verdict", "opinion of")
+        if any(sig in lower for sig in ruling_signals):
+            return "ruling"
+
+        warning_signals = ("warning:", "caution:", "must not", "shall not",
+                           "prohibited", "danger:", "do not")
+        if any(sig in lower for sig in warning_signals):
+            return "warning"
+
+        if re.search(r'\d+\s*(MHz|GHz|KB|MB|GB|ms|ns|V|A|W|°C|%|±)', text):
+            return "specification"
+
+        return "general"
+
+    def _extract_vocab_anchors(
+        self,
+        text: str,
+        *,
+        domain: str = "general",
+        max_anchors: int = 15,
+    ) -> List[str]:
+        """Extract domain vocabulary keywords from text.
+
+        Simple frequency-based extraction — no LLM, no external deps.
+        Returns up to ``max_anchors`` tokens sorted by descending frequency,
+        then alphabetically for ties.
+        """
+        tokens = re.findall(r'[A-Za-z][A-Za-z0-9-]{3,}', text)
+        lowered = [t.lower() for t in tokens]
+        freq: Dict[str, int] = {}
+        for tok in lowered:
+            if tok not in _ANCHOR_STOP:
+                freq[tok] = freq.get(tok, 0) + 1
+
+        # Sort by frequency descending, then alphabetically for ties
+        ranked = sorted(freq.keys(), key=lambda t: (-freq[t], t))
+        return ranked[:max_anchors]
+
+    def _write_chunk_meta(self, chunk: "IngestedChunk", domain: str) -> Path:
+        """Write a JSON sidecar file alongside the ``.txt`` chunk.
+
+        Idempotent: when the file already exists **and** ``intent_type``
+        is not the generic fallback, re-writing is skipped.  Returns the
+        sidecar path in all cases.
+        """
+        meta_path = self.index_dir / f"{chunk.content_hash}.meta.json"
+
+        if meta_path.exists() and chunk.intent_type != "general":
+            return meta_path
+
+        meta: dict = {
+            "content_hash":        chunk.content_hash,
+            "source_path":         chunk.source_path,
+            "chunk_idx":           chunk.chunk_idx,
+            "domain":              domain,
+            "intent_type":         chunk.intent_type,
+            "vocab_anchors":       chunk.vocab_anchors,
+            "synthetic_questions": [],
+            "char_count":          chunk.char_count,
+            "created_at":          _iso_now(),
+        }
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        return meta_path
+
+    def enrich_with_questions(
+        self,
+        chunk: "IngestedChunk",
+        backend,
+        *,
+        domain: str = "general",
+    ) -> List[str]:
+        """Generate synthetic questions for this chunk (Doc-to-Question / HyDE ingestion).
+
+        Updates the .meta.json sidecar with the generated questions.
+        Returns the generated questions as a list of strings.
+        Backend can be any object with a ``.complete(prompt, max_tokens)``
+        or ``.generate(prompt)`` method.  Wraps in try/except — returns []
+        on any error so the main pipeline is never interrupted.
+        """
+        prompt = QUESTION_GENERATION_PROMPT.format(chunk=chunk.content)
+        try:
+            try:
+                raw: str = backend.complete(prompt, max_tokens=150)
+            except (AttributeError, TypeError):
+                raw = backend.generate(prompt)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("enrich_with_questions failed for %s: %s", chunk.content_hash, exc)
+            return []
+
+        questions = [line.strip() for line in raw.splitlines() if line.strip()]
+
+        meta_path = self.index_dir / f"{chunk.content_hash}.meta.json"
+        try:
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            else:
+                meta = {
+                    "content_hash":        chunk.content_hash,
+                    "source_path":         chunk.source_path,
+                    "chunk_idx":           chunk.chunk_idx,
+                    "domain":              domain,
+                    "intent_type":         chunk.intent_type,
+                    "vocab_anchors":       chunk.vocab_anchors,
+                    "char_count":          chunk.char_count,
+                    "created_at":          _iso_now(),
+                }
+            meta["synthetic_questions"] = questions
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Could not update meta sidecar for %s: %s", chunk.content_hash, exc)
+
+        return questions
 
     def _emit_finetune_event(self, fragment: "KnowledgeFragment") -> None:
         """Append a finetune-candidate JSONL line to finetune_log.
