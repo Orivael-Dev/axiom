@@ -287,10 +287,14 @@ class LocalRetriever:
         *,
         k: int = 5,
         domain: Optional[str] = None,
+        min_score: float = 0.0,
     ) -> List[RetrievedSource]:
         # `domain` is accepted (and ignored) on the plain retriever so
         # the call site in axiom_research_server can pass it
         # unconditionally. DomainRoutedRetriever uses it to dispatch.
+        # `min_score` is an absolute (pre-normalization) BM25 floor — hits
+        # below it are dropped, so callers can gate on relevance instead of
+        # always taking the top-k. Returns [] when nothing clears the floor.
         del domain
         if not query or not query.strip():
             return []
@@ -303,7 +307,7 @@ class LocalRetriever:
         scored: list[tuple[float, IndexedDocument, str]] = []
         for d in self._docs:
             score = self._score(d, q_terms)
-            if score <= 0:
+            if score <= 0 or score < min_score:
                 continue
             snippet = self._snippet(d, q_terms)
             scored.append((score, d, snippet))
@@ -444,10 +448,11 @@ class DomainRoutedRetriever:
         *,
         k: int = 5,
         domain: Optional[str] = None,
+        min_score: float = 0.0,
     ) -> List[RetrievedSource]:
         d = (domain or "").strip().lower()
         target = self._per_domain.get(d, self._default) if d else self._default
-        return target.retrieve(query, k=k)
+        return target.retrieve(query, k=k, min_score=min_score)
 
 
 # Domains the research console supports. Mirrors ROUTED_DOMAINS in

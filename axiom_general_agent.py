@@ -58,6 +58,12 @@ RAG_DEFAULT_CORPUS  = Path(os.environ.get("AXIOM_RAG_CORPUS", "/mnt/nvme/axiom/d
 RAG_DEFAULT_TOP_K   = 3      # snippets injected into the step prompt
 RAG_MAX_RECORDS     = int(os.environ.get("AXIOM_RAG_MAX_RECORDS", "5000"))
 RAG_SNIPPET_CHARS   = 500    # per-snippet truncation in the prompt
+# Retrieval is per-step: each step's query is the step label anchored by the
+# task (generic step labels alone retrieve noise; the task carries the specific
+# terms). The min-score floor skips injecting context into steps the corpus has
+# nothing relevant for — no wasted tokens on off-corpus steps. 0.0 = inject
+# whenever any term matches (gate off); raise it to gate harder.
+RAG_MIN_SCORE       = float(os.environ.get("AXIOM_RAG_MIN_SCORE", "0.0"))
 
 # Local model defaults. The agent shells out to a llama.cpp binary with a GGUF
 # weight file; both are overridable on the CLI / constructor. llama-completion
@@ -710,16 +716,26 @@ def build_rag_retriever(
     return retriever
 
 
-def _retrieve_context(retriever, query: str, *, k: int = RAG_DEFAULT_TOP_K) -> str:
+def _retrieve_context(retriever, query: str, *, k: int = RAG_DEFAULT_TOP_K,
+                      min_score: float = 0.0) -> str:
     """Return a formatted grounding block from the local corpus, or "".
 
-    Retrieval failures are swallowed — RAG augments step execution; it is
-    never a hard dependency, so the agent still runs if a query throws.
+    `min_score` is an absolute BM25 floor: when the best hit for `query` is
+    below it nothing is returned, so callers can skip injecting context into
+    steps the corpus has nothing relevant for. Retrieval failures are
+    swallowed — RAG augments step execution; it is never a hard dependency,
+    so the agent still runs if a query throws.
     """
     if retriever is None or not query.strip():
         return ""
     try:
-        sources = retriever.retrieve(query, k=k)
+        sources = retriever.retrieve(query, k=k, min_score=min_score)
+    except TypeError:
+        # Retriever predates the min_score parameter — fall back.
+        try:
+            sources = retriever.retrieve(query, k=k)
+        except Exception:
+            return ""
     except Exception:
         return ""
     lines: List[str] = []
@@ -828,6 +844,7 @@ class AutonomousGeneralAgent:
         rag_k: int = RAG_DEFAULT_TOP_K,
         rag_max_records: int = RAG_MAX_RECORDS,
         rag_axiom_knowledge: bool = True,
+        rag_min_score: float = RAG_MIN_SCORE,
     ) -> None:
         self._model_bin  = model_bin
         self._model_path = model_path
@@ -835,6 +852,7 @@ class AutonomousGeneralAgent:
         self._reasoner  = LatentReasoner()
         self._verbose   = verbose
         self._rag_k     = rag_k
+        self._rag_min_score = rag_min_score
         # Build the local corpus once at construction so the cost is paid
         # before the first task rather than mid-run. None when RAG is off or
         # the corpus is unavailable — retrieval then degrades to a no-op.
@@ -889,19 +907,24 @@ class AutonomousGeneralAgent:
         self._log(f"\n  [execution — {len(step_labels)} steps]")
 
         # ── 5. Execute steps ──────────────────────────────────────────────────
-        # Retrieve grounding context once per task (the overall task is the
-        # query) and reuse it across every step — cheap, and keeps the local
-        # corpus lookup off the per-step hot path.
-        rag_context = _retrieve_context(self._retriever, task, k=self._rag_k)
-        if rag_context:
-            n_hits = rag_context.count("\n[") + 1
-            self._log(f"  rag       : {n_hits} local snippet(s) grounding execution")
-
+        # Retrieve grounding context per step: the query is the step label
+        # anchored by the task, and the min-score floor skips injection for
+        # steps the corpus has nothing relevant for. This keeps context
+        # step-specific and avoids re-injecting irrelevant snippets every step.
         steps: List[TaskStep] = []
         success = True
         for i, label in enumerate(step_labels):
             t_step = time.monotonic()
             self._log(f"    [{i+1}/{len(step_labels)}] {label}")
+            rag_context = ""
+            if self._retriever is not None:
+                rag_context = _retrieve_context(
+                    self._retriever, f"{label}\n{task}",
+                    k=self._rag_k, min_score=self._rag_min_score,
+                )
+                if rag_context:
+                    n_hits = rag_context.count("\n[") + 1
+                    self._log(f"         rag: {n_hits} snippet(s)")
             result = _llm_execute_step(label, task, self._model_bin,
                                        context=rag_context,
                                        model_path=self._model_path)
@@ -946,6 +969,7 @@ def _cmd_run(args) -> int:
         rag_k=args.rag_k,
         rag_max_records=args.rag_max_records,
         rag_axiom_knowledge=not args.no_axiom_knowledge,
+        rag_min_score=args.rag_min_score,
     )
     outcome = agent.run(task=args.task, domain_hint=args.domain)
     if args.json:
@@ -1013,7 +1037,9 @@ def main(argv=None):
     p_run.add_argument("--rag-corpus", type=Path, default=None,
                        help=f"corpus dir to index (default {RAG_DEFAULT_CORPUS})")
     p_run.add_argument("--rag-k", type=int, default=RAG_DEFAULT_TOP_K,
-                       help="number of snippets to retrieve per task")
+                       help="max snippets to retrieve per step")
+    p_run.add_argument("--rag-min-score", type=float, default=RAG_MIN_SCORE,
+                       help="BM25 floor; skip injecting context below it (0=off)")
     p_run.add_argument("--rag-max-records", type=int, default=RAG_MAX_RECORDS,
                        help="per-file cap on JSONL records indexed")
     p_run.add_argument("--no-axiom-knowledge", action="store_true",
