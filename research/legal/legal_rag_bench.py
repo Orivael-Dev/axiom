@@ -651,6 +651,165 @@ def buoyancy_rerank(
     return [pid for _, _, pid in scored]
 
 
+# ── contracts domain: genre-aware buoyancy ─────────────────────────────────────
+#
+# Contracts share the "actors on a stage" distraction pattern as legal, but the
+# SETTING is the CONTRACT GENRE (NDA / service / employment / lease / ...) rather
+# than the offence chapter.  A query about tenant rights in a lease contains words
+# like "termination" and "breach" that score highly in service or loan sections
+# too.  Genre-aware buoyancy detects the query's genre, then measures how far each
+# candidate chunk's vocabulary sits from that genre.  Same-genre chunks float;
+# off-genre chunks sink.  This mirrors OFFENCE_CHAPTERS / OFFENCE_TERMS for legal.
+#
+# CONTRACT_ACTOR_ROLES mirrors ACTOR_ROLES: the contracting party named in the
+# query is the "actor"; boosts passages about that party's rights and obligations.
+
+CONTRACT_GENRES: Dict[str, List[str]] = {
+    "nda": [
+        "confidential", "confidentiality", "non-disclosure", "nda",
+        "proprietary information", "trade secret", "disclose", "disclosure",
+    ],
+    "service": [
+        "services", "deliverables", "scope of work", "statement of work",
+        "milestone", "service level", "sla", "service agreement",
+        "contractor", "subcontractor", "perform the services",
+    ],
+    "employment": [
+        "employee", "employer", "employment", "salary", "wages", "remuneration",
+        "termination", "non-compete", "restrictive covenant", "probation",
+        "redundancy", "resignation", "dismissal", "workplace",
+    ],
+    "lease": [
+        "premises", "rent", "rental", "lessor", "lessee", "tenancy", "landlord",
+        "tenant", "lease", "demise", "sublease", "subletting", "leasehold",
+        "outgoings", "make good",
+    ],
+    "purchase": [
+        "purchase price", "sale of goods", "title", "delivery", "inspection",
+        "warranty", "indemnity", "consideration", "purchase agreement",
+        "completion", "settlement",
+    ],
+    "loan": [
+        "principal", "interest rate", "repayment", "borrower", "lender",
+        "security", "collateral", "default", "promissory", "facility",
+        "drawdown", "maturity", "credit",
+    ],
+    "license": [
+        "licensor", "licensee", "royalty", "license fee", "sublicense",
+        "intellectual property", "patent", "copyright", "trademark",
+        "grant of license", "field of use",
+    ],
+    "joint_venture": [
+        "joint venture", "jv", "profit sharing", "management committee",
+        "contributions", "exit mechanism", "deadlock",
+    ],
+}
+
+CONTRACT_ACTOR_ROLES: Dict[str, List[str]] = {
+    "party_offering":  [
+        "licensor", "vendor", "seller", "employer", "landlord", "lessor",
+        "lender", "assignor", "service provider", "supplier", "contractor",
+    ],
+    "party_receiving": [
+        "licensee", "purchaser", "buyer", "employee", "tenant", "lessee",
+        "borrower", "assignee", "client", "customer",
+    ],
+    "guarantor": [
+        "guarantor", "surety", "co-signer", "co-obligor", "indemnifier",
+    ],
+    "breach_party": [
+        "breaching party", "defaulting party", "in default", "material breach",
+        "fails to perform", "non-performance",
+    ],
+    "arbitrator": [
+        "arbitrator", "mediator", "adjudicator", "tribunal",
+        "arbitration", "mediation", "dispute resolution",
+    ],
+}
+
+_GENRE_RE: Dict[str, "re.Pattern"] = {
+    genre: re.compile(
+        r"\b(?:" + "|".join(re.escape(t) for t in terms) + r")\b",
+        re.IGNORECASE,
+    )
+    for genre, terms in CONTRACT_GENRES.items()
+}
+
+_CONTRACT_ROLE_RE: Dict[str, "re.Pattern"] = {
+    tag: re.compile(
+        r"\b(?:" + "|".join(re.escape(t) for t in terms) + r")\b",
+        re.IGNORECASE,
+    )
+    for tag, terms in CONTRACT_ACTOR_ROLES.items()
+}
+
+
+def _extract_contract_genre(text: str) -> Optional[str]:
+    """Return the dominant contract genre in `text`, or None if absent."""
+    if not text:
+        return None
+    hits = {genre: len(rx.findall(text)) for genre, rx in _GENRE_RE.items()}
+    best = max(hits, key=lambda g: hits[g])
+    return best if hits[best] > 0 else None
+
+
+def _extract_contract_roles(text: str) -> set:
+    """Return the set of contract-party role tags whose terms appear in `text`."""
+    if not text:
+        return set()
+    return {tag for tag, rx in _CONTRACT_ROLE_RE.items() if rx.search(text)}
+
+
+def _genre_heaviness(text: str, query_genre: Optional[str]) -> float:
+    """How far a chunk's genre vocabulary sits from the query's genre, in [-1, +1].
+
+    +1  dominated by OTHER-genre terms, no query-genre hits  → heavy, sinks
+     0  balanced or no genre vocabulary present
+    -1  dominated by query-genre terms, no other-genre hits  → light, floats
+    """
+    if not query_genre or not text:
+        return 0.0
+    same_hits  = len(_GENRE_RE[query_genre].findall(text))
+    other_hits = sum(
+        len(rx.findall(text))
+        for genre, rx in _GENRE_RE.items()
+        if genre != query_genre
+    )
+    total = same_hits + other_hits
+    if total == 0:
+        return 0.0
+    return (other_hits - same_hits) / total
+
+
+def contract_buoyancy_rerank(
+    merged_ids: List[str],
+    query: str,
+    passage_text: Dict[str, str],
+    *,
+    gravity: float = 1.5,
+) -> List[str]:
+    """Re-rank by genre-aware buoyancy for the contracts domain.
+
+    Detects the query's contract genre; chunks whose vocabulary aligns with that
+    genre float (negative heaviness); chunks dominated by other-genre vocabulary
+    sink.  No-op when no genre is detected in the query — guards against demoting
+    passages for genre-neutral queries such as "what is liquidated damages?".
+
+    adjusted = reciprocal_rank * exp(-gravity * heaviness)
+    """
+    query_genre = _extract_contract_genre(query)
+    if not query_genre:
+        return list(merged_ids)
+    scored = []
+    for rank, pid in enumerate(merged_ids):
+        base = 1.0 / (rank + 1)
+        h = _genre_heaviness(passage_text.get(pid, ""), query_genre)
+        base *= math.exp(-gravity * h)
+        scored.append((base, rank, pid))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    return [pid for _, _, pid in scored]
+
+
 # ── deep-recall diagnostic ──────────────────────────────────────────────────────
 #
 # Parent-child and role-boost are POOL-REORDERING — they can only promote what
@@ -778,6 +937,7 @@ def run_benchmark(
     offence_penalty: float = 0.5,
     buoyancy: bool = False,
     gravity: float = 1.5,
+    contract_buoyancy: bool = False,
 ) -> dict:
     retriever = CVERetriever(str(db_path))
     conn = sqlite3.connect(str(db_path))
@@ -785,15 +945,16 @@ def run_benchmark(
 
     # Pre-load passage text for rerankers that need raw text
     passage_text: Dict[str, str] = {}
-    if splade is not None or cross_encoder is not None or role_boost or buoyancy:
+    if (splade is not None or cross_encoder is not None
+            or role_boost or buoyancy or contract_buoyancy):
         cur = conn.execute("SELECT cve_id, answer FROM cve")
         passage_text = {r[0]: r[1] for r in cur.fetchall()}
 
     (bm25_results, rewrite_results, hybrid_results, hybrid_rewrite_results,
      dense_results, rrf_results, rrf_ce_results, srd_rrf_ce_results,
      bm25_pc_results, rrf_pc_results, rrf_pc_role_results,
-     rrf_pc_buoy_results) = (
-        [], [], [], [], [], [], [], [], [], [], [], []
+     rrf_pc_buoy_results, rrf_pc_cbuoy_results) = (
+        [], [], [], [], [], [], [], [], [], [], [], [], []
     )
 
     for row in qa_rows:
@@ -901,7 +1062,7 @@ def run_benchmark(
         # parent sections), scored at section granularity vs the gold's parent.
         # The wide pool is computed once and shared by the plain parent-child
         # tracks and the role-boost track.
-        if parent_child or role_boost or buoyancy:
+        if parent_child or role_boost or buoyancy or contract_buoyancy:
             gold_parent = _parent_of(passage_id)
 
             # Wide BM25 pool (shared)
@@ -962,6 +1123,21 @@ def run_benchmark(
                     "pc_ms": round(wide_ms + wide_d_ms, 2),
                 })
 
+            # Track 13: RRF + parent-child + genre-aware buoyancy (contracts).
+            # Detects the query's contract genre; chunks aligned with that genre
+            # float, off-genre chunks sink.  No-op for genre-neutral queries.
+            if contract_buoyancy and dense is not None:
+                cbuoy_ranked = contract_buoyancy_rerank(
+                    wide_merged, question, passage_text, gravity=gravity)
+                cbuoy_parents = collapse_to_parents(cbuoy_ranked, final_k=final_k)
+                rrf_pc_cbuoy_results.append({
+                    "id": qid, "relevant_id": gold_parent,
+                    "retrieved": cbuoy_parents,
+                    "rr": rr(cbuoy_parents, gold_parent),
+                    "pc_ms": round(wide_ms + wide_d_ms, 2),
+                    "query_genre": _extract_contract_genre(question),
+                })
+
     conn.close()
     return {
         "bm25":           _aggregate(bm25_results,           final_k, latency_field="fts5_ms"),
@@ -987,6 +1163,8 @@ def run_benchmark(
                           if rrf_pc_role_results else None,
         "rrf_pc_buoy":    _aggregate(rrf_pc_buoy_results,    final_k, latency_field="pc_ms")
                           if rrf_pc_buoy_results else None,
+        "rrf_pc_cbuoy":   _aggregate(rrf_pc_cbuoy_results,   final_k, latency_field="pc_ms")
+                          if rrf_pc_cbuoy_results else None,
     }
 
 
@@ -1036,14 +1214,15 @@ def _aggregate(results: list, k: int, *, latency_field: str) -> dict:
             "p95":  round(lats[int(n * 0.95)], 2),
         },
         "n_misses": len(failures),
+        "n": n,
         "per_question": results,
     }
 
 
 # ── pretty print ──────────────────────────────────────────────────────────────
 
-def _pct(v: float) -> str:
-    return f"{v:.3f}  ({int(round(v*100))}/100)"
+def _pct(v: float, n: int = 100) -> str:
+    return f"{v:.3f}  ({int(round(v*n))}/{n})"
 
 
 def print_comparison(data: dict, fts5_k: int) -> None:
@@ -1070,6 +1249,7 @@ def print_comparison(data: dict, fts5_k: int) -> None:
     rrf_pc  = data.get("rrf_pc")
     rrf_pc_role = data.get("rrf_pc_role")
     rrf_pc_buoy = data.get("rrf_pc_buoy")
+    rrf_pc_cbuoy = data.get("rrf_pc_cbuoy")
 
     if den:
         col_data.append(("Dense", den))
@@ -1087,10 +1267,13 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         col_data.append(("RRF+PC+role", rrf_pc_role))
     if rrf_pc_buoy:
         col_data.append(("RRF+PC+buoyancy", rrf_pc_buoy))
+    if rrf_pc_cbuoy:
+        col_data.append(("RRF+PC+genre-buoy", rrf_pc_cbuoy))
 
+    n = bm.get("n", 100)
     w = 16
     print()
-    print(f"  Legal RAG Bench — FTS5 k={fts5_k} → final k=10")
+    print(f"  RAG Bench — FTS5 k={fts5_k} → final k=10  ({n} questions)")
     print()
     header = f"  {'Metric':<12}  " + "  ".join(f"{c:>{w}}" for c, _ in col_data)
     print(header)
@@ -1099,12 +1282,13 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         row = f"  {metric:<12}"
         baseline_val = bm[metric]
         for i, (_, d) in enumerate(col_data):
-            val = d[metric]
-            cell = _pct(val)
+            val  = d[metric]
+            dn   = d.get("n", n)
+            cell = _pct(val, dn)
             if i > 0:
                 delta = val - baseline_val
                 sign  = "+" if delta >= 0 else ""
-                cell  = f"{_pct(val)} ({sign}{delta:.3f})"
+                cell  = f"{_pct(val, dn)} ({sign}{delta:.3f})"
             row += f"  {cell:>{w}}"
         print(row)
 
@@ -1237,6 +1421,14 @@ def main(argv=None) -> int:
     ap.add_argument("--gravity",           type=float, default=1.5,
                     help="Buoyancy strength: adjusted = rank * exp(-gravity*heaviness) "
                          "(default 1.5)")
+    ap.add_argument("--contract-buoyancy",  action="store_true",
+                    help="Genre-aware buoyancy for the contracts domain: same-genre "
+                         "chunks float, off-genre chunks sink. Implies parent-child "
+                         "+ dense. Complementary to --buoyancy (use one per domain).")
+    ap.add_argument("--domain",             default="legal",
+                    choices=["legal", "contract"],
+                    help="Active domain for role / genre lexicons (default: legal). "
+                         "'contract' enables CONTRACT_GENRES and CONTRACT_ACTOR_ROLES.")
     ap.add_argument("--gold-rank-report",  action="store_true",
                     help="Deep-recall diagnostic: bucket each query by where its "
                          "gold SECTION lands in a deep RRF pool (in_pool/reachable/"
@@ -1323,7 +1515,7 @@ def main(argv=None) -> int:
     # ── optional dense retriever (bi-encoder first-stage + RRF) ──────────────
     dense_retriever = None
     use_dense = (args.dense or args.rrf or args.cross_encoder or args.role_boost
-                 or args.buoyancy or args.gold_rank_report)
+                 or args.buoyancy or args.contract_buoyancy or args.gold_rank_report)
     if use_dense:
         print(f"\nLoading dense model ({args.dense_model})…")
         dense_retriever = DenseRetriever(args.dense_model)
@@ -1392,6 +1584,8 @@ def main(argv=None) -> int:
         tracks.append(f"role-boost(w={args.role_boost_weight},pen={args.offence_penalty})")
     if args.buoyancy:
         tracks.append(f"buoyancy(g={args.gravity})")
+    if args.contract_buoyancy:
+        tracks.append(f"genre-buoyancy(g={args.gravity},domain={args.domain})")
     print(f"\nRunning benchmark (fts5-k={args.fts5_k}, final-k={args.k}, "
           f"tracks=[{', '.join(tracks) or 'bm25-only'}])…")
     data = run_benchmark(
@@ -1412,6 +1606,7 @@ def main(argv=None) -> int:
         offence_penalty=args.offence_penalty,
         buoyancy=args.buoyancy,
         gravity=args.gravity,
+        contract_buoyancy=args.contract_buoyancy,
     )
 
     print_comparison(data, fts5_k=args.fts5_k)
