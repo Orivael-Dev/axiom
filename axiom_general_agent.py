@@ -50,6 +50,39 @@ EFFICIENCY_DECAY             = 0.85   # EWMA α for pattern efficiency tracking
 LATENT_REJECTION_THRESHOLD   = 0.10   # manifold distance below which we reject an approach
 PATTERN_LIBRARY_PATH         = Path("axiom_general_agent_patterns.jsonl")
 
+# ── Local RAG (retrieval-augmented generation) ────────────────────────────────
+# Ground each LLM step in a local BM25 corpus. Off unless explicitly enabled
+# (--rag, or AXIOM_RAG=1). Local-only: a fresh in-process LocalRetriever fed by
+# the datasheet/JSONL ingester — no external providers, no network, air-gapped.
+RAG_DEFAULT_CORPUS  = Path(os.environ.get("AXIOM_RAG_CORPUS", "/mnt/nvme/axiom/datasets"))
+RAG_DEFAULT_TOP_K   = 3      # snippets injected into the step prompt
+RAG_MAX_RECORDS     = int(os.environ.get("AXIOM_RAG_MAX_RECORDS", "5000"))
+RAG_SNIPPET_CHARS   = 500    # per-snippet truncation in the prompt
+
+# Local model defaults. The agent shells out to a llama.cpp binary with a GGUF
+# weight file; both are overridable on the CLI / constructor. llama-completion
+# is the non-interactive binary (see the local-agent notes — llama-cli hangs /
+# emits nothing for scripted runs).
+_DEFAULT_MODEL = "models/qwen25_coder_0p5b_srd4_q4km.gguf"
+_DEFAULT_BIN   = str(Path.home() / "llama.cpp/build/bin/llama-completion")
+_LLM_CTX       = 2048        # context window passed to the binary
+_LLM_NGL       = 99          # GPU layers to offload (0.5B fits the Jetson GPU)
+_LLM_NPREDICT  = 256         # max tokens generated per step
+
+# Axiom's own knowledge: instruction/answer + chat records covering Axiom
+# coding patterns, known bugs (BUG-00x), guard regexes, ORVL specs, and the
+# framework itself. Folded into every RAG corpus so the local model can answer
+# Axiom-specific questions. Tagged duplicates and placeholder logs are omitted.
+_REPO = Path(__file__).resolve().parent
+AXIOM_KNOWLEDGE_FILES = [
+    _REPO / "axiom_training_data.jsonl",       # 508 instruction/output (bugs, specs, coding)
+    _REPO / "axiom_behavioral_training.jsonl",  # 199 chat-format behavioral records
+]
+# Axiom knowledge is the priority signal — it gets its own, far larger cap than
+# the general corpus so framework/bug/spec records are never truncated by a
+# small --rag-max-records meant only to bound the big training datasets.
+AXIOM_KNOWLEDGE_MAX_RECORDS = int(os.environ.get("AXIOM_RAG_KNOWLEDGE_MAX_RECORDS", "100000"))
+
 _NAMESPACE = b"axiom-general-agent-v1"
 
 class _FrozenModule(types.ModuleType):
@@ -613,11 +646,108 @@ def _plan_steps(task: str, domain: str, approach: str) -> List[str]:
 
 # ── LLM backend (optional) ────────────────────────────────────────────────────
 
-def _llm_execute_step(step: str, task: str, model_bin: Optional[str]) -> str:
-    """Run a single step with an optional llama.cpp binary.
+# ── Local RAG retriever (lazy, local-only) ─────────────────────────────────────
+
+
+def build_rag_retriever(
+    corpus_dir: Optional[Path] = None,
+    *,
+    max_records: int = RAG_MAX_RECORDS,
+    include_axiom_knowledge: bool = True,
+    verbose: bool = False,
+):
+    """Build a local BM25 retriever over the corpus + Axiom knowledge.
+
+    Starts from an empty in-process `LocalRetriever` and feeds it through the
+    datasheet/JSONL `DatasheetIngester`, which flattens each JSONL record into
+    one searchable chunk and caches chunks on disk (so subsequent runs are
+    cheap). The general corpus dir (`corpus_dir`, default the datasets folder)
+    is indexed first; then — unless disabled — Axiom's own training files
+    (`AXIOM_KNOWLEDGE_FILES`) so the model can retrieve Axiom coding patterns,
+    known bugs and framework specs. Strictly local — no external providers, no
+    network. Returns None if the stack isn't importable or nothing indexed.
+    """
+    corpus = Path(corpus_dir) if corpus_dir is not None else RAG_DEFAULT_CORPUS
+    try:
+        from axiom_research_retriever import LocalRetriever
+        from axiom_datasheet_ingester import DatasheetIngester
+    except Exception as exc:
+        if verbose:
+            print(f"  [rag] retrieval stack unavailable ({exc}); RAG disabled")
+        return None
+
+    retriever = LocalRetriever(roots=[])     # empty; filled incrementally
+    retriever.build()
+    ingester = DatasheetIngester(retriever=retriever, max_records=max_records)
+
+    indexed_files = 0
+    if corpus.exists():
+        results = ingester.ingest_folder(corpus)
+        indexed_files += sum(1 for n in results.values() if n > 0)
+    elif verbose:
+        print(f"  [rag] corpus {corpus} not found; skipping (Axiom knowledge only)")
+
+    axiom_files = 0
+    if include_axiom_knowledge:
+        # Raise the cap so Axiom knowledge files index in full regardless of
+        # the (possibly small) corpus cap, then restore it.
+        corpus_cap, ingester._max_records = (
+            ingester._max_records, max(max_records, AXIOM_KNOWLEDGE_MAX_RECORDS),
+        )
+        for kf in AXIOM_KNOWLEDGE_FILES:
+            if kf.exists() and ingester.ingest_file(kf) > 0:
+                axiom_files += 1
+        ingester._max_records = corpus_cap
+
+    chunks = retriever.stats().get("indexed_files", 0)
+    if chunks == 0:
+        if verbose:
+            print("  [rag] no indexable chunks found; RAG disabled")
+        return None
+    if verbose:
+        print(f"  [rag] indexed {chunks} chunks "
+              f"({indexed_files} corpus file(s) + {axiom_files} Axiom knowledge file(s))")
+    return retriever
+
+
+def _retrieve_context(retriever, query: str, *, k: int = RAG_DEFAULT_TOP_K) -> str:
+    """Return a formatted grounding block from the local corpus, or "".
+
+    Retrieval failures are swallowed — RAG augments step execution; it is
+    never a hard dependency, so the agent still runs if a query throws.
+    """
+    if retriever is None or not query.strip():
+        return ""
+    try:
+        sources = retriever.retrieve(query, k=k)
+    except Exception:
+        return ""
+    lines: List[str] = []
+    for i, s in enumerate(sources, 1):
+        snippet = (getattr(s, "snippet", "") or "").strip()
+        if not snippet:
+            continue
+        if len(snippet) > RAG_SNIPPET_CHARS:
+            snippet = snippet[:RAG_SNIPPET_CHARS].rstrip() + "…"
+        title = (getattr(s, "title", "") or "").strip()
+        lines.append(f"[{i}] {title}: {snippet}" if title else f"[{i}] {snippet}")
+    return "\n".join(lines)
+
+
+def _llm_execute_step(
+    step: str,
+    task: str,
+    model_bin: Optional[str],
+    context: str = "",
+    model_path: Optional[str] = None,
+) -> str:
+    """Run a single step with an optional llama.cpp binary + GGUF model.
 
     If no binary is provided the agent produces a heuristic placeholder so
-    it can run entirely offline for planning / retrospect purposes.
+    it can run entirely offline for planning / retrospect purposes. When
+    `context` is non-empty it is injected ahead of the task as retrieved
+    reference material (RAG) the model may draw on. `model_path` is the GGUF
+    weight file passed to the binary via `-m`.
     """
     if not model_bin:
         return f"[heuristic] Completed: {step}"
@@ -632,7 +762,15 @@ def _llm_execute_step(step: str, task: str, model_bin: Optional[str]) -> str:
         "in 1-2 concise sentences. Output the step result only, no preamble. "
         "/no_think"
     )
+    context_block = ""
+    if context:
+        context_block = (
+            "Relevant reference material from the local corpus (use only if it "
+            "helps; ignore anything irrelevant — do not invent citations):\n"
+            f"{context}\n\n"
+        )
     user = (
+        f"{context_block}"
         f"Overall task (context only): {task}\n"
         f"The single step to complete now: {step}\n\n"
         f"Output for this step:"
@@ -642,11 +780,14 @@ def _llm_execute_step(step: str, task: str, model_bin: Optional[str]) -> str:
         f"<|im_start|>user\n{user}<|im_end|>\n"
         f"<|im_start|>assistant\n"
     )
+    cmd = [model_bin]
+    if model_path:
+        cmd += ["-m", model_path]
+    cmd += ["-c", str(_LLM_CTX), "-ngl", str(_LLM_NGL),
+            "--no-display-prompt", "-n", str(_LLM_NPREDICT), "-p", prompt]
     try:
         proc = subprocess.run(
-            [model_bin, "--no-display-prompt", "--n-predict", "256",
-             "-p", prompt],
-            capture_output=True, text=True, timeout=60,
+            cmd, capture_output=True, text=True, timeout=120,
         )
         out = proc.stdout.strip()
         # Strip thinking blocks if the model emits them despite /no_think.
@@ -668,8 +809,9 @@ class AutonomousGeneralAgent:
 
     Parameters
     ----------
-    model_bin : path to a llama.cpp binary (llama-cli) for LLM-backed steps.
-                Leave None for heuristic / planning-only mode.
+    model_bin : path to a llama.cpp binary (llama-completion) for LLM-backed
+                steps. Leave None for heuristic / planning-only mode.
+    model_path : path to the GGUF weight file passed to the binary via `-m`.
     library_path : override PATTERN_LIBRARY_PATH (useful for tests).
     verbose : print step-by-step progress.
     """
@@ -679,11 +821,29 @@ class AutonomousGeneralAgent:
         model_bin: Optional[str] = None,
         library_path: Optional[Path] = None,
         verbose: bool = True,
+        *,
+        model_path: Optional[str] = None,
+        rag: bool = False,
+        rag_corpus: Optional[Path] = None,
+        rag_k: int = RAG_DEFAULT_TOP_K,
+        rag_max_records: int = RAG_MAX_RECORDS,
+        rag_axiom_knowledge: bool = True,
     ) -> None:
-        self._model_bin = model_bin
+        self._model_bin  = model_bin
+        self._model_path = model_path
         self._library   = PatternLibrary(library_path or PATTERN_LIBRARY_PATH)
         self._reasoner  = LatentReasoner()
         self._verbose   = verbose
+        self._rag_k     = rag_k
+        # Build the local corpus once at construction so the cost is paid
+        # before the first task rather than mid-run. None when RAG is off or
+        # the corpus is unavailable — retrieval then degrades to a no-op.
+        self._retriever = (
+            build_rag_retriever(rag_corpus, max_records=rag_max_records,
+                                include_axiom_knowledge=rag_axiom_knowledge,
+                                verbose=verbose)
+            if rag else None
+        )
 
     def _log(self, msg: str) -> None:
         if self._verbose:
@@ -729,12 +889,22 @@ class AutonomousGeneralAgent:
         self._log(f"\n  [execution — {len(step_labels)} steps]")
 
         # ── 5. Execute steps ──────────────────────────────────────────────────
+        # Retrieve grounding context once per task (the overall task is the
+        # query) and reuse it across every step — cheap, and keeps the local
+        # corpus lookup off the per-step hot path.
+        rag_context = _retrieve_context(self._retriever, task, k=self._rag_k)
+        if rag_context:
+            n_hits = rag_context.count("\n[") + 1
+            self._log(f"  rag       : {n_hits} local snippet(s) grounding execution")
+
         steps: List[TaskStep] = []
         success = True
         for i, label in enumerate(step_labels):
             t_step = time.monotonic()
             self._log(f"    [{i+1}/{len(step_labels)}] {label}")
-            result = _llm_execute_step(label, task, self._model_bin)
+            result = _llm_execute_step(label, task, self._model_bin,
+                                       context=rag_context,
+                                       model_path=self._model_path)
             elapsed_ms = int((time.monotonic() - t_step) * 1000)
             steps.append(TaskStep(index=i, action=label,
                                   result=result, elapsed_ms=elapsed_ms))
@@ -768,8 +938,14 @@ class AutonomousGeneralAgent:
 
 def _cmd_run(args) -> int:
     agent = AutonomousGeneralAgent(
-        model_bin=args.model_bin,
+        model_bin=(None if args.no_model else args.model_bin),
+        model_path=(None if args.no_model else args.model),
         verbose=not args.quiet,
+        rag=args.rag or os.environ.get("AXIOM_RAG") == "1",
+        rag_corpus=args.rag_corpus,
+        rag_k=args.rag_k,
+        rag_max_records=args.rag_max_records,
+        rag_axiom_knowledge=not args.no_axiom_knowledge,
     )
     outcome = agent.run(task=args.task, domain_hint=args.domain)
     if args.json:
@@ -824,9 +1000,24 @@ def main(argv=None):
     p_run.add_argument("--task", "-t", required=True, help="task description")
     p_run.add_argument("--domain", "-d", choices=list(DOMAINS),
                        help="override domain classification")
-    p_run.add_argument("--model-bin", help="path to llama-cli binary for LLM steps")
+    p_run.add_argument("--model-bin", default=_DEFAULT_BIN,
+                       help="path to the llama.cpp binary for LLM steps")
+    p_run.add_argument("--model", default=_DEFAULT_MODEL,
+                       help="path to the GGUF weight file")
+    p_run.add_argument("--no-model", action="store_true",
+                       help="planning/heuristic only — skip the LLM")
     p_run.add_argument("--quiet", action="store_true", help="suppress step output")
     p_run.add_argument("--json",  action="store_true", help="emit JSON result")
+    p_run.add_argument("--rag", action="store_true",
+                       help="ground LLM steps in a local BM25 corpus (RAG)")
+    p_run.add_argument("--rag-corpus", type=Path, default=None,
+                       help=f"corpus dir to index (default {RAG_DEFAULT_CORPUS})")
+    p_run.add_argument("--rag-k", type=int, default=RAG_DEFAULT_TOP_K,
+                       help="number of snippets to retrieve per task")
+    p_run.add_argument("--rag-max-records", type=int, default=RAG_MAX_RECORDS,
+                       help="per-file cap on JSONL records indexed")
+    p_run.add_argument("--no-axiom-knowledge", action="store_true",
+                       help="exclude Axiom's own training files from the RAG corpus")
     p_run.set_defaults(func=_cmd_run)
 
     p_hist = sub.add_parser("history", help="show pattern library")

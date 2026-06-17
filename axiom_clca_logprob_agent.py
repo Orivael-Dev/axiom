@@ -42,7 +42,7 @@ from axiom_signing import derive_key
 
 _HMAC_KEY = derive_key(b"axiom-clca-demo-v1")
 _STAGES = ["preflight", "mid_chain", "final_synthesis"]
-_DEFAULT_MODEL = "models/axiom-qwen3-1.7b-srd4-Q4_K_M.gguf"
+_DEFAULT_MODEL = "models/qwen25_coder_0p5b_srd4_q4km.gguf"
 _SERVER_BIN = str(Path.home() / "llama.cpp/build/bin/llama-server")
 _SEP = "─" * 64
 

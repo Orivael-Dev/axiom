@@ -70,7 +70,7 @@ from axiom_video import (  # noqa: E402
     classify_color,
 )
 
-_DEFAULT_MODEL = "models/axiom-qwen3-1.7b-srd4-Q4_K_M.gguf"
+_DEFAULT_MODEL = "models/qwen25_coder_0p5b_srd4_q4km.gguf"
 _DEFAULT_BIN   = str(Path.home() / "llama.cpp/build/bin/llama-completion")
 # Lorem Picsum serves Unsplash photos under the free-to-use Unsplash
 # license — a deterministic seed gives a reproducible real frame.

@@ -35,7 +35,7 @@ from axiom_cbv import CBVEngine
 from axiom_signing import derive_key
 
 _HMAC_KEY = derive_key(b"axiom-cbv-demo-v1")
-_DEFAULT_MODEL = "models/axiom-qwen3-1.7b-srd4-Q4_K_M.gguf"
+_DEFAULT_MODEL = "models/qwen25_coder_0p5b_srd4_q4km.gguf"
 _DEFAULT_BIN = str(Path.home() / "llama.cpp/build/bin/llama-completion")
 _SEP = "─" * 66
 

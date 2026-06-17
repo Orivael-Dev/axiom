@@ -43,7 +43,13 @@ from axiom_research_retriever import LocalRetriever, _tokenize, _MAX_BYTES
 _DEFAULT_CACHE_DIR = Path.home() / ".axiom" / "datasheet_chunks"
 _DEFAULT_CHUNK_TOKENS = 400      # roughly one datasheet page
 _DEFAULT_OVERLAP_TOKENS = 40     # 10% overlap keeps context at page boundaries
-_SUPPORTED_EXTS = {".pdf", ".txt", ".md", ".rst"}
+# Per-file cap on JSONL records indexed. JSONL training/distillation sets run
+# to hundreds of thousands of lines; a pure-Python BM25 index holds every chunk
+# in memory and scans them linearly, so we bound the count and log how many
+# records were dropped rather than silently truncating.
+_DEFAULT_MAX_RECORDS = 5000
+_JSONL_EXTS = {".jsonl", ".ndjson"}
+_SUPPORTED_EXTS = {".pdf", ".txt", ".md", ".rst", ".jsonl", ".ndjson", ".json"}
 
 
 def _extract_pdf_text(path: Path) -> Optional[str]:
@@ -97,6 +103,79 @@ def _chunk_by_tokens(
     return chunks
 
 
+def _flatten_record_text(obj) -> str:
+    """Flatten a JSON record into one searchable text blob.
+
+    Recursively collects every string leaf value, preserving order. This is
+    schema-agnostic on purpose — it copes with chat schemas
+    (`{"messages": [{"role", "content"}]}`), instruction schemas
+    (`{"instruction", "input", "output"}`), Q/A schemas, and arbitrary
+    nesting without needing to know the field names up front. Numbers,
+    booleans and nulls are skipped (they don't help keyword retrieval).
+    """
+    parts: List[str] = []
+
+    def walk(v) -> None:
+        if isinstance(v, str):
+            s = v.strip()
+            if s:
+                parts.append(s)
+        elif isinstance(v, dict):
+            for vv in v.values():
+                walk(vv)
+        elif isinstance(v, (list, tuple)):
+            for vv in v:
+                walk(vv)
+        # ints / floats / bools / None contribute no retrieval signal.
+
+    walk(obj)
+    return "\n".join(parts)
+
+
+def _extract_jsonl_records(path: Path, max_records: int):
+    """Yield flattened per-record text from a JSONL/NDJSON (or JSON-array) file.
+
+    Returns ``(records, capped)`` where ``records`` is at most ``max_records``
+    and ``capped`` is True when the file held more records than were indexed.
+    We stop reading once the cap is hit — these files can be hundreds of MB, so
+    we don't scan the tail just to count it. Malformed lines are skipped.
+    """
+    records: List[str] = []
+
+    # A `.json` file may hold a single top-level array rather than one object
+    # per line — handle that as a special case, falling back to line-by-line.
+    if path.suffix.lower() == ".json":
+        try:
+            data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            data = None
+        if isinstance(data, list):
+            for obj in data:
+                if len(records) >= max_records:
+                    return records, True
+                txt = _flatten_record_text(obj)
+                if txt:
+                    records.append(txt)
+            return records, False
+        # not an array → fall through to line-by-line parsing
+
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            if len(records) >= max_records:
+                return records, True
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            txt = _flatten_record_text(obj)
+            if txt:
+                records.append(txt)
+    return records, False
+
+
 class DatasheetIngester:
     """Extract text from datasheets, chunk, cache on disk, add to retriever.
 
@@ -114,11 +193,13 @@ class DatasheetIngester:
         cache_dir: Path = _DEFAULT_CACHE_DIR,
         chunk_tokens: int = _DEFAULT_CHUNK_TOKENS,
         overlap_tokens: int = _DEFAULT_OVERLAP_TOKENS,
+        max_records: int = _DEFAULT_MAX_RECORDS,
     ) -> None:
         self._retriever     = retriever
         self._cache_dir     = Path(cache_dir)
         self._chunk_tokens  = chunk_tokens
         self._overlap_tokens = overlap_tokens
+        self._max_records   = max_records
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Index file: {source_path: {mtime, chunk_paths[]}}
@@ -171,16 +252,20 @@ class DatasheetIngester:
         """Ingest one file into the retriever. Returns chunk count (0 if skipped).
 
         Idempotent: skips the file if it has already been ingested at the
-        same mtime. Call `ingest_file(path)` again after updating a file
-        and the new content will replace the old chunks in the cache.
+        same mtime *and* the same record cap. Call `ingest_file(path)` again
+        after updating a file — or after raising max_records — and the new
+        content replaces the old chunks in the cache.
         """
         path = path.resolve()
         mtime = self._source_mtime(path)
         key   = str(path)
 
-        # Check if already ingested at this mtime
+        # Reuse the cache only when both the source mtime and the record cap
+        # match — changing max_records changes how many JSONL records were
+        # indexed, so a stale-cap entry must be re-extracted, not reused.
         entry = self._index.get(key)
-        if entry and entry.get("mtime") == mtime:
+        if (entry and entry.get("mtime") == mtime
+                and entry.get("max_records") == self._max_records):
             # Already cached — load chunk files into retriever if not present
             chunk_paths = [Path(p) for p in entry.get("chunk_paths", [])]
             existing = [cp for cp in chunk_paths if cp.exists()]
@@ -188,13 +273,28 @@ class DatasheetIngester:
                 self._retriever.add_documents(existing)
                 return len(existing)
 
-        text = self._extract_text(path)
-        if not text or not text.strip():
-            return 0
-
-        chunks = _chunk_by_tokens(text, self._chunk_tokens, self._overlap_tokens)
-        if not chunks:
-            return 0
+        ext = path.suffix.lower()
+        if ext in _JSONL_EXTS or ext == ".json":
+            # One flattened record per chunk — record boundaries are the
+            # natural retrieval unit for JSONL corpora, so we skip the
+            # token-window chunker (which would merge unrelated records).
+            chunks, capped = _extract_jsonl_records(path, self._max_records)
+            if capped:
+                print(
+                    f"[datasheet-ingester] {path.name}: indexed first "
+                    f"{len(chunks)} records, more remain "
+                    f"(capped at max_records={self._max_records}; "
+                    f"raise --max-records to index more)"
+                )
+            if not chunks:
+                return 0
+        else:
+            text = self._extract_text(path)
+            if not text or not text.strip():
+                return 0
+            chunks = _chunk_by_tokens(text, self._chunk_tokens, self._overlap_tokens)
+            if not chunks:
+                return 0
 
         cache_d = self._doc_cache_dir(path)
 
@@ -208,9 +308,11 @@ class DatasheetIngester:
             cp.write_text(chunk, encoding="utf-8")
             chunk_paths.append(cp)
 
-        # Update index
+        # Update index. `max_records` is part of the cache identity so a
+        # later run with a different cap re-extracts instead of reusing.
         self._index[key] = {
             "mtime":       mtime,
+            "max_records": self._max_records,
             "chunk_paths": [str(p) for p in chunk_paths],
             "source":      str(path),
             "chunks":      len(chunks),
@@ -286,6 +388,8 @@ def main(argv=None) -> int:
     p_ingest.add_argument("--glob", default="**/*")
     p_ingest.add_argument("--cache-dir", type=Path, default=_DEFAULT_CACHE_DIR)
     p_ingest.add_argument("--chunk-tokens", type=int, default=_DEFAULT_CHUNK_TOKENS)
+    p_ingest.add_argument("--max-records", type=int, default=_DEFAULT_MAX_RECORDS,
+                          help="per-file cap on JSONL records indexed")
 
     p_watch = sub.add_parser("watch", help="poll a folder and ingest new files")
     p_watch.add_argument("--folder", "-f", required=True, type=Path)
@@ -327,6 +431,7 @@ def main(argv=None) -> int:
         retriever=retriever_obj,
         cache_dir=args.cache_dir,
         chunk_tokens=getattr(args, "chunk_tokens", _DEFAULT_CHUNK_TOKENS),
+        max_records=getattr(args, "max_records", _DEFAULT_MAX_RECORDS),
     )
 
     if args.cmd == "ingest":
