@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -438,6 +439,40 @@ def hit_at(retrieved: List[str], relevant: str, k: int) -> bool:
     return relevant in retrieved[:k]
 
 
+# ── parent-child (section-level) helpers ───────────────────────────────────────
+#
+# Chunk ids are "<section>-c<N>-s<M>" (e.g. "4.13.2-c4-s2").  Many misses are
+# "right section, wrong chunk" — the retriever surfaces a sibling chunk of the
+# gold passage.  Parent-child retrieval (PDF §1 "Shared Subspace Embedding")
+# retrieves on the granular child chunks, then collapses hits to their parent
+# SECTION and returns the section.  Scoring at section granularity recovers the
+# sibling-chunk misses at zero extra latency.
+
+_CHUNK_SUFFIX_RE = re.compile(r"-c\d+-s\d+.*$")
+
+
+def _parent_of(chunk_id: str) -> str:
+    """Return the parent section id for a chunk id.
+
+    "4.13.2-c4-s2" -> "4.13.2".  Idempotent: a bare section id (no chunk
+    suffix) is returned unchanged, so this is safe to apply twice.
+    """
+    return _CHUNK_SUFFIX_RE.sub("", chunk_id)
+
+
+def collapse_to_parents(retrieved: List[str], *, final_k: int = 10) -> List[str]:
+    """Collapse a ranked chunk list to a ranked list of unique parent sections.
+
+    Keeps first (best-ranked) occurrence of each section; truncates to final_k.
+    """
+    seen: List[str] = []
+    for pid in retrieved:
+        par = _parent_of(pid)
+        if par not in seen:
+            seen.append(par)
+    return seen[:final_k]
+
+
 # ── benchmark loop ────────────────────────────────────────────────────────────
 
 def run_benchmark(
@@ -453,6 +488,8 @@ def run_benchmark(
     ce_top_n: int = 20,
     k_rrf: int = 60,
     expand: bool = True,
+    parent_child: bool = False,
+    pc_pool: int = 30,
 ) -> dict:
     retriever = CVERetriever(str(db_path))
     conn = sqlite3.connect(str(db_path))
@@ -465,8 +502,9 @@ def run_benchmark(
         passage_text = {r[0]: r[1] for r in cur.fetchall()}
 
     (bm25_results, rewrite_results, hybrid_results, hybrid_rewrite_results,
-     dense_results, rrf_results, rrf_ce_results, srd_rrf_ce_results) = (
-        [], [], [], [], [], [], [], []
+     dense_results, rrf_results, rrf_ce_results, srd_rrf_ce_results,
+     bm25_pc_results, rrf_pc_results) = (
+        [], [], [], [], [], [], [], [], [], []
     )
 
     for row in qa_rows:
@@ -570,6 +608,37 @@ def run_benchmark(
                 "ce_ms": srd_ce_total_ms,
             })
 
+        # Track 9/10: parent-child retrieval (deeper child pool → collapse to
+        # parent sections).  Scored at section granularity vs the gold's parent.
+        # This is the production architecture: retrieve on granular chunks, then
+        # return the parent section.  Recovers "right section, wrong chunk" misses.
+        if parent_child:
+            gold_parent = _parent_of(passage_id)
+
+            # Wide BM25 pool → collapse to parents
+            wide_ids, wide_ms = fts5_retrieve(conn, retriever, question,
+                                              k=pc_pool, expand=expand)
+            bm25_parents = collapse_to_parents(wide_ids, final_k=final_k)
+            bm25_pc_results.append({
+                "id": qid, "relevant_id": gold_parent,
+                "retrieved": bm25_parents,
+                "rr": rr(bm25_parents, gold_parent),
+                "pc_ms": round(wide_ms, 2),
+            })
+
+            # Wide RRF pool (BM25 + dense) → collapse to parents
+            if dense is not None:
+                wide_d_ids, wide_d_ms = dense.retrieve(question, k=pc_pool)
+                wide_merged = rrf_merge(wide_ids, wide_d_ids,
+                                        k_rrf=k_rrf, final_k=pc_pool)
+                rrf_parents = collapse_to_parents(wide_merged, final_k=final_k)
+                rrf_pc_results.append({
+                    "id": qid, "relevant_id": gold_parent,
+                    "retrieved": rrf_parents,
+                    "rr": rr(rrf_parents, gold_parent),
+                    "pc_ms": round(wide_ms + wide_d_ms, 2),
+                })
+
     conn.close()
     return {
         "bm25":           _aggregate(bm25_results,           final_k, latency_field="fts5_ms"),
@@ -587,6 +656,10 @@ def run_benchmark(
                           if rrf_ce_results else None,
         "srd_rrf_ce":     _aggregate(srd_rrf_ce_results,     final_k, latency_field="ce_ms")
                           if srd_rrf_ce_results else None,
+        "bm25_pc":        _aggregate(bm25_pc_results,        final_k, latency_field="pc_ms")
+                          if bm25_pc_results else None,
+        "rrf_pc":         _aggregate(rrf_pc_results,         final_k, latency_field="pc_ms")
+                          if rrf_pc_results else None,
     }
 
 
@@ -600,12 +673,36 @@ def _aggregate(results: list, k: int, *, latency_field: str) -> dict:
              for ks in [1, 3, 5, 10]}
     lats  = sorted(r.get(latency_field, 0) for r in results)
     failures = [r for r in results if not hit_at(r["retrieved"], r["relevant_id"], k)]
+
+    # Section-level (parent-child) scoring on the SAME top-k pool: collapse the
+    # retrieved chunks to their parent sections and score against the gold's
+    # parent.  This is a LOWER BOUND on parent-child recovery — it only counts
+    # a section as found if one of its chunks already made the chunk-level top-k.
+    # The dedicated *_pc tracks use a deeper child pool for the full effect.
+    sec_rr = [rr(collapse_to_parents(r["retrieved"], final_k=10),
+                 _parent_of(r["relevant_id"])) for r in results]
+    mrr_sec = sum(sec_rr) / n
+    hits_sec = {ks: sum(hit_at(collapse_to_parents(r["retrieved"], final_k=10),
+                               _parent_of(r["relevant_id"]), ks)
+                        for r in results) / n
+                for ks in [1, 3, 5, 10]}
+    misses_sec = sum(1 for r in results
+                     if not hit_at(collapse_to_parents(r["retrieved"], final_k=10),
+                                   _parent_of(r["relevant_id"]), k))
     return {
         "MRR":     round(mrr, 4),
         "Hit@1":   round(hits[1], 4),
         "Hit@3":   round(hits[3], 4),
         "Hit@5":   round(hits[5], 4),
         "Hit@10":  round(hits[10], 4),
+        # Section-level (parent-child) variants — "right section, wrong chunk"
+        # misses become hits here.
+        "MRR_sec":    round(mrr_sec, 4),
+        "Hit@1_sec":  round(hits_sec[1], 4),
+        "Hit@3_sec":  round(hits_sec[3], 4),
+        "Hit@5_sec":  round(hits_sec[5], 4),
+        "Hit@10_sec": round(hits_sec[10], 4),
+        "n_misses_sec": misses_sec,
         "latency": {
             "mean": round(sum(lats) / n, 2),
             "p50":  round(lats[n // 2], 2),
@@ -642,6 +739,9 @@ def print_comparison(data: dict, fts5_k: int) -> None:
     rrf_ce  = data.get("rrf_ce")
     srd_ce  = data.get("srd_rrf_ce")
 
+    bm25_pc = data.get("bm25_pc")
+    rrf_pc  = data.get("rrf_pc")
+
     if den:
         col_data.append(("Dense", den))
     if rrf:
@@ -650,6 +750,10 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         col_data.append(("RRF+CrossEnc", rrf_ce))
     if srd_ce:
         col_data.append(("SRD+RRF+CE", srd_ce))
+    if bm25_pc:
+        col_data.append(("BM25 parent-child", bm25_pc))
+    if rrf_pc:
+        col_data.append(("RRF parent-child", rrf_pc))
 
     w = 16
     print()
@@ -702,6 +806,29 @@ def print_comparison(data: dict, fts5_k: int) -> None:
     if srd_ce and srd_ce.get("latency"):
         print(f"  Latency (SRD+RRF+CE)  mean={srd_ce['latency']['mean']} ms  "
               f"p50={srd_ce['latency']['p50']} ms  p95={srd_ce['latency']['p95']} ms")
+    if rrf_pc and rrf_pc.get("latency"):
+        print(f"  Latency (RRF parent-child)  mean={rrf_pc['latency']['mean']} ms  "
+              f"p50={rrf_pc['latency']['p50']} ms  p95={rrf_pc['latency']['p95']} ms")
+
+    # Section-level (parent-child) recovery: how many chunk-level misses are
+    # actually "right section, wrong chunk" — i.e. recovered for free by scoring
+    # at section granularity on the SAME top-k pool.  This isolates the
+    # chunking-granularity failures (Group B) from true routing failures.
+    print()
+    print("  Parent-child (section-level) recovery — same top-k pool:")
+    print(f"  {'Track':<18}  {'chunk Hit@10':>14}  {'section Hit@10':>16}"
+          f"  {'chunk miss':>12}  {'section miss':>13}  {'recovered':>10}")
+    print("  " + "-" * 90)
+    for label, d in col_data:
+        if "Hit@10_sec" not in d:
+            continue
+        recovered = d.get("n_misses", 0) - d.get("n_misses_sec", 0)
+        print(f"  {label:<18}  {_pct(d['Hit@10']):>14}  {_pct(d['Hit@10_sec']):>16}"
+              f"  {d.get('n_misses', 0):>12}  {d.get('n_misses_sec', 0):>13}"
+              f"  {recovered:>+10}")
+    print("\n  'recovered' = chunk-level misses that ARE the right section "
+          "(sibling-chunk hits).\n  These flip to hits when the retriever "
+          "returns the parent section instead of the chunk.")
 
     if bm["n_misses"]:
         fails = [r for r in bm["per_question"]
@@ -755,6 +882,12 @@ def main(argv=None) -> int:
                     help="Cross-encoder model (default: BAAI/bge-reranker-base)")
     ap.add_argument("--ce-top-n",         type=int, default=20,
                     help="Candidates fed to cross-encoder from RRF pool (default 20)")
+    ap.add_argument("--parent-child",     action="store_true",
+                    help="Enable parent-child tracks: retrieve a deeper child pool, "
+                         "collapse to parent sections, score at section granularity")
+    ap.add_argument("--pc-pool",          type=int, default=30,
+                    help="Child chunk pool depth before collapsing to parents "
+                         "(default 30; needs > final-k to fill k unique sections)")
     ap.add_argument("--hf-token",   default=None)
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--results",    type=Path, default=RESULTS_PATH)
@@ -885,6 +1018,8 @@ def main(argv=None) -> int:
         tracks.append(f"rrf(k={args.rrf_k})")
     if cross_encoder:
         tracks.append(f"ce({args.ce_model.split('/')[-1]},top{args.ce_top_n})")
+    if args.parent_child:
+        tracks.append(f"parent-child(pool={args.pc_pool})")
     print(f"\nRunning benchmark (fts5-k={args.fts5_k}, final-k={args.k}, "
           f"tracks=[{', '.join(tracks) or 'bm25-only'}])…")
     data = run_benchmark(
@@ -898,6 +1033,8 @@ def main(argv=None) -> int:
         ce_top_n=args.ce_top_n,
         k_rrf=args.rrf_k,
         expand=expand,
+        parent_child=args.parent_child,
+        pc_pool=args.pc_pool,
     )
 
     print_comparison(data, fts5_k=args.fts5_k)
