@@ -1340,7 +1340,8 @@ def print_comparison(data: dict, fts5_k: int) -> None:
         if "Hit@10_sec" not in d:
             continue
         recovered = d.get("n_misses", 0) - d.get("n_misses_sec", 0)
-        print(f"  {label:<18}  {_pct(d['Hit@10']):>14}  {_pct(d['Hit@10_sec']):>16}"
+        dn = d.get("n", n)
+        print(f"  {label:<18}  {_pct(d['Hit@10'], dn):>14}  {_pct(d['Hit@10_sec'], dn):>16}"
               f"  {d.get('n_misses', 0):>12}  {d.get('n_misses_sec', 0):>13}"
               f"  {recovered:>+10}")
     print("\n  'recovered' = chunk-level misses that ARE the right section "
@@ -1437,36 +1438,55 @@ def main(argv=None) -> int:
     ap.add_argument("--deep-pool",          type=int, default=200,
                     help="Pool depth for the gold-rank diagnostic (default 200)")
     ap.add_argument("--hf-token",   default=None)
+    ap.add_argument("--cuad",        default=None,
+                    help="Evaluate on CUAD instead of legal-rag-bench: pass a "
+                         "local SQuAD-style CUAD .json path OR a HF dataset id "
+                         "(e.g. theatticusproject/cuad-qa). Builds the corpus from "
+                         "the contracts and uses clause questions as queries. "
+                         "Pair with --contract-buoyancy --domain contract.")
+    ap.add_argument("--cuad-chunk-tokens", type=int, default=400,
+                    help="Word-chunk size when splitting CUAD contracts (default 400)")
     ap.add_argument("--skip-build", action="store_true")
     ap.add_argument("--results",    type=Path, default=RESULTS_PATH)
     args = ap.parse_args(argv)
 
-    # ── build ─────────────────────────────────────────────────────────────────
-    if not args.skip_build:
+    token = args.hf_token or __import__("os").environ.get("HF_TOKEN")
+
+    # ── CUAD path: build corpus + qa from contracts, then run normally ─────────
+    if args.cuad:
+        from cuad_loader import load_cuad
+        print(f"Loading CUAD from {args.cuad}…")
+        cuad_corpus, qa = load_cuad(
+            args.cuad, max_tokens=args.cuad_chunk_tokens, token=token)
+        print(f"  {len(cuad_corpus):,} contract chunks, {len(qa)} clause queries")
+        if not args.skip_build:
+            t0 = time.perf_counter()
+            n  = build_legal_index(args.db, cuad_corpus)
+            print(f"  Indexed {n:,} chunks in {time.perf_counter()-t0:.1f}s → {args.db}")
+    else:
+        # ── build ───────────────────────────────────────────────────────────
+        if not args.skip_build:
+            try:
+                from datasets import load_dataset
+            except ImportError:
+                print("ERROR: pip install datasets")
+                return 1
+            print(f"Loading corpus from {DATASET_ID}…")
+            corpus = load_dataset(DATASET_ID, CORPUS_CONFIG, split="test", token=token)
+            print(f"  {len(corpus):,} passages → {args.db}")
+            t0 = time.perf_counter()
+            n  = build_legal_index(args.db, corpus)
+            print(f"  Done: {n:,} passages in {time.perf_counter()-t0:.1f}s")
+
+        # ── load QA ───────────────────────────────────────────────────────────
         try:
             from datasets import load_dataset
-        except ImportError:
-            print("ERROR: pip install datasets")
+            print(f"\nLoading QA pairs…")
+            qa = list(load_dataset(DATASET_ID, QA_CONFIG, split="test", token=token))
+            print(f"  {len(qa)} questions")
+        except Exception as exc:
+            print(f"ERROR loading QA: {exc}")
             return 1
-        token = args.hf_token or __import__("os").environ.get("HF_TOKEN")
-        print(f"Loading corpus from {DATASET_ID}…")
-        corpus = load_dataset(DATASET_ID, CORPUS_CONFIG, split="test", token=token)
-        print(f"  {len(corpus):,} passages → {args.db}")
-        t0 = time.perf_counter()
-        n  = build_legal_index(args.db, corpus)
-        print(f"  Done: {n:,} passages in {time.perf_counter()-t0:.1f}s")
-    else:
-        token = args.hf_token or __import__("os").environ.get("HF_TOKEN")
-
-    # ── load QA ───────────────────────────────────────────────────────────────
-    try:
-        from datasets import load_dataset
-        print(f"\nLoading QA pairs…")
-        qa = list(load_dataset(DATASET_ID, QA_CONFIG, split="test", token=token))
-        print(f"  {len(qa)} questions")
-    except Exception as exc:
-        print(f"ERROR loading QA: {exc}")
-        return 1
 
     # ── optional query rewriter ───────────────────────────────────────────────
     rewriter = None
