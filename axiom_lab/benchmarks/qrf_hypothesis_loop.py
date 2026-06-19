@@ -70,6 +70,7 @@ import sys
 import tempfile
 import textwrap
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -255,6 +256,137 @@ TASK_BANK: list[OptTask] = [
         n_tests=11,
         signature="class RateLimiter  (max_calls: int, period: float)  →  .allow() -> bool",
     ),
+
+    OptTask(
+        task_id="precedence-calculator",
+        name="Arithmetic Precedence Calculator",
+        description="A calculator that evaluates strictly left-to-right, ignoring "
+                    "operator precedence and parentheses. Fix it to honor * / over "
+                    "+ - and to evaluate parenthesised sub-expressions.",
+        initial_code=textwrap.dedent("""\
+            def calc(expr: str) -> float:
+                # naive: left-to-right, ignores precedence and parentheses
+                tokens = expr.replace(" ", "")
+                total = 0
+                num = ""
+                op = "+"
+                for ch in tokens:
+                    if ch.isdigit():
+                        num += ch
+                    else:
+                        if op == "+": total += int(num)
+                        elif op == "-": total -= int(num)
+                        num = ""
+                        op = ch
+                if num:
+                    if op == "+": total += int(num)
+                    elif op == "-": total -= int(num)
+                return total
+        """),
+        test_code=textwrap.dedent("""\
+            assert calc("2 + 3 * 4") == 14,            "precedence"
+            assert calc("(2 + 3) * 4") == 20,          "parentheses"
+            assert calc("10 / 2 - 3") == 2,            "div then sub"
+            assert calc("2 * 3 + 4 * 5") == 26,        "two products"
+            assert calc("100 - 50 / 5 / 5") == 98,     "left-assoc div"
+            assert calc("(1 + 2) * (3 + 4)") == 21,    "two groups"
+            assert calc("3 * (4 - 2) + 1") == 7,       "nested mix"
+            assert calc("((2))") == 2,                 "redundant parens"
+            assert calc("7") == 7,                     "single number"
+            assert calc("8 / 4 + 6 / 3") == 4,         "two quotients"
+        """),
+        n_tests=10,
+        signature="def calc(expr: str) -> float",
+    ),
+
+    OptTask(
+        task_id="semver-compare",
+        name="Semantic Version Compare",
+        description="Compare two SemVer strings returning -1/0/1. Must handle "
+                    "pre-release precedence (1.0.0-alpha < 1.0.0), numeric-vs-"
+                    "alphanumeric identifier ordering, more-fields-wins, and ignore "
+                    "build metadata after '+'. The naive start crashes on any '-' tag.",
+        initial_code=textwrap.dedent("""\
+            def compare_versions(a: str, b: str) -> int:
+                # naive: compares numeric release parts only; crashes on a
+                # pre-release tag and ignores all SemVer precedence rules
+                pa = [int(x) for x in a.split(".")]
+                pb = [int(x) for x in b.split(".")]
+                if pa < pb:
+                    return -1
+                if pa > pb:
+                    return 1
+                return 0
+        """),
+        test_code=textwrap.dedent("""\
+            assert compare_versions("1.0.0", "1.0.1") == -1,                    "patch"
+            assert compare_versions("1.2.0", "1.1.9") == 1,                     "minor beats patch"
+            assert compare_versions("1.0.0", "1.0.0") == 0,                     "equal"
+            assert compare_versions("1.0.0-alpha", "1.0.0") == -1,              "pre < release"
+            assert compare_versions("1.0.0", "1.0.0-beta") == 1,                "release > pre"
+            assert compare_versions("1.0.0-alpha", "1.0.0-alpha.1") == -1,      "more fields wins"
+            assert compare_versions("1.0.0-alpha.1", "1.0.0-alpha.beta") == -1, "numeric < alnum"
+            assert compare_versions("1.0.0-beta", "1.0.0-alpha") == 1,          "beta > alpha"
+            assert compare_versions("1.0.0+b1", "1.0.0+b2") == 0,               "build ignored"
+            assert compare_versions("1.0.0-rc.1+x", "1.0.0-rc.1") == 0,         "pre equal, build ignored"
+        """),
+        n_tests=10,
+        signature="def compare_versions(a: str, b: str) -> int",
+    ),
+
+    OptTask(
+        task_id="lru-ttl-cache",
+        name="LRU Cache with TTL",
+        description="A capacity-bounded cache that must (a) evict the LEAST-recently-"
+                    "used key, (b) refresh recency on get(), and (c) expire entries "
+                    "older than ttl (return None and remove them). The starting code "
+                    "does none of the three correctly — it is FIFO, never refreshes "
+                    "recency, and never expires.",
+        initial_code=textwrap.dedent("""\
+            class TTLCache:
+                def __init__(self, capacity, ttl, time_fn=None):
+                    self.capacity = capacity
+                    self.ttl = ttl
+                    self.time_fn = time_fn or (lambda: 0.0)
+                    self.store = {}      # key -> (value, timestamp)
+                    self.order = []      # insertion order only (bug: no recency)
+
+                def get(self, key):
+                    # bug: ignores TTL and does not refresh recency
+                    if key in self.store:
+                        return self.store[key][0]
+                    return None
+
+                def put(self, key, value):
+                    now = self.time_fn()
+                    if key not in self.store and len(self.store) >= self.capacity:
+                        oldest = self.order.pop(0)   # bug: FIFO, not LRU
+                        del self.store[oldest]
+                    self.store[key] = (value, now)
+                    self.order.append(key)
+        """),
+        test_code=textwrap.dedent("""\
+            clock = {"t": 0.0}
+            c = TTLCache(2, 10.0, time_fn=lambda: clock["t"])
+            c.put("a", 1)
+            c.put("b", 2)
+            assert c.get("a") == 1,    "a present, now most-recently-used"
+            c.put("c", 3)
+            assert c.get("b") is None, "b was LRU, evicted by c"
+            assert c.get("a") == 1,    "a survived eviction"
+            assert c.get("c") == 3,    "c present"
+            clock["t"] = 5.0
+            c.put("d", 4)
+            assert c.get("a") is None, "a is now LRU, evicted by d"
+            clock["t"] = 20.0
+            assert c.get("c") is None, "c expired past ttl"
+            assert c.get("d") is None, "d expired past ttl"
+            c.put("e", 5)
+            assert c.get("e") == 5,    "fresh entry after expiries"
+        """),
+        n_tests=8,
+        signature="class TTLCache  (capacity: int, ttl: float, time_fn=None)  →  .get(key), .put(key, value)",
+    ),
 ]
 
 _TASK_BY_ID: dict[str, OptTask] = {t.task_id: t for t in TASK_BANK}
@@ -315,21 +447,27 @@ def _run_tests(code: str, task: OptTask) -> tuple[int, int]:
             print(f"CODE_ERROR: {{e}}", file=sys.stderr)
             sys.exit({task.n_tests})
 
-        tests = [
-{textwrap.indent(task.test_code, '            ')}
-        ]
-        # run each assert individually
-        import ast, types
+        # Run test lines in order in ONE shared namespace so stateful
+        # setup (e.g. `rl = RateLimiter(...)`) persists across asserts.
+        # Only `assert` lines count toward the test total; setup lines
+        # (imports, assignments) just execute. A failing setup line is a
+        # hard CODE_ERROR — it means the candidate code is unusable.
         src = {repr(task.test_code)}
         lines = [l.strip() for l in src.splitlines() if l.strip()]
         for line in lines:
+            is_assert = line.startswith("assert ")
             try:
-                exec(compile(line, '<test>', 'exec'), dict(locals()))
-                passed += 1
-            except AssertionError as e:
+                exec(compile(line, '<test>', 'exec'), globals())
+                if is_assert:
+                    passed += 1
+            except AssertionError:
                 failed += 1
             except Exception as e:
-                failed += 1
+                if is_assert:
+                    failed += 1
+                else:
+                    print(f"CODE_ERROR: setup line failed: {{e}}", file=sys.stderr)
+                    sys.exit({task.n_tests})
         print(f"PASSED={{passed}} FAILED={{failed}}")
         sys.exit(failed)
     """)
@@ -397,6 +535,49 @@ def _call_llamacpp(prompt: str, max_tokens: int = 512,
     with urllib.request.urlopen(req, timeout=120) as resp:
         body = json.loads(resp.read())
     return body.get("content", ""), body.get("tokens_predicted", max_tokens)
+
+
+def _call_nim(prompt: str, model: str, max_tokens: int = 512,
+              base_url: str = "https://integrate.api.nvidia.com/v1",
+              api_key: Optional[str] = None) -> tuple[str, int]:
+    """NVIDIA NIM (hosted, OpenAI-compatible chat-completions).
+
+    Reads the key from NVIDIA_NIM_API_KEY (or NVIDIA_API_KEY) when not
+    passed explicitly. Token count comes from the API `usage` field.
+    """
+    key = (api_key or os.environ.get("NVIDIA_NIM_API_KEY")
+           or os.environ.get("NVIDIA_API_KEY"))
+    if not key:
+        raise RuntimeError(
+            "NIM backend needs NVIDIA_NIM_API_KEY (or NVIDIA_API_KEY) "
+            "in the environment")
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+        "stream": False,
+    }).encode()
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/chat/completions", data=payload,
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {key}",
+                 "Accept": "application/json"})
+    last_err: Optional[Exception] = None
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = json.loads(resp.read())
+            text   = body["choices"][0]["message"]["content"]
+            tokens = body.get("usage", {}).get("completion_tokens", max_tokens)
+            return text, tokens
+        except urllib.error.HTTPError as e:
+            last_err = e
+            if e.code in (429, 503):       # rate-limited / overloaded
+                time.sleep(2 ** attempt)   # 1, 2, 4, 8, 16s backoff
+                continue
+            raise
+    raise RuntimeError(f"NIM rate-limited after retries: {last_err}")
 
 
 def _extract_code(raw: str, task: OptTask) -> str:
@@ -489,6 +670,7 @@ def run_hypothesis_round(
     model: str,
     ollama_url: str,
     llamacpp_url: str,
+    nim_base_url: str,
     dry_run: bool,
 ) -> RoundResult:
     hypotheses: list[HypothesisResult] = []
@@ -512,6 +694,8 @@ def run_hypothesis_round(
             )
             if backend == "ollama":
                 raw, tokens = _call_ollama(prompt, model, url=ollama_url)
+            elif backend == "nim":
+                raw, tokens = _call_nim(prompt, model, base_url=nim_base_url)
             else:
                 raw, tokens = _call_llamacpp(prompt, url=llamacpp_url)
             code = _extract_code(raw, task)
@@ -557,6 +741,7 @@ def run_benchmark_on_task(
     model: str,
     ollama_url: str,
     llamacpp_url: str,
+    nim_base_url: str,
     dry_run: bool,
     verbose: bool,
 ) -> tuple[BenchmarkRun, BenchmarkRun]:
@@ -580,6 +765,7 @@ def run_benchmark_on_task(
                 condition, strats,
                 backend=backend, model=model,
                 ollama_url=ollama_url, llamacpp_url=llamacpp_url,
+                nim_base_url=nim_base_url,
                 dry_run=dry_run,
             )
             rounds.append(rr)
@@ -704,11 +890,16 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--dry-run", action="store_true",
                    help="Built-in stub, no model needed")
-    p.add_argument("--backend", choices=["ollama", "llamacpp"], default="ollama")
+    p.add_argument("--backend", choices=["ollama", "llamacpp", "nim"], default="ollama")
     p.add_argument("--model", default="gemma2:2b",
-                   help="Ollama model (default: gemma2:2b)")
+                   help="Model id (ollama default: gemma2:2b; for --backend nim "
+                        "defaults to meta/llama-3.1-8b-instruct)")
     p.add_argument("--ollama-url",   default="http://localhost:11434")
     p.add_argument("--llamacpp-url", default="http://localhost:8080")
+    p.add_argument("--nim-base-url",
+                   default="https://integrate.api.nvidia.com/v1",
+                   help="NVIDIA NIM OpenAI-compatible base URL "
+                        "(needs NVIDIA_NIM_API_KEY or NVIDIA_API_KEY in env)")
     p.add_argument("--n-rounds", type=int, default=5,
                    help="Optimization rounds per task (default: 5)")
     p.add_argument("--n-branches", type=int, default=4,
@@ -726,6 +917,11 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     args.n_branches = max(1, min(5, args.n_branches))
+
+    # For NIM, the ollama default model id is meaningless — pick a real
+    # NVIDIA-hosted model unless the user overrode --model.
+    if args.backend == "nim" and args.model == "gemma2:2b":
+        args.model = os.environ.get("NIM_MODEL", "meta/llama-3.1-8b-instruct")
 
     tasks = ([_TASK_BY_ID[args.task]] if args.task
              else list(TASK_BANK))
@@ -757,6 +953,7 @@ def main() -> int:
             model=args.model,
             ollama_url=args.ollama_url,
             llamacpp_url=args.llamacpp_url,
+            nim_base_url=args.nim_base_url,
             dry_run=args.dry_run,
             verbose=args.verbose,
         )
