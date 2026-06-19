@@ -28,7 +28,7 @@ import wave
 import struct
 import argparse
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 try:
     import numpy as np
@@ -357,6 +357,234 @@ def text_to_phonemes(text: str, use_pronouncing: bool = True) -> list[str]:
     return phones
 
 
+# ── SRD Dither ───────────────────────────────────────────────────────────────
+#
+# Stochastic Residual Dithering applied to formant synthesis.
+# Mirrors the SRD quantization concept: noise proportional to the residual
+# between the ideal formant trajectory and the actual voiced output.
+# Applied along three axes: formant frequency, F0 amplitude (shimmer),
+# and phoneme duration — each scaled by a transition_factor that is higher
+# at phoneme boundaries (where acoustic residual is largest) and lower in
+# stable vowel nuclei.
+
+@dataclass
+class SRDDither:
+    """Stochastic Residual Dithering for formant synthesis.
+
+    formant_jitter   : ±σ fractional variation in F1–F4 per phoneme.
+                       Doubled at phoneme boundaries (transition zone).
+    f0_shimmer       : ±σ fractional F0 period jitter per pitch pulse.
+    duration_jitter  : ±σ fractional variation in phoneme duration.
+    transition_frac  : fraction of phoneme treated as high-variance transition.
+    """
+    formant_jitter:   float = 0.025   # ±2.5% formant variation
+    f0_shimmer:       float = 0.03    # ±3% F0 period jitter
+    duration_jitter:  float = 0.08    # ±8% phoneme duration
+    transition_frac:  float = 0.25    # first/last 25% of phoneme = boundary zone
+
+    def perturb_formants(self, formants: list, rng,
+                         at_boundary: bool = False) -> list:
+        """Apply stochastic perturbation — 2× at boundaries."""
+        scale = self.formant_jitter * (2.0 if at_boundary else 1.0)
+        return [max(50.0, f * (1.0 + rng.uniform(-scale, scale)))
+                for f in formants]
+
+    def perturb_duration(self, duration_ms: int, rng) -> int:
+        d = self.duration_jitter
+        return max(20, int(duration_ms * (1.0 + rng.uniform(-d, d))))
+
+
+# Preset dither levels
+DITHER_OFF    = SRDDither(0.0,   0.01, 0.0)   # no formant/duration dither
+DITHER_LOW    = SRDDither(0.015, 0.02, 0.05)
+DITHER_MED    = SRDDither(0.025, 0.03, 0.08)  # default — natural speech variation
+DITHER_HIGH   = SRDDither(0.045, 0.05, 0.15)  # expressive / emotional
+
+
+# ── Emotion profiles & Speech Trace ──────────────────────────────────────────
+#
+# EmotionProfile maps an emotional state to:
+#   constitutional_distance  how far speech planning lags behind text (0–1)
+#   f0_variation             F0 range multiplier (excited = wider pitch)
+#   rate_scale               speaking rate (>1 = slower, <1 = faster)
+#   dither                   which SRD preset to use
+#
+# SpeechTrace models the human cognitive lookahead buffer:
+#   - Speaker plans ~300ms ahead while articulating current phoneme
+#   - When constitutional_distance is HIGH, the buffer drains faster than
+#     it fills → hesitation tokens inserted before content words
+#   - Groove agent's articulator displacement feeds the CD:
+#     precise articulation (high displacement) → deliberate → lower CD
+#     lazy/neutral articulation → casual → higher CD
+
+@dataclass
+class EmotionProfile:
+    name:                    str
+    constitutional_distance: float   # 0=fluent, 1=max hesitation
+    f0_variation:            float   # F0 range multiplier
+    rate_scale:              float   # >1 slower, <1 faster
+    dither:                  SRDDither = field(default_factory=lambda: DITHER_MED)
+
+
+EMOTION_PROFILES: dict[str, EmotionProfile] = {
+    "neutral":   EmotionProfile("neutral",   0.08, 1.0, 1.00, DITHER_MED),
+    "excited":   EmotionProfile("excited",   0.05, 2.0, 0.85, DITHER_HIGH),
+    "calm":      EmotionProfile("calm",      0.05, 0.6, 1.20, DITHER_LOW),
+    "uncertain": EmotionProfile("uncertain", 0.40, 1.2, 1.15, DITHER_MED),
+    "deep":      EmotionProfile("deep",      0.60, 0.8, 1.35, DITHER_LOW),
+    "emotional": EmotionProfile("emotional", 0.35, 1.8, 1.10, DITHER_HIGH),
+}
+
+# Function words — low cognitive load, never hesitate before these
+_FUNCTION_WORDS = frozenset({
+    "the","a","an","and","or","but","in","on","at","to","of","for",
+    "is","are","was","were","be","been","it","this","that","he","she",
+    "we","they","i","my","your","his","her","its","our","their",
+})
+
+# "uh" filler → phonemes
+_UH_FILLER = ["AH", "SP"]        # "uh"
+_UM_FILLER = ["AH", "M", "SP"]   # "um"
+
+
+class SpeechTrace:
+    """Cognitive lookahead buffer — models thinking-before-speaking.
+
+    Inserts hesitation tokens (uh / um / pause) before content words
+    when constitutional_distance + word complexity exceeds a threshold.
+    Also models phoneme repetition (stutter) on very high cognitive load.
+
+    constitutional_distance flows from:
+      - EmotionProfile (emotional state)
+      - groove_displacement (from GrooveAgent.ArticulatorState.displacement):
+        high precision → deliberate speech → lower effective CD
+    """
+
+    def __init__(self, profile: EmotionProfile,
+                 groove_displacement: float = 0.0):
+        self.profile = profile
+        # Groove depth modulates CD: high displacement = precise = calmer
+        precision_bonus = min(groove_displacement * 0.15, 0.25)
+        self.cd = max(0.0, profile.constitutional_distance - precision_bonus)
+        self._load = 0.0   # running EWMA cognitive load
+        self._rng  = __import__('random').Random(42)
+
+    def process_words(self, words: list[str]) -> list[str]:
+        """Return modified word list with hesitation tokens injected."""
+        out: list[str] = []
+        self._load = 0.0
+        for word in words:
+            w = word.lower().strip("'-")
+            if not w:
+                continue
+            load = self._word_load(w)
+            # EWMA update: recent words matter more
+            self._load = self._load * 0.65 + load * 0.35
+            if self._is_content(w) and self._load > (1.0 - self.cd):
+                out.extend(self._hesitation(load))
+            out.append(word)
+        return out
+
+    def _word_load(self, word: str) -> float:
+        """Cognitive load: length × rarity × constitutional_distance."""
+        len_load    = min(len(word) / 9.0, 1.0)
+        rarity_load = 0.25 if word in MINI_DICT else 0.75
+        return (len_load * 0.35 + rarity_load * 0.65) * (1.0 + self.cd)
+
+    def _is_content(self, word: str) -> bool:
+        return word not in _FUNCTION_WORDS
+
+    def _hesitation(self, load: float) -> list[str]:
+        """Choose hesitation type based on load and CD."""
+        r = self._rng.random()
+        if load > 1.4 and self.cd > 0.45:
+            # Very high load + deep CD: stutter (first-sound repetition)
+            # represented as extra SP before the word — phoneme-level
+            # repetition is handled in phoneme_sequence_for_word() below
+            return ["__STUTTER__"]
+        elif r < 0.45:
+            return ["__UH__"]
+        elif r < 0.75:
+            return ["__UM__"]
+        else:
+            return ["__PAUSE__"]
+
+    @property
+    def rate_scale(self) -> float:
+        return self.profile.rate_scale
+
+    @property
+    def f0_variation(self) -> float:
+        return self.profile.f0_variation
+
+
+def apply_trace_to_phonemes(word_phonemes: list[tuple[str, list[str]]],
+                             trace: SpeechTrace) -> list[str]:
+    """Expand a (word, phonemes) list through the trace model.
+
+    word_phonemes: [(word, [ARPABET, ...]), ...]
+    Returns flat ARPABET list with hesitation tokens resolved.
+    """
+    words = [w for w, _ in word_phonemes]
+    phone_map = {w: p for w, p in word_phonemes}
+
+    modified_words = trace.process_words(words)
+    result: list[str] = []
+    _stutter_next = False   # flag: next content word gets first-phoneme repetition
+
+    for token in modified_words:
+        if token == "__UH__":
+            result.extend(_UH_FILLER)
+        elif token == "__UM__":
+            result.extend(_UM_FILLER)
+        elif token == "__PAUSE__":
+            result.extend(["SIL"])
+        elif token == "__STUTTER__":
+            _stutter_next = True   # tag — applied when next word arrives
+        elif token in phone_map:
+            phones = phone_map[token]
+            if _stutter_next and phones:
+                # Repeat first phoneme with a brief gap before continuing
+                result.extend([phones[0], "SP"])
+                _stutter_next = False
+            result.extend(phones)
+            result.append("SP")
+        else:
+            _stutter_next = False
+
+    return result
+
+
+def text_to_word_phonemes(text: str,
+                           use_pronouncing: bool = True) -> list[tuple[str, list[str]]]:
+    """Like text_to_phonemes but returns [(word, [phones])] pairs."""
+    pm = None
+    if use_pronouncing:
+        try:
+            import pronouncing
+            pm = pronouncing
+        except ImportError:
+            pass
+
+    words = re.sub(r"[^\w\s'-]", "", text.lower()).split()
+    result = []
+    for word in words:
+        word = word.strip("'-")
+        if not word:
+            continue
+        if pm:
+            matches = pm.phones_for_word(word)
+            if matches:
+                phones = [_strip_stress(p) for p in matches[0].split()]
+                result.append((word, phones))
+                continue
+        if word in MINI_DICT:
+            result.append((word, list(MINI_DICT[word])))
+        else:
+            result.append((word, _l2s(word)))
+    return result
+
+
 # ── Klatt cascade synthesizer ─────────────────────────────────────────────────
 
 class KlattSynth:
@@ -368,9 +596,13 @@ class KlattSynth:
     Resonator state carries across phoneme boundaries — smooth transitions.
     """
 
-    def __init__(self, fs: int = 16000, f0: float = 120.0):
-        self.fs  = fs
-        self.f0  = f0
+    def __init__(self, fs: int = 16000, f0: float = 120.0,
+                 dither: "SRDDither | None" = None,
+                 f0_variation: float = 1.0):
+        self.fs           = fs
+        self.f0           = f0
+        self.dither       = dither or DITHER_MED
+        self.f0_variation = f0_variation  # from EmotionProfile
         self._rng = None   # seeded in synthesize()
 
     def _build_source(self,
@@ -396,8 +628,9 @@ class KlattSynth:
                 period = self.fs / self.f0
                 for k in range(n_active):
                     phase += 1.0
-                    # Tiny period jitter (±1%) — reduces buzziness
-                    jitter = 1.0 + rng.uniform(-0.01, 0.01)
+                    # F0 shimmer: SRD dither on pitch period + emotion F0 variation
+                    shimmer = self.dither.f0_shimmer * self.f0_variation
+                    jitter = 1.0 + rng.uniform(-shimmer, shimmer)
                     if phase >= period * jitter:
                         phase -= period * jitter
                         voiced[k] = 1.0
@@ -450,20 +683,45 @@ class KlattSynth:
 
         return output
 
-    def synthesize(self, phonemes: list[str]) -> "np.ndarray":
+    def synthesize(self, phonemes: list[str],
+                   rate_scale: float = 1.0) -> "np.ndarray":
         """Synthesize audio from an ARPABET phoneme list.
 
+        rate_scale: speaking rate from EmotionProfile (>1 = slower)
         Returns a float64 array normalised to [-1, 1].
         """
         self._rng = np.random.default_rng(0)
+        drng = __import__('numpy').random.default_rng(1)   # separate seed for dither
 
-        # Build (spec, n_samples) pairs
+        # Build (spec, n_samples) pairs with SRD dither applied
         sequence: list[tuple[PhonemeSpec, int]] = []
-        for phone in phonemes:
+        n_phones = len(phonemes)
+        for idx, phone in enumerate(phonemes):
             phone = _strip_stress(phone)
             spec  = PHONEME_TABLE.get(phone, PHONEME_TABLE["AH"])
-            n     = max(1, int(self.fs * spec.duration_ms / 1000))
-            sequence.append((spec, n))
+
+            # Duration: base × rate_scale × duration dither
+            base_dur = int(spec.duration_ms * rate_scale)
+            dur = self.dither.perturb_duration(base_dur, drng)
+
+            # Formant dither: higher at boundaries (first and last phonemes, or SP)
+            at_boundary = (idx == 0 or idx == n_phones - 1
+                           or phonemes[max(0,idx-1)] in ("SP","SIL")
+                           or phone in ("SP","SIL"))
+            dithered_formants = self.dither.perturb_formants(
+                spec.formants, drng, at_boundary=at_boundary)
+
+            # Build a per-phoneme spec with dithered formants
+            dithered_spec = PhonemeSpec(
+                voiced      = spec.voiced,
+                closure_ms  = spec.closure_ms,
+                formants    = dithered_formants,
+                bandwidths  = spec.bandwidths,
+                noise_mix   = spec.noise_mix,
+                duration_ms = dur,
+            )
+            n = max(1, int(self.fs * dur / 1000))
+            sequence.append((dithered_spec, n))
 
         source = self._build_source(sequence)
         audio  = self._cascade_resonators(source, sequence)
@@ -515,6 +773,15 @@ Examples:
                    help="Sample rate Hz (default 16000)")
     p.add_argument("--play", action="store_true",
                    help="Play audio via sounddevice after synthesis")
+    p.add_argument("--emotion", default="neutral",
+                   choices=list(EMOTION_PROFILES),
+                   help="Emotion profile → constitutional distance + dither + rate")
+    p.add_argument("--groove-displacement", type=float, default=0.0, metavar="D",
+                   help="GrooveAgent articulator displacement (0–1.2). Higher = "
+                        "more precise speech → lower effective constitutional distance")
+    p.add_argument("--dither", default="auto",
+                   choices=["off","low","med","high","auto"],
+                   help="SRD dither level (auto = from emotion profile)")
     p.add_argument("--list-phonemes", action="store_true",
                    help="Print ARPABET table and exit")
     args = p.parse_args()
@@ -532,34 +799,46 @@ Examples:
         print("  numpy required:  pip install numpy")
         return 1
 
+    # Resolve emotion + dither
+    emotion   = EMOTION_PROFILES[args.emotion]
+    dither_map = {"off": DITHER_OFF, "low": DITHER_LOW,
+                  "med": DITHER_MED, "high": DITHER_HIGH,
+                  "auto": emotion.dither}
+    dither = dither_map[args.dither]
+    trace  = SpeechTrace(emotion, groove_displacement=args.groove_displacement)
+
     print("═" * 60)
-    print("  AXIOM Groove TTS  |  Klatt cascade synthesis")
-    print(f"  F0={args.f0:.0f}Hz  |  fs={args.fs}Hz  |  pure formant path")
+    print("  AXIOM Groove TTS  |  Klatt + SRD dither + Speech Trace")
+    print(f"  F0={args.f0:.0f}Hz  |  fs={args.fs}Hz  |  emotion={args.emotion}")
+    print(f"  CD={trace.cd:.2f}  |  rate×{emotion.rate_scale:.2f}  |  "
+          f"dither F={dither.formant_jitter:.3f} D={dither.duration_jitter:.2f}")
     print("═" * 60)
 
     if args.phonemes:
         phonemes = args.phonemes.upper().split()
         print(f"  Phonemes : {' '.join(phonemes)}")
+        known = [ph for ph in phonemes if _strip_stress(ph) in PHONEME_TABLE]
     elif args.text:
-        phonemes = text_to_phonemes(args.text)
+        word_phones = text_to_word_phonemes(args.text)
+        phonemes = apply_trace_to_phonemes(word_phones, trace)
         print(f"  Text     : {args.text!r}")
-        print(f"  Phonemes : {' '.join(phonemes)}")
+        print(f"  Trace    : {' '.join(phonemes)}")
+        known = [ph for ph in phonemes if _strip_stress(ph) in PHONEME_TABLE]
     else:
         print("  Provide text or --phonemes.  Use --help for examples.")
         return 1
 
-    # Filter to known phonemes
-    known = [ph for ph in phonemes if _strip_stress(ph) in PHONEME_TABLE]
     unknown = [ph for ph in phonemes if _strip_stress(ph) not in PHONEME_TABLE]
     if unknown:
-        print(f"  Skipped (unknown): {unknown}")
+        print(f"  Skipped  : {unknown}")
 
     if not known:
         print("  No recognisable phonemes — aborting.")
         return 1
 
-    synth = KlattSynth(fs=args.fs, f0=args.f0)
-    audio = synth.synthesize(known)
+    synth = KlattSynth(fs=args.fs, f0=args.f0,
+                       dither=dither, f0_variation=emotion.f0_variation)
+    audio = synth.synthesize(known, rate_scale=emotion.rate_scale)
 
     dur_s = len(audio) / args.fs
     save_wav(audio, args.out, args.fs)
