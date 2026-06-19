@@ -818,9 +818,9 @@ def _print_task_comparison(task: OptTask,
               f"{delta*100:>+5.0f}%{marker}")
     print(f"  {'─'*34}")
 
-    eff = (qrf.quality_auc / baseline.quality_auc
-           if baseline.quality_auc else 0.0)
-    tok_saving = (1 - qrf.total_tokens / baseline.total_tokens) * 100
+    eff = _efficiency(baseline.quality_auc, qrf.quality_auc)
+    tok_saving = ((1 - qrf.total_tokens / baseline.total_tokens) * 100
+                  if baseline.total_tokens else 0.0)
 
     def _solve(run: BenchmarkRun) -> str:
         return f"round {run.rounds_to_solve}" if run.rounds_to_solve >= 0 else "never"
@@ -828,11 +828,29 @@ def _print_task_comparison(task: OptTask,
     print(f"  Final pass    : baseline {baseline.final_pass_rate*100:.0f}%  "
           f"→ QRF {qrf.final_pass_rate*100:.0f}%")
     print(f"  Quality AUC   : baseline {baseline.quality_auc:.3f}  "
-          f"→ QRF {qrf.quality_auc:.3f}  ({eff:.2f}× efficiency)")
+          f"→ QRF {qrf.quality_auc:.3f}  ({_fmt_eff(eff)} efficiency)")
     print(f"  Solved at     : baseline {_solve(baseline)}"
           f"  /  QRF {_solve(qrf)}")
     print(f"  Token cost    : baseline {baseline.total_tokens:,}"
           f"  /  QRF {qrf.total_tokens:,}  ({tok_saving:+.1f}%)")
+
+
+def _efficiency(baseline_auc: float, qrf_auc: float) -> float:
+    """QRF quality-AUC ÷ baseline quality-AUC.
+
+    Returns ``inf`` when QRF rescues a task baseline scored 0 on — that is
+    QRF's STRONGEST possible win, not a 0.0× regression (the old
+    ``... else 0.0`` inverted its meaning). Returns 1.0 when both scored 0
+    (no change). Callers exclude ``inf`` from ratio means and count it as a
+    "rescue" so one un-dividable task can't drag the average to nonsense.
+    """
+    if baseline_auc > 0:
+        return qrf_auc / baseline_auc
+    return float("inf") if qrf_auc > 0 else 1.0
+
+
+def _fmt_eff(eff: float) -> str:
+    return "rescue" if eff == float("inf") else f"{eff:.2f}×"
 
 
 def _print_summary(task_pairs: list[tuple[OptTask, BenchmarkRun, BenchmarkRun]]) -> None:
@@ -845,16 +863,25 @@ def _print_summary(task_pairs: list[tuple[OptTask, BenchmarkRun, BenchmarkRun]])
     print(f"  {'─'*66}")
 
     total_eff = 0.0
+    n_ratio = 0
+    rescued = 0
     for task, baseline, qrf in task_pairs:
-        eff = qrf.quality_auc / baseline.quality_auc if baseline.quality_auc else 0.0
-        tok_s = (1 - qrf.total_tokens / baseline.total_tokens) * 100
-        total_eff += eff
+        eff = _efficiency(baseline.quality_auc, qrf.quality_auc)
+        tok_s = ((1 - qrf.total_tokens / baseline.total_tokens) * 100
+                 if baseline.total_tokens else 0.0)
+        if eff == float("inf"):
+            rescued += 1
+        else:
+            total_eff += eff
+            n_ratio += 1
         print(f"  {task.name:<28}  {baseline.quality_auc:>8.3f}  "
-              f"{qrf.quality_auc:>7.3f}  {eff:>6.2f}×  {tok_s:>+10.1f}%")
+              f"{qrf.quality_auc:>7.3f}  {_fmt_eff(eff):>7}  {tok_s:>+10.1f}%")
 
-    avg_eff = total_eff / len(task_pairs) if task_pairs else 0.0
+    avg_eff = total_eff / n_ratio if n_ratio else 0.0
     print(f"  {'─'*66}")
     print(f"  {'AVERAGE':<28}  {'':>9}  {'':>8}  {avg_eff:>6.2f}×")
+    if rescued:
+        print(f"  (+ {rescued} task(s) rescued from baseline 0% — excluded from the mean)")
     print()
     if avg_eff >= 2.0:
         print(f"  ✓ QRF Hypothesis Loop achieves {avg_eff:.2f}× average quality AUC")
@@ -964,10 +991,9 @@ def main() -> int:
         else:
             b_final = baseline_run.final_pass_rate * 100
             q_final = qrf_run.final_pass_rate * 100
-            eff = (qrf_run.quality_auc / baseline_run.quality_auc
-                   if baseline_run.quality_auc else 0.0)
+            eff = _efficiency(baseline_run.quality_auc, qrf_run.quality_auc)
             print(f"    baseline={b_final:.0f}%  qrf={q_final:.0f}%  "
-                  f"efficiency={eff:.2f}×  "
+                  f"efficiency={_fmt_eff(eff)}  "
                   f"tokens: {baseline_run.total_tokens:,}→{qrf_run.total_tokens:,}")
 
         all_results.append({
@@ -979,10 +1005,11 @@ def main() -> int:
     _print_summary(task_pairs)
 
     if args.report:
-        avg_eff = sum(
-            q.quality_auc / b.quality_auc
-            for _, b, q in task_pairs if b.quality_auc
-        ) / len(task_pairs)
+        _ratios = [_efficiency(b.quality_auc, q.quality_auc)
+                   for _, b, q in task_pairs]
+        _finite = [e for e in _ratios if e != float("inf")]
+        avg_eff = sum(_finite) / len(_finite) if _finite else 0.0
+        rescued_n = sum(1 for e in _ratios if e == float("inf"))
 
         report = {
             "benchmark": "qrf_hypothesis_loop",
@@ -998,6 +1025,7 @@ def main() -> int:
             "tasks": all_results,
             "summary": {
                 "avg_efficiency_x": round(avg_eff, 3),
+                "rescued_tasks": rescued_n,
                 "n_tasks": len(tasks),
             },
         }

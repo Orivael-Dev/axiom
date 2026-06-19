@@ -39,12 +39,17 @@ def main() -> int:
     rows = []
     for t in d["tasks"]:
         b, q = t["baseline"], t["qrf"]
-        eff = (q["quality_auc"] / b["quality_auc"]) if b["quality_auc"] else 1.0
+        b_auc, q_auc = b["quality_auc"], q["quality_auc"]
+        if b_auc > 0:
+            eff, rescue = q_auc / b_auc, False
+        else:  # baseline scored 0: a QRF win is a "rescue", not 0× or ∞×
+            eff, rescue = (None, True) if q_auc > 0 else (1.0, False)
         rows.append({
             "name":   NAMES.get(t["task_id"], t["task_id"]),
             "b_pass": b["final_pass_rate"] * 100,
             "q_pass": q["final_pass_rate"] * 100,
             "eff":    eff,
+            "rescue": rescue,
             "b_tok":  b["total_tokens"],
             "q_tok":  q["total_tokens"],
         })
@@ -75,22 +80,35 @@ def main() -> int:
                      ha="center", fontsize=7, color="#2a7de1")
 
         # ── Panel 2: efficiency multiplier per task ────────────────────
-        effs = [r["eff"] for r in rows]
-        colors = ["#1a9850" if e > 1.001 else ("#d73027" if e < 0.999 else "#9aa0a6")
-                  for e in effs]
-        bars = ax2.barh(list(x), effs, color=colors)
+        # Rescues (baseline 0%) have no finite ratio — plot at the chart's
+        # max finite bar in a distinct colour and label them "rescue".
+        finite = [r["eff"] for r in rows if not r["rescue"]]
+        cap = max(finite) if finite else 1.0
+        plot_vals, colors = [], []
+        for r in rows:
+            if r["rescue"]:
+                plot_vals.append(cap)
+                colors.append("#6a3d9a")            # purple = rescue
+            else:
+                plot_vals.append(r["eff"])
+                colors.append("#1a9850" if r["eff"] > 1.001
+                              else ("#d73027" if r["eff"] < 0.999 else "#9aa0a6"))
+        ax2.barh(list(x), plot_vals, color=colors)
         ax2.axvline(1.0, color="#444", lw=1, ls="--", label="parity (1.0×)")
         ax2.set_yticks(list(x))
         ax2.set_yticklabels(labels)
         ax2.invert_yaxis()
         ax2.set_xlabel("QRF quality-AUC ÷ baseline quality-AUC  (×)")
-        ax2.set_title("Efficiency multiplier  (green = QRF wins, red = QRF regresses)",
+        ax2.set_title("Efficiency multiplier  "
+                      "(green = QRF wins · red = regresses · purple = rescue from 0%)",
                       fontsize=11)
         ax2.grid(axis="x", alpha=0.3)
-        for i, (e, r) in enumerate(zip(effs, rows)):
-            ax2.text(e + 0.05, i, f"{e:.2f}×", va="center", fontsize=8,
+        for i, r in enumerate(rows):
+            txt = (f"rescue (0→{r['q_pass']:.0f}%)" if r["rescue"]
+                   else f"{r['eff']:.2f}×")
+            ax2.text(plot_vals[i] + 0.05, i, txt, va="center", fontsize=8,
                      fontweight="bold")
-        ax2.set_xlim(0, max(effs) * 1.18)
+        ax2.set_xlim(0, cap * 1.32)
 
         cap = (f"Model: {model}  ({backend})      "
                f"Average efficiency: {avg:.2f}×      "
