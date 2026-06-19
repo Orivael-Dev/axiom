@@ -123,6 +123,10 @@ axiom_marketplace_ledger.jsonl
 
 audio_harness_results.json
 
+# legal-rag-bench writes its scorecard here on every run (generated artifact,
+# not a deliverable — the numbers depend on which flags/dataset were used).
+research/legal/results.json
+
 # Auto-downloaded open-source demo frame (fetched on demand by
 # axiom_video_local_agent.py — not redistributed in-repo).
 demo_assets/

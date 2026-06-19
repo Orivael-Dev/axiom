@@ -1,0 +1,2016 @@
+{
+  "benchmark": "qrf_hypothesis_loop",
+  "version": "1.0",
+  "timestamp": "2026-06-19T20:02:09Z",
+  "config": {
+    "backend": "nim",
+    "model": "google/gemma-2-2b-it",
+    "n_rounds": 5,
+    "n_branches": 4,
+    "branch_strategies": [
+      "edge_case",
+      "efficiency",
+      "error_handling",
+      "simplify"
+    ]
+  },
+  "tasks": [
+    {
+      "task_id": "buggy-binary-search",
+      "baseline": {
+        "task_id": "buggy-binary-search",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 98,
+                "killed": false,
+                "latency_ms": 1466.8074999935925
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 98,
+              "killed": false,
+              "latency_ms": 1466.8074999935925
+            },
+            "pruned_count": 0,
+            "total_tokens": 98,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 1691.9736999552697
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 142,
+              "killed": false,
+              "latency_ms": 1691.9736999552697
+            },
+            "pruned_count": 0,
+            "total_tokens": 142,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 1606.3772999914363
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 142,
+              "killed": false,
+              "latency_ms": 1606.3772999914363
+            },
+            "pruned_count": 0,
+            "total_tokens": 142,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 1584.7721999743953
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 142,
+              "killed": false,
+              "latency_ms": 1584.7721999743953
+            },
+            "pruned_count": 0,
+            "total_tokens": 142,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 1709.08119995147
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 142,
+              "killed": false,
+              "latency_ms": 1709.08119995147
+            },
+            "pruned_count": 0,
+            "total_tokens": 142,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 666,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      },
+      "qrf": {
+        "task_id": "buggy-binary-search",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 98,
+                "killed": false,
+                "latency_ms": 1382.7723000431433
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 98,
+                "killed": false,
+                "latency_ms": 1493.1754999561235
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input 'arr' must be a list.\")\n    if not isinstance(target, int):\n        raise TypeError(\"Input 'target' must be an integer.\")\n    if len(arr) == 0:\n        raise ValueError(\"Input array cannot be empty.\")\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 9,
+                "n_tests": 10,
+                "pass_rate": 0.9,
+                "score": 0.9,
+                "tokens_used": 175,
+                "killed": false,
+                "latency_ms": 2203.99389998056
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 98,
+                "killed": false,
+                "latency_ms": 1274.7199999867007
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 98,
+              "killed": false,
+              "latency_ms": 1382.7723000431433
+            },
+            "pruned_count": 0,
+            "total_tokens": 469,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 105,
+                "killed": false,
+                "latency_ms": 1388.15200002864
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr, target):\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        left = mid + 1\n    return -1",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 76,
+                "killed": false,
+                "latency_ms": 1083.9749000733718
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input 'arr' must be a list.\")\n    if not isinstance(target, int):\n        raise TypeError(\"Input 'target' must be an integer.\")\n    if len(arr) == 0:\n        raise ValueError(\"Input array cannot be empty.\")\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 9,
+                "n_tests": 10,
+                "pass_rate": 0.9,
+                "score": 0.9,
+                "tokens_used": 175,
+                "killed": false,
+                "latency_ms": 2057.7397000743076
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr, target):\n  left, right = 0, len(arr) - 1\n  while left <= right:\n    mid = (left + right) // 2\n    if arr[mid] == target:\n      return mid\n    elif left < right and arr[mid] < target:\n      left = mid + 1\n    else:\n      right = mid - 1\n  return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 102,
+                "killed": false,
+                "latency_ms": 1437.5804000301287
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 105,
+              "killed": false,
+              "latency_ms": 1388.15200002864
+            },
+            "pruned_count": 0,
+            "total_tokens": 458,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 1892.4157000146806
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        left = mid + 1\n    return -1",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 83,
+                "killed": false,
+                "latency_ms": 1202.6278999401256
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input 'arr' must be a list.\")\n    if not isinstance(target, int):\n        raise TypeError(\"Input 'target' must be an integer.\")\n    if len(arr) == 0:\n        raise ValueError(\"Input array cannot be empty.\")\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 9,
+                "n_tests": 10,
+                "pass_rate": 0.9,
+                "score": 0.9,
+                "tokens_used": 175,
+                "killed": false,
+                "latency_ms": 2117.8409999702126
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = left + (right - left) // 2  \n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 108,
+                "killed": false,
+                "latency_ms": 2099.155899952166
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 142,
+              "killed": false,
+              "latency_ms": 1892.4157000146806
+            },
+            "pruned_count": 0,
+            "total_tokens": 508,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 2160.4316999437287
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        left = mid + 1\n    return -1",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 120,
+                "killed": false,
+                "latency_ms": 1671.3791999500245
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        raise ValueError(\"Input array cannot be empty.\")\n    if len(arr) == 1:\n        if arr[0] == target:\n            return 0\n        else:\n            raise ValueError(\"Target not found in array.\")\n    if not isinstance(arr, list):\n        raise TypeError(\"Input array must be a list.\")\n    if not isinstance(target, int):\n        raise TypeError(\"Target must be an integer.\")\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 8,
+                "n_tests": 10,
+                "pass_rate": 0.8,
+                "score": 0.8,
+                "tokens_used": 206,
+                "killed": false,
+                "latency_ms": 2469.1601999802515
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        left = mid + 1\n    return -1",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 94,
+                "killed": false,
+                "latency_ms": 1306.6266000969335
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 142,
+              "killed": false,
+              "latency_ms": 2160.4316999437287
+            },
+            "pruned_count": 0,
+            "total_tokens": 562,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 1776.380900060758
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        left = mid + 1\n    return -1",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 120,
+                "killed": false,
+                "latency_ms": 1563.9716000296175
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        raise ValueError(\"Input array cannot be empty.\")\n    if len(arr) == 1:\n        if arr[0] == target:\n            return 0\n        else:\n            raise ValueError(\"Target not found in array.\")\n    if not isinstance(arr, list):\n        raise TypeError(\"Input array must be a list.\")\n    if not isinstance(target, int):\n        raise TypeError(\"Target must be an integer.\")\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+                "tests_passed": 8,
+                "n_tests": 10,
+                "pass_rate": 0.8,
+                "score": 0.8,
+                "tokens_used": 206,
+                "killed": false,
+                "latency_ms": 2298.1048999354243
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        left = mid + 1\n    return -1",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 94,
+                "killed": false,
+                "latency_ms": 1219.775200006552
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target: int) -> int:\n    if not arr:\n        return -1\n    if len(arr) == 1:\n        return 0 if arr[0] == target else -1\n    left, right = 0, len(arr) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            left = mid + 1\n        else:\n            right = mid - 1\n    return -1",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 142,
+              "killed": false,
+              "latency_ms": 1776.380900060758
+            },
+            "pruned_count": 0,
+            "total_tokens": 562,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 2559,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      }
+    },
+    {
+      "task_id": "slow-palindrome",
+      "baseline": {
+        "task_id": "slow-palindrome",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 53,
+                "killed": false,
+                "latency_ms": 901.672099949792
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 53,
+              "killed": false,
+              "latency_ms": 901.672099949792
+            },
+            "pruned_count": 0,
+            "total_tokens": 53,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 53,
+                "killed": false,
+                "latency_ms": 993.2713999878615
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 53,
+              "killed": false,
+              "latency_ms": 993.2713999878615
+            },
+            "pruned_count": 0,
+            "total_tokens": 53,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 53,
+                "killed": false,
+                "latency_ms": 883.7297999998555
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 53,
+              "killed": false,
+              "latency_ms": 883.7297999998555
+            },
+            "pruned_count": 0,
+            "total_tokens": 53,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 53,
+                "killed": false,
+                "latency_ms": 972.3327999236062
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 53,
+              "killed": false,
+              "latency_ms": 972.3327999236062
+            },
+            "pruned_count": 0,
+            "total_tokens": 53,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 53,
+                "killed": false,
+                "latency_ms": 1003.1745999585837
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    return s == s[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 53,
+              "killed": false,
+              "latency_ms": 1003.1745999585837
+            },
+            "pruned_count": 0,
+            "total_tokens": 53,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 265,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      },
+      "qrf": {
+        "task_id": "slow-palindrome",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    if len(s) <= 1:\n        return True\n    result = \"\"\n    for i in range(len(s) // 2):\n        result += s[i]\n        result += s[len(s) - i - 1]\n    return result == s",
+                "tests_passed": 4,
+                "n_tests": 10,
+                "pass_rate": 0.4,
+                "score": 0.4,
+                "tokens_used": 94,
+                "killed": false,
+                "latency_ms": 1525.8905999362469
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s):\n    s = s.lower()\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 47,
+                "killed": false,
+                "latency_ms": 952.268399996683
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def is_palindrome(s: str) -> bool:\n    if not isinstance(s, str):\n        raise TypeError(\"Input must be a string.\")\n    s = s.lower()\n    if not s:\n        return False\n    result = \"\"\n    for i in range(len(s) - 1, -1, -1):\n        result += s[i]\n    return result == s",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 96,
+                "killed": false,
+                "latency_ms": 1492.4120000796393
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    return s == s[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 38,
+                "killed": false,
+                "latency_ms": 841.9358000392094
+              }
+            ],
+            "winner": {
+              "strategy": "efficiency",
+              "code": "def is_palindrome(s):\n    s = s.lower()\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 47,
+              "killed": false,
+              "latency_ms": 952.268399996683
+            },
+            "pruned_count": 0,
+            "total_tokens": 275,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 1086.007299949415
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().replace(\" \", \"\")\n    return s == s[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 38,
+                "killed": false,
+                "latency_ms": 752.8787999181077
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def is_palindrome(s: str) -> bool:\n    if not isinstance(s, str):\n        raise TypeError(\"Input must be a string.\")\n    s = s.lower()\n    result = \"\".join(c for c in s if c.isalnum())\n    if not result:\n        raise ValueError(\"Input cannot be empty.\")\n    return result == result[::-1]",
+                "tests_passed": 9,
+                "n_tests": 10,
+                "pass_rate": 0.9,
+                "score": 0.9,
+                "tokens_used": 89,
+                "killed": false,
+                "latency_ms": 1421.342800022103
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s: str) -> bool:\n  return s.lower() == s.lower()[::-1]",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 32,
+                "killed": false,
+                "latency_ms": 757.0021999999881
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 64,
+              "killed": false,
+              "latency_ms": 1086.007299949415
+            },
+            "pruned_count": 0,
+            "total_tokens": 223,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 1092.9502999642864
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = ''.join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 1166.3670999696478
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def is_palindrome(s: str) -> bool:\n    if not isinstance(s, str):\n        raise TypeError(\"Input must be a string.\")\n    s = s.lower().strip()\n    if not s:\n        return True\n    if not s.isalnum():\n        raise ValueError(\"Input must contain only alphanumeric characters.\")\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 107,
+                "killed": false,
+                "latency_ms": 1501.9551999866962
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    return s == s[::-1]",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 36,
+                "killed": false,
+                "latency_ms": 774.1346000693738
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 64,
+              "killed": false,
+              "latency_ms": 1092.9502999642864
+            },
+            "pruned_count": 0,
+            "total_tokens": 271,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 1044.6505000581965
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = ''.join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 1151.7918000463396
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def is_palindrome(s: str) -> bool:\n    if not isinstance(s, str):\n        raise TypeError(\"Input must be a string.\")\n    s = s.lower().strip()\n    if not s:\n        return True\n    if not s.isalnum():\n        raise ValueError(\"Input must contain only alphanumeric characters.\")\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 107,
+                "killed": false,
+                "latency_ms": 1726.3656000141054
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    return s == s[::-1]",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 36,
+                "killed": false,
+                "latency_ms": 794.5643999846652
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 64,
+              "killed": false,
+              "latency_ms": 1044.6505000581965
+            },
+            "pruned_count": 0,
+            "total_tokens": 271,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 1154.4290999881923
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = ''.join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 1000.0552000710741
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def is_palindrome(s: str) -> bool:\n    if not isinstance(s, str):\n        raise TypeError(\"Input must be a string.\")\n    s = s.lower().strip()\n    if not s:\n        return True\n    if not s.isalnum():\n        raise ValueError(\"Input must contain only alphanumeric characters.\")\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 107,
+                "killed": false,
+                "latency_ms": 1463.731500087306
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    return s == s[::-1]",
+                "tests_passed": 7,
+                "n_tests": 10,
+                "pass_rate": 0.7,
+                "score": 0.7,
+                "tokens_used": 36,
+                "killed": false,
+                "latency_ms": 707.1959000313655
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s: str) -> bool:\n    s = s.lower().strip()\n    if not s:\n        return True\n    result = \"\".join(c for c in s if c.isalnum())\n    return result == result[::-1]",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 64,
+              "killed": false,
+              "latency_ms": 1154.4290999881923
+            },
+            "pruned_count": 0,
+            "total_tokens": 271,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 1311,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      }
+    },
+    {
+      "task_id": "broken-merge-sort",
+      "baseline": {
+        "task_id": "broken-merge-sort",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2414.5457999547943
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2414.5457999547943
+            },
+            "pruned_count": 0,
+            "total_tokens": 195,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2655.5272999685258
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2655.5272999685258
+            },
+            "pruned_count": 0,
+            "total_tokens": 195,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2644.425700069405
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2644.425700069405
+            },
+            "pruned_count": 0,
+            "total_tokens": 195,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2749.3337000487372
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2749.3337000487372
+            },
+            "pruned_count": 0,
+            "total_tokens": 195,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2797.1991000231355
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2797.1991000231355
+            },
+            "pruned_count": 0,
+            "total_tokens": 195,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 975,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      },
+      "qrf": {
+        "task_id": "broken-merge-sort",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 3050.3981999354437
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    left = arr[:len(arr)//2]\n    right = arr[len(arr)//2:]\n    return _merge(merge_sort(left), merge_sort(right))\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 191,
+                "killed": false,
+                "latency_ms": 2626.1527999304235
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def merge_sort(arr: list) -> list:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input must be a list.\")\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    if len(left) < len(right):\n        left, right = right, left\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 237,
+                "killed": false,
+                "latency_ms": 2804.817899945192
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 194,
+                "killed": false,
+                "latency_ms": 2420.428700046614
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 3050.3981999354437
+            },
+            "pruned_count": 0,
+            "total_tokens": 817,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2707.770299981348
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    left = arr[:len(arr)//2]\n    right = arr[len(arr)//2:]\n    return merge(merge_sort(left), merge_sort(right))\n\ndef merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 189,
+                "killed": false,
+                "latency_ms": 2604.45769992657
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def merge_sort(arr: list) -> list:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input must be a list.\")\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    if len(left) != len(right):\n        raise ValueError(\"Left and right subarrays must have equal lengths.\")\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 243,
+                "killed": false,
+                "latency_ms": 3206.2745000002906
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(left) and j < len(right):\n        result.append(min(left[i], right[j]))\n        i += 1\n        j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 177,
+                "killed": false,
+                "latency_ms": 2499.586999998428
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2707.770299981348
+            },
+            "pruned_count": 0,
+            "total_tokens": 804,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2739.8547999328002
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    left = merge_sort(arr[:len(arr)//2])\n    right = merge_sort(arr[len(arr)//2:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 191,
+                "killed": false,
+                "latency_ms": 2535.5056999251246
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def merge_sort(arr: list) -> list:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input must be a list.\")\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    if len(left) != len(right):\n        raise ValueError(\"Left and right subarrays must have equal lengths.\")\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 243,
+                "killed": false,
+                "latency_ms": 3211.0095999669284
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(left) and j < len(right):\n        result.append(min(left[i], right[j]))\n        i += 1\n        j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 177,
+                "killed": false,
+                "latency_ms": 2608.876899932511
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2739.8547999328002
+            },
+            "pruned_count": 0,
+            "total_tokens": 806,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2987.9869000287727
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    left = merge_sort(arr[:len(arr)//2])\n    right = merge_sort(arr[len(arr)//2:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 191,
+                "killed": false,
+                "latency_ms": 2474.12060003262
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def merge_sort(arr: list) -> list:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input must be a list.\")\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    if len(left) != len(right):\n        raise ValueError(\"Left and right subarrays must have the same length.\")\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 244,
+                "killed": false,
+                "latency_ms": 3250.171299907379
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(left) and j < len(right):\n        result.append(min(left[i], right[j]))\n        i += 1\n        j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 177,
+                "killed": false,
+                "latency_ms": 2528.80740002729
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2987.9869000287727
+            },
+            "pruned_count": 0,
+            "total_tokens": 807,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 195,
+                "killed": false,
+                "latency_ms": 2770.882899989374
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    left = merge_sort(arr[:len(arr)//2])\n    right = merge_sort(arr[len(arr)//2:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 10,
+                "n_tests": 10,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 191,
+                "killed": false,
+                "latency_ms": 2389.320299960673
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def merge_sort(arr: list) -> list:\n    if not isinstance(arr, list):\n        raise TypeError(\"Input must be a list.\")\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    if len(left) != len(right):\n        raise ValueError(\"Left and right subarrays must have the same length.\")\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 244,
+                "killed": false,
+                "latency_ms": 3141.0966999828815
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i, j = 0, 0\n    while i < len(left) and j < len(right):\n        result.append(min(left[i], right[j]))\n        i += 1\n        j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 177,
+                "killed": false,
+                "latency_ms": 2434.401199920103
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr: list) -> list:\n    if len(arr) <= 1:\n        return arr\n    mid = len(arr) // 2\n    left  = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)\n\ndef _merge(left: list, right: list) -> list:\n    result = []\n    i = j = 0\n    while i < len(left) and j < len(right):\n        if left[i] <= right[j]:\n            result.append(left[i])\n            i += 1\n        else:\n            result.append(right[j])\n            j += 1\n    result.extend(left[i:])\n    result.extend(right[j:])\n    return result",
+              "tests_passed": 10,
+              "n_tests": 10,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 195,
+              "killed": false,
+              "latency_ms": 2770.882899989374
+            },
+            "pruned_count": 0,
+            "total_tokens": 807,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 4041,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      }
+    },
+    {
+      "task_id": "leaky-rate-limiter",
+      "baseline": {
+        "task_id": "leaky-rate-limiter",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3319.8774999473244
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3319.8774999473244
+            },
+            "pruned_count": 0,
+            "total_tokens": 152,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3252.7280000504106
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3252.7280000504106
+            },
+            "pruned_count": 0,
+            "total_tokens": 152,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3277.8672000858933
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3277.8672000858933
+            },
+            "pruned_count": 0,
+            "total_tokens": 152,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3172.0733999973163
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3172.0733999973163
+            },
+            "pruned_count": 0,
+            "total_tokens": 152,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3168.7388999853283
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3168.7388999853283
+            },
+            "pruned_count": 0,
+            "total_tokens": 152,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 760,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      },
+      "qrf": {
+        "task_id": "leaky-rate-limiter",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3467.3713999800384
+              },
+              {
+                "strategy": "efficiency",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = _time.monotonic()\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 135,
+                "killed": false,
+                "latency_ms": 3089.465699973516
+              },
+              {
+                "strategy": "error_handling",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls: int, period: float):\n        if max_calls <= 0:\n            raise ValueError(\"max_calls must be a positive integer\")\n        if period <= 0:\n            raise ValueError(\"period must be a positive float\")\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self) -> bool:\n        if self.calls >= self.max_calls:\n            raise RateLimitExceededError(\"Rate limit exceeded\")\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        self.calls += 1\n        return True",
+                "tests_passed": 4,
+                "n_tests": 11,
+                "pass_rate": 0.36363636363636365,
+                "score": 0.36363636363636365,
+                "tokens_used": 211,
+                "killed": false,
+                "latency_ms": 4018.395400024019
+              },
+              {
+                "strategy": "simplify",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = _time.monotonic()\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 136,
+                "killed": false,
+                "latency_ms": 3021.461599972099
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3467.3713999800384
+            },
+            "pruned_count": 0,
+            "total_tokens": 634,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3266.4122000569478
+              },
+              {
+                "strategy": "efficiency",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3282.816300052218
+              },
+              {
+                "strategy": "error_handling",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls: int, period: float):\n        if max_calls <= 0:\n            raise ValueError(\"Max calls must be a positive integer.\")\n        if period <= 0:\n            raise ValueError(\"Period must be a positive float.\")\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self) -> bool:\n        if self.calls >= self.max_calls:\n            raise RateLimitExceededError(\"Rate limit exceeded.\")\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        self.calls += 1\n        return True",
+                "tests_passed": 4,
+                "n_tests": 11,
+                "pass_rate": 0.36363636363636365,
+                "score": 0.36363636363636365,
+                "tokens_used": 210,
+                "killed": false,
+                "latency_ms": 4006.7917000269517
+              },
+              {
+                "strategy": "simplify",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = _time.monotonic()\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 135,
+                "killed": false,
+                "latency_ms": 3109.016199945472
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3266.4122000569478
+            },
+            "pruned_count": 0,
+            "total_tokens": 649,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3113.546399981715
+              },
+              {
+                "strategy": "efficiency",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = elapsed\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 131,
+                "killed": false,
+                "latency_ms": 2814.6406000014395
+              },
+              {
+                "strategy": "error_handling",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls: int, period: float):\n        if max_calls <= 0:\n            raise ValueError(\"max_calls must be a positive integer\")\n        if period <= 0:\n            raise ValueError(\"period must be a positive float\")\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self) -> bool:\n        if self.calls >= self.max_calls:\n            raise RateLimitExceededError(\"Rate limit exceeded\")\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        self.calls += 1\n        return True",
+                "tests_passed": 4,
+                "n_tests": 11,
+                "pass_rate": 0.36363636363636365,
+                "score": 0.36363636363636365,
+                "tokens_used": 211,
+                "killed": false,
+                "latency_ms": 3615.9937999909744
+              },
+              {
+                "strategy": "simplify",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = _time.monotonic()\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 135,
+                "killed": false,
+                "latency_ms": 2912.1172999730334
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3113.546399981715
+            },
+            "pruned_count": 0,
+            "total_tokens": 629,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 2959.565700031817
+              },
+              {
+                "strategy": "efficiency",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3155.740800080821
+              },
+              {
+                "strategy": "error_handling",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls: int, period: float):\n        if max_calls <= 0:\n            raise ValueError(\"Max calls must be a positive integer.\")\n        if period <= 0:\n            raise ValueError(\"Period must be a positive float.\")\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self) -> bool:\n        if self.calls >= self.max_calls:\n            raise RateLimitExceededError(\"Rate limit exceeded.\")\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        self.calls += 1\n        return True",
+                "tests_passed": 4,
+                "n_tests": 11,
+                "pass_rate": 0.36363636363636365,
+                "score": 0.36363636363636365,
+                "tokens_used": 210,
+                "killed": false,
+                "latency_ms": 3555.1891999784857
+              },
+              {
+                "strategy": "simplify",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = _time.monotonic()\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 135,
+                "killed": false,
+                "latency_ms": 2717.979299952276
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 2959.565700031817
+            },
+            "pruned_count": 0,
+            "total_tokens": 649,
+            "best_pass_rate": 1.0
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+                "tests_passed": 11,
+                "n_tests": 11,
+                "pass_rate": 1.0,
+                "score": 1.0,
+                "tokens_used": 152,
+                "killed": false,
+                "latency_ms": 3044.0601999871433
+              },
+              {
+                "strategy": "efficiency",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = elapsed\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 130,
+                "killed": false,
+                "latency_ms": 2920.5373999429867
+              },
+              {
+                "strategy": "error_handling",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls: int, period: float):\n        if max_calls <= 0:\n            raise ValueError(\"Max calls must be a positive integer.\")\n        if period <= 0:\n            raise ValueError(\"Period must be a positive float.\")\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self) -> bool:\n        if self.calls >= self.max_calls:\n            raise RateLimitExceededError(\"Rate limit exceeded.\")\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        self.calls += 1\n        return True",
+                "tests_passed": 4,
+                "n_tests": 11,
+                "pass_rate": 0.36363636363636365,
+                "score": 0.36363636363636365,
+                "tokens_used": 210,
+                "killed": false,
+                "latency_ms": 3628.7563999649137
+              },
+              {
+                "strategy": "simplify",
+                "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        elapsed = _time.monotonic() - self.window_start\n        if elapsed >= self.period:\n            self.window_start = _time.monotonic()\n            self.calls = 0\n        return self.calls < self.max_calls",
+                "tests_passed": 7,
+                "n_tests": 11,
+                "pass_rate": 0.6363636363636364,
+                "score": 0.6363636363636364,
+                "tokens_used": 135,
+                "killed": false,
+                "latency_ms": 2808.72729991097
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter:\n    def __init__(self, max_calls, period):\n        self.max_calls = max_calls\n        self.period = period\n        self.calls = 0\n        self.window_start = _time.monotonic()\n\n    def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n        if elapsed >= self.period:\n            self.window_start = now\n            self.calls = 0\n        if self.calls < self.max_calls:\n            self.calls += 1\n            return True\n        return False",
+              "tests_passed": 11,
+              "n_tests": 11,
+              "pass_rate": 1.0,
+              "score": 1.0,
+              "tokens_used": 152,
+              "killed": false,
+              "latency_ms": 3044.0601999871433
+            },
+            "pruned_count": 0,
+            "total_tokens": 627,
+            "best_pass_rate": 1.0
+          }
+        ],
+        "final_pass_rate": 1.0,
+        "total_tokens": 3188,
+        "rounds_to_solve": 0,
+        "quality_auc": 1.0
+      }
+    }
+  ],
+  "summary": {
+    "avg_efficiency_x": 1.0,
+    "n_tasks": 4
+  },
+  "hmac_signature": "1c13616290677cdbc71753424f9bebca998ba01de987694b19aa30d72d4d0941"
+}

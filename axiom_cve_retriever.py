@@ -17,6 +17,18 @@ Build once from the CVE jsonl, then query repeatedly:
     for src in r.retrieve("CVE-2021-44228 log4j rce", k=5):
         print(src.score, src.title)
 
+Cache-augmented usage (skip LLM after N verified hits):
+
+    from axiom_cve_retriever import CachedCVERetriever
+    from axiom_verified_answer_cache import VerifiedAnswerCache
+
+    cache = VerifiedAnswerCache()
+    r = CachedCVERetriever(CVERetriever("cve_fts5.db"), cache)
+
+    answer, from_cache = r.answer("what is log4shell?")
+    if not from_cache:
+        r.verify("what is log4shell?")   # mark correct → promotes after N calls
+
 CLI:
     python -m axiom_cve_retriever build --jsonl <path> --db <path>
     python -m axiom_cve_retriever query --db <path> "log4j remote code execution"
@@ -28,12 +40,15 @@ import json
 import re
 import sqlite3
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from axiom_research_retriever import RetrievedSource
 
-_CVE_RE = re.compile(r"CVE-\d{4}-\d+", re.IGNORECASE)
-_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+# Public — import this in axiom_research_server to detect CVE queries.
+CVE_PATTERN = re.compile(r"CVE-\d{4}-\d+", re.IGNORECASE)
+
+_CVE_RE     = CVE_PATTERN          # internal alias kept for compatibility
+_TOKEN_RE   = re.compile(r"[A-Za-z0-9]+")
 
 
 def _fts_query(text: str) -> str:
@@ -68,7 +83,12 @@ class CVERetriever:
 
     def _connect(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous  = NORMAL")
+            conn.execute("PRAGMA cache_size    = -20000")  # ~20 MB page cache
+            conn.execute("PRAGMA temp_store    = MEMORY")
+            self._conn = conn
         return self._conn
 
     @staticmethod
@@ -135,6 +155,42 @@ class CVERetriever:
         conn.execute("INSERT INTO cve(cve) VALUES('optimize')")  # merge b-trees
         conn.commit()
         return rows
+
+    # ── live ingestion (WAL-safe, no rebuild) ─────────────────────────────
+
+    def insert_entry(self, cve_id: str, question: str, answer: str) -> None:
+        """Append a single CVE row to the live FTS5 index.
+
+        WAL mode means concurrent readers are never blocked. Safe to call
+        from a background thread while queries are running.
+        """
+        conn = self._connect()
+        conn.execute(
+            "INSERT INTO cve(cve_id, question, answer) VALUES (?,?,?)",
+            (cve_id, question, answer),
+        )
+        conn.commit()
+        self._common = None   # invalidate high-DF cache after schema change
+
+    def insert_batch(
+        self,
+        entries: List[Tuple[str, str, str]],
+    ) -> int:
+        """Append a batch of (cve_id, question, answer) tuples. Returns count.
+
+        Uses a single transaction for throughput. Caller should keep batches
+        ≤10 000 rows so the WAL file doesn't grow unbounded between checkpoints.
+        """
+        if not entries:
+            return 0
+        conn = self._connect()
+        conn.executemany(
+            "INSERT INTO cve(cve_id, question, answer) VALUES (?,?,?)",
+            entries,
+        )
+        conn.commit()
+        self._common = None
+        return len(entries)
 
     # ── query building (optimizations) ────────────────────────────────────
 
@@ -265,6 +321,113 @@ class CVERetriever:
             "with_cve_id": with_id,
             "db_path": self._db_path,
             "db_size_mb": round(size_mb, 1),
+        }
+
+
+# ── Cache-augmented retriever ────────────────────────────────────────────────
+
+class CachedCVERetriever:
+    """CVERetriever + VerifiedAnswerCache — LLM bypass after N verified hits.
+
+    The hot path:
+        answer, from_cache = r.answer(query)
+        # from_cache=True → LLM was bypassed; answer came from SQLite directly.
+        # from_cache=False → CVERetriever answered; call r.verify() if correct.
+
+    After PROMOTION_THRESHOLD verifications the answer is frozen in the cache
+    and served without touching the FTS5 index or the LLM on future calls.
+
+    context_key (default "cve") namespaces fingerprints so CVE entries never
+    collide with other domains sharing the same VerifiedAnswerCache DB.
+    """
+
+    DEFAULT_CONTEXT_KEY = "cve"
+
+    def __init__(
+        self,
+        retriever: CVERetriever,
+        cache: "VerifiedAnswerCache",  # axiom_verified_answer_cache.VerifiedAnswerCache
+        *,
+        context_key: str = DEFAULT_CONTEXT_KEY,
+    ) -> None:
+        self._r = retriever
+        self._c = cache
+        self._ctx = context_key
+
+    # ── public API ────────────────────────────────────────────────────────
+
+    def answer(
+        self,
+        query: str,
+        *,
+        context_key: Optional[str] = None,
+    ) -> Tuple[Optional[str], bool]:
+        """Return ``(answer_text, from_cache)``.
+
+        ``from_cache=True``  — promoted hot-path hit; LLM/FTS5 not called.
+        ``from_cache=False`` — live FTS5 retrieval; call ``verify()`` if correct.
+        ``(None, False)``    — no CVE match and no cached entry.
+        """
+        from axiom_verified_answer_cache import fingerprint as _fp
+        ctx = context_key if context_key is not None else self._ctx
+        fp = _fp(query, context_key=ctx)
+
+        hot = self._c.lookup(fp)
+        if hot is not None:
+            return hot, True
+
+        text = self._r.answer_for(query)
+        if text:
+            self._c.record(fp, text)
+        return text, False
+
+    def verify(
+        self,
+        query: str,
+        *,
+        context_key: Optional[str] = None,
+    ) -> bool:
+        """Mark the cached answer for *query* as verified.
+
+        Increments ``verified_hits``.  Auto-promotes to hot-path once
+        ``PROMOTION_THRESHOLD`` is reached.  Returns True if the entry exists.
+        """
+        from axiom_verified_answer_cache import fingerprint as _fp
+        ctx = context_key if context_key is not None else self._ctx
+        return self._c.verify(_fp(query, context_key=ctx))
+
+    def invalidate(
+        self,
+        query: str,
+        *,
+        context_key: Optional[str] = None,
+    ) -> bool:
+        """Demote a promoted answer back to cold (e.g. after a CVE update).
+
+        Returns True if the entry existed and was invalidated.
+        """
+        from axiom_verified_answer_cache import fingerprint as _fp
+        ctx = context_key if context_key is not None else self._ctx
+        return self._c.invalidate(_fp(query, context_key=ctx))
+
+    def retrieve(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+    ) -> List[RetrievedSource]:
+        """Raw BM25 snippet retrieval — always live, never cached.
+
+        Use this when the caller needs scored snippets for LLM context assembly
+        rather than a single promoted answer text.
+        """
+        return self._r.retrieve(query, k=k)
+
+    def stats(self) -> dict:
+        """Combined stats from both the FTS5 index and the answer cache."""
+        return {
+            "retriever": self._r.stats(),
+            "cache": self._c.stats(),
         }
 
 

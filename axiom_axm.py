@@ -132,12 +132,34 @@ class AXMHeader:
 
     `quant_map` accepts either a string tag (legacy, e.g.
     `"elastic_per_layer"`) or a structured dict describing a real
-    quantization scheme. The dict form is opened up so concrete
-    schemes can declare themselves end-to-end — see SRD's
-    `{"scheme": "srd", "group_size": 64, "alpha": 1.0, "bpw": 13.0}`
-    shape produced by `axiom_quant.SRDPackedTensor`. The signed
-    payload preserves whichever form was passed; downstream consumers
-    inspect type to decide how to interpret it.
+    quantization scheme.
+
+    Supported dict shapes:
+
+    **Uniform SRD** (all layers same alpha):
+        {"scheme": "srd", "group_size": 64, "alpha": 1.0, "bpw": 13.0}
+
+    **Architecture-fingerprinted SRD** (per-layer calibration):
+        {
+          "scheme": "srd",
+          "group_size": 64,
+          "calibration_method": "weight_norm",    # or "activation_error"
+          "layer_alpha_map": {
+              "model.layers.0.self_attn.q_proj": 0.12,
+              "model.layers.8.mlp.gate_proj":    1.0,
+              ...
+          },
+          "derived_chunk_start_frac": 0.36,
+          "derived_chunk_end_frac":   0.82,
+          "architecture": {"model": "...", "n_layers": 22, ...},
+          "sensitivity_stats": {...}
+        }
+        Produced by `research.quant.calibrate_layer_alphas.build_quant_map()`.
+        `srd_selective_sidecar.layer_alphas_from_quant_map()` consumes it.
+
+    The signed payload preserves whichever form was passed; downstream
+    consumers inspect the type and ``scheme`` key to decide how to
+    interpret it.
     """
     format_version: str
     core_logic:     str
