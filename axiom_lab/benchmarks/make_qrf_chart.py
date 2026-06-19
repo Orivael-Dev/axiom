@@ -34,7 +34,10 @@ def main() -> int:
     d = json.loads(args.report.read_text())
     model = d.get("config", {}).get("model", "?")
     backend = d.get("config", {}).get("backend", "?")
-    avg = d.get("summary", {}).get("avg_efficiency_x", 0.0)
+    summary = d.get("summary", {})
+    avg = summary.get("avg_efficiency_x", 0.0)
+    med = summary.get("median_efficiency_x", avg)
+    resc = summary.get("rescued_tasks", 0)
 
     rows = []
     for t in d["tasks"]:
@@ -111,10 +114,11 @@ def main() -> int:
         ax2.set_xlim(0, cap * 1.32)
 
         cap = (f"Model: {model}  ({backend})      "
-               f"Average efficiency: {avg:.2f}×      "
-               f"† = hard non-canonical task\n"
-               f"Canonical algorithms ceiling at 1.0× (baseline already 100%); "
-               f"QRF's advantage appears on hard tasks where single-shot fails. "
+               f"Median (robust): {med:.2f}×   ·   Mean: {avg:.2f}×"
+               + (f"   ·   {resc} rescued" if resc else "")
+               + f"      † = hard non-canonical task\n"
+               f"QRF helps where single-shot leaves headroom; the ratio mean can be "
+               f"inflated by near-zero baselines, so the median is the honest headline. "
                f"Caveat: QRF spends ~3–5× the tokens (quality, not cost, is plotted).")
         fig.text(0.5, 0.015, cap, ha="center", fontsize=8.5, color="#333",
                  wrap=True)

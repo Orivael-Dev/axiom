@@ -2010,7 +2010,9 @@
   ],
   "summary": {
     "avg_efficiency_x": 1.0,
-    "n_tasks": 4
+    "n_tasks": 4,
+    "median_efficiency_x": 1.0,
+    "rescued_tasks": 0
   },
-  "hmac_signature": "1c13616290677cdbc71753424f9bebca998ba01de987694b19aa30d72d4d0941"
+  "hmac_signature": "2558547c74a44956e11dae80f47ea5c500ebc7c0de4ad3d417062bbf311d7c5d"
 }

@@ -1,0 +1,3512 @@
+{
+  "benchmark": "qrf_hypothesis_loop",
+  "version": "1.0",
+  "timestamp": "2026-06-19T22:07:36Z",
+  "config": {
+    "backend": "ollama",
+    "model": "smollm2-135m-srd4",
+    "n_rounds": 5,
+    "n_branches": 4,
+    "branch_strategies": [
+      "edge_case",
+      "efficiency",
+      "error_handling",
+      "simplify"
+    ]
+  },
+  "tasks": [
+    {
+      "task_id": "buggy-binary-search",
+      "baseline": {
+        "task_id": "buggy-binary-search",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "I've reviewed your suggestions and made some further edits to improve the code's correctness and readability. Here are the improvements:\n\n1. **Edge cases:** I added a check for empty inputs, single elements, and overflows in the `binary_search` function. This helps avoid common pitfalls like division by zero or large input sizes.\n\n2. **Code structure:** The current implementation is inefficient because it uses an infinite loop to repeatedly divide the input size until the target element is found. I've added a check for this, as well.\n\n3. **Input validation:** The `binary_search` function should return -1 in all cases and no error messages are printed if the input size is not smaller than 10 elements or larger than 50 elements (in terms of length).\n\nPlease provide your own feedback to address these areas, as I can't help with that.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 183,
+                "killed": true,
+                "latency_ms": 2377.752700005658
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "I've reviewed your suggestions and made some further edits to improve the code's correctness and readability. Here are the improvements:\n\n1. **Edge cases:** I added a check for empty inputs, single elements, and overflows in the `binary_search` function. This helps avoid common pitfalls like division by zero or large input sizes.\n\n2. **Code structure:** The current implementation is inefficient because it uses an infinite loop to repeatedly divide the input size until the target element is found. I've added a check for this, as well.\n\n3. **Input validation:** The `binary_search` function should return -1 in all cases and no error messages are printed if the input size is not smaller than 10 elements or larger than 50 elements (in terms of length).\n\nPlease provide your own feedback to address these areas, as I can't help with that.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 183,
+              "killed": true,
+              "latency_ms": 2377.752700005658
+            },
+            "pruned_count": 1,
+            "total_tokens": 183,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target):\n    if len(arr) < 10 or len(arr) > 50:\n        return -1\n\n    # Check input size to avoid division by zero\n    while arr[i] <= 0:\n        i += 1\n\n    # Check for elements smaller than 10 and larger than 50\n    while arr[-2:] < target:\n        if arr[-3:] > 10 + 4 * (arr[:-2:]) % 10 or arr[:-2:] == 10 + 6 * (arr[:-2:] - 8):\n            return -1\n\n    # Check for elements smaller than 50\n    while arr[i] < target:\n        if arr[-3:] > 4 * (arr[:-3:]) % 10 or arr[:-3:] == 7 + 6 * (arr[:-2:] - 8):\n            return -1\n\n    # Check for elements smaller than 50\n    while arr[i] <= target:\n        if arr[-2:] < 4 ** 2 and arr[:-2:] > 5 ** 2 or arr[:--2:] == 7 + 6 * (arr[:-2:]) % 8:\n            return -1\n\n    # Check for elements smaller than 30\n    while arr[i] <= target:\n        if arr[-4:] < 9 and arr[:-4:] > 5 ** 2 or arr[:--4:] == 7 + 6 * (arr[:-4:] - 8):\n            return -1\n\n    # Check for elements smaller than 30\n    while arr[i] <= target:\n        if arr[-3:] < 9 and arr[:-3:] > 5 ** 2 or arr[:--3:] == 7 + 6 * (arr[:-3:] - 8):\n            return -1\n\n    # Check for elements smaller than 40\n    while arr[i] <= target:\n        if arr[-3:] < 9 and arr[:-3:] > 5 ** 2 or arr[:--3:] == 7 + 6 * (arr[:-3:] - 8):\n            return -1\n\n    # Check for elements smaller than 40\n    while arr[i] <=",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 5150.12729994487
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr: list, target):\n    if len(arr) < 10 or len(arr) > 50:\n        return -1\n\n    # Check input size to avoid division by zero\n    while arr[i] <= 0:\n        i += 1\n\n    # Check for elements smaller than 10 and larger than 50\n    while arr[-2:] < target:\n        if arr[-3:] > 10 + 4 * (arr[:-2:]) % 10 or arr[:-2:] == 10 + 6 * (arr[:-2:] - 8):\n            return -1\n\n    # Check for elements smaller than 50\n    while arr[i] < target:\n        if arr[-3:] > 4 * (arr[:-3:]) % 10 or arr[:-3:] == 7 + 6 * (arr[:-2:] - 8):\n            return -1\n\n    # Check for elements smaller than 50\n    while arr[i] <= target:\n        if arr[-2:] < 4 ** 2 and arr[:-2:] > 5 ** 2 or arr[:--2:] == 7 + 6 * (arr[:-2:]) % 8:\n            return -1\n\n    # Check for elements smaller than 30\n    while arr[i] <= target:\n        if arr[-4:] < 9 and arr[:-4:] > 5 ** 2 or arr[:--4:] == 7 + 6 * (arr[:-4:] - 8):\n            return -1\n\n    # Check for elements smaller than 30\n    while arr[i] <= target:\n        if arr[-3:] < 9 and arr[:-3:] > 5 ** 2 or arr[:--3:] == 7 + 6 * (arr[:-3:] - 8):\n            return -1\n\n    # Check for elements smaller than 40\n    while arr[i] <= target:\n        if arr[-3:] < 9 and arr[:-3:] > 5 ** 2 or arr[:--3:] == 7 + 6 * (arr[:-3:] - 8):\n            return -1\n\n    # Check for elements smaller than 40\n    while arr[i] <=",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 512,
+              "killed": true,
+              "latency_ms": 5150.12729994487
+            },
+            "pruned_count": 1,
+            "total_tokens": 512,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You have already provided an example of how to fix edge cases and boundary conditions in your original code. To further improve this solution, you can consider the following approaches:\n\n1. **Check input size**: Check for elements smaller than 50 before checking for larger elements. This will help you avoid division by zero or overflow issues.\n\n2. **Check for elements smaller than 4** to avoid division by zero and ensure that your function runs correctly with large inputs.\n\n3. **Check for elements smaller than 1**. This is the most common error in Python, as it can lead to overflows when checking a very small input size.\n\n4. **Check for elements smaller than 2**, which will allow you to avoid division by zero and ensure that your function runs correctly with large inputs.\n\nTo further improve this solution:\n\n1. **Input validation**: Validate the input size before calling the function, or if it's not known how big the input is. This helps prevent common pitfalls like dividing by 0.\n\n2. **Check for elements smaller than 4**. This will help avoid overflows when checking a very small input size.\n\nTo further improve this solution:\n\n1. **Input validation**: Validate the input size before calling the function, or if it's not known how big the input is. This helps prevent common pitfalls like dividing by zero and ensure that your function runs correctly with large inputs.**",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 295,
+                "killed": true,
+                "latency_ms": 3113.7605000985786
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You have already provided an example of how to fix edge cases and boundary conditions in your original code. To further improve this solution, you can consider the following approaches:\n\n1. **Check input size**: Check for elements smaller than 50 before checking for larger elements. This will help you avoid division by zero or overflow issues.\n\n2. **Check for elements smaller than 4** to avoid division by zero and ensure that your function runs correctly with large inputs.\n\n3. **Check for elements smaller than 1**. This is the most common error in Python, as it can lead to overflows when checking a very small input size.\n\n4. **Check for elements smaller than 2**, which will allow you to avoid division by zero and ensure that your function runs correctly with large inputs.\n\nTo further improve this solution:\n\n1. **Input validation**: Validate the input size before calling the function, or if it's not known how big the input is. This helps prevent common pitfalls like dividing by 0.\n\n2. **Check for elements smaller than 4**. This will help avoid overflows when checking a very small input size.\n\nTo further improve this solution:\n\n1. **Input validation**: Validate the input size before calling the function, or if it's not known how big the input is. This helps prevent common pitfalls like dividing by zero and ensure that your function runs correctly with large inputs.**",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 295,
+              "killed": true,
+              "latency_ms": 3113.7605000985786
+            },
+            "pruned_count": 1,
+            "total_tokens": 295,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr, target):\n        if len(arr) < 4 or arr[0] <= target <= arr[-1]:\n            return -1\n        else:\n            for i in range(len(arr)-2,-1,-1):\n                if arr[i+1][-1]+arr[i-1][-1]-arr[i][-1]*arr[i+1][-1] == target:\n                    return 0\n            else:\n                return -1",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 274,
+                "killed": false,
+                "latency_ms": 2899.2070000385866
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr, target):\n        if len(arr) < 4 or arr[0] <= target <= arr[-1]:\n            return -1\n        else:\n            for i in range(len(arr)-2,-1,-1):\n                if arr[i+1][-1]+arr[i-1][-1]-arr[i][-1]*arr[i+1][-1] == target:\n                    return 0\n            else:\n                return -1",
+              "tests_passed": 3,
+              "n_tests": 10,
+              "pass_rate": 0.3,
+              "score": 0.3,
+              "tokens_used": 274,
+              "killed": false,
+              "latency_ms": 2899.2070000385866
+            },
+            "pruned_count": 0,
+            "total_tokens": 274,
+            "best_pass_rate": 0.3
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr, target):\n    if len(arr) < 4 and arr[0] <= target <= arr[-1]:\n        return -1\n\n    # Check for empty input without any boundary conditions\n    # If you don't need to handle empty inputs, check the length of an array.\n    # A better approach would have been:\n    # def binary_search(arr):\n    #     if len(arr) < 4 and arr[-1] <= target <= arr[:len(arr)-2]:\n        #   return 0\n\n    # Check for empty input without any boundary conditions\n    # If you don't need to handle empty inputs, check the length of an array.\n    # A better approach would have been:\n    # def binary_search(arr):\n    #     if arr[-1] <= target <= arr[:len(arr)-2]:\n        #   return 0\n\n    # Check for empty input without any boundary conditions\n    # If you don't need to handle empty inputs, check the length of an array.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 290,
+                "killed": true,
+                "latency_ms": 2657.7674999134615
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def binary_search(arr, target):\n    if len(arr) < 4 and arr[0] <= target <= arr[-1]:\n        return -1\n\n    # Check for empty input without any boundary conditions\n    # If you don't need to handle empty inputs, check the length of an array.\n    # A better approach would have been:\n    # def binary_search(arr):\n    #     if len(arr) < 4 and arr[-1] <= target <= arr[:len(arr)-2]:\n        #   return 0\n\n    # Check for empty input without any boundary conditions\n    # If you don't need to handle empty inputs, check the length of an array.\n    # A better approach would have been:\n    # def binary_search(arr):\n    #     if arr[-1] <= target <= arr[:len(arr)-2]:\n        #   return 0\n\n    # Check for empty input without any boundary conditions\n    # If you don't need to handle empty inputs, check the length of an array.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 290,
+              "killed": true,
+              "latency_ms": 2657.7674999134615
+            },
+            "pruned_count": 1,
+            "total_tokens": 290,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 1554,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.06
+      },
+      "qrf": {
+        "task_id": "buggy-binary-search",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You are correct that there is no improvement to the existing implementation as it has bugs and edge cases. The current implementation does not handle empty inputs correctly, which can lead to overflow issues. Additionally, the code assumes a single element in the array, which may be too small for large search spaces or result in an unbounded maximum value.\n\nTo fix these problems, you should consider:\n\n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation does not handle empty inputs correctly as well. It assumes an array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n\n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid,",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 4374.4988000253215
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr, target):\n    left = 0   # bug: should be len(arr) - 1\n    right = ith(len(arr), arr[left]) + 1    # bug: should be <=\n\n    while left < right:\n        mid = (left + i * (right - left)) // 2        # bug: should be =======<--shouldbe!==================================================================",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 1947.4461999488994
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr, target):\n    left = 0   # bug: should be len(arr) - 1\n\n    while left < right:\n        mid = (left + right) // 2\n\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] > target:\n            left = mid\n        else:\n            right = mid\n    return -1",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 123,
+                "killed": true,
+                "latency_ms": 1300.3701999550685
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr, target):\n    left = 0   # bug: should be len(arr) - 1\n    \n    while left < right:\n        mid = (left + right) // 2\n        \n        if arr[mid] == target:\n            return mid\n        elif arr[mid] > target:\n            left = mid\n        else:\n            right = mid\n    return -1",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 101,
+                "killed": true,
+                "latency_ms": 1079.2197999544442
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You are correct that there is no improvement to the existing implementation as it has bugs and edge cases. The current implementation does not handle empty inputs correctly, which can lead to overflow issues. Additionally, the code assumes a single element in the array, which may be too small for large search spaces or result in an unbounded maximum value.\n\nTo fix these problems, you should consider:\n\n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation does not handle empty inputs correctly as well. It assumes an array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n\n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.\n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\nTo fix these problems, you should consider: \n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid,",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 512,
+              "killed": true,
+              "latency_ms": 4374.4988000253215
+            },
+            "pruned_count": 4,
+            "total_tokens": 1248,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You are correct that there is no improvement to the existing implementation as it has bugs and edge cases. The current implementation does not handle empty inputs correctly as well. Additionally, the code assumes a single element in the array, which may be too small for large search spaces or result in an unbounded maximum value.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 155,
+                "killed": true,
+                "latency_ms": 1704.1507000103593
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr: list, target):\n    if not arr:\n        raise ValueError(\"Input must be a list\")\n\n    # Check the length of the array to ensure it's valid\n    if len(arr) == 0:\n        return -1\n\n3.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 191,
+                "killed": true,
+                "latency_ms": 2006.032400066033
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target):\n        if len(arr) == 0:\n            raise ValueError(\"Input is empty\")\n\n        return arr[len(arr)-1] + arr[:len(arr)-2]+target\n\n    # Input Validation: Ensure that the input is of type int",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 181,
+                "killed": true,
+                "latency_ms": 1893.8449000706896
+              },
+              {
+                "strategy": "simplify",
+                "code": "To improve this implementation, you should consider the following approaches to address the issues mentioned above:\n\n1.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further. \n\n2.  **Empty Inputs**: The current implementation assumes an empty array with one element in each position while ignoring potential overflow issues for large input sizes.\n\n3.  **Input Validation**: Ensure that the input is of type `int`. If it's not valid, raise a `ValueError` to indicate this and skip checking further.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 125,
+                "killed": true,
+                "latency_ms": 1429.9981000367552
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You are correct that there is no improvement to the existing implementation as it has bugs and edge cases. The current implementation does not handle empty inputs correctly as well. Additionally, the code assumes a single element in the array, which may be too small for large search spaces or result in an unbounded maximum value.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 155,
+              "killed": true,
+              "latency_ms": 1704.1507000103593
+            },
+            "pruned_count": 4,
+            "total_tokens": 652,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You are correct that there is no improvement to the existing implementation as it has bugs and edge cases. The current implementation assumes a single element in the array, which may be too small for large search spaces or result in an unbounded maximum value. Additionally, the code assumes an empty input, so you must add more cautionary comments about these potential pitfalls.\nThe function signature must remain: def binary_search(arr: list, target) -> int",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 93,
+                "killed": true,
+                "latency_ms": 1030.5639998987317
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr: list, target):\n    return max(arr)",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 92,
+                "killed": false,
+                "latency_ms": 1033.432999975048
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target):\n    return max(arr) if arr else 0\n\n    def helper(arr):\n        # Code to handle empty inputs correctly\n        pass\n    \n    return helper()",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 99,
+                "killed": false,
+                "latency_ms": 1090.3053999645635
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr: list, target):\n    \"\"\"Return the index of the first occurrence of the target element in the input list.\"\"\"\n    return arr[0] if arr else None",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 117,
+                "killed": false,
+                "latency_ms": 1264.603899908252
+              }
+            ],
+            "winner": {
+              "strategy": "efficiency",
+              "code": "def binary_search(arr: list, target):\n    return max(arr)",
+              "tests_passed": 1,
+              "n_tests": 10,
+              "pass_rate": 0.1,
+              "score": 0.1,
+              "tokens_used": 92,
+              "killed": false,
+              "latency_ms": 1033.432999975048
+            },
+            "pruned_count": 1,
+            "total_tokens": 401,
+            "best_pass_rate": 0.1
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target):\n    return max(arr)",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 91,
+                "killed": false,
+                "latency_ms": 1099.9632000457495
+              },
+              {
+                "strategy": "efficiency",
+                "code": "You are correct and that is not the issue with my previous response.\nTo improve the code to O(n log n), you can use the following approach:\n\n1.  Use a while loop instead of a for loop. This will allow you to find the maximum value in constant time complexity, O(n) - this should be done only when the input is known and not every element has been found yet.\n2.  You can also optimize the time complexity by using the built-in max function which returns the maximum of all possible subarrays or a more efficient implementation that takes advantage of the fact that the input may have already been sorted, O(n) - this should be done only when the input is known and not every element has been found yet.\n3.  You can also optimize the space complexity by using the built-in max function which returns the maximum of all possible subarrays or a more efficient implementation that takes advantage of the fact that the input may have already been sorted, O(n) - this should be done only when the input is known and not every element has been found yet.\n4.  You can also optimize the time complexity by using the built-in max function which returns the maximum of all possible subarrays or a more efficient implementation that takes advantage of the fact that the input may have already been sorted, O(n) - this should be done only when the input is known and not every element has been found yet.\n5.  You can also optimize the space complexity by using the built-in max function which returns the maximum of all possible subarrays or a more efficient implementation that takes advantage of the fact that the input may have already been sorted, O(n) - this should be done only when the input is known and not every element has been found yet.\n6.  You can also optimize the space complexity by using the built-in max function which returns the maximum of all possible subarrays or a more efficient implementation that takes advantage of the fact that the input may have already been sorted, O(n) - this should be done only when the input is known and not every element has been found yet.\n7.  You can also optimize the space complexity by using the built-in max function which returns the maximum of all possible subarrays or a more efficient implementation that takes advantage of the fact that the input may have already been sorted, O(n) - this should be done only when the input is known and not every element",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 4625.437000067905
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target):\n    if not arr or not all(arr <= target):\n        raise ValueError(\"Inputs must be valid\")\n\n    return max(arr)",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 63,
+                "killed": true,
+                "latency_ms": 804.246100015007
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr: list, target):\n    return max([abs(x - target) for x in arr])",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 64,
+                "killed": false,
+                "latency_ms": 966.2507999455556
+              }
+            ],
+            "winner": {
+              "strategy": "simplify",
+              "code": "def binary_search(arr: list, target):\n    return max([abs(x - target) for x in arr])",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 64,
+              "killed": false,
+              "latency_ms": 966.2507999455556
+            },
+            "pruned_count": 2,
+            "total_tokens": 730,
+            "best_pass_rate": 0.2
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def binary_search(arr: list, target):\n    if len(arr) == 0 or arr[len(arr)-1] > target:\n        return max([abs(x - target) for x in arr])\n    else:\n        return max([max(arr[-i+1:]) for i in range(len(arr)-2)])",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 98,
+                "killed": false,
+                "latency_ms": 1098.5206000041217
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def binary_search(arr, target):\n    return max([abs(x - target) for x in arr])",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 235,
+                "killed": false,
+                "latency_ms": 2198.427800089121
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def binary_search(arr: list, target):\n    return max([abs(x - target) for x in arr])",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 67,
+                "killed": false,
+                "latency_ms": 802.5664000306278
+              },
+              {
+                "strategy": "simplify",
+                "code": "def binary_search(arr: list, target):\n    return max([abs(x - target) for x in arr])",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 92,
+                "killed": false,
+                "latency_ms": 1004.5054999645799
+              }
+            ],
+            "winner": {
+              "strategy": "efficiency",
+              "code": "def binary_search(arr, target):\n    return max([abs(x - target) for x in arr])",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 235,
+              "killed": false,
+              "latency_ms": 2198.427800089121
+            },
+            "pruned_count": 0,
+            "total_tokens": 492,
+            "best_pass_rate": 0.2
+          }
+        ],
+        "final_pass_rate": 0.2,
+        "total_tokens": 3523,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.1
+      }
+    },
+    {
+      "task_id": "slow-palindrome",
+      "baseline": {
+        "task_id": "slow-palindrome",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n    s = s.lower()\n    \n    # bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1):\n        if s[i] != s[len(s)-1-i]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 115,
+                "killed": false,
+                "latency_ms": 1292.7063999231905
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s):\n    s = s.lower()\n    \n    # bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1):\n        if s[i] != s[len(s)-1-i]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+              "tests_passed": 1,
+              "n_tests": 10,
+              "pass_rate": 0.1,
+              "score": 0.1,
+              "tokens_used": 115,
+              "killed": false,
+              "latency_ms": 1292.7063999231905
+            },
+            "pruned_count": 0,
+            "total_tokens": 115,
+            "best_pass_rate": 0.1
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "3.  The function signature must remain as is: def is_palindrome(s):\n    S = s.lower()\n    \n    # Bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1):\n        if s[i] != s[len(s)-1-(int(s[i])+3]+2]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 473,
+                "killed": true,
+                "latency_ms": 4249.164200038649
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "3.  The function signature must remain as is: def is_palindrome(s):\n    S = s.lower()\n    \n    # Bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1):\n        if s[i] != s[len(s)-1-(int(s[i])+3]+2]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 473,
+              "killed": true,
+              "latency_ms": 4249.164200038649
+            },
+            "pruned_count": 1,
+            "total_tokens": 473,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n    s = s.lower()\n    \n    # Bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1):\n        if s[i] != s[len(s)-1-(int(s[i])+3]+2]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 201,
+                "killed": true,
+                "latency_ms": 1943.1846999796107
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s):\n    s = s.lower()\n    \n    # Bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1):\n        if s[i] != s[len(s)-1-(int(s[i])+3]+2]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 201,
+              "killed": true,
+              "latency_ms": 1943.1846999796107
+            },
+            "pruned_count": 1,
+            "total_tokens": 201,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n        s = s.lower()\n    \n    # Bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1): \n        if s[i] != s[len(s)-1-(int(s[i])+3]+2]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 4762.218100018799
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s):\n        s = s.lower()\n    \n    # Bug in case of non-alphanumeric characters \n    result = \"\"  \n    for i in range(len(s) - 1, 0, -1): \n        if s[i] != s[len(s)-1-(int(s[i])+3]+2]: \n            return \"Error: Empty input\"\n        \n    return result == s",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 512,
+              "killed": true,
+              "latency_ms": 4762.218100018799
+            },
+            "pruned_count": 1,
+            "total_tokens": 512,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "No, no, you can't improve this to fix any edge cases and boundary conditions. You should not write anything that doesn't have a valid input type or raise an error when the input is empty. \n\nYou should also check if the length of the string is 0 before checking for palindrome behavior.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 65,
+                "killed": true,
+                "latency_ms": 824.6579999104142
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "No, no, you can't improve this to fix any edge cases and boundary conditions. You should not write anything that doesn't have a valid input type or raise an error when the input is empty. \n\nYou should also check if the length of the string is 0 before checking for palindrome behavior.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 65,
+              "killed": true,
+              "latency_ms": 824.6579999104142
+            },
+            "pruned_count": 1,
+            "total_tokens": 65,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 1366,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.02
+      },
+      "qrf": {
+        "task_id": "slow-palindrome",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n    s = s.lower()\n    result = \"\"\n    for i in range(len(s) - 1, 0, -2):\n        if s[i] != s[j][-1]:\n            break\n\n    return result == s[::-1]",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 100,
+                "killed": false,
+                "latency_ms": 1054.5621999772266
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s):\n    s = s[::-1]   # O(n) string concat \n    return s == s[::-1]  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))  # Outputs: True",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 100,
+                "killed": false,
+                "latency_ms": 1202.9889000114053
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 160,
+                "killed": true,
+                "latency_ms": 1814.8840999929234
+              },
+              {
+                "strategy": "simplify",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 263,
+                "killed": true,
+                "latency_ms": 2861.6202999837697
+              }
+            ],
+            "winner": {
+              "strategy": "efficiency",
+              "code": "def is_palindrome(s):\n    s = s[::-1]   # O(n) string concat \n    return s == s[::-1]  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))  # Outputs: True",
+              "tests_passed": 6,
+              "n_tests": 10,
+              "pass_rate": 0.6,
+              "score": 0.6,
+              "tokens_used": 100,
+              "killed": false,
+              "latency_ms": 1202.9889000114053
+            },
+            "pruned_count": 2,
+            "total_tokens": 623,
+            "best_pass_rate": 0.6
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n    s = s[::-1]   # O(n) string concat \n    return s == s[::-1]  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))  # Outputs: True",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 126,
+                "killed": false,
+                "latency_ms": 1674.0809000330046
+              },
+              {
+                "strategy": "efficiency",
+                "code": "You are correct that the current implementation has a time complexity of O(n^2), and you can optimize it further to improve its performance, but since the input string cannot be longer than 10-digit numbers (because it's already taken up space in the output list) we have to use a more efficient approach.\nYou are correct that the current implementation has a time complexity of O(n log n), and you can optimize it further by using a more efficient approach, but since the input string must be longer than 10-digit numbers (because it's already taken up space in the output list) we have to use a more efficient version.\nYou are correct that the current implementation has a time complexity of O(n), and you can optimize it further by using a more efficient approach, but since the input string must be longer than 10-digit numbers (because it's already taken up space in the output list) we have to use a more efficient version.\nYou are correct that the current implementation has a time complexity of O(n), and you can optimize it further by using a more efficient approach, but since the input string must be longer than 10-digit numbers (because it's already taken up space in the output list) we have to use a more efficient version.\nYou are correct that the current implementation has a time complexity of O(n), and you can optimize it further by using a more efficient approach, but since the input string must be longer than 10-digit numbers (because it's already taken up space in the output list) we have to use a more efficient version.\nYou are correct that the current implementation has a time complexity of O(n), and you can optimize it further by using a more efficient approach, but since the input string must be longer than 10-digit numbers (because it's already taken up space in the output list) we have to use a more efficient version.\nYou are correct that the current implementation has a time complexity of O(n), and you can optimize it further by using a more efficient approach, but since the input string must be longer than 10-digit numbers (because it's already taken up space in the output list) we have to use a more efficient version.\nYou are correct that the current implementation has a time complexity of O(n), and you can optimize it further by using a more efficient approach, but since the input string must be longer than 10",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 5497.421599924564
+              },
+              {
+                "strategy": "error_handling",
+                "code": "You can add robust input validation and error handling to raise clear exceptions for invalid inputs, which will make your code more robust as well. Here's the improved Python code that meets your requirements:\n\n    def is_palindrome(s):\n        s = s[::-1]   # O(n) string concat \n        return s == s[::-1]",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 73,
+                "killed": true,
+                "latency_ms": 994.8019000003114
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s):\n    s = s[::-1]   # Slicing \n    return s == s[::-1]  \n\nprint(is_palindrome(\"A man, a man, a new problem\"))  # Outputs: True",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 104,
+                "killed": false,
+                "latency_ms": 1201.383699895814
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s):\n    s = s[::-1]   # O(n) string concat \n    return s == s[::-1]  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))  # Outputs: True",
+              "tests_passed": 6,
+              "n_tests": 10,
+              "pass_rate": 0.6,
+              "score": 0.6,
+              "tokens_used": 126,
+              "killed": false,
+              "latency_ms": 1674.0809000330046
+            },
+            "pruned_count": 2,
+            "total_tokens": 815,
+            "best_pass_rate": 0.6
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))    # Outputs: False",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 189,
+                "killed": false,
+                "latency_ms": 1850.2618999918923
+              },
+              {
+                "strategy": "efficiency",
+                "code": "You can optimize the time and space complexity of the current implementation to be as follows:\n- O(n) because you are returning a new string, which takes advantage of the fact that the input will always be in a palindromic form.\n- O(n log n) or O(n) for O(n) is not an optimal solution (although it's still possible to optimize further). \nO(n) because you are returning a new string, which takes advantage of the fact that the input will always be in a palindromic form.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 119,
+                "killed": true,
+                "latency_ms": 1373.948499909602
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def is_palindrome(s):\n    s = s[::-1]   # O(n) string concat \n    return s == s[::-1]    # O(n + n) time complexity, O(min(len(s), 0)) space complexity\n\n    def check_emptystring():\n        pass\n    \n    if len(s) < 2: \n        raise ValueError(\"Input must only contain one character\")\n    else:\n        return s",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 124,
+                "killed": false,
+                "latency_ms": 1305.9969999594614
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s):\n    s = s[::-1]   # O(n) \n    return s == s[::-1]  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))  # Outputs: True",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 91,
+                "killed": false,
+                "latency_ms": 1104.4991000089794
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))    # Outputs: False",
+              "tests_passed": 6,
+              "n_tests": 10,
+              "pass_rate": 0.6,
+              "score": 0.6,
+              "tokens_used": 189,
+              "killed": false,
+              "latency_ms": 1850.2618999918923
+            },
+            "pruned_count": 1,
+            "total_tokens": 523,
+            "best_pass_rate": 0.6
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))    # Outputs: False",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 130,
+                "killed": false,
+                "latency_ms": 1451.0252999607474
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s):\n    # Check if all elements are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))    # Outputs: False",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 146,
+                "killed": false,
+                "latency_ms": 1628.346799989231
+              },
+              {
+                "strategy": "error_handling",
+                "code": "You are correct that there's no need to add robust input validation and error handling, as the purpose of this program remains unchanged. The improved code should be fine-tuned for maximum robustness in terms of invalid inputs.\nThe function signature must remain: def is_palindrome(s):\n    Returns True if all elements match \n    Raises ValueError when all elements are different \n\nNo markdown fences, no bold formatting required",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 87,
+                "killed": true,
+                "latency_ms": 1029.318799963221
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s):\n    return s == s[::-1]  # Return True only when all elements match \n  \nprint(is_palindrome(\"A man, a man, a new problem\"))    # Outputs: False",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 92,
+                "killed": false,
+                "latency_ms": 1201.2705999659374
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))    # Outputs: False",
+              "tests_passed": 6,
+              "n_tests": 10,
+              "pass_rate": 0.6,
+              "score": 0.6,
+              "tokens_used": 130,
+              "killed": false,
+              "latency_ms": 1451.0252999607474
+            },
+            "pruned_count": 1,
+            "total_tokens": 455,
+            "best_pass_rate": 0.6
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day\"))    # Outputs: False",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 113,
+                "killed": false,
+                "latency_ms": 1537.7434000838548
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))    # Outputs: False",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 116,
+                "killed": false,
+                "latency_ms": 1702.8561000479385
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day, a new problem\"))    # Outputs: False",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 104,
+                "killed": false,
+                "latency_ms": 1172.2066999645904
+              },
+              {
+                "strategy": "simplify",
+                "code": "def is_palindrome(s):\n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man\"))    # Outputs: True",
+                "tests_passed": 6,
+                "n_tests": 10,
+                "pass_rate": 0.6,
+                "score": 0.6,
+                "tokens_used": 122,
+                "killed": false,
+                "latency_ms": 1309.5558999339119
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def is_palindrome(s):\n    # Check if all characters are alphanumeric \n    s = ''.join([char for char in s])  \n    \n    return s == s[::-1]  # Return True only when all elements match \n  \n\nprint(is_palindrome(\"A man, a man, a day\"))    # Outputs: False",
+              "tests_passed": 6,
+              "n_tests": 10,
+              "pass_rate": 0.6,
+              "score": 0.6,
+              "tokens_used": 113,
+              "killed": false,
+              "latency_ms": 1537.7434000838548
+            },
+            "pruned_count": 0,
+            "total_tokens": 455,
+            "best_pass_rate": 0.6
+          }
+        ],
+        "final_pass_rate": 0.6,
+        "total_tokens": 2871,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.6
+      }
+    },
+    {
+      "task_id": "broken-merge-sort",
+      "baseline": {
+        "task_id": "broken-merge-sort",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n\n    mid = len(arr) // 2\n    left   = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 96,
+                "killed": false,
+                "latency_ms": 1274.9554000329226
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n\n    mid = len(arr) // 2\n    left   = merge_sort(arr[:mid])\n    right = merge_sort(arr[mid:])\n    return _merge(left, right)",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 96,
+              "killed": false,
+              "latency_ms": 1274.9554000329226
+            },
+            "pruned_count": 0,
+            "total_tokens": 96,
+            "best_pass_rate": 0.2
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You are correct that the current implementation is flawed and relies on an empty input to avoid edge cases, which can be problematic in terms of performance. To fix this issue, you should consider multiple approaches or use more robust algorithms. Here's one approach that addresses these issues:\n\n1. **Split into smaller sub-problems**: Split the code into smaller problems based on the type and size of inputs. This makes it easier to identify and correct errors in each individual solution.\n2. **Use a more efficient algorithm**: Instead of returning an empty list, you can return all elements from the input array or handle the case where one element is missing by returning that element alone if needed.\n3. **Check for overflows**: Check for overflow conditions to ensure that your code behaves correctly and doesn't exceed performance limits.\n4. **Use a more robust algorithm**: A good approach would be to use a more efficient sorting algorithm, such as the Merge Sort or the QuickSort algorithms. However, this is not necessary in this case since you can handle all elements individually without any complexity.\n5. **Code simplification**: If possible, simplify your code by writing one implementation that handles all inputs and returns all elements separately if needed. This approach reduces complexity while maintaining correctness.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 258,
+                "killed": true,
+                "latency_ms": 3335.8870999654755
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You are correct that the current implementation is flawed and relies on an empty input to avoid edge cases, which can be problematic in terms of performance. To fix this issue, you should consider multiple approaches or use more robust algorithms. Here's one approach that addresses these issues:\n\n1. **Split into smaller sub-problems**: Split the code into smaller problems based on the type and size of inputs. This makes it easier to identify and correct errors in each individual solution.\n2. **Use a more efficient algorithm**: Instead of returning an empty list, you can return all elements from the input array or handle the case where one element is missing by returning that element alone if needed.\n3. **Check for overflows**: Check for overflow conditions to ensure that your code behaves correctly and doesn't exceed performance limits.\n4. **Use a more robust algorithm**: A good approach would be to use a more efficient sorting algorithm, such as the Merge Sort or the QuickSort algorithms. However, this is not necessary in this case since you can handle all elements individually without any complexity.\n5. **Code simplification**: If possible, simplify your code by writing one implementation that handles all inputs and returns all elements separately if needed. This approach reduces complexity while maintaining correctness.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 258,
+              "killed": true,
+              "latency_ms": 3335.8870999654755
+            },
+            "pruned_count": 1,
+            "total_tokens": 258,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You should consider these additional approaches to address the issues with the current implementation and improve the overall robustness of your code:\n\n1. **Split into smaller sub-problems**: Split the code into smaller problems based on type and size of inputs, as you mentioned earlier. This makes it easier to identify and correct errors in each individual solution.\n\n2. **Use a more efficient algorithm**: A good approach would be to use a more efficient sorting algorithm such as the Merge Sort or QuickSort algorithms that handle all elements individually without any complexity. However, this is not necessary since you can handle all elements separately if needed.\n\n3. **Check for overflows**: Check for overflow conditions and handle them accordingly in each implementation. This reduces code complexity while maintaining correctness.\n\n4. **Code simplification**: If possible, simplify your code by writing one implementation that handles all inputs and returns all elements individually without any complexity. This approach reduces complexity while maintaining correctness.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 193,
+                "killed": true,
+                "latency_ms": 2563.729800051078
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You should consider these additional approaches to address the issues with the current implementation and improve the overall robustness of your code:\n\n1. **Split into smaller sub-problems**: Split the code into smaller problems based on type and size of inputs, as you mentioned earlier. This makes it easier to identify and correct errors in each individual solution.\n\n2. **Use a more efficient algorithm**: A good approach would be to use a more efficient sorting algorithm such as the Merge Sort or QuickSort algorithms that handle all elements individually without any complexity. However, this is not necessary since you can handle all elements separately if needed.\n\n3. **Check for overflows**: Check for overflow conditions and handle them accordingly in each implementation. This reduces code complexity while maintaining correctness.\n\n4. **Code simplification**: If possible, simplify your code by writing one implementation that handles all inputs and returns all elements individually without any complexity. This approach reduces complexity while maintaining correctness.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 193,
+              "killed": true,
+              "latency_ms": 2563.729800051078
+            },
+            "pruned_count": 1,
+            "total_tokens": 193,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You should consider these additional approaches to address the issues with the current implementation and improve the overall robustness of your code:\n\n1. **Split into smaller sub-problems**: Split the code into smaller sub-problems based on type and size of inputs, as you mentioned earlier. This makes it easier to identify and correct errors in each individual solution.\n\n2. **Use a more efficient algorithm**: A good approach would be to use a more efficient sorting algorithm such as the Merge Sort or QuickSort algorithms that handle all elements individually without any complexity. However, this is not necessary since you can handle all elements separately if needed.\n\n3. **Check for overflows**: Check for overflow conditions and handle them accordingly in each implementation. This reduces code complexity while maintaining correctness.\n\n4. **Code simplification**: If possible, simplify your code by writing one implementation that handles all inputs individually without any complexity. This approach reduces complexity while maintaining correctness.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 191,
+                "killed": true,
+                "latency_ms": 2279.6099999686703
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You should consider these additional approaches to address the issues with the current implementation and improve the overall robustness of your code:\n\n1. **Split into smaller sub-problems**: Split the code into smaller sub-problems based on type and size of inputs, as you mentioned earlier. This makes it easier to identify and correct errors in each individual solution.\n\n2. **Use a more efficient algorithm**: A good approach would be to use a more efficient sorting algorithm such as the Merge Sort or QuickSort algorithms that handle all elements individually without any complexity. However, this is not necessary since you can handle all elements separately if needed.\n\n3. **Check for overflows**: Check for overflow conditions and handle them accordingly in each implementation. This reduces code complexity while maintaining correctness.\n\n4. **Code simplification**: If possible, simplify your code by writing one implementation that handles all inputs individually without any complexity. This approach reduces complexity while maintaining correctness.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 191,
+              "killed": true,
+              "latency_ms": 2279.6099999686703
+            },
+            "pruned_count": 1,
+            "total_tokens": 191,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr):\n    # Split into smaller sub-problems based on type and size of inputs, as we mentioned earlier\n    sub_set = split_into_subsets()\n    \n    # Check for overflow conditions and handle them accordingly in each implementation\n    if len(arr) > 1:\n        max_len = max(max(i.size()), arr[0])\n        if not all(i >= max_len):\n            raise Exception(\"Maximum length exceeds the size of an array\")\n        \n        # Check for overflow conditions and handle them accordingly in each implementation\n        if sub_set[-2:] > max_len:\n            max_len = sub_set[:-2]\n    \n    return arr",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 292,
+                "killed": true,
+                "latency_ms": 3120.714999968186
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr):\n    # Split into smaller sub-problems based on type and size of inputs, as we mentioned earlier\n    sub_set = split_into_subsets()\n    \n    # Check for overflow conditions and handle them accordingly in each implementation\n    if len(arr) > 1:\n        max_len = max(max(i.size()), arr[0])\n        if not all(i >= max_len):\n            raise Exception(\"Maximum length exceeds the size of an array\")\n        \n        # Check for overflow conditions and handle them accordingly in each implementation\n        if sub_set[-2:] > max_len:\n            max_len = sub_set[:-2]\n    \n    return arr",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 292,
+              "killed": true,
+              "latency_ms": 3120.714999968186
+            },
+            "pruned_count": 1,
+            "total_tokens": 292,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 1030,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.04
+      },
+      "qrf": {
+        "task_id": "broken-merge-sort",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def _merge(left, right):\n    result = []\n    i=len(left)-1\n    while i>=0:\n        result.append(right[i]);  # Empty list \u2014 all elements are appended to the current list\n        i -= 1\n    return result[:len(result) - len(left)]",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 109,
+                "killed": true,
+                "latency_ms": 1297.3073000321165
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr) // 2\n    left = arr[:mid]\n    right = arr[mid:]\n    result = _merge(left, right)\n    return _recursive_merge(result)",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 128,
+                "killed": false,
+                "latency_ms": 1438.8905999949202
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def _merge(left: list[int], right: list[int]):\n        result = []\n\n    # Code to handle inputs that may be invalid during merge sort implementation details omitted here...",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 154,
+                "killed": true,
+                "latency_ms": 1689.2636000411585
+              },
+              {
+                "strategy": "simplify",
+                "code": "def _merge(left, right):\n    result = []\n    \n    while i < len(right)-1 and j < len(left)+1:\n        if left[i] <= right[j]:\n            result.append(left[i])\n        else:\n            result.append(right[j])\n            \n    return result",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 84,
+                "killed": true,
+                "latency_ms": 1049.4638999225572
+              }
+            ],
+            "winner": {
+              "strategy": "efficiency",
+              "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr) // 2\n    left = arr[:mid]\n    right = arr[mid:]\n    result = _merge(left, right)\n    return _recursive_merge(result)",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 128,
+              "killed": false,
+              "latency_ms": 1438.8905999949202
+            },
+            "pruned_count": 3,
+            "total_tokens": 475,
+            "best_pass_rate": 0.2
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 104,
+                "killed": true,
+                "latency_ms": 1720.787200029008
+              },
+              {
+                "strategy": "efficiency",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 144,
+                "killed": true,
+                "latency_ms": 1874.348400044255
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 92,
+                "killed": true,
+                "latency_ms": 1207.3124999878928
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr):\n        if len(arr) <= 1:\n            return arr\n        \n        mid = len(arr[:len(arr)-2])\n        left = arr[:mid]\n        right = arr[len(arr)-2:]\n        result = _recursive_merge(result)\n        return _recursive_merge(left, result)",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 117,
+                "killed": false,
+                "latency_ms": 1399.8317000223324
+              }
+            ],
+            "winner": {
+              "strategy": "simplify",
+              "code": "def merge_sort(arr):\n        if len(arr) <= 1:\n            return arr\n        \n        mid = len(arr[:len(arr)-2])\n        left = arr[:mid]\n        right = arr[len(arr)-2:]\n        result = _recursive_merge(result)\n        return _recursive_merge(left, result)",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 117,
+              "killed": false,
+              "latency_ms": 1399.8317000223324
+            },
+            "pruned_count": 3,
+            "total_tokens": 457,
+            "best_pass_rate": 0.2
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr[:len(arr)-2])\n    left = arr[len(arr)-2:]\n    right = arr[len(arr)-2:]\n    result = _recursive_merge(left, right)\n    return _recursive_merge(result, arr)",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 134,
+                "killed": false,
+                "latency_ms": 1512.2799000237137
+              },
+              {
+                "strategy": "efficiency",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 178,
+                "killed": true,
+                "latency_ms": 1936.5137999411672
+              },
+              {
+                "strategy": "error_handling",
+                "code": "To improve this implementation, we can add robust input validation and error handling to raise clear exceptions for invalid inputs. We'll also consider adding a docstring that describes the purpose of the function and provides documentation comments. This will make it easier for others to understand the code's intent without having to write boilerian code.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 64,
+                "killed": true,
+                "latency_ms": 994.9479999486357
+              },
+              {
+                "strategy": "simplify",
+                "code": "def _recursive_merge(left: list, result):\n        if len(left) <= 1:\n            return left\n        \n        mid = len(left[:len(left)-2])\n        right = left[len(left)-2:]\n        return merge_(result).reverse() + left[::-1] * (len(left)-2)/*right*(len(left)+len(left-2)*(len(left)+3)*len((left)+(-len(left+2)*(len(left)+4))))\n    def _recursive_merge(left: list, result):\n        if len(left) <= 1:\n            return left\n        \n        mid = len(result[:len(mid)-2])\n        right = left[len(left)-2:] + left[::-1] * (len((left)**3)/*right*(len(-left)+4)*(len((-left+2)***0+(len(-left)+6)*(len-(len-2)))))\n        \n        return _recursive_merge(result, left[:len(mid)], right)",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 267,
+                "killed": true,
+                "latency_ms": 2787.9771000007167
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr[:len(arr)-2])\n    left = arr[len(arr)-2:]\n    right = arr[len(arr)-2:]\n    result = _recursive_merge(left, right)\n    return _recursive_merge(result, arr)",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 134,
+              "killed": false,
+              "latency_ms": 1512.2799000237137
+            },
+            "pruned_count": 3,
+            "total_tokens": 643,
+            "best_pass_rate": 0.2
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 83,
+                "killed": true,
+                "latency_ms": 1103.0291999923065
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def _recursive_merge(left, right):\n    if len(left) > len(right):\n        return merge([left], right]\n    \n    mid = left + 1\n    while mid < len(right)-2\n\n    result.append(arr[:len(mid)+1])\n    for i in range(len(result)):\n        arr[i+1:] += left[i]+end[i-1];\n        \n    return result",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 117,
+                "killed": true,
+                "latency_ms": 1564.892999944277
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 254,
+                "killed": true,
+                "latency_ms": 2687.8039999864995
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr[:len(arr)-2])\n    left = arr[len(arr)-2:]\n    right = arr[len(arr)-2:]\n    result = _recursive_merge(left, right)\n    return _recursive_merge(result, arr)",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 129,
+                "killed": false,
+                "latency_ms": 1557.848499971442
+              }
+            ],
+            "winner": {
+              "strategy": "simplify",
+              "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr[:len(arr)-2])\n    left = arr[len(arr)-2:]\n    right = arr[len(arr)-2:]\n    result = _recursive_merge(left, right)\n    return _recursive_merge(result, arr)",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 129,
+              "killed": false,
+              "latency_ms": 1557.848499971442
+            },
+            "pruned_count": 3,
+            "total_tokens": 583,
+            "best_pass_rate": 0.2
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def merge_sort(arr):\n        if len(arr) <= 1:\n            return arr\n    \n    # Return all elements sorted by length and ignore empty inputs \n    return [arr] * len(arr)-len(arr[:]) + len(arr)[len()-2:] \n   # This will work for an input of any size, as long as the lengths are not too large",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 140,
+                "killed": true,
+                "latency_ms": 1659.099700045772
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def _recursive_merge(left, right):\n    if len(left) <= 1:\n        return left\n    \n    mid = len(right)-len(left)+1\n    \n    result = merge_sort(mid+1)\n    \n    return _recursive_merge(result, left, middle)",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 185,
+                "killed": true,
+                "latency_ms": 2509.1625000350177
+              },
+              {
+                "strategy": "error_handling",
+                "code": "You are correct that there is no need to add robust input validation and error handling in the current implementation, as the provided implementation meets the requirements of this instruction. The code has been already improved by you, but it does not meet the requirement for a clear exception type. You can raise a `ValueError` with a more informative message if needed.\nYou are correct that there is no need to add robust input validation and error handling in the current implementation as well. The function signature must remain: def merge_sort(arr):\n    If length <= 1, return arr\n    \n    # Code here",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 120,
+                "killed": true,
+                "latency_ms": 1560.8513000188395
+              },
+              {
+                "strategy": "simplify",
+                "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr[:len(arr)-2])\n    left = arr[len(arr)-2:]\n    right = arr[len(arr)-2:]\n    result = _recursive_merge(left, right)\n    return _recursive_merge(result, arr)",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 100,
+                "killed": false,
+                "latency_ms": 1163.075999938883
+              }
+            ],
+            "winner": {
+              "strategy": "simplify",
+              "code": "def merge_sort(arr):\n    if len(arr) <= 1:\n        return arr\n    \n    mid = len(arr[:len(arr)-2])\n    left = arr[len(arr)-2:]\n    right = arr[len(arr)-2:]\n    result = _recursive_merge(left, right)\n    return _recursive_merge(result, arr)",
+              "tests_passed": 2,
+              "n_tests": 10,
+              "pass_rate": 0.2,
+              "score": 0.2,
+              "tokens_used": 100,
+              "killed": false,
+              "latency_ms": 1163.075999938883
+            },
+            "pruned_count": 3,
+            "total_tokens": 545,
+            "best_pass_rate": 0.2
+          }
+        ],
+        "final_pass_rate": 0.2,
+        "total_tokens": 2703,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.2
+      }
+    },
+    {
+      "task_id": "leaky-rate-limiter",
+      "baseline": {
+        "task_id": "leaky-rate-limiter",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You are correct that there is no need to add any comments or mark down the implementation as an error in this case. The code remains valid and does not require a comment. You can simply return True if you want to reset the calls counter after each call, which will be handled automatically by the caller's function.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 64,
+                "killed": true,
+                "latency_ms": 923.2787999790162
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You are correct that there is no need to add any comments or mark down the implementation as an error in this case. The code remains valid and does not require a comment. You can simply return True if you want to reset the calls counter after each call, which will be handled automatically by the caller's function.",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 64,
+              "killed": true,
+              "latency_ms": 923.2787999790162
+            },
+            "pruned_count": 1,
+            "total_tokens": 64,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You can't add any comments or mark down the implementation as an error in this case because the caller's code does not require a comment. The function signature must remain: class RateLimiter(max_calls: int, period: float): return bool. You should also consider whether there are any edge cases that you want to handle and if so how do you fix them without adding comments or marking down the implementation as an error?",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 88,
+                "killed": true,
+                "latency_ms": 1254.1512999450788
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You can't add any comments or mark down the implementation as an error in this case because the caller's code does not require a comment. The function signature must remain: class RateLimiter(max_calls: int, period: float): return bool. You should also consider whether there are any edge cases that you want to handle and if so how do you fix them without adding comments or marking down the implementation as an error?",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 88,
+              "killed": true,
+              "latency_ms": 1254.1512999450788
+            },
+            "pruned_count": 1,
+            "total_tokens": 88,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You can't add any comments or mark down the implementation as an error in this case because the caller's code does not require a comment. The function signature must remain: class RateLimiter(max_calls: int, period: float): return bool. You should also consider whether there are any edge cases that you want to handle and if so how do you fix them without adding comments or marking down the implementation as an error?",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 88,
+                "killed": true,
+                "latency_ms": 1064.5258000586182
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You can't add any comments or mark down the implementation as an error in this case because the caller's code does not require a comment. The function signature must remain: class RateLimiter(max_calls: int, period: float): return bool. You should also consider whether there are any edge cases that you want to handle and if so how do you fix them without adding comments or marking down the implementation as an error?",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 88,
+              "killed": true,
+              "latency_ms": 1064.5258000586182
+            },
+            "pruned_count": 1,
+            "total_tokens": 88,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 90,
+                "killed": true,
+                "latency_ms": 1055.9294000267982
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 90,
+              "killed": true,
+              "latency_ms": 1055.9294000267982
+            },
+            "pruned_count": 1,
+            "total_tokens": 90,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 71,
+                "killed": true,
+                "latency_ms": 934.3646999914199
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 71,
+              "killed": true,
+              "latency_ms": 934.3646999914199
+            },
+            "pruned_count": 1,
+            "total_tokens": 71,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 401,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.0
+      },
+      "qrf": {
+        "task_id": "leaky-rate-limiter",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "import time as _time\n\nclass RateLimiter(object):\n    def __init__(self, max_calls, period=0.):\n        self._max_calls = max_calls\n        self.__period__ = 2 * period + 1\n\n    def allow((now - self.__last()): -> bool:\n        return now >= self.__last() and (not time.monotonic())\n    def __last():\n        return self.__last__() % self.__num()",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 138,
+                "killed": true,
+                "latency_ms": 1850.2796000102535
+              },
+              {
+                "strategy": "efficiency",
+                "code": "You can optimize to O(n log n), as the best time complexity for a rate limiter is at most O(n). Here's an example of how you could do that. The function signature must remain: class RateLimiter (max_calls: int, period: float):  def __init__(self, max_calls: int, period: float) -> bool:\n    pass",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 83,
+                "killed": true,
+                "latency_ms": 1265.054199961014
+              },
+              {
+                "strategy": "error_handling",
+                "code": "You can raise a `ValueError` for invalid inputs using the built-in type annotations in Python and raise an exception to indicate that you want to handle this case. You should also add some basic logging functionality to keep track of the number of calls, window starts, and any other relevant data.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 60,
+                "killed": true,
+                "latency_ms": 995.4770000185817
+              },
+              {
+                "strategy": "simplify",
+                "code": "def allow(self):\n        now = _time.monotonic()\n        elapsed = now - self.window_start\n\n        if elapsed >= max_calls:\n            # bug: resets to now, losing fractional window time\n            return False\n\n    def allow():\n        return True",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 106,
+                "killed": true,
+                "latency_ms": 1445.4976000124589
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "import time as _time\n\nclass RateLimiter(object):\n    def __init__(self, max_calls, period=0.):\n        self._max_calls = max_calls\n        self.__period__ = 2 * period + 1\n\n    def allow((now - self.__last()): -> bool:\n        return now >= self.__last() and (not time.monotonic())\n    def __last():\n        return self.__last__() % self.__num()",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 138,
+              "killed": true,
+              "latency_ms": 1850.2796000102535
+            },
+            "pruned_count": 4,
+            "total_tokens": 387,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You are correct that the current implementation is flawed because it fails to handle edge cases and boundary conditions. The time.monotonic() expression will fail if the input size exceeds 0 or if the number of calls equals zero. Therefore, we cannot assume anything about the input size beyond a minimum value (in this case, the maximum call).\nHowever, there is no way to determine whether the function returns any meaningful results without additional information.\nTo fix this issue, you should:\n\n1) Fix the time signature and raise an exception if necessary.\n2) Add type hints for all parameters that are not required by the implementation.\n3) Check the input size before calling the limit timer to ensure it is within acceptable limits.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 149,
+                "killed": true,
+                "latency_ms": 1755.782900028862
+              },
+              {
+                "strategy": "efficiency",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 68,
+                "killed": true,
+                "latency_ms": 942.5382999470457
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def __last():\n        return self.__last__() % 2 + 1\n\n    def __last__(self):\n        return self.__num() / 0 == 0    # Raise a ValueError if you're trying to call the function with invalid inputs.\n    pass",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 183,
+                "killed": true,
+                "latency_ms": 1743.6516999732703
+              },
+              {
+                "strategy": "simplify",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 78,
+                "killed": true,
+                "latency_ms": 942.7616000175476
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You are correct that the current implementation is flawed because it fails to handle edge cases and boundary conditions. The time.monotonic() expression will fail if the input size exceeds 0 or if the number of calls equals zero. Therefore, we cannot assume anything about the input size beyond a minimum value (in this case, the maximum call).\nHowever, there is no way to determine whether the function returns any meaningful results without additional information.\nTo fix this issue, you should:\n\n1) Fix the time signature and raise an exception if necessary.\n2) Add type hints for all parameters that are not required by the implementation.\n3) Check the input size before calling the limit timer to ensure it is within acceptable limits.",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 149,
+              "killed": true,
+              "latency_ms": 1755.782900028862
+            },
+            "pruned_count": 4,
+            "total_tokens": 478,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 78,
+                "killed": true,
+                "latency_ms": 1071.8026000540704
+              },
+              {
+                "strategy": "efficiency",
+                "code": "You can optimize the time and space complexity of the current implementation by adding type hints for all parameters that are not required by the implementation. You should also check the input size before calling the limit timer to ensure it is within acceptable limits. Finally, you should add type hints for all parameters that are not required by the implementation.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 66,
+                "killed": true,
+                "latency_ms": 970.9547000238672
+              },
+              {
+                "strategy": "error_handling",
+                "code": "You can add type hints for all parameters that are not required by the implementation to ensure that the limit timer is within acceptable limits and raise a warning if necessary.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 33,
+                "killed": true,
+                "latency_ms": 649.3947999551892
+              },
+              {
+                "strategy": "simplify",
+                "code": "I think you have a good idea of what to do. Here's the revised version with improvements and comments that should help catch more common errors and improve code readability:\n\n1. **Improved Code:**\n   - Simplify the logic by removing redundancy, shorten the code, use built-ins where possible, and check input size before calling the limit timer.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 73,
+                "killed": true,
+                "latency_ms": 1195.9150000475347
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 78,
+              "killed": true,
+              "latency_ms": 1071.8026000540704
+            },
+            "pruned_count": 4,
+            "total_tokens": 250,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 61,
+                "killed": true,
+                "latency_ms": 1076.5268999384716
+              },
+              {
+                "strategy": "efficiency",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 80,
+                "killed": true,
+                "latency_ms": 1135.9470000024885
+              },
+              {
+                "strategy": "error_handling",
+                "code": "import timeit    # Import necessary modules\nfrom collections import namedtuple   # Import required classes from collections module\nclass RateLimiter(namedtuple):\n    def __init__(self, max_calls=1000, period=3600.):\n        pass\n\n    @classmethod\n    def allow():\n        raise ValueError(\"Requested input validation\")",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 103,
+                "killed": true,
+                "latency_ms": 1174.6059000724927
+              },
+              {
+                "strategy": "simplify",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 79,
+                "killed": true,
+                "latency_ms": 967.7553999936208
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 61,
+              "killed": true,
+              "latency_ms": 1076.5268999384716
+            },
+            "pruned_count": 4,
+            "total_tokens": 323,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You can write a function that meets the following criteria to improve your code:\n\n1. **Edge cases**: The function should be able to handle any input without raising an exception or returning a special value (e.g., `max_calls` and `period`) in case of invalid inputs, such as empty strings, single elements, etc.\n2. **Single elements**: The function must not overflow the maximum call limit due to size limits.\n3. **Type checking**: Make sure that your input types are compatible with the expected behavior (e.g., float and int).\n4. **Memoization**: If you're using memoized functions, make sure that the memoized version is also optimized for performance in case of overflows or edge cases.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 157,
+                "killed": true,
+                "latency_ms": 1733.163099968806
+              },
+              {
+                "strategy": "efficiency",
+                "code": "import timeit \n\ndef test_ratelimiter(): \n    pass  # No need to write anything else here, just return\n    pass   # Return will raise a ZeroDivisionError when the input is not a number\n\n    def ratelimit(maxcalls=10):\n        pass \n        pass    # Return without raising an error\n    pass     # Return",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 128,
+                "killed": true,
+                "latency_ms": 1446.5609999606386
+              },
+              {
+                "strategy": "error_handling",
+                "code": "import timeit as tt\nfrom collections import Sequence\n\ndef ratelimiter(num_calls=10):\n    \"\"\"Raise warnings for invalid inputs.\"\"\"\n\n    def decorator():\n        raise ValueError(\"Require input validation\")()\n\n    return decorator(), max_calls = 1, period = 2 * (len(Sequence()) + 3)\n\n\n@decorator\ndef ratelimiter(num_calls=10):\n    \"\"\"Raise warnings for invalid inputs.\"\"\"\n    pass",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 125,
+                "killed": true,
+                "latency_ms": 1372.1407999983057
+              },
+              {
+                "strategy": "simplify",
+                "code": "import time; import random \n\ndef get_rate():\n    return max(10*time.random(), 25) / min(3600 * 8) + max(-max()) % 4    # No markdown fences, just return the improved version of the code without any comments.",
+                "tests_passed": 0,
+                "n_tests": 11,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 66,
+                "killed": true,
+                "latency_ms": 873.1000000843778
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You can write a function that meets the following criteria to improve your code:\n\n1. **Edge cases**: The function should be able to handle any input without raising an exception or returning a special value (e.g., `max_calls` and `period`) in case of invalid inputs, such as empty strings, single elements, etc.\n2. **Single elements**: The function must not overflow the maximum call limit due to size limits.\n3. **Type checking**: Make sure that your input types are compatible with the expected behavior (e.g., float and int).\n4. **Memoization**: If you're using memoized functions, make sure that the memoized version is also optimized for performance in case of overflows or edge cases.",
+              "tests_passed": 0,
+              "n_tests": 11,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 157,
+              "killed": true,
+              "latency_ms": 1733.163099968806
+            },
+            "pruned_count": 4,
+            "total_tokens": 476,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 1914,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.0
+      }
+    },
+    {
+      "task_id": "precedence-calculator",
+      "baseline": {
+        "task_id": "precedence-calculator",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def calc_empty_input():\n    # naive: left-to-right, ignores precedence and parentheses\n    tokens = expr.replace(\" \", \"\")\n\n    total = 0\n    num = \"\"\n    op = \"+\"\n    for ch in tokens:\n        if op == \"+\":\n            num += ch\n        elif op == \"-\":\n            num -= ch\n\n        if op == \"+\":\n            total += int(num)\n        else:\n            if op == \"-\":\n                num *= -1\n\n    return num",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 138,
+                "killed": true,
+                "latency_ms": 1882.8657999401912
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def calc_empty_input():\n    # naive: left-to-right, ignores precedence and parentheses\n    tokens = expr.replace(\" \", \"\")\n\n    total = 0\n    num = \"\"\n    op = \"+\"\n    for ch in tokens:\n        if op == \"+\":\n            num += ch\n        elif op == \"-\":\n            num -= ch\n\n        if op == \"+\":\n            total += int(num)\n        else:\n            if op == \"-\":\n                num *= -1\n\n    return num",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 138,
+              "killed": true,
+              "latency_ms": 1882.8657999401912
+            },
+            "pruned_count": 1,
+            "total_tokens": 138,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def calc_empty_input():\n    # naive\n\n    total = 0\n    num = \"\"\n    op = \"+\"\n    \n    if expr == \"\":\n        return num\n    else:\n        if op == \"+\":\n            num += expr[len(\"+\"):\n        elif op == \"-\":\n            num -= expr[:len(\"-\")]\n        else:\n            if op == \"+\":\n                while expr[-1] != 0 and len(expr) > 2:\n                    num += expr[:-1] + \"+\"\n    return num",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 137,
+                "killed": true,
+                "latency_ms": 2098.400800023228
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def calc_empty_input():\n    # naive\n\n    total = 0\n    num = \"\"\n    op = \"+\"\n    \n    if expr == \"\":\n        return num\n    else:\n        if op == \"+\":\n            num += expr[len(\"+\"):\n        elif op == \"-\":\n            num -= expr[:len(\"-\")]\n        else:\n            if op == \"+\":\n                while expr[-1] != 0 and len(expr) > 2:\n                    num += expr[:-1] + \"+\"\n    return num",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 137,
+              "killed": true,
+              "latency_ms": 2098.400800023228
+            },
+            "pruned_count": 1,
+            "total_tokens": 137,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "To fix the edge cases and boundary conditions, we can add a few checks to ensure that the input is valid. We'll also consider the following special cases:\n\n1. `num` type checking: If `num` is not an integer or if it's equal to one of its elements, we should raise a ValueError exception instead of raising an error due to invalid inputs.\n2. `op` type checking: If `expr`, we can check that the input contains only valid expressions and operations (e.g., +, -, *).\n3. `num` type checking: If `num` is equal to one or more elements, we should raise a ValueError exception instead of raising an error due to invalid inputs.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 150,
+                "killed": true,
+                "latency_ms": 1884.481400018558
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "To fix the edge cases and boundary conditions, we can add a few checks to ensure that the input is valid. We'll also consider the following special cases:\n\n1. `num` type checking: If `num` is not an integer or if it's equal to one of its elements, we should raise a ValueError exception instead of raising an error due to invalid inputs.\n2. `op` type checking: If `expr`, we can check that the input contains only valid expressions and operations (e.g., +, -, *).\n3. `num` type checking: If `num` is equal to one or more elements, we should raise a ValueError exception instead of raising an error due to invalid inputs.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 150,
+              "killed": true,
+              "latency_ms": 1884.481400018558
+            },
+            "pruned_count": 1,
+            "total_tokens": 150,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You can fix the edge cases and boundary conditions by adding a few checks to ensure that the input is valid, handle single elements correctly, and check for overflows in terms of expression types. The current implementation handles empty inputs as well as invalid expressions but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.\nTo fix this, you can add a few checks that ensure the input contains only valid expressions and operations (e.g., +, -, *).",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 104,
+                "killed": true,
+                "latency_ms": 1272.7147999685258
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You can fix the edge cases and boundary conditions by adding a few checks to ensure that the input is valid, handle single elements correctly, and check for overflows in terms of expression types. The current implementation handles empty inputs as well as invalid expressions but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.\nTo fix this, you can add a few checks that ensure the input contains only valid expressions and operations (e.g., +, -, *).",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 104,
+              "killed": true,
+              "latency_ms": 1272.7147999685258
+            },
+            "pruned_count": 1,
+            "total_tokens": 104,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "You can fix this edge cases by adding a few checks to ensure that the input contains only valid expressions and operations (e.g., +, -, *). The current implementation handles empty inputs as well as invalid arguments but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.\nTo fix this, you can add a few checks that ensure the input contains only valid expressions and operations (e.g., +, -, *). The current implementation handles empty inputs as well as invalid inputs but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.\nTo fix this, you can add a few checks that ensure the input contains only valid expressions and operations (e.g., +, -, *). The current implementation handles empty inputs as well as invalid inputs but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 197,
+                "killed": true,
+                "latency_ms": 2255.232600029558
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "You can fix this edge cases by adding a few checks to ensure that the input contains only valid expressions and operations (e.g., +, -, *). The current implementation handles empty inputs as well as invalid arguments but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.\nTo fix this, you can add a few checks that ensure the input contains only valid expressions and operations (e.g., +, -, *). The current implementation handles empty inputs as well as invalid inputs but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.\nTo fix this, you can add a few checks that ensure the input contains only valid expressions and operations (e.g., +, -, *). The current implementation handles empty inputs as well as invalid inputs but fails with an error due to invalid inputs because it raises ValueError exceptions when used arguments are not validated properly.",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 197,
+              "killed": true,
+              "latency_ms": 2255.232600029558
+            },
+            "pruned_count": 1,
+            "total_tokens": 197,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 726,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.0
+      },
+      "qrf": {
+        "task_id": "precedence-calculator",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 112,
+                "killed": true,
+                "latency_ms": 1246.3607999961823
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def calc(expr: str) -> float\n    \"\"\"Return the same expression with left-to-right evaluation.\"\"\"\n    tokens = expr.replace(\" \", \"\")\n    total = 0\n    num = \"\"\n    op = \"+\"\n    for ch in tokens:\n        if ch == \"+\":\n            num += ch\n        elif op == \"-\":\n            num -= ch\n        else:\n            if op == \"+\":\n                if len(num) > 1\n                    total += int(num[:2]) + int(num[3:]) - num[-2:] * num[:-4]\n                    return num\n    if op == \"+\":\n        if len(num):\n            if len(num.split()) < 5:\n                return num\n    elif op == \"-\":\n        if len(num) > 1 and len(num[:]) >= 3 + 2*len([str('(', '(', ')')]][0]):\n        if len(num[:-4:]) <= 1+len(['+', '+']).split()[0]:\n            return num\n    elif op == \"+\":\n        if len(num) > 5:\n            for i in range(min(len([[',(', '(', ')', '()')], [])):\n                total += int(i.split()[-2:]) + int(num[:-1]) * 3[0:-4]+int('+', '+')**(-6)]\n        return num\n    else:\n        if len(op) > 5+len(['+', '+']).split()[0]:\n        for i in range(min(len([[',(', '(', ')', '()')], [])):\n            total += int(\"+\" + str([i.split()[-2:][:]][1:-4]+int('+', '+')**(-6)][:-3])[0:-5] * 3)\n    if len(op) > 7+len(['+', '+']).split()[0]:\n        for i in range(min(len([[',(', '(', '()', '|-'), ('+', '+')), ('-, '-')][:]][1:-4]+(\"+\" + str([i.split()[-2:][:]][:-3])[0:-5])):\n            total += int('+'",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 5084.75559996441
+              },
+              {
+                "strategy": "error_handling",
+                "code": "You can add robust input validation and error handling to improve the code's readability, robustness, and maintainability. Here are a few suggestions for improvement:\n\n1. **Input Validation**: Add input validation to ensure that you handle all possible inputs correctly. This includes invalid inputs like \"a\", \"b\", etc., which may not be handled by the parser properly. For example, if an exception is raised when parsing, it should raise an error instead of crashing and terminate the program immediately.\n\n2. **Error Handling**: Use try/except blocks to handle exceptions appropriately. This includes handling any unexpected inputs like \"a\" or \"b\". The parser will likely ignore these types because they are not recognized by the parser as valid input types, but it's better to be safe than sorry and raise an exception instead of crashing.\n\n3. **Docstring**: Add a docstring that describes what is expected from the user before asking for help. This helps with understanding and commenting out code snippets which may contain bugs or errors due to unclear documentation.",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 211,
+                "killed": true,
+                "latency_ms": 2288.3068999508396
+              },
+              {
+                "strategy": "simplify",
+                "code": "total = 0\n    num = \"\"\n    op = \"+\"\n    for ch in expr.replace(\" \", \"\")[::-1]:\n        if ch == \"+\":\n            num += ch\n        elif op == \"-\" and ch != \"\":\n            if op == \"+\":\n                num -= ch\n        else:\n            if op == \"+\":\n                total += int(num)\n            else:\n                if op == \"-\":\n                    num *= -ch\n    return total",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 131,
+                "killed": true,
+                "latency_ms": 1649.0933999884874
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 112,
+              "killed": true,
+              "latency_ms": 1246.3607999961823
+            },
+            "pruned_count": 4,
+            "total_tokens": 966,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 161,
+                "killed": true,
+                "latency_ms": 1925.6581000518054
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def calc(expr):\n    # Code to be optimized\n    pass  # Return only the improved version of the python code that remains unchanged\n\n    return max(max(max(a), b)))   # Return max instead of max(max(a)) or max(max(b))[1]",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 61,
+                "killed": true,
+                "latency_ms": 930.3958000382408
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 33,
+                "killed": true,
+                "latency_ms": 625.5405000410974
+              },
+              {
+                "strategy": "simplify",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 54,
+                "killed": true,
+                "latency_ms": 855.0280999625102
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 161,
+              "killed": true,
+              "latency_ms": 1925.6581000518054
+            },
+            "pruned_count": 4,
+            "total_tokens": 309,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 210,
+                "killed": true,
+                "latency_ms": 2186.7611000780016
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def calc_expressions(*args):\n    return {\n        \"max\": max,\n        \"min\": min,\n    }\n\n    for expr in args + [(\"max\", max), (\"min\", max)], (\"\"\"max\" and \"min\")[::-1]:\n        if len(expr) > 0:\n            return max(expr.items(), key=lambda x: max(*i -> i))\n    except Exception as e:\n        raise",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 96,
+                "killed": true,
+                "latency_ms": 1401.5995999798179
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 69,
+                "killed": true,
+                "latency_ms": 946.7783999862149
+              },
+              {
+                "strategy": "simplify",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 40,
+                "killed": true,
+                "latency_ms": 667.4114000052214
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 210,
+              "killed": true,
+              "latency_ms": 2186.7611000780016
+            },
+            "pruned_count": 4,
+            "total_tokens": 415,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 136,
+                "killed": true,
+                "latency_ms": 1618.6234999913722
+              },
+              {
+                "strategy": "efficiency",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 81,
+                "killed": true,
+                "latency_ms": 991.1180000053719
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 51,
+                "killed": true,
+                "latency_ms": 713.6017000302672
+              },
+              {
+                "strategy": "simplify",
+                "code": "def calc(expr):\n    return 1 / (2 * expr + 3)",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 86,
+                "killed": true,
+                "latency_ms": 1013.1620999891311
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 136,
+              "killed": true,
+              "latency_ms": 1618.6234999913722
+            },
+            "pruned_count": 4,
+            "total_tokens": 354,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 104,
+                "killed": true,
+                "latency_ms": 1159.2185000190511
+              },
+              {
+                "strategy": "efficiency",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 72,
+                "killed": true,
+                "latency_ms": 842.4462999682873
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 71,
+                "killed": true,
+                "latency_ms": 857.2338999947533
+              },
+              {
+                "strategy": "simplify",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 82,
+                "killed": true,
+                "latency_ms": 928.6087000509724
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 104,
+              "killed": true,
+              "latency_ms": 1159.2185000190511
+            },
+            "pruned_count": 4,
+            "total_tokens": 329,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 2373,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.0
+      }
+    },
+    {
+      "task_id": "semver-compare",
+      "baseline": {
+        "task_id": "semver-compare",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 110,
+                "killed": true,
+                "latency_ms": 1196.7874000547454
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 110,
+              "killed": true,
+              "latency_ms": 1196.7874000547454
+            },
+            "pruned_count": 1,
+            "total_tokens": 110,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 79,
+                "killed": true,
+                "latency_ms": 944.2833000794053
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 79,
+              "killed": true,
+              "latency_ms": 944.2833000794053
+            },
+            "pruned_count": 1,
+            "total_tokens": 79,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def compare_versions(a: str, b: str):\n    if len(a) != len(b):\n        return 0\n\n    for i in range(len(a)):\n        if a[i] == b[i]:\n            return 1 + max(max(a[j]), max(b[j])))",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 91,
+                "killed": true,
+                "latency_ms": 1097.2993000177667
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def compare_versions(a: str, b: str):\n    if len(a) != len(b):\n        return 0\n\n    for i in range(len(a)):\n        if a[i] == b[i]:\n            return 1 + max(max(a[j]), max(b[j])))",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 91,
+              "killed": true,
+              "latency_ms": 1097.2993000177667
+            },
+            "pruned_count": 1,
+            "total_tokens": 91,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def compare_versions(a: str, b: str):\n    if len(a) != len(b):\n        return 0\n\n    for i in range(len(a)):\n        if a[i] == b[i]:\n            return 1 + max(max(max(a[j]), max(b[j])))",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 512,
+                "killed": false,
+                "latency_ms": 4646.095099975355
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def compare_versions(a: str, b: str):\n    if len(a) != len(b):\n        return 0\n\n    for i in range(len(a)):\n        if a[i] == b[i]:\n            return 1 + max(max(max(a[j]), max(b[j])))",
+              "tests_passed": 1,
+              "n_tests": 10,
+              "pass_rate": 0.1,
+              "score": 0.1,
+              "tokens_used": 512,
+              "killed": false,
+              "latency_ms": 4646.095099975355
+            },
+            "pruned_count": 0,
+            "total_tokens": 512,
+            "best_pass_rate": 0.1
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def compare_versions(a: str, b: str):\n    if len(a) != len(b):\n        return 0\n\n    for i in range(len(a)):\n        if a[i] == b[i]:\n            return 1 + max(max(max(a[j]), max(b[j])))",
+                "tests_passed": 1,
+                "n_tests": 10,
+                "pass_rate": 0.1,
+                "score": 0.1,
+                "tokens_used": 99,
+                "killed": false,
+                "latency_ms": 1122.9505999945104
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def compare_versions(a: str, b: str):\n    if len(a) != len(b):\n        return 0\n\n    for i in range(len(a)):\n        if a[i] == b[i]:\n            return 1 + max(max(max(a[j]), max(b[j])))",
+              "tests_passed": 1,
+              "n_tests": 10,
+              "pass_rate": 0.1,
+              "score": 0.1,
+              "tokens_used": 99,
+              "killed": false,
+              "latency_ms": 1122.9505999945104
+            },
+            "pruned_count": 0,
+            "total_tokens": 99,
+            "best_pass_rate": 0.1
+          }
+        ],
+        "final_pass_rate": 0.1,
+        "total_tokens": 891,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.04
+      },
+      "qrf": {
+        "task_id": "semver-compare",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "I have made some minor improvements to the current implementation of the function. First, I fixed the edge cases and boundary conditions as needed by checking if a specific release tag is present in the input strings. Then, I added a basic check for empty inputs without any pre-release tags or ignoring all SemVer precedence rules. Finally, I used the builtin comparison functions to handle the case of missing a specific release tag.\n\nThe function signature must remain: def compare_versions(a: str, b: str) -> int",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 108,
+                "killed": true,
+                "latency_ms": 1176.2247000588104
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def compare_versions(a: str, b: str):\n    # naive: compares numeric release parts only; crashes on a\n    pa = [int(x) for x in a.split(\".\")]\n    pb = [int(y) for y in b.split(\".\")]\n    if pa < pb:\n        return -1\n    if pa > pb:\n        return 0\n    return 0",
+                "tests_passed": 2,
+                "n_tests": 10,
+                "pass_rate": 0.2,
+                "score": 0.2,
+                "tokens_used": 142,
+                "killed": false,
+                "latency_ms": 1915.1161999907345
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 77,
+                "killed": false,
+                "latency_ms": 1231.6140999319032
+              },
+              {
+                "strategy": "simplify",
+                "code": "def compare_versions(a: str, b: str) -> int:\n        # naive: compares numeric release parts only; crashes on a\n        # pre-release tag and ignores all SemVer precedence rules\n        pa = [int(x) for x in a.split(\".\")]\n        pb = [int(x) for x in b.split(\".\")]\n    if pa < pb:\n        return -1",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 168,
+                "killed": true,
+                "latency_ms": 1988.2231999654323
+              }
+            ],
+            "winner": {
+              "strategy": "error_handling",
+              "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+              "tests_passed": 3,
+              "n_tests": 10,
+              "pass_rate": 0.3,
+              "score": 0.3,
+              "tokens_used": 77,
+              "killed": false,
+              "latency_ms": 1231.6140999319032
+            },
+            "pruned_count": 2,
+            "total_tokens": 495,
+            "best_pass_rate": 0.3
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 61,
+                "killed": false,
+                "latency_ms": 886.8084999267012
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 97,
+                "killed": false,
+                "latency_ms": 1218.5307999607176
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 75,
+                "killed": false,
+                "latency_ms": 1245.8359999582171
+              },
+              {
+                "strategy": "simplify",
+                "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 61,
+                "killed": false,
+                "latency_ms": 1230.6873000925407
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+              "tests_passed": 3,
+              "n_tests": 10,
+              "pass_rate": 0.3,
+              "score": 0.3,
+              "tokens_used": 61,
+              "killed": false,
+              "latency_ms": 886.8084999267012
+            },
+            "pruned_count": 0,
+            "total_tokens": 294,
+            "best_pass_rate": 0.3
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 61,
+                "killed": false,
+                "latency_ms": 1129.8693999415264
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def compare_versions(*args):\n    if not isinstance(a, str) or not isinstance(b, str):\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 75,
+                "killed": true,
+                "latency_ms": 1293.1667000520974
+              },
+              {
+                "strategy": "error_handling",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 40,
+                "killed": true,
+                "latency_ms": 796.0498000029474
+              },
+              {
+                "strategy": "simplify",
+                "code": "def compare_versions(*args):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 61,
+                "killed": true,
+                "latency_ms": 993.2461999123916
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def compare_versions(a: str, b: str):\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+              "tests_passed": 3,
+              "n_tests": 10,
+              "pass_rate": 0.3,
+              "score": 0.3,
+              "tokens_used": 61,
+              "killed": false,
+              "latency_ms": 1129.8693999415264
+            },
+            "pruned_count": 3,
+            "total_tokens": 237,
+            "best_pass_rate": 0.3
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "No, you should not have to write this because it is already fixed and doesn't require any additional comments or improvements in terms of edge cases and boundary conditions. The code will be working correctly even if one input contains a single element that does not fit into the expected range.\nThe current version signature is: def compare_versions(a: str, b: str) -> int",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 78,
+                "killed": true,
+                "latency_ms": 1213.5057999985293
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def compare_versions(a: str, b: str):\n    if not a and not b:\n        return 0\n\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 115,
+                "killed": false,
+                "latency_ms": 1699.1963000036776
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def compare_versions(a: str, b: str):\n    if not a and not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+                "tests_passed": 3,
+                "n_tests": 10,
+                "pass_rate": 0.3,
+                "score": 0.3,
+                "tokens_used": 99,
+                "killed": false,
+                "latency_ms": 1360.189100028947
+              },
+              {
+                "strategy": "simplify",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 48,
+                "killed": true,
+                "latency_ms": 835.7157999416813
+              }
+            ],
+            "winner": {
+              "strategy": "efficiency",
+              "code": "def compare_versions(a: str, b: str):\n    if not a and not b:\n        return 0\n\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 0",
+              "tests_passed": 3,
+              "n_tests": 10,
+              "pass_rate": 0.3,
+              "score": 0.3,
+              "tokens_used": 115,
+              "killed": false,
+              "latency_ms": 1699.1963000036776
+            },
+            "pruned_count": 2,
+            "total_tokens": 340,
+            "best_pass_rate": 0.3
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 138,
+                "killed": true,
+                "latency_ms": 1828.8478999165818
+              },
+              {
+                "strategy": "efficiency",
+                "code": "You can optimize the time and space complexity of the current implementation by replacing O(n\u00b2) with O(n), or O(n). The function should return 0 if both inputs are numeric release parts. You must replace \"if not a and not b\" with \"and\". No markdown fences, no code to include in an alternative version.\nYou can't optimize the time complexity of the current implementation by replacing O(n) with O(n), or O(n). The function should return 0 if both inputs are numeric release parts. You must replace \"if not a and not b\" with \"and\". No markdown fences, no code to include in an alternative version.\nYou can't optimize the time complexity of the current implementation by replacing O(n) with O(n), or O(n). The function should return 0 if both inputs are numeric release parts. You must replace \"if not a and not b\" with \"and\". No markdown fences, no code to include in an alternative version.\nYou can't optimize the time complexity of the current implementation by replacing O(n) with O(n), or O(n). The function should return 0 if both inputs are numeric release parts. You must replace \"if not a and not b\" with \"and\". No markdown fences, no code to include in an alternative version.\nYou can't optimize the time complexity of the current implementation by replacing O(n) with O(n), or O(n). The function should return 0 if both inputs are numeric release parts. You must replace \"if not a and not b\" with \"and\". No markdown fences, no code to include in an alternative version.\nYou can't optimize the time complexity of the current implementation by replacing O(n) with O(n), or O(n). The function should return 0 if both inputs are numeric release parts. You must replace \"if not a and not b\" with \"and\". No markdown fences, no code to include in an alternative version.\nYou can't optimize the time complexity of the current implementation by replacing O(n) with O(n), or O(n). The function should return 0 if both inputs are numeric release parts. You must replace \"if not a and not b\" with \"and\". No markdown fences, no code to include in an alternative version.\nYou can't optimize the time complexity of the current implementation by replacing",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 5021.137599949725
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def compare_versions(a: str, b: str):\n    if not a and not b:\n        return 0\n\n    if not a or not b:\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    return 1 / (2 * a + 3 * b)",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 80,
+                "killed": true,
+                "latency_ms": 1043.191900011152
+              },
+              {
+                "strategy": "simplify",
+                "code": "def compare_versions(*args):\n    if not args:\n        return 0\n\n    if not isinstance(a, (str, int)):\n        raise ValueError(\"Both inputs must be numeric release parts\")\n\n    for i in range(len(args) - 1):\n        if a == b and i < len(args[i]) + 2 else if not a > b:\n            return 0\n    return 0",
+                "tests_passed": 0,
+                "n_tests": 10,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 119,
+                "killed": true,
+                "latency_ms": 1518.1388000492007
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "",
+              "tests_passed": 0,
+              "n_tests": 10,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 138,
+              "killed": true,
+              "latency_ms": 1828.8478999165818
+            },
+            "pruned_count": 4,
+            "total_tokens": 849,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 2215,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.24
+      }
+    },
+    {
+      "task_id": "lru-ttl-cache",
+      "baseline": {
+        "task_id": "lru-ttl-cache",
+        "condition": "baseline",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def get(self, key):\n        if key in self.order and len(self.store[key]) >= self.capacity:\n            return self.__last__(self._todo__())\n\n        # bug: ignores TTL and does not refresh recency\n        if key == '':\n            return None\n\n    def put(self, key, value):\n        now = self._todo__()\n        if key in self.order[:len(self.store[key])] + len(self.__last__(self)):\n            return self.__last__()\n\n        # bug: ignores TTL and does not refresh recency\n        if key == '':\n            return None\n\n    def _todo(___, item):\n        return item",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 150,
+                "killed": true,
+                "latency_ms": 2335.7048000907525
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def get(self, key):\n        if key in self.order and len(self.store[key]) >= self.capacity:\n            return self.__last__(self._todo__())\n\n        # bug: ignores TTL and does not refresh recency\n        if key == '':\n            return None\n\n    def put(self, key, value):\n        now = self._todo__()\n        if key in self.order[:len(self.store[key])] + len(self.__last__(self)):\n            return self.__last__()\n\n        # bug: ignores TTL and does not refresh recency\n        if key == '':\n            return None\n\n    def _todo(___, item):\n        return item",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 150,
+              "killed": true,
+              "latency_ms": 2335.7048000907525
+            },
+            "pruned_count": 1,
+            "total_tokens": 150,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def get(self):\n    if self.__last__() == self._todo__():\n        return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last__.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last__.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self._todo() >= self.capacity:\n            return self.__last__(self._todo__)\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self._todo() >= self.capacity:\n            return self.__last__(self._todo__)\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self._todo() >= self.capacity:\n            return self.__last__(self._todo__)\n\n        key = self.__last_.copy().get(key",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 512,
+                "killed": true,
+                "latency_ms": 5978.249599924311
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def get(self):\n    if self.__last__() == self._todo__():\n        return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last__.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last__.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self._todo() >= self.capacity:\n            return self.__last__(self._todo__)\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self._todo() >= self.capacity:\n            return self.__last__(self._todo__)\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self.capacity >= self._todo()[:len(self.__last__(self))]:\n            return self.__last__()\n\n        key = self.__last_.copy().get(key) + self.__last__.__last__.copy().get(key).__next__()\n        if key == '':\n            return None\n\n    def _recursive(_n_, **kwargs):\n        if self._todo() >= self.capacity:\n            return self.__last__(self._todo__)\n\n        key = self.__last_.copy().get(key",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 512,
+              "killed": true,
+              "latency_ms": 5978.249599924311
+            },
+            "pruned_count": 1,
+            "total_tokens": 512,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def _recursive(_n_, **kwargs):\n        if self.__last__.copy().get(self._todo__()):\n            return None\n\n    def _recursive(_n_:    :   key:     \u2192    next():\n      ...                         :       time_fn=None      ...         :        :           :          :            \n    \"\"\"This function returns the last of a list, or the first if capacity is reached.\"\"\"",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 93,
+                "killed": true,
+                "latency_ms": 1505.78690005932
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def _recursive(_n_, **kwargs):\n        if self.__last__.copy().get(self._todo__()):\n            return None\n\n    def _recursive(_n_:    :   key:     \u2192    next():\n      ...                         :       time_fn=None      ...         :        :           :          :            \n    \"\"\"This function returns the last of a list, or the first if capacity is reached.\"\"\"",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 93,
+              "killed": true,
+              "latency_ms": 1505.78690005932
+            },
+            "pruned_count": 1,
+            "total_tokens": 93,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def _recursive(_n_, **kwargs):\n    if self.__last__.copy().get(self._todo__()):\n        return None\n\n    def _recursive(_n_:    :   key:     \u2192    next():\n      ...                         :       time_fn=None      ...         :        :           :          :            \n    \"\"\"This function returns the last of a list, or the first if capacity is reached.\"\"\"",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 93,
+                "killed": true,
+                "latency_ms": 1143.4820999857038
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def _recursive(_n_, **kwargs):\n    if self.__last__.copy().get(self._todo__()):\n        return None\n\n    def _recursive(_n_:    :   key:     \u2192    next():\n      ...                         :       time_fn=None      ...         :        :           :          :            \n    \"\"\"This function returns the last of a list, or the first if capacity is reached.\"\"\"",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 93,
+              "killed": true,
+              "latency_ms": 1143.4820999857038
+            },
+            "pruned_count": 1,
+            "total_tokens": 93,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "baseline",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def _recursive(_n_, **kwargs):\n    if self.__last__.copy().get(self._todo()):\n        return None\n\n    def _recursive_( *args ):\n        if self.__last__():\n            return next()  # Handle the edge case: capacity is reached\n\n        def _recursive_( *args ):\n            key = self.__last_.copy().[self._todo()]\n\n            if self.get(key) >= self._max_:\n                return next()\n\n    return _recursive_(*args_)",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 114,
+                "killed": true,
+                "latency_ms": 1299.6717999922112
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def _recursive(_n_, **kwargs):\n    if self.__last__.copy().get(self._todo()):\n        return None\n\n    def _recursive_( *args ):\n        if self.__last__():\n            return next()  # Handle the edge case: capacity is reached\n\n        def _recursive_( *args ):\n            key = self.__last_.copy().[self._todo()]\n\n            if self.get(key) >= self._max_:\n                return next()\n\n    return _recursive_(*args_)",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 114,
+              "killed": true,
+              "latency_ms": 1299.6717999922112
+            },
+            "pruned_count": 1,
+            "total_tokens": 114,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 962,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.0
+      },
+      "qrf": {
+        "task_id": "lru-ttl-cache",
+        "condition": "qrf",
+        "rounds": [
+          {
+            "round_num": 0,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def get(self):\n    return self._get(*[], *[])()\n\ndef _get(**kwargs):\n    keys = kwargs.keys()[:len('**')]\n    if len(self.__dict__.items()) == 0:\n        return dict((key, key,), {})\n    else:\n        return dict((key, key,))",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 77,
+                "killed": true,
+                "latency_ms": 926.5595000470057
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def _init():\n        pass\n\n    def get(*args):\n        return args[:] + self._setup()\n\n    def _setup(_self.__init__, **kwargs):\n        pass\n\n    def _add_item(**kwargs):\n        pass\n\n    def _get(self, key=None):\n        pass",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 67,
+                "killed": true,
+                "latency_ms": 1027.6660000672564
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def get(self):\n    self._check()\n\n    def _check():\n        if capacity <= 0 or self.ttl < 1e-3:\n            raise ValueError(\"No capacity\", capacity=capacity >= 0 and ttl >= 1e-2)\n\n        return self.__init__(*, *args, **self.__dict__)\n    return self._check()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 83,
+                "killed": true,
+                "latency_ms": 1166.6746999835595
+              },
+              {
+                "strategy": "simplify",
+                "code": "def get(self, key):\n        if key in self.order:\n            return self.store[key][0]\n        else:\n            return None\n\n    def put(self, key, value):\n        now = self.time_fn()\n        if key not in self.order and len(self.order) >= self.capacity:\n            oldest = self.order[-1][-2:]\n            del self.store[oldest]\n        else:\n            return None\n\n    def order(self):\n        return self._get_next(*self.__args__)()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 122,
+                "killed": true,
+                "latency_ms": 1624.2042999947444
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def get(self):\n    return self._get(*[], *[])()\n\ndef _get(**kwargs):\n    keys = kwargs.keys()[:len('**')]\n    if len(self.__dict__.items()) == 0:\n        return dict((key, key,), {})\n    else:\n        return dict((key, key,))",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 77,
+              "killed": true,
+              "latency_ms": 926.5595000470057
+            },
+            "pruned_count": 4,
+            "total_tokens": 349,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 1,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def get(**self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 589.8481999756768
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def get(**self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 585.8120999764651
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def _get(*args):\n        keys = args.__dict__.items()[:len('**')]\n        if len(self.__dict__().keys()) == 0:\n            return dict((key,), {})\n\n        # Raise a custom exception for invalid inputs\n        raise ValueError(\"Input validation failed.\")\n\n    def _set(**kwargs):\n        keys = kwargs.keys()[len('**']):\n        if len(self._get(*[**, key=None])()):\n            return dict((key,))\n    def _put(*args):\n        keys = args.__dict__.items()[:len('**')]\n        if len(self.__dict__().keys()) == 0:\n            raise ValueError(\"Input validation failed.\")\n\n        # Raise a custom exception for invalid inputs\n        raise ValueError(\"Input validation failed.\")\n\n    return TTLCache(_get, _set)",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 176,
+                "killed": true,
+                "latency_ms": 2292.112899944186
+              },
+              {
+                "strategy": "simplify",
+                "code": "def get(*args):\n    return self._get(*[], *args())\n\ndef _get(**kwargs):\n    keys = kwargs.keys()[:len('**')]\n    if len(self.__dict__.items()):\n        return dict((key, key,), {})\n    else:\n        return dict((key, key,))",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 72,
+                "killed": true,
+                "latency_ms": 1193.6123999767005
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def get(**self):\n    return self._get(*[], *[])()",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 23,
+              "killed": true,
+              "latency_ms": 589.8481999756768
+            },
+            "pruned_count": 4,
+            "total_tokens": 294,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 2,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 568.0061999009922
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def get(**self):\n        return self._get(*[], *[])()\n\n    def put(self, key, value):\n        if not self.capacity:\n            raise Exception(\"No capacity\")\n\n        if self.__ttl__!= 0.:\n            return self._put((key,), value)\n        else:\n            return self._get(**self).**self._ttl__)",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 85,
+                "killed": true,
+                "latency_ms": 1210.8405999606475
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def get(**self):\n        return self._get(*[], *[])()\n\n    def put(self, key, value):\n        raise ValueError(\"No input validation required.\")\n\n    @time_fn:  # Add robust time function to raise a warning for invalid inputs.",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 60,
+                "killed": true,
+                "latency_ms": 1037.8701000008732
+              },
+              {
+                "strategy": "simplify",
+                "code": "def get(**self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 603.4589000046253
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def get(*self):\n    return self._get(*[], *[])()",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 23,
+              "killed": true,
+              "latency_ms": 568.0061999009922
+            },
+            "pruned_count": 4,
+            "total_tokens": 191,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 3,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 571.7301999684423
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 549.6625000378117
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 510.2463000221178
+              },
+              {
+                "strategy": "simplify",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 516.1135999951512
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def get(*self):\n    return self._get(*[], *[])()",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 23,
+              "killed": true,
+              "latency_ms": 571.7301999684423
+            },
+            "pruned_count": 4,
+            "total_tokens": 92,
+            "best_pass_rate": 0.0
+          },
+          {
+            "round_num": 4,
+            "condition": "qrf",
+            "hypotheses": [
+              {
+                "strategy": "edge_case",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 567.7187999244779
+              },
+              {
+                "strategy": "efficiency",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 472.19869995024055
+              },
+              {
+                "strategy": "error_handling",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 471.4267000090331
+              },
+              {
+                "strategy": "simplify",
+                "code": "def get(*self):\n    return self._get(*[], *[])()",
+                "tests_passed": 0,
+                "n_tests": 8,
+                "pass_rate": 0.0,
+                "score": 0.0,
+                "tokens_used": 23,
+                "killed": true,
+                "latency_ms": 516.4437000639737
+              }
+            ],
+            "winner": {
+              "strategy": "edge_case",
+              "code": "def get(*self):\n    return self._get(*[], *[])()",
+              "tests_passed": 0,
+              "n_tests": 8,
+              "pass_rate": 0.0,
+              "score": 0.0,
+              "tokens_used": 23,
+              "killed": true,
+              "latency_ms": 567.7187999244779
+            },
+            "pruned_count": 4,
+            "total_tokens": 92,
+            "best_pass_rate": 0.0
+          }
+        ],
+        "final_pass_rate": 0.0,
+        "total_tokens": 1018,
+        "rounds_to_solve": -1,
+        "quality_auc": 0.0
+      }
+    }
+  ],
+  "summary": {
+    "avg_efficiency_x": 6.524,
+    "rescued_tasks": 0,
+    "n_tasks": 7,
+    "median_efficiency_x": 1.667
+  },
+  "hmac_signature": "14ba8d46494b93de2a6851440a5e09885e63f4405a753be198960996fa88eca0"
+}

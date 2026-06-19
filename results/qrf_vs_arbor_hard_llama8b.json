@@ -3504,7 +3504,9 @@
   ],
   "summary": {
     "avg_efficiency_x": 1.696,
-    "n_tasks": 7
+    "n_tasks": 7,
+    "median_efficiency_x": 1.0,
+    "rescued_tasks": 0
   },
-  "hmac_signature": "965fc87cf114c167a169a78a8273cf5a9a074b3d32017d8daad1c24d1ff4d60a"
+  "hmac_signature": "29d82c1a7c64d0544e4bb4f74ab06c79e8d82dcca507ea7a5de22517ffb1894c"
 }

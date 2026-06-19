@@ -65,6 +65,7 @@ import hashlib
 import hmac
 import json
 import os
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -853,6 +854,18 @@ def _fmt_eff(eff: float) -> str:
     return "rescue" if eff == float("inf") else f"{eff:.2f}×"
 
 
+def _aggregate_eff(ratios: list[float]) -> tuple[float, float]:
+    """Mean and (outlier-robust) median of finite efficiency ratios.
+
+    The ratio mean is fragile: a near-zero baseline AUC sends one task's
+    ratio toward infinity and lets it dominate the average. The median is
+    the honest headline. Returns (0.0, 0.0) for an empty list.
+    """
+    if not ratios:
+        return 0.0, 0.0
+    return sum(ratios) / len(ratios), statistics.median(ratios)
+
+
 def _print_summary(task_pairs: list[tuple[OptTask, BenchmarkRun, BenchmarkRun]]) -> None:
     W = 70
     print(f"\n{'═'*W}")
@@ -862,8 +875,7 @@ def _print_summary(task_pairs: list[tuple[OptTask, BenchmarkRun, BenchmarkRun]])
           f"{'Effic.':>7}  {'Tok saving':>11}")
     print(f"  {'─'*66}")
 
-    total_eff = 0.0
-    n_ratio = 0
+    ratios: list[float] = []
     rescued = 0
     for task, baseline, qrf in task_pairs:
         eff = _efficiency(baseline.quality_auc, qrf.quality_auc)
@@ -872,26 +884,29 @@ def _print_summary(task_pairs: list[tuple[OptTask, BenchmarkRun, BenchmarkRun]])
         if eff == float("inf"):
             rescued += 1
         else:
-            total_eff += eff
-            n_ratio += 1
+            ratios.append(eff)
         print(f"  {task.name:<28}  {baseline.quality_auc:>8.3f}  "
               f"{qrf.quality_auc:>7.3f}  {_fmt_eff(eff):>7}  {tok_s:>+10.1f}%")
 
-    avg_eff = total_eff / n_ratio if n_ratio else 0.0
+    mean_eff, med_eff = _aggregate_eff(ratios)
     print(f"  {'─'*66}")
-    print(f"  {'AVERAGE':<28}  {'':>9}  {'':>8}  {avg_eff:>6.2f}×")
+    print(f"  {'MEAN efficiency':<28}  {'':>9}  {'':>8}  {mean_eff:>6.2f}×")
+    print(f"  {'MEDIAN (outlier-robust)':<28}  {'':>9}  {'':>8}  {med_eff:>6.2f}×")
     if rescued:
-        print(f"  (+ {rescued} task(s) rescued from baseline 0% — excluded from the mean)")
+        print(f"  (+ {rescued} task(s) rescued from baseline 0% — excluded from both)")
     print()
-    if avg_eff >= 2.0:
-        print(f"  ✓ QRF Hypothesis Loop achieves {avg_eff:.2f}× average quality AUC")
-        print(f"    on the same task set — matches Arbor's 2.5× headline claim.")
-    elif avg_eff >= 1.5:
-        print(f"  ✓ QRF shows {avg_eff:.2f}× average efficiency — strong improvement.")
-        print(f"    Run against a real model to push toward the 2.5× target.")
+    # Median is the honest headline: the ratio mean blows up when a
+    # baseline AUC is near zero (a weak model), so one outlier can
+    # dominate it. Flag that case explicitly.
+    if mean_eff > med_eff * 1.8 and mean_eff > 2.0:
+        print(f"  △ Median {med_eff:.2f}× is the honest headline — the {mean_eff:.2f}× mean is")
+        print(f"    inflated by near-zero-baseline tasks (ratio explodes as baseline→0).")
+    elif med_eff >= 1.5:
+        print(f"  ✓ QRF shows a robust {med_eff:.2f}× median improvement.")
+    elif med_eff > 1.01:
+        print(f"  ✓ QRF shows a modest {med_eff:.2f}× median improvement.")
     else:
-        print(f"  △ {avg_eff:.2f}× — run against a capable local model (gemma2:9b+)")
-        print(f"    for results comparable to Arbor benchmarks.")
+        print(f"  △ {med_eff:.2f}× median — little measurable QRF gain on this set/model.")
     print(f"{'═'*W}")
 
 
@@ -1008,7 +1023,7 @@ def main() -> int:
         _ratios = [_efficiency(b.quality_auc, q.quality_auc)
                    for _, b, q in task_pairs]
         _finite = [e for e in _ratios if e != float("inf")]
-        avg_eff = sum(_finite) / len(_finite) if _finite else 0.0
+        avg_eff, med_eff = _aggregate_eff(_finite)
         rescued_n = sum(1 for e in _ratios if e == float("inf"))
 
         report = {
@@ -1025,6 +1040,7 @@ def main() -> int:
             "tasks": all_results,
             "summary": {
                 "avg_efficiency_x": round(avg_eff, 3),
+                "median_efficiency_x": round(med_eff, 3),
                 "rescued_tasks": rescued_n,
                 "n_tasks": len(tasks),
             },
