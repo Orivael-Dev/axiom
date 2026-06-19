@@ -321,7 +321,9 @@
             </tr>
           </thead>
           <tbody>
-            {% for intent, handler in config.routing_rules.items() %}
+            {% for rule in config.routing_rules %}
+            {% set intent = rule.intent %}
+            {% set handler = rule.handler %}
             <tr>
               <td>
                 {% set ic = intent | upper %}
