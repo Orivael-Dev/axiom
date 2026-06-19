@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+{% block title %}Enterprise — Orivael Governance Console{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page layout ─────────────────────────────────────────────────── */
+  .ent-page { max-width: 900px; margin: 0 auto; padding: 0 0 3rem; }
+
+  .ent-page h1 {
+    font-size: 1.55rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--fg);
+  }
+  .ent-page .page-sub {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 2rem;
+  }
+
+  /* ── Section card ────────────────────────────────────────────────── */
+  .ent-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .ent-card h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #72f7d4;
+    margin-bottom: 1.1rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Model card ──────────────────────────────────────────────────── */
+  .model-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+  .model-field {
+    background: rgba(114,247,212,0.04);
+    border: 1px solid rgba(114,247,212,0.15);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+  }
+  .model-field .mf-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    margin-bottom: 0.3rem;
+  }
+  .model-field .mf-value {
+    font-size: 0.95rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: #72f7d4;
+    word-break: break-all;
+  }
+  .model-field .mf-value.plain { color: var(--fg); }
+
+  /* ── BLT benchmark ───────────────────────────────────────────────── */
+  .blt-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .blt-run-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #72f7d4;
+    color: #0a0e14;
+    border: none;
+    border-radius: 6px;
+    padding: 0.55rem 1.25rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    letter-spacing: 0.01em;
+  }
+  .blt-run-btn:hover { opacity: 0.85; }
+  .blt-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .blt-spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(10,14,20,0.35);
+    border-top-color: #0a0e14;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .blt-download-link {
+    font-size: 0.82rem;
+    color: #72f7d4;
+    opacity: 0.8;
+  }
+  .blt-download-link:hover { opacity: 1; }
+
+  .blt-status {
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    min-height: 1.2em;
+  }
+  .blt-status.error { color: var(--error); }
+
+  .blt-chart-wrap {
+    position: relative;
+    height: 320px;
+    margin-top: 1.25rem;
+  }
+  .blt-chart-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* ── Budget forecast ─────────────────────────────────────────────── */
+  .forecast-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 600px) {
+    .model-grid    { grid-template-columns: 1fr; }
+    .forecast-grid { grid-template-columns: 1fr; }
+  }
+
+  .forecast-field label {
+    display: block;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    margin-bottom: 0.45rem;
+  }
+  .forecast-field .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .forecast-field input[type="range"] {
+    flex: 1;
+    accent-color: #72f7d4;
+    cursor: pointer;
+    height: 4px;
+  }
+  .slider-display {
+    font-size: 0.88rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: #72f7d4;
+    white-space: nowrap;
+    min-width: 7rem;
+    text-align: right;
+  }
+  .forecast-field input[type="number"] {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .forecast-field input[type="number"]:focus {
+    outline: none;
+    border-color: rgba(114,247,212,0.45);
+  }
+
+  .forecast-output {
+    background: rgba(114,247,212,0.05);
+    border: 1px solid rgba(114,247,212,0.18);
+    border-radius: 8px;
+    padding: 1.1rem 1.25rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  @media (max-width: 480px) { .forecast-output { grid-template-columns: 1fr; } }
+
+  .fo-item .fo-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    margin-bottom: 0.25rem;
+  }
+  .fo-item .fo-value {
+    font-size: 1.35rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: #72f7d4;
+    font-weight: 600;
+  }
+  .fo-item .fo-hint {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 0.2rem;
+  }
+
+  .breakeven-note {
+    margin-top: 1rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.5;
+    padding: 0.65rem 0.9rem;
+    background: rgba(255,255,255,0.03);
+    border-left: 3px solid rgba(114,247,212,0.35);
+    border-radius: 0 4px 4px 0;
+  }
+  .breakeven-note strong { color: var(--fg); }
+</style>
+
+<div class="ent-page">
+  <h1>Enterprise</h1>
+  <p class="page-sub">BLT Benchmark &amp; Budget Forecasting — {{ tenant.email if tenant else "" }}</p>
+
+  {# ── 1. Model card ──────────────────────────────────────────────── #}
+  {% if current_model %}
+  <div class="ent-card">
+    <h2>Active Model</h2>
+    <div class="model-grid">
+      <div class="model-field">
+        <div class="mf-label">Backend</div>
+        <div class="mf-value">{{ current_model.backend }}</div>
+      </div>
+      <div class="model-field">
+        <div class="mf-label">Model</div>
+        <div class="mf-value plain">{{ current_model.model }}</div>
+      </div>
+      <div class="model-field">
+        <div class="mf-label">Last latency</div>
+        <div class="mf-value">{{ current_model.latency_ms }} <span style="font-size:0.75rem;color:var(--muted)">ms</span></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── 2. BLT Benchmark ───────────────────────────────────────────── #}
+  <div class="ent-card">
+    <h2>BLT Benchmark</h2>
+
+    <div class="blt-controls">
+      <button class="blt-run-btn" id="bltRunBtn" onclick="runBlt()">
+        <span class="blt-spinner" id="bltSpinner"></span>
+        Run BLT Benchmark
+      </button>
+      <a class="blt-download-link" href="/dashboard/enterprise/blt-report.json" id="bltDownload">
+        Download JSON
+      </a>
+    </div>
+    <div class="blt-status" id="bltStatus"></div>
+
+    <div class="blt-chart-wrap">
+      <canvas id="bltChart"></canvas>
+    </div>
+  </div>
+
+  {# ── 3. Budget Forecast ─────────────────────────────────────────── #}
+  <div class="ent-card">
+    <h2>Budget Forecast</h2>
+
+    <div class="forecast-grid">
+      <div class="forecast-field">
+        <label for="callsSlider">Calls / month</label>
+        <div class="slider-row">
+          <input type="range" id="callsSlider"
+                 min="1000" max="10000000" step="1000" value="100000"
+                 oninput="updateForecast()">
+          <span class="slider-display" id="callsDisplay">100,000</span>
+        </div>
+      </div>
+      <div class="forecast-field">
+        <label for="tokenCost">Token cost $/1k</label>
+        <input type="number" id="tokenCost"
+               value="0.003" step="0.001" min="0.0001"
+               oninput="updateForecast()">
+      </div>
+    </div>
+
+    <div class="forecast-output">
+      <div class="fo-item">
+        <div class="fo-label">Est. monthly cost</div>
+        <div class="fo-value" id="forecastCost">$—</div>
+        <div class="fo-hint" id="forecastCostHint">at <span id="forecastTpc">150</span> tokens/call avg</div>
+      </div>
+      <div class="fo-item">
+        <div class="fo-label">Annual run rate</div>
+        <div class="fo-value" id="forecastAnnual">$—</div>
+        <div class="fo-hint">projected × 12</div>
+      </div>
+    </div>
+
+    <div class="breakeven-note" id="breakevenNote">
+      Break-even at 20% relevance rate: <strong id="breakevenCalls">—</strong> calls/month
+      <span style="margin-left:0.5rem;color:rgba(114,247,212,0.55);font-size:0.75rem;">
+        (fixed_cost / (0.20 × tokens_per_call / 1000 × token_cost))
+      </span>
+    </div>
+  </div>
+</div>
+
+{# ── Chart.js CDN ───────────────────────────────────────────────────── #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  /* ── BLT chart state ─────────────────────────────────────────────── */
+  let bltChart = null;
+
+  // Fragment counts the BLT benchmark cycles through
+  const BLT_COUNTS = [1, 5, 10, 25, 50];
+
+  // If the server rendered blt_report, use it as initial data
+  const INITIAL_BLT = {{ blt_report | tojson if blt_report else "null" }};
+
+  const CHART_DEFAULTS = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: { color: '#b0b8c4', font: { family: 'ui-monospace, Menlo, Consolas, monospace', size: 11 } }
+      },
+      tooltip: {
+        backgroundColor: '#131820',
+        borderColor: 'rgba(114,247,212,0.25)',
+        borderWidth: 1,
+        titleColor: '#72f7d4',
+        bodyColor: '#e6e1cf',
+      }
+    },
+    scales: {
+      x: {
+        ticks:  { color: '#5c6773', font: { family: 'ui-monospace, Menlo, Consolas, monospace', size: 11 } },
+        grid:   { color: 'rgba(255,255,255,0.05)' },
+      },
+      y: {
+        ticks:  { color: '#5c6773', font: { family: 'ui-monospace, Menlo, Consolas, monospace', size: 11 } },
+        grid:   { color: 'rgba(255,255,255,0.05)' },
+      }
+    }
+  };
+
+  function buildChartData(rows) {
+    const labels = rows.map(r => r.fragment_count + ' frags');
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Bloat KB',
+          data: rows.map(r => r.bloat_kb),
+          backgroundColor: 'rgba(114,247,212,0.70)',
+          borderRadius: 3,
+        },
+        {
+          label: 'Latency ms',
+          data: rows.map(r => r.latency_ms),
+          backgroundColor: 'rgba(255,180,84,0.70)',
+          borderRadius: 3,
+        },
+        {
+          label: 'Tokens Added',
+          data: rows.map(r => r.tokens_added),
+          backgroundColor: 'rgba(127,168,224,0.70)',
+          borderRadius: 3,
+        }
+      ]
+    };
+  }
+
+  function renderChart(rows) {
+    const ctx = document.getElementById('bltChart').getContext('2d');
+    if (bltChart) { bltChart.destroy(); }
+    bltChart = new Chart(ctx, {
+      type: 'bar',
+      data: buildChartData(rows),
+      options: { ...CHART_DEFAULTS }
+    });
+
+    // Update tokens_per_call average for forecast
+    const avgTokens = rows.reduce((s, r) => s + r.tokens_added, 0) / rows.length;
+    window._bltAvgTokens = Math.round(avgTokens);
+    updateForecast();
+  }
+
+  /* ── BLT run ─────────────────────────────────────────────────────── */
+  async function runBlt() {
+    const btn    = document.getElementById('bltRunBtn');
+    const spin   = document.getElementById('bltSpinner');
+    const status = document.getElementById('bltStatus');
+
+    btn.disabled   = true;
+    spin.style.display = 'block';
+    status.textContent = 'Running benchmark…';
+    status.className   = 'blt-status';
+
+    try {
+      const res  = await fetch('/dashboard/enterprise/blt-run', { method: 'POST' });
+      const body = await res.json();
+
+      if (!res.ok) {
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+      }
+
+      const rows = body.rows || [];
+      if (rows.length === 0) throw new Error('Benchmark returned no rows.');
+
+      renderChart(rows);
+      status.textContent = 'Benchmark complete — ' + rows.length + ' fragment counts measured.';
+    } catch (err) {
+      status.textContent = 'Error: ' + err.message;
+      status.className   = 'blt-status error';
+    } finally {
+      btn.disabled        = false;
+      spin.style.display  = 'none';
+    }
+  }
+
+  /* ── Budget forecast ─────────────────────────────────────────────── */
+  // Fixed cost assumption used for break-even: $50/month (informational default)
+  const FIXED_COST_DEFAULT = 50;
+
+  function fmtUSD(n) {
+    if (n >= 1e6)  return '$' + (n / 1e6).toFixed(2) + 'M';
+    if (n >= 1e3)  return '$' + (n / 1e3).toFixed(1) + 'k';
+    return '$' + n.toFixed(2);
+  }
+
+  function fmtCalls(n) {
+    return n.toLocaleString('en-US');
+  }
+
+  function updateForecast() {
+    const calls      = parseInt(document.getElementById('callsSlider').value, 10) || 100000;
+    const tokenCost  = parseFloat(document.getElementById('tokenCost').value)     || 0.003;
+    const tokensPerCall = window._bltAvgTokens || 150;
+
+    document.getElementById('callsDisplay').textContent = fmtCalls(calls);
+    document.getElementById('forecastTpc').textContent  = tokensPerCall;
+
+    const monthly = (calls / 1000) * tokensPerCall * tokenCost;
+    document.getElementById('forecastCost').textContent   = fmtUSD(monthly);
+    document.getElementById('forecastAnnual').textContent = fmtUSD(monthly * 12);
+
+    // Break-even: fixed_cost / (relevance_rate * tokens_per_call / 1000 * token_cost)
+    const beCallsRaw = FIXED_COST_DEFAULT / (0.20 * tokensPerCall / 1000 * tokenCost);
+    const beCalls    = isFinite(beCallsRaw) ? Math.round(beCallsRaw) : null;
+    document.getElementById('breakevenCalls').textContent =
+      beCalls !== null ? fmtCalls(beCalls) + ' calls/mo' : '—';
+  }
+
+  /* ── Init ────────────────────────────────────────────────────────── */
+  document.addEventListener('DOMContentLoaded', function () {
+    updateForecast();
+
+    // If the server gave us a blt_report, render it immediately
+    if (INITIAL_BLT && INITIAL_BLT.rows && INITIAL_BLT.rows.length) {
+      renderChart(INITIAL_BLT.rows);
+    } else {
+      // Show empty axes so the canvas isn't just blank
+      const ctx = document.getElementById('bltChart').getContext('2d');
+      bltChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: BLT_COUNTS.map(n => n + ' frags'),
+          datasets: [
+            { label: 'Bloat KB',     data: [], backgroundColor: 'rgba(114,247,212,0.70)', borderRadius: 3 },
+            { label: 'Latency ms',   data: [], backgroundColor: 'rgba(255,180,84,0.70)',  borderRadius: 3 },
+            { label: 'Tokens Added', data: [], backgroundColor: 'rgba(127,168,224,0.70)', borderRadius: 3 }
+          ]
+        },
+        options: {
+          ...CHART_DEFAULTS,
+          plugins: {
+            ...CHART_DEFAULTS.plugins,
+            legend: {
+              ...CHART_DEFAULTS.plugins.legend,
+            },
+            subtitle: {
+              display: true,
+              text: 'Run the benchmark to populate this chart.',
+              color: '#5c6773',
+              font: { family: 'ui-monospace, Menlo, Consolas, monospace', size: 12 },
+              padding: { bottom: 10 }
+            }
+          }
+        }
+      });
+    }
+  });
+</script>
+{% endblock %}
