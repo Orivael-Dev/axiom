@@ -71,11 +71,6 @@ def _find_quantize_bin(llamacpp_dir: Path) -> Optional[Path]:
     for p in candidates:
         if p.is_file():
             return p
-    # Broader search: any llama-quantize binary anywhere under llamacpp_dir
-    for pattern in ("**/llama-quantize", "**/quantize"):
-        for found in sorted(llamacpp_dir.glob(pattern)):
-            if found.is_file() and not found.suffix:
-                return found
     return None
 
 
@@ -173,13 +168,8 @@ def convert_axm_to_gguf(
         if quant_type.lower() not in {"none", "f16", "fp16"}:
             q_bin = _find_quantize_bin(llamacpp_dir)
             if q_bin is None:
-                raise FileNotFoundError(
-                    f"llama-quantize not found under {llamacpp_dir}.\n"
-                    "Build it first:\n"
-                    f"  cmake {llamacpp_dir} -B {llamacpp_dir}/build -DCMAKE_BUILD_TYPE=Release\n"
-                    f"  cmake --build {llamacpp_dir}/build --target llama-quantize -j$(nproc)\n"
-                    "Then re-run extraction. Alternatively pass --quant none to keep the F16 GGUF."
-                )
+                print(f"[extract] WARNING: llama-quantize not found in "
+                      f"{llamacpp_dir}/build/bin/ — keeping F16 GGUF")
             else:
                 gguf_q = work / f"model_{quant_type.lower()}.gguf"
                 print(f"[extract] quantizing to {quant_type}...")

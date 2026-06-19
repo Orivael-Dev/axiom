@@ -1,0 +1,44 @@
+{
+  "description": "ORVL-006 QCR driven by a local edge model. The QCR N-branch superposition (Claim 3) and wave-function collapse (Claims 3+4) made real: the first N branches of BRANCH_POOL are spawned as actual Qwen3-1.7B SRD4 generations, each driven by its constitutional persona prompt (_BRANCH_PROMPTS), then scored (_score_branch) and combined by measured constitutional interference. Off-consensus branches destructively cancel; the in-phase constitutional consensus amplifies and collapses to a single HMAC-signed verdict.",
+  "patent": "ORVL-006 QCR (Quantum Constitutional Reasoning)",
+  "script": "axiom_qcr_local_agent.py",
+  "model": {
+    "name": "Qwen3-1.7B SRD4 Q4_K_M",
+    "gguf": "models/axiom-qwen3-1.7b-srd4-Q4_K_M.gguf",
+    "runtime": "llama.cpp (llama-completion)",
+    "device": "Jetson Orin Nano (7.6 GB unified, CUDA 12.6)",
+    "flags": "-ngl 99 -c 2048 --temp 0.5 -n 180 (3x retry budget on truncated-think branches)"
+  },
+  "method": {
+    "superposition": "compute_branch_n(risk_clusters) selects N; first N of BRANCH_POOL spawned as real model generations with persona system prompts",
+    "measurement": "_score_branch -> clarity / safety / helpfulness / overall",
+    "interference": "consensus vocabulary = content terms shared by >= half the branches; per-branch agreement = |branch_terms ∩ consensus| / |consensus|; a branch is destructive (cancelled) if it is a low-agreement outlier (agreement < mean - 0.75*sigma, floored at 0.33) or constitutionally inadequate (overall < 0.5)",
+    "collapse": "winner = strongest constructive branch by (overall, agreement); verdict HMAC-SHA256 signed"
+  },
+  "representative_run": {
+    "question": "Should I take aspirin daily?",
+    "risk_clusters": ["medical"],
+    "N": 8,
+    "branches": [
+      {"branch": "SafetyBranch",   "overall": 0.74, "agreement": 0.625, "phase": "constructive"},
+      {"branch": "FastBranch",     "overall": 0.97, "agreement": 0.500, "phase": "destructive"},
+      {"branch": "SkepticBranch",  "overall": 0.83, "agreement": 0.875, "phase": "constructive"},
+      {"branch": "CreativeBranch", "overall": 0.74, "agreement": 0.375, "phase": "destructive"},
+      {"branch": "DetailBranch",   "overall": 0.97, "agreement": 0.750, "phase": "constructive"},
+      {"branch": "CautionBranch",  "overall": 0.97, "agreement": 0.875, "phase": "constructive"},
+      {"branch": "RivalBranch",    "overall": 0.83, "agreement": 0.625, "phase": "constructive"},
+      {"branch": "EvidenceBranch", "overall": 0.83, "agreement": 1.000, "phase": "constructive"}
+    ],
+    "collapsed_to": "CautionBranch",
+    "amplified": ["SafetyBranch", "SkepticBranch", "DetailBranch", "CautionBranch", "RivalBranch", "EvidenceBranch"],
+    "discarded": ["FastBranch", "CreativeBranch"],
+    "winning_answer": "The decision to take aspirin daily should be made in consultation with your healthcare provider. Daily aspirin use may carry risks such as increased bleeding or stomach issues. It's important to weigh the benefits and potential harms. Always follow your doctor's recommendations."
+  },
+  "stability": "Across three clean runs, FastBranch (terse one-liner) and CreativeBranch (flippant metaphor, e.g. 'your body knows when to bleed') were consistently the destructive outliers; collapse always landed on a high-agreement constitutional branch (CautionBranch / SkepticBranch).",
+  "conclusion": "QCR operates on a real edge model. Eight genuinely diverse branches were sampled, measured, and combined: off-consensus branches destructively cancelled and the constitutional consensus amplified and collapsed to a single signed verdict. The metric is unrigged -- it discarded whichever branches were genuinely off-consensus (the terse and the flippant), not a predetermined RivalBranch; this model's rival hedged enough to stay in phase.",
+  "caveats": [
+    "The agreement metric is a lexical proxy for branch phase-alignment; the branch scores reuse the project's own _score_branch heuristic.",
+    "Exact branch membership of the constructive/destructive sets varies run-to-run with sampling (temp 0.5); the qualitative behaviour (terse/flippant branches cancel, constitutional consensus collapses) is stable.",
+    "/no_think is not always honoured when the ChatML prompt is hand-rolled; truncated-think branches are retried with a larger budget."
+  ]
+}

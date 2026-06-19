@@ -148,7 +148,7 @@ def _srd_to_gguf(model_id: str, out_name: str, *, hf_token: str = "",
     size_mb = gguf_out.stat().st_size / 1024**2
     print(f"  ✓  {gguf_out.name}  ({size_mb:.0f} MB)")
 
-    # Write SRD integrity sidecar
+    # Write SRD integrity sidecar + ruleset JSON
     if model_key:
         try:
             commit = subprocess.check_output(
@@ -158,6 +158,9 @@ def _srd_to_gguf(model_id: str, out_name: str, *, hf_token: str = "",
         except Exception:
             commit = ""
         write_srd_sidecar(gguf_out, model_key, pipeline_commit=commit)
+
+        from research.quant.axiom_rulesets import embed_ruleset_in_gguf
+        embed_ruleset_in_gguf(gguf_out, model_key)
 
     return gguf_out
 

@@ -333,7 +333,13 @@ def _vision_smoke_test(model_name: str, axm_path: Path) -> None:
         from transformers import BitsAndBytesConfig
         from PIL import Image
     except ImportError as e:
-        print(f"  smoke test skipped (missing dep: {e})")
+        import transformers as _tf
+        if "AutoModelForVision2Seq" in str(e):
+            print(f"  smoke test skipped — transformers {_tf.__version__} removed "
+                  f"AutoModelForVision2Seq (v5.x). "
+                  f"Pin with: pip install \"transformers==4.44.2\" accelerate")
+        else:
+            print(f"  smoke test skipped (missing dep: {e})")
         return
 
     # Extract weights from AXM — safetensors layout: weights/model.safetensors

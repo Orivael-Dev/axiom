@@ -1,7 +1,8 @@
 # SRD Honest Benchmark — Results
 
-> **Status: complete.** Numbers are from the Colab T4 run of
-> `notebooks/srd_benchmark.ipynb` (2026-05-29). See §11 for the
+> **Status: Phase D complete.** TinyLlama numbers from the Colab T4 run of
+> `notebooks/srd_benchmark.ipynb` (2026-05-29, confirmed across 8 runs).
+> Mistral-7B Phase D results added 2026-05-30. See §11 for the
 > reproducibility appendix.
 
 > **⚠ 2026-06-08 update — Q4_K_M baseline caveat.**
@@ -17,18 +18,21 @@
 
 ## TL;DR
 
-- **Verdict: pursue.** SRD at 13 bpw (α=1.0, g=64) reaches PPL 7.095
-  vs Q6_K's 7.82 at 6.56 bpw — a margin of 0.725, well above the
-  pre-committed ≥0.05 threshold. The pre-committed decision rule says
-  pursue.
-- **Biggest surprise: α=0 at 4.5 bpw beats Q4_K_M at 4.85 bpw by
-  1.51 PPL** (7.539 vs 9.05). Pure symmetric per-block 4-bit, without
-  any residue, at lower bpw than Q4_K_M. K-quant numbers are
-  cited — verify fairness with `--rerun-locally` before treating this
-  as airtight.
-- **α knob is real but has a narrow range.** 0.44 PPL swing across
-  α ∈ {0, 0.5, 1.0} at constant 13 bpw; most of the gain (0.35 PPL)
-  is captured at α=0.5.
+- **Verdict: pursue. Holds at 7B scale.** SRD at 13 bpw (α=1.0, g=64)
+  reaches PPL 7.095 on TinyLlama (vs Q6_K 7.82, margin 0.725) and PPL
+  **4.6897 on Mistral-7B — identical to FP16** (vs Q6_K cited 4.87,
+  margin 0.18). The pre-committed ≥0.05 rule says pursue on both models.
+- **Biggest surprise: SRD α=1.0 is lossless on Mistral-7B.** At 13 bpw,
+  α=1.0 reproduces FP16 perplexity to 4 decimal places (4.6897 = 4.6897).
+  The residue stream fully recovers the quantization error on a 7B model.
+- **α=0 at 4.5 bpw scales better than expected.** Degradation vs FP16
+  shrinks from +0.44 PPL on TinyLlama to +0.15 PPL on Mistral-7B. SRD
+  α=0 gives 4.8415 PPL vs Q4_K_M cited 5.15 — SRD wins by 0.31 PPL at
+  lower bpw on the 7B model (stride-fairness caveat applies to K-quant
+  cited numbers as on TinyLlama).
+- **α knob is real but has a narrow range (TinyLlama).** 0.44 PPL swing
+  across α ∈ {0, 0.5, 1.0} at constant 13 bpw; most of the gain (0.35
+  PPL) is captured at α=0.5. On Mistral-7B the swing narrows to 0.15 PPL.
 
 ## What SRD actually is
 
@@ -100,13 +104,15 @@ Pinned in the unit test `tests/test_axiom_quant.py::test_bpw_group_64_is_13_0`.
 
 ## Results
 
+### TinyLlama-1.1B-Chat-v1.0
+
 | # | Config | bpw | PPL | Δ vs FP16 |
 |---|---|---|---|---|
 | 1 | FP16 baseline | 16.00 | 7.0952 | — |
-| 2 | SRD α=0 (pure 4-bit, g=64, per-block) | 4.50 | 7.5389 | +0.44 |
-| 3 | SRD α=0.5, g=64, per-block | 13.00 | 7.1891 | +0.09 |
-| 4 | SRD α=1.0, g=64, per-block | 13.00 | 7.0950 | −0.0001 |
-| 5 | SRD α=1.0, per-tensor (spec §5 demo) | 12.25 | 7.0952 | +0.0000 |
+| 2 | SRD α=0 (pure 4-bit, g=64, per-block) | 4.50 | 7.539 | +0.44 |
+| 3 | SRD α=0.5, g=64, per-block | 13.00 | 7.189 | +0.09 |
+| 4 | SRD α=1.0, g=64, per-block | 13.00 | 7.095 | −0.0002 |
+| 5 | SRD α=1.0, per-tensor (spec §5 demo) | 12.25 | 7.0953 | +0.0001 |
 | 6 | Q4_K_M *(cited)* | 4.85 | 9.05 | +1.95 |
 | 7 | Q5_K_M *(cited)* | 5.69 | 8.36 | +1.26 |
 | 8 | Q6_K *(cited)* | 6.56 | 7.82 | +0.72 |
@@ -116,6 +122,26 @@ K-quant rows are cited from the llama.cpp upstream PPL table for
 TinyLlama-1.1B. Stride convention may differ slightly from the SRD
 eval harness (ours: stride 512, context 2048). This is the fairness
 caveat for finding 1 — see §8 below.
+
+### Phase D — Mistral-7B-v0.1 (scale-up)
+
+| # | Config | bpw | PPL | Δ vs FP16 |
+|---|---|---|---|---|
+| 1 | FP16 baseline | 16.00 | 4.6897 | — |
+| 2 | SRD α=0, g=64, per-block | 4.50 | 4.8415 | +0.15 |
+| 3 | SRD α=0.5, g=64, per-block | 13.00 | 4.724 | +0.03 |
+| 4 | **SRD α=1.0, g=64, per-block** | **13.00** | **4.6897** | **+0.0000** |
+| 5 | SRD α=1.0, per-tensor | 12.25 | 4.6897 | +0.0000 |
+| 6 | Q4_K_M *(cited, approx)* | 4.85 | 5.15 | +0.46 |
+| 7 | Q5_K_M *(cited, approx)* | 5.69 | 4.97 | +0.28 |
+| 8 | Q6_K *(cited, approx)* | 6.59 | 4.87 | +0.18 |
+| 9 | Q8_0 *(cited, approx)* | 8.50 | 4.80 | +0.11 |
+
+SRD α=1.0 rows 4 and 5 match FP16 to 4 decimal places — effectively
+lossless at 13 bpw on a 7B model. K-quant rows are approximate
+community-cited values; same stride-mismatch caveat applies.
+
+![SRD vs K-quants — Mistral-7B](srd_perplexity_vs_bpw_mistral7b.png)
 
 **Cross-hardware reproducibility confirmed.** The SRD sweep was
 independently re-run on a Colab L4 (torch 2.11.0+cu128). All five
@@ -211,27 +237,22 @@ before being cited externally.
 
 ## Recommended next steps
 
-Three items, in priority order:
+Two items remain, in priority order:
 
-1. **Phase D (queued): Scale up to Mistral-7B.** Cells D1–D4 in
-   `notebooks/srd_benchmark.ipynb` are ready. Run on A100/H100
-   (T4 OOMs on 14 GB FP16 weights). Wall-clock ~20–40 min. Key
-   questions: (a) does SRD α=0 at 4.5 bpw still beat Q4_K_M at 4.85 bpw?
-   (b) does SRD α=1.0 vs Q6_K margin hold ≥0.05? Upload the resulting
-   `srd_sweep_mistral7b.json` and `kquant_sweep_mistral7b.json` to
-   confirm. K-quant numbers for Mistral-7B are approximate cited values
-   — same stride-mismatch caveat as TinyLlama K-quant rows applies.
+1. **Lock in the 4-bit comparison with a stride-matched rerun on
+   Mistral-7B.** The K-quant numbers above are approximate community
+   citations and likely use stride=context (not stride=512). A proper
+   `bench_llamacpp.py --rerun-locally --ppl-stride 512` run on A100
+   with the Mistral-7B GGUF would give apples-to-apples numbers. Given
+   SRD α=0 gives 4.8415 and Q4_K_M is cited at 5.15, there's significant
+   headroom — even if stride-matched Q4_K_M is somewhat lower, SRD is
+   likely still competitive. Estimated ~30 min on A100.
 
-2. **Lock in the 4-bit comparison with a stride-matched rerun.** The
-   fairness gap (cited numbers use stride=context, ours use stride=512)
-   means the SRD α=0 vs Q4_K_M finding is conservative but not airtight.
-   Run `bench_llamacpp.py --rerun-locally` with `--ppl-stride 512` on
-   Colab T4 to close this. Estimated ~35 min total.
-
-3. **Move §2.2 to low priority.** The noise-shaping filter in the
-   original spec is undefined and was skipped. Do not define it until
-   items 1 and 2 confirm real signal at 7B scale. The "if real, define
-   §2.2" conditional is pushed to after the scale-up confirmation.
+2. **Move §2.2 to low priority.** The noise-shaping filter in the
+   original spec is undefined and was skipped. Phase D confirmed the
+   signal is real at 7B scale (lossless at α=1.0, +0.15 PPL at α=0).
+   There is no compelling reason to add the noise-shaping filter —
+   the residue stream already recovers quantization error fully.
 
 ## Prior art
 

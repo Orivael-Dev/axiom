@@ -214,6 +214,77 @@ class LocalRetriever:
             self._idf[t] = math.log((n - n_with_t + 0.5) / (n_with_t + 0.5) + 1.0)
         self._built = True
 
+    def add_documents(self, paths: List[Path]) -> int:
+        """Append new documents to the live index without a full rebuild.
+
+        New documents are searchable immediately. Terms that are already
+        in the corpus keep their existing IDF values (slightly stale but
+        within ~10% for small deltas). Terms that are brand-new to the
+        corpus — e.g. a freshly-added part number — receive the maximum
+        IDF value (log(N) for a term appearing in exactly one document)
+        so they score highly when queried. Call `merge_delta()` offline
+        (e.g. nightly) to recompute exact IDF values for all terms.
+
+        Returns the count of documents successfully added.
+        """
+        if not self._built:
+            self.build()
+
+        new_docs: List[IndexedDocument] = []
+        for p in paths:
+            try:
+                if p.stat().st_size > _MAX_BYTES:
+                    continue
+            except OSError:
+                continue
+            content = _safe_read(p)
+            if content is None:
+                continue
+            tokens = _tokenize(content)
+            if not tokens:
+                continue
+            freq: dict[str, int] = {}
+            for t in tokens:
+                freq[t] = freq.get(t, 0) + 1
+            try:
+                rel = str(p.relative_to(self.primary_root))
+            except ValueError:
+                rel = str(p)
+            new_docs.append(IndexedDocument(
+                path=p, relative=rel, content=content,
+                token_count=len(tokens), token_freq=freq,
+            ))
+
+        if not new_docs:
+            return 0
+
+        self._docs.extend(new_docs)
+        n = len(self._docs)
+
+        # Incremental avg_len update
+        self._avg_len = sum(d.token_count for d in self._docs) / n
+
+        # New terms get max-IDF (df=1 in corpus of n).  Existing terms
+        # keep their stale IDF — the error is O(delta/n) which is small.
+        for doc in new_docs:
+            for term in doc.token_freq:
+                if term not in self._idf:
+                    self._idf[term] = math.log((n - 1 + 0.5) / (1 + 0.5) + 1.0)
+
+        return len(new_docs)
+
+    def merge_delta(self) -> None:
+        """Full IDF rebuild to correct stale values introduced by add_documents().
+
+        Call offline (e.g. nightly) when an exact IDF recomputation is
+        desirable. Not required for correct retrieval — only for optimal
+        IDF weighting of terms introduced since the last full build.
+        After merge, all IDF values are exact.
+        """
+        self._built = False
+        self._idf.clear()
+        self.build()
+
     def _iter_files(self, root: Path):
         if root.is_file():
             if root.suffix.lower() in self._include_exts:

@@ -29,20 +29,29 @@ from .backends import (
     NIMBackend, LocalNanoBackend, ChainedBackend,
     make_backend, default_backend,
 )
-from .router import DelegateRouter, RoutingDecision
+from .router import DelegateRouter, RoutingDecision, RouterPolicy, LatencyAwareRouter
 from .delegate_runtime import DelegateAgent
-from .kv_cache import (
-    KVCacheEntry, KVCacheStore, LAYER_SLOTS,
-    KVBlockKey, KVCacheBlock, KVCacheDAG,
-    BLOCK_TYPES, BLOCK_NAMES,
-)
+# kv_cache needs torch (an optional, undeclared dependency). Guard it so the
+# rest of the package — including the torch-free bonded_pair / signing
+# primitives — stays importable in environments without torch. The names
+# become None and only fail if something actually uses the KV-cache DAG.
+try:
+    from .kv_cache import (
+        KVCacheEntry, KVCacheStore, LAYER_SLOTS,
+        KVBlockKey, KVCacheBlock, KVCacheDAG,
+        BLOCK_TYPES, BLOCK_NAMES,
+    )
+except ImportError:  # pragma: no cover - exercised only without torch
+    KVCacheEntry = KVCacheStore = LAYER_SLOTS = None
+    KVBlockKey = KVCacheBlock = KVCacheDAG = None
+    BLOCK_TYPES = BLOCK_NAMES = None
 
 __all__ = [
     "EventToken", "LayerReport", "Coordinator", "EventTokenChain",
     "SLMBackend", "BackendResult", "BackendError",
     "NIMBackend", "LocalNanoBackend", "ChainedBackend",
     "make_backend", "default_backend",
-    "DelegateRouter", "RoutingDecision",
+    "DelegateRouter", "RoutingDecision", "RouterPolicy", "LatencyAwareRouter",
     "DelegateAgent",
     "KVCacheEntry", "KVCacheStore", "LAYER_SLOTS",
     "KVBlockKey", "KVCacheBlock", "KVCacheDAG",

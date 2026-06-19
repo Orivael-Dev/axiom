@@ -60,10 +60,20 @@ _REASONING_END_FRAC   = 0.77   # layers after  this = output
 SRD4_MAGIC = b"AXMSRD4\x00"
 
 
-def reasoning_layer_ids(n_layers: int) -> List[int]:
-    """Return the layer indices that fall in the reasoning MET chunk."""
-    start = math.floor(n_layers * _REASONING_START_FRAC)
-    end   = math.floor(n_layers * _REASONING_END_FRAC)
+def reasoning_layer_ids(
+    n_layers: int,
+    start_frac: Optional[float] = None,
+    end_frac: Optional[float] = None,
+) -> List[int]:
+    """Return the layer indices that fall in the reasoning MET chunk.
+
+    start_frac / end_frac override the module-level defaults when provided,
+    allowing per-architecture calibration without touching the constants.
+    """
+    s = start_frac if start_frac is not None else _REASONING_START_FRAC
+    e = end_frac   if end_frac   is not None else _REASONING_END_FRAC
+    start = math.floor(n_layers * s)
+    end   = math.floor(n_layers * e)
     return list(range(start, end))
 
 
@@ -240,6 +250,8 @@ def apply_sidecar_to_reasoning_layers(
     sidecar_path: Path,
     group_size: int = 64,
     verbose: bool = True,
+    start_frac: Optional[float] = None,
+    end_frac: Optional[float] = None,
 ) -> int:
     """Load the .srd4 sidecar and apply D8 correction to reasoning-chunk
     Linear layers only. Non-reasoning layers are untouched.
@@ -265,7 +277,9 @@ def apply_sidecar_to_reasoning_layers(
                     seen.add(parts[i + 1])
         n_layers = len(seen)
 
-    reasoning_ids = set(reasoning_layer_ids(n_layers))
+    reasoning_ids = set(reasoning_layer_ids(n_layers,
+                                              start_frac=start_frac,
+                                              end_frac=end_frac))
 
     if verbose:
         print(f"[srd-sidecar] {n_layers} layers total, "
@@ -339,14 +353,20 @@ def sidecar_ram_mb(
 
 if __name__ == "__main__":
     print("SRD selective sidecar — RAM estimates for anti-hallucination patch\n")
+    # (name, n_layers, hidden, intermediate, start_frac, end_frac)
+    # start_frac/end_frac=None → use module defaults (0.40 / 0.77)
+    # Gemma 4 12B boundaries are pending calibration sweep; None uses defaults.
     configs = [
-        ("SmolLM2-135M",   30, 576,   1536),
-        ("Qwen2.5-0.5B",   24, 896,   4864),
-        ("Gemma3-1B",      18, 1152,  6912),
-        ("TinyLlama-1.1B", 22, 2048,  5632),
+        ("SmolLM2-135M",   30,  576,   1536,  None, None),
+        ("Qwen2.5-0.5B",   24,  896,   4864,  None, None),
+        ("Gemma3-1B",      18, 1152,   6912,  None, None),
+        ("TinyLlama-1.1B", 22, 2048,   5632,  None, None),
+        ("Gemma4-12B",     28, 3072,  24576,  None, None),
     ]
-    for name, nl, h, inter in configs:
+    for name, nl, h, inter, sf, ef in configs:
         est = sidecar_ram_mb(nl, h, inter)
+        ids = reasoning_layer_ids(nl, sf, ef)
         print(f"  {name:<20} reasoning={est['reasoning_layers']} layers  "
+              f"({ids[0] if ids else '?'}–{ids[-1] if ids else '?'})  "
               f"D8 sparse={est['d8_sparse_MB']} MB  "
               f"total overhead={est['total_MB']} MB")

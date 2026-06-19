@@ -39,12 +39,7 @@ GGUF_PATH = OUT_DIR / "mistral_srd4_q4km.gguf"
 LLAMA_DIR = Path("/content/llama.cpp")
 LLAMA_CLI = LLAMA_DIR / "build/bin/llama-cli"
 RESULTS   = REPO / "results"
-KEY_FILE  = OUT_DIR / "axiom_master.key"
-
-# Business use: set SRD_MODEL_ID to your own HF model ID or local model path.
-# Example: os.environ["SRD_MODEL_ID"] = "your-org/your-model"
-#          os.environ["SRD_MODEL_ID"] = "/workspace/my_finetuned_model"
-MODEL_ID  = os.environ.get("SRD_MODEL_ID", "mistralai/Mistral-7B-Instruct-v0.3")
+MODEL_ID  = "mistralai/Mistral-7B-Instruct-v0.3"
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -80,22 +75,10 @@ def cell1_setup():
     else:
         subprocess.run(["git", "-C", str(REPO), "pull", "origin", REPO_BRANCH], check=True)
 
-    # Persist AXIOM_MASTER_KEY across cell re-runs within the same session.
-    # A new random key would invalidate any .axm signatures from a prior cell2 run.
-    import secrets
-    if KEY_FILE.is_file() and not os.environ.get("AXIOM_MASTER_KEY"):
-        os.environ["AXIOM_MASTER_KEY"] = KEY_FILE.read_text().strip()
-        print("AXIOM_MASTER_KEY restored from session key file")
-    elif not os.environ.get("AXIOM_MASTER_KEY"):
-        key = secrets.token_hex(32)
-        os.environ["AXIOM_MASTER_KEY"] = key
-        KEY_FILE.write_text(key)
-        print("AXIOM_MASTER_KEY generated and saved to session key file")
-    else:
-        print("AXIOM_MASTER_KEY already set in environment")
-
-    print(f"  Model: {MODEL_ID}")
-    print("  (set SRD_MODEL_ID env var to use a different model)")
+    if not os.environ.get("AXIOM_MASTER_KEY"):
+        import secrets
+        os.environ["AXIOM_MASTER_KEY"] = secrets.token_hex(32)
+        print("AXIOM_MASTER_KEY set (random, session-only)")
 
     subprocess.run([sys.executable, "-m", "pip", "install", "-q",
                     "transformers", "accelerate", "psutil"], check=True)
@@ -189,112 +172,22 @@ def cell3_verify():
 #   4. Runs llama-quantize → Q4_K_M GGUF (~4.07 GB)
 # ════════════════════════════════════════════════════════════════════════════
 def cell4a_build_llamacpp():
-    """Install llama.cpp — downloads pre-built CUDA binary (fast) then clones repo for Python scripts."""
+    """Build llama.cpp — skip if already built."""
     if LLAMA_CLI.is_file():
         print(f"✓ llama-cli already at {LLAMA_CLI}")
-        _ensure_llama_repo()
         return
 
-    print("Setting up llama.cpp...")
-    _ensure_llama_repo()
+    import torch
+    p    = torch.cuda.get_device_properties(0)
+    arch = f"{p.major}{p.minor}"
+    print(f"Building llama.cpp for {p.name} SM {p.major}.{p.minor}...")
 
-    # Try pre-built binary first — avoids 15-min cmake CUDA compile
-    if _download_prebuilt_llamacpp():
-        return
-
-    # Fall back to source build (capped at 4 jobs to avoid hanging)
-    _build_llamacpp_source()
-
-
-def _ensure_llama_repo():
-    """Clone llama.cpp repo (needed for convert_hf_to_gguf.py Python script)."""
     if not LLAMA_DIR.is_dir():
-        print("  Cloning llama.cpp repo (Python scripts)...")
         subprocess.run(
             ["git", "clone", "--depth", "1",
              "https://github.com/ggerganov/llama.cpp.git", str(LLAMA_DIR)],
             check=True,
         )
-
-
-def _download_prebuilt_llamacpp() -> bool:
-    """Download pre-built CUDA binary from GitHub releases. Returns True on success."""
-    import io, json, urllib.request, zipfile
-    import torch
-
-    cuda_ver = torch.version.cuda or ""          # e.g. "12.2" or "12.4"
-    major_minor = ".".join(cuda_ver.split(".")[:2])
-    print(f"  Looking for pre-built llama.cpp binary (CUDA {major_minor})...")
-
-    try:
-        req = urllib.request.Request(
-            "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest",
-            headers={"User-Agent": "axiom-srd-pipeline/1.0"},
-        )
-        with urllib.request.urlopen(req, timeout=20) as r:
-            release = json.loads(r.read())
-    except Exception as e:
-        print(f"  GitHub API unavailable: {e}")
-        return False
-
-    assets = release.get("assets", [])
-
-    # Prefer exact CUDA match, fall back to any ubuntu CUDA binary
-    def score(a: dict) -> int:
-        n = a["name"]
-        if "ubuntu-x64" not in n or "cuda" not in n:
-            return 0
-        if f"cu{major_minor}" in n:
-            return 2
-        return 1
-
-    best = max(assets, key=score, default=None)
-    if not best or score(best) == 0:
-        print("  No pre-built CUDA binary found in latest release.")
-        return False
-
-    size_mb = best["size"] / 1024**2
-    print(f"  Downloading {best['name']}  ({size_mb:.0f} MB)...")
-
-    try:
-        with urllib.request.urlopen(best["browser_download_url"], timeout=180) as r:
-            data = r.read()
-    except Exception as e:
-        print(f"  Download failed: {e}")
-        return False
-
-    build_bin = LLAMA_DIR / "build" / "bin"
-    build_bin.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            extracted = []
-            for member in z.namelist():
-                stem = Path(member).name
-                if stem in ("llama-cli", "llama-quantize"):
-                    dest = build_bin / stem
-                    dest.write_bytes(z.read(member))
-                    dest.chmod(0o755)
-                    extracted.append(stem)
-    except Exception as e:
-        print(f"  Extraction failed: {e}")
-        return False
-
-    if LLAMA_CLI.is_file():
-        print(f"  ✓ Pre-built binary ready: {', '.join(extracted)}")
-        print(f"✓ llama-cli ready (pre-built — skipped cmake compile)")
-        return True
-
-    print("  Pre-built archive did not contain llama-cli.")
-    return False
-
-
-def _build_llamacpp_source():
-    """Build llama.cpp from source — fallback when pre-built binary is unavailable."""
-    import torch
-    p    = torch.cuda.get_device_properties(0)
-    arch = f"{p.major}{p.minor}"
-    print(f"  Building from source for {p.name} SM {p.major}.{p.minor} (this takes ~10 min)...")
 
     subprocess.run(
         ["cmake", "-B", str(LLAMA_DIR / "build"), "-S", str(LLAMA_DIR),
@@ -302,14 +195,13 @@ def _build_llamacpp_source():
          "-DCMAKE_BUILD_TYPE=Release"],
         check=True,
     )
-    # Cap at 4 jobs — nproc (~12) saturates Colab CPU and causes hangs
+    nproc = subprocess.check_output(["nproc"]).decode().strip()
     subprocess.run(
         ["cmake", "--build", str(LLAMA_DIR / "build"),
-         "-j", "4", "--target", "llama-cli", "llama-quantize"],
+         "-j", nproc, "-t", "llama-cli", "llama-quantize"],
         check=True,
-        timeout=900,   # 15 min hard limit
     )
-    print("✓ llama-cli ready (built from source)")
+    print(f"✓ llama-cli ready")
 
 
 def cell4b_extract():
@@ -347,16 +239,9 @@ def cell4b_extract():
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# CELL 5 — Quick generation test  (~30 s)  [OPTIONAL]
-#
-# Validates the GGUF produces coherent output before download.
-# Skip this cell for production runs — it does not affect the output files.
-# Set SKIP_SMOKE_TEST=1 to bypass the guard.
+# CELL 5 — Quick generation test  (~30 s)
 # ════════════════════════════════════════════════════════════════════════════
 def cell5_smoke_test():
-    if os.environ.get("SKIP_SMOKE_TEST"):
-        print("SKIP_SMOKE_TEST set — skipping smoke test")
-        return None
     assert GGUF_PATH.is_file(), "Run cell4b first"
 
     print("=" * 60)
@@ -365,7 +250,7 @@ def cell5_smoke_test():
 
     result = subprocess.run(
         [str(LLAMA_CLI), "-m", str(GGUF_PATH),
-         "--n-gpu-layers", "99",
+         "--ngl", "99",
          "--ctx-size", "512",
          "--n-predict", "64",
          "--log-disable",
@@ -431,9 +316,7 @@ cell4a_build_llamacpp()
 # ── CELL 4b: Extract .axm → reconstruct FP16 → GGUF Q4_K_M (~15 min) ─────────
 cell4b_extract()
 
-# ── CELL 5 (OPTIONAL): Quick generation test on GPU (~30 s) ──────────────────
-# Core pipeline ends at Cell 4b. Cell 5 validates output quality before download.
-# Skip for production runs: just don't run this cell, or set SKIP_SMOKE_TEST=1.
+# ── CELL 5: Quick generation test on GPU (~30 s) ──────────────────────────────
 cell5_smoke_test()
 
 # ── CELL 6: Download .axm + GGUF ─────────────────────────────────────────────

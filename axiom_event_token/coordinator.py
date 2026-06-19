@@ -179,12 +179,14 @@ class Coordinator:
         first slot are summarised into the `governance` slot so the
         9-slot wire format stays intact.
         """
-        from .router import DelegateRouter
+        from .router import DelegateRouter, LatencyAwareRouter, RouterPolicy
         from .delegate_runtime import DelegateAgent
         from .backends import default_backend
 
         be = backend or default_backend()
-        rt = router  or DelegateRouter()
+        rt = router or LatencyAwareRouter(
+            policy=RouterPolicy(latency_threshold_ms=1500, verified_floor=0.90)
+        )
 
         decision = rt.route(
             delegates=list(axm_container.delegates),

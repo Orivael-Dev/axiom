@@ -63,7 +63,6 @@ Create 7 separate code cells and paste each block below.
 ```python
 import subprocess, sys
 subprocess.run(["git", "clone", "--depth", "1",
-    "--branch", "claude/srd-prototype-benchmark-JRtv1",
     "https://github.com/orivael-dev/axiom.git", "/content/axiom"], check=True)
 sys.path.insert(0, "/content/axiom")
 from research.quant.colab_mistral_srd4_pipeline import *
@@ -155,16 +154,13 @@ cell4b_extract()
   fingerprint : a3f9...
 ```
 
-### Cell 5 — Quick generation test on GPU (~30 s)  *(optional)*
+### Cell 5 — Quick generation test on GPU (~30 s)
 
 ```python
 cell5_smoke_test()
 ```
 
-Validates the GGUF produces coherent output before download. **Core pipeline ends at
-Cell 4b** — skip this cell for production runs where output quality is verified
-separately. To skip programmatically: `os.environ["SKIP_SMOKE_TEST"] = "1"`.
-
+Runs 64 tokens of generation on the A100 to confirm the GGUF works before download.
 Expected: ~50–80 tok/s on A100.
 
 ### Cell 6 — Download files
@@ -184,66 +180,6 @@ Downloads four files to your browser:
 
 > Total download: ~8.6 GB. Use a fast connection or only download the GGUF
 > if you don't need the signed `.axm` for provenance verification.
-
----
-
-## Part 2b — Running on RunPod (recommended for business use)
-
-For repeated or automated compression runs, RunPod is more reliable than Colab:
-no 12-hour timeout, persistent storage volumes, SSH access, and ~$3/run on an A100.
-
-### Setup (one time)
-
-1. Create a RunPod pod: **A100 SXM 40 GB**, attach a **50 GB network volume**
-   at `/workspace`.
-2. SSH in and install deps:
-
-```bash
-pip install transformers accelerate psutil torch --index-url https://download.pytorch.org/whl/cu121
-git clone --depth 1 \
-    --branch claude/srd-prototype-benchmark-JRtv1 \
-    https://github.com/orivael-dev/axiom.git /workspace/axiom
-pip install -r /workspace/axiom/research/quant/requirements.txt
-```
-
-### Run the pipeline
-
-```bash
-cd /workspace/axiom
-
-# Pack your model (HF ID or local path)
-python3 research/quant/run_srd4_local.py \
-    --model mistralai/Mistral-7B-Instruct-v0.3 \
-    --output-dir /workspace/srd_output \
-    --llamacpp /workspace/llama.cpp \
-    --quant Q4_K_M
-
-# Or with your own fine-tuned model
-python3 research/quant/run_srd4_local.py \
-    --model /workspace/my_finetuned_model \
-    --output-dir /workspace/srd_output \
-    --llamacpp /workspace/llama.cpp
-```
-
-Output files land in `--output-dir`:
-
-| File | Description |
-|------|-------------|
-| `model_srd4.axm` | Signed .axm container |
-| `model_srd4_q4km.gguf` | GGUF Q4_K_M for llama.cpp |
-| `pack_stats.json` | Timing, bpw, fingerprint |
-| `extract_stats.json` | GGUF size, verification |
-
-Add `--smoke-test` to run a 64-token generation check at the end.
-Add `--bench` to run the KV simulation benchmark after extraction.
-Use `--skip-extract` to stop after `.axm` (if you only need the signed container).
-
-### Cost estimate
-
-| GPU | Pack time | Extract time | Total | Cost |
-|-----|-----------|-------------|-------|------|
-| A100 40 GB | ~22 min | ~15 min | ~40 min | ~$1.10 |
-| A10G 24 GB | ~35 min | ~18 min | ~55 min | ~$0.55 |
 
 ---
 
@@ -324,131 +260,6 @@ cmake --build ~/llama.cpp/build -j6 -t llama-cli llama-quantize
 ```
 
 Build time: ~10–15 min on Orin Nano.
-
----
-
-## Part 4b — OOM Prevention on Orin Nano
-
-The Orin Nano has **5.5 GB usable unified memory**. With the 4.07 GB model loaded,
-~1.4 GB remains. Memory is consumed by:
-
-| Consumer | Size |
-|----------|------|
-| Model weights (Q4_K_M) | 4.07 GB |
-| KV cache (f16, 8K ctx) | ~1.0 GB |
-| Activation tensors | ~150–200 MB |
-| System / driver overhead | ~150 MB |
-| **Total at 8K ctx** | **~5.5 GB** ← right at the limit |
-
-Without any protection, a long prompt or a second process eating RAM will OOM-kill
-llama.cpp mid-generation. Four layers prevent this.
-
----
-
-### Layer 1 — KV cache quantization (biggest win, zero setup)
-
-llama.cpp can quantize the K and V cache tensors without retraining. This is the
-single highest-leverage change — halves or quarters KV memory with minimal quality
-impact at normal context lengths:
-
-```bash
-# Q8_0 — halves KV memory (~64 KB/token), nearly lossless up to ~20K ctx
-~/llama.cpp/build/bin/llama-cli \
-    -m /mnt/nvme/models/mistral_srd4_q4km.gguf \
-    -ngl 32 -c 16000 \
-    -ctk q8_0 -ctv q8_0 \
-    --flash-attn \
-    --prompt "Your prompt here"
-
-# Q4_0 — quarters KV memory (~32 KB/token), slight quality drop on very long ctx
-~/llama.cpp/build/bin/llama-cli \
-    -m /mnt/nvme/models/mistral_srd4_q4km.gguf \
-    -ngl 32 -c 32000 \
-    -ctk q4_0 -ctv q4_0 \
-    --flash-attn \
-    --prompt "Your prompt here"
-```
-
-**Context budget with 1.4 GB headroom:**
-
-| KV type | Per token | Max safe ctx | Quality impact |
-|---------|-----------|-------------|----------------|
-| `f16` (default) | 128 KB | ~8K | none |
-| `q8_0` | 64 KB | ~16K | negligible |
-| `q4_0` | 32 KB | ~32K | minor on long ctx |
-| `q4_K_M` | ~28 KB | ~37K | minor on long ctx |
-
----
-
-### Layer 2 — Flash attention (free memory, no quality cost)
-
-`--flash-attn` computes attention in blocks instead of materialising the full
-N×N attention matrix. Saves ~200–400 MB of peak activation memory — always
-enable it:
-
-```bash
-# Add to every llama-cli call
---flash-attn
-```
-
----
-
-### Layer 3 — NVMe swap (overflow safety net)
-
-If DRAM fills unexpectedly, NVMe swap (3 GB/s) prevents a hard OOM kill.
-**Never use microSD for swap** (90 MB/s — a 4 GB page-out takes 45 s).
-
-```bash
-# One-time setup on Orin Nano
-sudo fallocate -l 8G /mnt/nvme/swapfile
-sudo chmod 600 /mnt/nvme/swapfile
-sudo mkswap /mnt/nvme/swapfile
-sudo swapon /mnt/nvme/swapfile
-
-# Persist across reboots
-echo '/mnt/nvme/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-With 8 GB NVMe swap, the effective memory ceiling is 13.5 GB. Generation will slow
-if it pages, but it won't crash.
-
----
-
-### Layer 4 — Auto-select safe launch script
-
-`research/quant/orin_safe_launch.sh` reads `/proc/meminfo` and picks the highest
-config that fits in available RAM without manual tuning:
-
-```bash
-# Basic usage
-bash ~/axiom/research/quant/orin_safe_launch.sh \
-    /mnt/nvme/models/mistral_srd4_q4km.gguf \
-    ~/llama.cpp/build/bin/llama-cli \
-    "Explain edge AI in one paragraph:"
-```
-
-**Example output:**
-```
-=== Orin Safe Launch ===
-  Free RAM:    5340 MB
-  Model:       4200 MB
-  Headroom:    1140 MB
-  Config:      A-q8  (ngl=32  q8-KV  ctx=16K)
-```
-
-The script tries configs from most capable to most conservative and always
-enables `--flash-attn`. If headroom is below 200 MB it warns and drops to a
-minimal 2K context config rather than crashing.
-
-**Config tiers:**
-
-| Headroom | ngl | KV type | ctx | Label |
-|----------|-----|---------|-----|-------|
-| ≥ 1400 MB | 32 | f16 | 8K | A-full |
-| ≥ 900 MB | 32 | q8_0 | 16K | A-q8 |
-| ≥ 500 MB | 32 | q8_0 | 8K | A-q8-safe |
-| ≥ 200 MB | 22 | q4_0 | 4K | B-q4 |
-| < 200 MB | 16 | q4_0 | 2K | minimal |
 
 ---
 

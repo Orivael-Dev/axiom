@@ -209,9 +209,12 @@ class VisionSpecialistRunner:
             from transformers import AutoProcessor, AutoModelForVision2Seq
             from transformers import BitsAndBytesConfig
         except ImportError as e:
+            import transformers as _tf
             raise RuntimeError(
-                f"Vision runner requires transformers>=4.45 and bitsandbytes: {e}"
-            )
+                f"Vision runner requires transformers==4.44.2 (v5.x removed "
+                f"AutoModelForVision2Seq). Currently installed: {_tf.__version__}. "
+                f"Fix: pip install \"transformers==4.44.2\" accelerate bitsandbytes"
+            ) from e
 
         # Prefer extracting weights from AXM for tamper-evident loading.
         # Weights are stored as safetensors (safe_serialization=True in packer).

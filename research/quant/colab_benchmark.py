@@ -185,7 +185,7 @@ def step7_gguf_benchmark():
         [sys.executable, "-m", "research.quant.bench_llamacpp_infer",
          "--gguf", str(GGUF_PATH),
          "--llama-cli", str(LLAMA_CLI),
-         "--n-gpu-layers", "99",
+         "--ngl", "99",
          "--n-runs", str(N_RUNS),
          "--stats-json", str(out_json)],
         cwd=REPO, check=True,

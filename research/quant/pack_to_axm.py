@@ -194,8 +194,8 @@ def pack_model(
                   f"packed={rp['packed_mb']:.0f} MB "
                   f"({rp['n_quantized_layers']} layers)")
         else:
-            print(f"[pack] saving checkpoint to temp dir (safetensors)...")
-            model.save_pretrained(weights_dir, safe_serialization=True)
+            print(f"[pack] saving checkpoint to temp dir...")
+            model.save_pretrained(weights_dir)
             tokenizer.save_pretrained(weights_dir)
         save_s = time.monotonic() - t2
 

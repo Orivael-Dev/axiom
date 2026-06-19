@@ -50,13 +50,16 @@ efficiency_audit.jsonl
 *_log.jsonl
 *_audit.jsonl
 sovereign_state.json
+audio_harness_results.json
 axiom_proposals.json
 research_manifests.json
 axiom_agent_memory.jsonl
+axiom_mkb_registry.jsonl
 axiom_sim_log.jsonl
 axiom_redact_log.jsonl
 crl_reward_log.jsonl
 axiom_mkb_registry.jsonl
+audio_harness_results.json
 
 # Models — too large for GitHub
 *.gguf
@@ -105,8 +108,25 @@ tests/_tmp_bonded_pair_server_logs/
 # deploys point this at /data/tenants via env; this directory only ever
 # exists when tests/imports run from the repo root.
 tenants/
+
+# Constitutional memory runtime store (ORVL-015) — created when the
+# axiom_memory MCP tool runs; real deploys point AXIOM_MEMORY_STORE elsewhere.
+axiom_memory_store.jsonl
+
+# Audit ledger runtime store (created when the axiom_ledger MCP tool runs;
+# real deploys point AXIOM_AUDIT_LEDGER elsewhere).
+axiom_audit_ledger.jsonl
+
+# Marketplace bonded-authority ledger (created when axiom_marketplace runs;
+# real deploys point AXIOM_MARKETPLACE_LEDGER elsewhere).
+axiom_marketplace_ledger.jsonl
+
 audio_harness_results.json
 
 # legal-rag-bench writes its scorecard here on every run (generated artifact,
 # not a deliverable — the numbers depend on which flags/dataset were used).
 research/legal/results.json
+
+# Auto-downloaded open-source demo frame (fetched on demand by
+# axiom_video_local_agent.py — not redistributed in-repo).
+demo_assets/

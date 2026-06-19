@@ -100,7 +100,7 @@ def run_llama(
         "-m", gguf_path,
         "--ctx-size", str(ctx_size),
         "--n-predict", str(n_predict),
-        "--n-gpu-layers", str(n_gpu_layers),
+        "--ngl", str(n_gpu_layers),
         "--threads", "4",
         "--no-mmap",
         "--log-disable",
