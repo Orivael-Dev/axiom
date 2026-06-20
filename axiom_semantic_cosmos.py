@@ -1,0 +1,577 @@
+"""Semantic Cosmos Model — layered BM25 retrieval.
+
+Documents are tagged at three cosmos levels using the existing
+``intent_type`` sidecar mechanism in ``axiom_research_retriever``:
+
+  galaxy      — broad domain coverage (many diverse token families)
+  planet      — dense concept cluster (high co-occurrence, medium length)
+  star        — specific fact or constraint (short, focused vocabulary)
+  constellation — recognisable reasoning pattern (reusable path)
+  wormhole    — cross-domain analogy bridge
+  void        — low-probability, unrelated semantic space (rejected)
+
+``CosmosLayeredRetriever`` wraps ``LocalRetriever`` and runs three
+sequential BM25 passes (galaxy → planet → star), with an optional
+anticipatory warmup that fires the next-layer query in a background
+thread while the caller processes the current result.
+
+This is the experiment-first implementation.  It uses *only* the
+existing ``intent_filter`` parameter on ``LocalRetriever.retrieve()``
+— no changes to ``axiom_research_retriever`` are required.
+"""
+from __future__ import annotations
+
+import json
+import math
+import sys
+import time
+import types as _types
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional
+
+# ── module freeze (CANNOT_MUTATE) ────────────────────────────────────
+
+def _module_setattr(self, name, value):
+    raise AttributeError(f"CANNOT_MUTATE: {name} is immutable")
+
+_mod = sys.modules[__name__]
+_mod.__class__ = type("_FrozenModule", (_types.ModuleType,), {"__setattr__": _module_setattr})
+
+TRUST_LEVEL: int = 1
+
+COSMOS_LEVELS: tuple = ("galaxy", "planet", "star", "constellation", "wormhole", "void")
+
+# Vocabulary richness thresholds for auto-tagging.
+# Designed for keyword-structured docs (MKB blocks, config entries, datasheets)
+# not for natural prose (which tends to have high richness regardless of level).
+_GALAXY_RICHNESS_FLOOR: float = 0.65   # unique_tokens/total > 0.65 → galaxy
+_PLANET_RICHNESS_FLOOR: float = 0.13   # 0.13–0.65 → planet
+# < 0.13 OR len < 60 tokens → star
+
+# Reasoning-pattern keywords that nudge a doc toward "constellation"
+_CONSTELLATION_KEYWORDS: frozenset = frozenset({
+    "pattern", "heuristic", "guideline", "procedure", "protocol",
+    "workflow", "reasoning", "approach", "methodology", "framework",
+    "strategy", "algorithm", "decision", "policy", "rule",
+})
+
+# Cross-domain bridge keywords that nudge toward "wormhole"
+_WORMHOLE_KEYWORDS: frozenset = frozenset({
+    "analogy", "similar", "equivalent", "compared", "parallel",
+    "bridge", "maps", "translates", "mirrors", "corresponds",
+    "like the", "same as", "just as",
+})
+
+MKB_COSMOS_LEVEL: dict = {
+    "SOVEREIGN":   "galaxy",
+    "AGENT":       "planet",
+    "SPEC":        "planet",
+    "GUARD":       "star",
+    "VALIDATOR":   "star",
+    "REWARD":      "constellation",
+}
+
+
+
+# ── cosmos-level tagging ─────────────────────────────────────────────
+
+def cosmos_tag_doc(content: str) -> str:
+    """Assign a cosmos level to a document based on vocabulary statistics.
+
+    Returns one of: 'galaxy', 'planet', 'star', 'constellation', 'wormhole'.
+
+    Algorithm:
+      1. Tokenise (simple lowercase alpha run, ≥3 chars).
+      2. Check for constellation / wormhole keyword presence first
+         (they override length-based heuristics).
+      3. Short docs (< 60 tokens) → 'star'.
+      4. richness = unique_tokens / total_tokens:
+           > _GALAXY_RICHNESS_FLOOR  → 'galaxy'
+           > _PLANET_RICHNESS_FLOOR  → 'planet'
+           else                       → 'star'
+    """
+    import re
+    tokens = [t.lower() for t in re.findall(r"[A-Za-z][A-Za-z]{2,}", content)]
+    if not tokens:
+        return "star"
+
+    token_set = set(tokens)
+
+    # Wormhole / constellation override (check raw text, case-insensitive)
+    content_lower = content.lower()
+    wormhole_hits = sum(1 for kw in _WORMHOLE_KEYWORDS if kw in content_lower)
+    constellation_hits = sum(1 for kw in _CONSTELLATION_KEYWORDS if kw in content_lower)
+
+    if wormhole_hits >= 3:
+        return "wormhole"
+    if constellation_hits >= 4:
+        return "constellation"
+
+    n = len(tokens)
+    if n < 60:
+        return "star"
+
+    richness = len(token_set) / n
+    if richness > _GALAXY_RICHNESS_FLOOR:
+        return "galaxy"
+    if richness > _PLANET_RICHNESS_FLOOR:
+        return "planet"
+    return "star"
+
+
+def mkb_to_cosmos_level(block_type: str) -> str:
+    """Map a KnowledgeBlock block_type to a cosmos level string."""
+    return MKB_COSMOS_LEVEL.get(block_type, "star")
+
+
+def write_cosmos_meta(
+    doc_path: Path,
+    level: str,
+    anchors: list[str] | None = None,
+) -> None:
+    """Write a .meta.json sidecar alongside doc_path so LocalRetriever
+    picks up intent_type=level and the optional vocab_anchors list.
+    """
+    meta: dict = {"intent_type": level}
+    if anchors:
+        meta["vocab_anchors"] = list(anchors)
+    sidecar = doc_path.with_name(doc_path.stem + ".meta.json")
+    sidecar.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+# ── result dataclasses ───────────────────────────────────────────────
+
+@dataclass
+class PassResult:
+    level: str
+    hits: list
+    latency_ms: float
+
+
+@dataclass
+class CosmosResult:
+    query:       str
+    galaxy_pass: PassResult
+    planet_pass: PassResult
+    star_pass:   PassResult
+    anticipate:  bool
+    total_latency_ms: float
+
+    def all_hits(self) -> list:
+        seen: set[str] = set()
+        out = []
+        for hit in (
+            self.galaxy_pass.hits
+            + self.planet_pass.hits
+            + self.star_pass.hits
+        ):
+            if hit.uri not in seen:
+                seen.add(hit.uri)
+                out.append(hit)
+        return out
+
+    def level_counts(self) -> dict[str, int]:
+        return {
+            "galaxy":  len(self.galaxy_pass.hits),
+            "planet":  len(self.planet_pass.hits),
+            "star":    len(self.star_pass.hits),
+        }
+
+
+# ── layered retriever ────────────────────────────────────────────────
+
+class CosmosLayeredRetriever:
+    """3-pass BM25 retrieval (galaxy → planet → star) over a LocalRetriever.
+
+    The underlying ``LocalRetriever`` must already be built with documents
+    tagged via ``write_cosmos_meta()`` so that ``intent_filter`` filtering
+    works correctly.
+
+    Args:
+        retriever: An already-built (or lazily-building) LocalRetriever
+                   instance whose corpus has cosmos-level meta sidecars.
+    """
+
+    def __init__(self, retriever) -> None:
+        self._r = retriever
+
+    def retrieve_layered(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        anticipate: bool = True,
+    ) -> CosmosResult:
+        """Run 3-pass cosmos retrieval with optional anticipatory warmup.
+
+        When ``anticipate=True``, the star-level query is fired in a
+        background thread as soon as the planet-level pass begins, so
+        the star results are ready by the time we need them.
+
+        Returns a CosmosResult with per-pass timings and results.
+        """
+        t_total = time.perf_counter()
+
+        # Pass 1 — galaxy
+        t0 = time.perf_counter()
+        galaxy_hits = self._r.retrieve(query, intent_filter="galaxy", k=3)
+        galaxy_ms = (time.perf_counter() - t0) * 1000
+
+        # Pass 2 — planet  +  anticipatory star pre-fire
+        if anticipate:
+            executor = ThreadPoolExecutor(max_workers=1)
+            star_future = executor.submit(
+                self._r.retrieve, query, intent_filter="star", k=k
+            )
+
+        t0 = time.perf_counter()
+        planet_hits = self._r.retrieve(query, intent_filter="planet", k=3)
+        planet_ms = (time.perf_counter() - t0) * 1000
+
+        # Pass 3 — star (collect pre-fired result or run now)
+        t0 = time.perf_counter()
+        if anticipate:
+            star_hits = star_future.result()
+            executor.shutdown(wait=False)
+        else:
+            star_hits = self._r.retrieve(query, intent_filter="star", k=k)
+        star_ms = (time.perf_counter() - t0) * 1000
+
+        total_ms = (time.perf_counter() - t_total) * 1000
+
+        return CosmosResult(
+            query=query,
+            galaxy_pass=PassResult("galaxy", galaxy_hits, galaxy_ms),
+            planet_pass=PassResult("planet", planet_hits, planet_ms),
+            star_pass=PassResult("star",   star_hits,   star_ms),
+            anticipate=anticipate,
+            total_latency_ms=total_ms,
+        )
+
+
+# ── FTS5 retriever ───────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class FTS5Hit:
+    uri:          str
+    snippet:      str
+    score:        float     # BM25 rank from SQLite (lower = better; negated for display)
+    intent_type:  str
+    vocab_anchors: tuple
+
+
+class FTS5CosmosRetriever:
+    """SQLite FTS5-backed cosmos retrieval — persistent, BM25-native.
+
+    Advantages over the pure-Python LocalRetriever backend:
+    - Index is persisted to disk; survives process restart with no rebuild.
+    - BM25 scoring is computed natively by SQLite's bm25() function.
+    - Cosmos-level filtering is a SQL WHERE clause — no Python-side scan.
+    - Scales to 100k+ documents without O(N) Python overhead per query.
+
+    Schema (one FTS5 virtual table)::
+
+        CREATE VIRTUAL TABLE docs USING fts5(
+            content,
+            cosmos_level UNINDEXED,
+            uri          UNINDEXED,
+            vocab_anchors UNINDEXED,
+            tokenize = "porter ascii"
+        );
+
+    UNINDEXED columns are stored but not indexed for full-text search —
+    they act as metadata that can be filtered via normal SQL.
+
+    Usage::
+
+        idx = FTS5CosmosRetriever(Path("cosmos_index.db"))
+        idx.ingest_doc("docs/hantavirus.txt", content, level="planet")
+        result = idx.retrieve_layered("hantavirus case fatality", k=5)
+    """
+
+    _CREATE_TABLE = """
+        CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(
+            content,
+            cosmos_level UNINDEXED,
+            uri          UNINDEXED,
+            vocab_anchors UNINDEXED,
+            tokenize = "porter ascii"
+        )
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        import sqlite3
+        self._db_path = Path(db_path)
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._conn.execute(self._CREATE_TABLE)
+        self._conn.commit()
+
+    def ingest_doc(
+        self,
+        uri: str,
+        content: str,
+        level: str,
+        anchors: list[str] | None = None,
+    ) -> None:
+        """Insert or replace a document.  Existing URI is deleted first."""
+        anchors_str = " ".join(anchors or [])
+        self._conn.execute("DELETE FROM docs WHERE uri = ?", (uri,))
+        self._conn.execute(
+            "INSERT INTO docs(content, cosmos_level, uri, vocab_anchors) "
+            "VALUES (?, ?, ?, ?)",
+            (content, level, uri, anchors_str),
+        )
+        self._conn.commit()
+
+    def ingest_file(
+        self,
+        path: Path,
+        level: str | None = None,
+        anchors: list[str] | None = None,
+    ) -> None:
+        """Read a file and ingest it.  Auto-tags cosmos level if not given."""
+        path = Path(path)
+        content = path.read_text(encoding="utf-8", errors="replace")
+        if level is None:
+            level = cosmos_tag_doc(content)
+
+        # Load anchors from .meta.json sidecar if present and not provided
+        if anchors is None:
+            meta_p = path.with_name(path.stem + ".meta.json")
+            if meta_p.exists():
+                try:
+                    meta = json.loads(meta_p.read_text(encoding="utf-8"))
+                    anchors = meta.get("vocab_anchors", [])
+                except (json.JSONDecodeError, OSError):
+                    anchors = []
+
+        uri = str(path)
+        self.ingest_doc(uri, content, level, anchors)
+
+    def retrieve(
+        self,
+        query: str,
+        *,
+        level: str | None = None,
+        k: int = 5,
+    ) -> list[FTS5Hit]:
+        """BM25-ranked full-text search.  Optionally filter by cosmos_level."""
+        if not query or not query.strip():
+            return []
+        # SQLite FTS5 bm25() returns negative values (lower = better match).
+        # We negate for a conventional "higher = better" score.
+        if level:
+            sql = (
+                "SELECT uri, snippet(docs,-1,'<b>','</b>',' … ',32), "
+                "       -bm25(docs), cosmos_level, vocab_anchors "
+                "FROM docs WHERE docs MATCH ? AND cosmos_level = ? "
+                "ORDER BY bm25(docs) LIMIT ?"
+            )
+            params = (_fts5_escape(query), level, k)
+        else:
+            sql = (
+                "SELECT uri, snippet(docs,-1,'<b>','</b>',' … ',32), "
+                "       -bm25(docs), cosmos_level, vocab_anchors "
+                "FROM docs WHERE docs MATCH ? "
+                "ORDER BY bm25(docs) LIMIT ?"
+            )
+            params = (_fts5_escape(query), k)
+        try:
+            rows = self._conn.execute(sql, params).fetchall()
+        except Exception:
+            return []
+        return [
+            FTS5Hit(
+                uri=r[0],
+                snippet=r[1] or "",
+                score=round(r[2], 4),
+                intent_type=r[3] or "general",
+                vocab_anchors=tuple((r[4] or "").split()),
+            )
+            for r in rows
+        ]
+
+    def retrieve_layered(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        anticipate: bool = True,
+    ) -> CosmosResult:
+        """3-pass FTS5 retrieval with optional anticipatory warmup."""
+        t_total = time.perf_counter()
+
+        t0 = time.perf_counter()
+        galaxy_hits = self.retrieve(query, level="galaxy", k=3)
+        galaxy_ms = (time.perf_counter() - t0) * 1000
+
+        if anticipate:
+            executor = ThreadPoolExecutor(max_workers=1)
+            star_future = executor.submit(self.retrieve, query, level="star", k=k)
+
+        t0 = time.perf_counter()
+        planet_hits = self.retrieve(query, level="planet", k=3)
+        planet_ms = (time.perf_counter() - t0) * 1000
+
+        t0 = time.perf_counter()
+        if anticipate:
+            star_hits = star_future.result()
+            executor.shutdown(wait=False)
+        else:
+            star_hits = self.retrieve(query, level="star", k=k)
+        star_ms = (time.perf_counter() - t0) * 1000
+
+        total_ms = (time.perf_counter() - t_total) * 1000
+
+        # Wrap FTS5Hit in a minimal duck-typed object so CosmosResult works
+        return CosmosResult(
+            query=query,
+            galaxy_pass=PassResult("galaxy", galaxy_hits, galaxy_ms),
+            planet_pass=PassResult("planet", planet_hits, planet_ms),
+            star_pass=PassResult("star",   star_hits,   star_ms),
+            anticipate=anticipate,
+            total_latency_ms=total_ms,
+        )
+
+    def doc_count(self, level: str | None = None) -> int:
+        """Return total document count, optionally filtered by level."""
+        if level:
+            return self._conn.execute(
+                "SELECT COUNT(*) FROM docs WHERE cosmos_level = ?", (level,)
+            ).fetchone()[0]
+        return self._conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+
+class CosmosContextBuilder:
+    """Pack a CosmosResult into a structured context string for a long-context LLM.
+
+    Designed for SubQBackend's 12M-token window: instead of passing only
+    the top-k retrieved snippets, we include ALL retrieved documents at
+    every cosmos level in a labelled hierarchy.  SubQ's SSA then decides
+    internally which cross-document token relationships matter.
+
+    Output structure::
+
+        === GALAXY: broad domain context ===
+        <galaxy doc 1 content>
+        ...
+        === PLANET: dense concept cluster ===
+        <planet doc 1 content>
+        ...
+        === STAR: verified facts ===
+        <star doc 1 content>
+        ...
+
+    For a traditional (short-context) backend, call ``build()`` with
+    ``max_chars`` set to a small value — it will truncate gracefully,
+    prioritising stars over planets over galaxy.
+    """
+
+    LEVEL_ORDER = ("star", "planet", "galaxy", "constellation", "wormhole")
+    LEVEL_HEADER = {
+        "galaxy":       "GALAXY: broad domain context",
+        "planet":       "PLANET: concept cluster",
+        "star":         "STAR: verified facts",
+        "constellation": "CONSTELLATION: reasoning pattern",
+        "wormhole":     "WORMHOLE: cross-domain bridge",
+    }
+
+    def build(
+        self,
+        result: CosmosResult,
+        base_system: str = "",
+        *,
+        max_chars: int = 0,   # 0 = unlimited (for SubQ 12M window)
+    ) -> str:
+        """Return a structured context string ready to pass as the LLM system prompt.
+
+        Args:
+            result:      CosmosResult from CosmosLayeredRetriever or FTS5CosmosRetriever.
+            base_system: Optional base system prompt prepended before the cosmos context.
+            max_chars:   Hard cap on returned string length (0 = no cap).
+                         When capped, stars are included first (highest priority),
+                         then planets, then galaxies.
+        """
+        sections: list[str] = []
+        if base_system:
+            sections.append(base_system.strip())
+
+        # Build per-level groups from the passes
+        level_docs: dict[str, list] = {
+            "galaxy":       result.galaxy_pass.hits,
+            "planet":       result.planet_pass.hits,
+            "star":         result.star_pass.hits,
+        }
+
+        for level in self.LEVEL_ORDER:
+            hits = level_docs.get(level, [])
+            if not hits:
+                continue
+            header = f"=== {self.LEVEL_HEADER.get(level, level.upper())} ==="
+            bodies: list[str] = []
+            for h in hits:
+                # Both RetrievedSource (LocalRetriever) and FTS5Hit have snippet/content
+                body = getattr(h, "snippet", None) or getattr(h, "content", "")
+                if body:
+                    bodies.append(body.strip())
+            if bodies:
+                sections.append(header + "\n" + "\n---\n".join(bodies))
+
+        text = "\n\n".join(sections)
+
+        if max_chars and len(text) > max_chars:
+            # Truncate: rebuild with only stars first, then extend if room
+            parts: list[str] = []
+            if base_system:
+                parts.append(base_system.strip())
+            budget = max_chars - len(base_system or "")
+            for level in self.LEVEL_ORDER:
+                hits = level_docs.get(level, [])
+                for h in hits:
+                    body = getattr(h, "snippet", None) or getattr(h, "content", "")
+                    chunk = f"=== {self.LEVEL_HEADER.get(level, level.upper())} ===\n{body.strip()}"
+                    if budget - len(chunk) > 0:
+                        parts.append(chunk)
+                        budget -= len(chunk)
+            text = "\n\n".join(parts)
+
+        return text
+
+    def estimate_tokens(self, text: str) -> int:
+        """Rough token estimate (4 chars/token) — good enough for budget checks."""
+        return max(1, len(text) // 4)
+
+    def fits_subq(self, text: str) -> bool:
+        """True if the packed context fits within SubQ's 12M token window."""
+        # Import lazily to avoid circular dependency
+        try:
+            from axiom_event_token.backends import SubQBackend
+            return self.estimate_tokens(text) < SubQBackend.CONTEXT_WINDOW_TOKENS
+        except ImportError:
+            return self.estimate_tokens(text) < 12_000_000
+
+
+def _fts5_escape(query: str) -> str:
+    """Escape a free-text query for safe use in FTS5 MATCH expressions.
+
+    FTS5 treats double-quotes as phrase delimiters and some other chars
+    as operators.  For a simple keyword search (no phrase, no prefix),
+    we strip operators and wrap each token as a plain term.
+    """
+    import re
+    # Keep only word chars; discard FTS5 operators: " ^ * ( ) OR AND NOT
+    tokens = re.findall(r"[A-Za-z0-9_]{2,}", query)
+    if not tokens:
+        return '""'   # empty match → no results
+    return " ".join(tokens)

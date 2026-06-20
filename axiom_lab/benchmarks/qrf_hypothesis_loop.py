@@ -91,6 +91,13 @@ BRANCH_STRATEGIES: dict[str, str] = {
                       "use built-ins where they are more readable.",
     "rewrite":        "Completely rewrite the function from scratch for maximum "
                       "correctness and clarity. Ignore the original implementation.",
+    # Physics / simulation strategies (activated for sim task tiers via ERV physics band)
+    "physics_first":  "Apply the correct physical formula from first principles. "
+                      "Verify units, constants (g=9.81, c=34300 cm/s at 37°C), "
+                      "and dimensional analysis before writing code.",
+    "conservation":   "Ensure the simulation conserves the correct physical quantity "
+                      "(energy, momentum, or mass). Check that PE↔KE conversion "
+                      "is exact at each timestep, not additive.",
 }
 
 # ── Optimization task bank ────────────────────────────────────────────────────
@@ -257,135 +264,123 @@ TASK_BANK: list[OptTask] = [
         signature="class RateLimiter  (max_calls: int, period: float)  →  .allow() -> bool",
     ),
 
+    # ── Physics / bio simulation tasks ───────────────────────────────────────
+    # These tasks require the model to fix/implement physics-based simulations.
+    # QRF's SimPhysBio agent can provide a physics-plausibility bonus score
+    # on top of the test pass rate — see axiom_world_sim_agent.py.
+
     OptTask(
-        task_id="precedence-calculator",
-        name="Arithmetic Precedence Calculator",
-        description="A calculator that evaluates strictly left-to-right, ignoring "
-                    "operator precedence and parentheses. Fix it to honor * / over "
-                    "+ - and to evaluate parenthesised sub-expressions.",
+        task_id="vocal-formant-calc",
+        name="Vocal Tract Formant Calculator",
+        description=(
+            "Fix a broken vocal tract formant frequency calculator. "
+            "The tube model uses the wrong formula and ignores area function scaling."
+        ),
         initial_code=textwrap.dedent("""\
-            def calc(expr: str) -> float:
-                # naive: left-to-right, ignores precedence and parentheses
-                tokens = expr.replace(" ", "")
-                total = 0
-                num = ""
-                op = "+"
-                for ch in tokens:
-                    if ch.isdigit():
-                        num += ch
-                    else:
-                        if op == "+": total += int(num)
-                        elif op == "-": total -= int(num)
-                        num = ""
-                        op = ch
-                if num:
-                    if op == "+": total += int(num)
-                    elif op == "-": total -= int(num)
-                return total
+            import math
+
+            def vocal_formants(tract_length_cm: float, n_formants: int = 4) -> list:
+                \"\"\"Return the first n_formants resonant frequencies (Hz)
+                of a uniform vocal tract tube of given length (cm).
+
+                Correct formula: Fn = (2n - 1) * c / (4 * L)
+                where c = 34300 cm/s (speed of sound at 37°C body temp).
+                \"\"\"
+                c = 34300   # cm/s at body temperature
+                L = tract_length_cm
+                # bug 1: uses n instead of (2n-1)
+                # bug 2: divides by 2*L instead of 4*L
+                return [round(n * c / (2 * L)) for n in range(1, n_formants + 1)]
         """),
         test_code=textwrap.dedent("""\
-            assert calc("2 + 3 * 4") == 14,            "precedence"
-            assert calc("(2 + 3) * 4") == 20,          "parentheses"
-            assert calc("10 / 2 - 3") == 2,            "div then sub"
-            assert calc("2 * 3 + 4 * 5") == 26,        "two products"
-            assert calc("100 - 50 / 5 / 5") == 98,     "left-assoc div"
-            assert calc("(1 + 2) * (3 + 4)") == 21,    "two groups"
-            assert calc("3 * (4 - 2) + 1") == 7,       "nested mix"
-            assert calc("((2))") == 2,                 "redundant parens"
-            assert calc("7") == 7,                     "single number"
-            assert calc("8 / 4 + 6 / 3") == 4,         "two quotients"
+            # Standard adult vocal tract ≈ 17 cm
+            # Correct formants: F1≈504, F2≈1513, F3≈2521, F4≈3529 Hz
+            f = vocal_formants(17.0, 4)
+            assert len(f) == 4,                         "returns 4 formants"
+            assert 480 <= f[0] <= 530,                  "F1 ≈ 504 Hz"
+            assert 1480 <= f[1] <= 1550,                "F2 ≈ 1513 Hz"
+            assert 2480 <= f[2] <= 2560,                "F3 ≈ 2521 Hz"
+            assert 3490 <= f[3] <= 3570,                "F4 ≈ 3529 Hz"
+            # Child vocal tract ≈ 12 cm → higher formants
+            fc = vocal_formants(12.0, 2)
+            assert fc[0] > f[0],                        "child F1 higher than adult"
+            assert fc[1] > f[1],                        "child F2 higher than adult"
+            # Odd-harmonic spacing: F2 should be ≈ 3×F1, F3 ≈ 5×F1
+            ratio_21 = f[1] / f[0]
+            assert 2.8 <= ratio_21 <= 3.2,              "F2/F1 ≈ 3"
+            assert f[0] > 0 and f[1] > f[0],           "ascending order"
         """),
         n_tests=10,
-        signature="def calc(expr: str) -> float",
+        signature="def vocal_formants(tract_length_cm: float, n_formants: int = 4) -> list[int]",
     ),
 
     OptTask(
-        task_id="semver-compare",
-        name="Semantic Version Compare",
-        description="Compare two SemVer strings returning -1/0/1. Must handle "
-                    "pre-release precedence (1.0.0-alpha < 1.0.0), numeric-vs-"
-                    "alphanumeric identifier ordering, more-fields-wins, and ignore "
-                    "build metadata after '+'. The naive start crashes on any '-' tag.",
+        task_id="pendulum-energy",
+        name="Pendulum Energy Conservation",
+        description=(
+            "Fix a pendulum simulation that violates energy conservation — "
+            "it adds kinetic energy each step instead of converting PE↔KE."
+        ),
         initial_code=textwrap.dedent("""\
-            def compare_versions(a: str, b: str) -> int:
-                # naive: compares numeric release parts only; crashes on a
-                # pre-release tag and ignores all SemVer precedence rules
-                pa = [int(x) for x in a.split(".")]
-                pb = [int(x) for x in b.split(".")]
-                if pa < pb:
-                    return -1
-                if pa > pb:
-                    return 1
-                return 0
+            import math
+
+            def simulate_pendulum(length_m: float, theta0_deg: float,
+                                  dt: float = 0.01, steps: int = 500) -> list:
+                \"\"\"Simulate a simple pendulum. Returns list of (t, theta, omega, energy).
+                theta: angle from vertical (radians)
+                omega: angular velocity (rad/s)
+                energy: total mechanical energy (J/kg, i.e. per unit mass)
+                g = 9.81 m/s²
+                \"\"\"
+                g = 9.81
+                L = length_m
+                theta = math.radians(theta0_deg)
+                omega = 0.0
+                trajectory = []
+                for i in range(steps):
+                    t = i * dt
+                    # bug: uses +omega instead of -g/L*sin(theta) for acceleration
+                    alpha = omega               # wrong: should be -(g/L)*math.sin(theta)
+                    omega += alpha * dt
+                    theta += omega * dt
+                    ke = 0.5 * omega**2 * L**2
+                    pe = g * L * (1 - math.cos(theta))
+                    energy = ke + pe
+                    trajectory.append((round(t,3), round(theta,4),
+                                       round(omega,4), round(energy,4)))
+                return trajectory
         """),
         test_code=textwrap.dedent("""\
-            assert compare_versions("1.0.0", "1.0.1") == -1,                    "patch"
-            assert compare_versions("1.2.0", "1.1.9") == 1,                     "minor beats patch"
-            assert compare_versions("1.0.0", "1.0.0") == 0,                     "equal"
-            assert compare_versions("1.0.0-alpha", "1.0.0") == -1,              "pre < release"
-            assert compare_versions("1.0.0", "1.0.0-beta") == 1,                "release > pre"
-            assert compare_versions("1.0.0-alpha", "1.0.0-alpha.1") == -1,      "more fields wins"
-            assert compare_versions("1.0.0-alpha.1", "1.0.0-alpha.beta") == -1, "numeric < alnum"
-            assert compare_versions("1.0.0-beta", "1.0.0-alpha") == 1,          "beta > alpha"
-            assert compare_versions("1.0.0+b1", "1.0.0+b2") == 0,               "build ignored"
-            assert compare_versions("1.0.0-rc.1+x", "1.0.0-rc.1") == 0,         "pre equal, build ignored"
+            import math
+            traj = simulate_pendulum(1.0, 10.0, dt=0.01, steps=500)
+            assert len(traj) == 500,                         "correct step count"
+            # Initial state: theta=10°, omega=0
+            t0, th0, om0, e0 = traj[0]
+            assert abs(th0 - math.radians(10)) < 0.01,      "initial angle correct"
+            assert abs(om0) < 0.01,                          "initial omega zero"
+            # Energy should be roughly conserved (within 5% after 500 steps, no damping)
+            e_vals = [row[3] for row in traj]
+            e_mean = sum(e_vals) / len(e_vals)
+            e_drift = max(abs(e - e_mean) / e_mean for e in e_vals)
+            assert e_drift < 0.10,                           "energy conserved ±10%"
+            # Pendulum should oscillate — theta should change sign
+            thetas = [row[1] for row in traj]
+            assert max(thetas) > 0 and min(thetas) < 0,     "oscillates both ways"
+            # Period of 1m pendulum ≈ 2.006s; should complete at least 2 cycles in 5s
+            zero_crossings = sum(
+                1 for i in range(1, len(thetas))
+                if thetas[i-1] * thetas[i] < 0
+            )
+            assert zero_crossings >= 4,                      "at least 2 full cycles"
+            # Max displacement should be close to initial (< 15°, within 20% of 10°)
+            max_deg = math.degrees(max(abs(t) for t in thetas))
+            assert 8 <= max_deg <= 12,                       "amplitude preserved"
         """),
-        n_tests=10,
-        signature="def compare_versions(a: str, b: str) -> int",
-    ),
-
-    OptTask(
-        task_id="lru-ttl-cache",
-        name="LRU Cache with TTL",
-        description="A capacity-bounded cache that must (a) evict the LEAST-recently-"
-                    "used key, (b) refresh recency on get(), and (c) expire entries "
-                    "older than ttl (return None and remove them). The starting code "
-                    "does none of the three correctly — it is FIFO, never refreshes "
-                    "recency, and never expires.",
-        initial_code=textwrap.dedent("""\
-            class TTLCache:
-                def __init__(self, capacity, ttl, time_fn=None):
-                    self.capacity = capacity
-                    self.ttl = ttl
-                    self.time_fn = time_fn or (lambda: 0.0)
-                    self.store = {}      # key -> (value, timestamp)
-                    self.order = []      # insertion order only (bug: no recency)
-
-                def get(self, key):
-                    # bug: ignores TTL and does not refresh recency
-                    if key in self.store:
-                        return self.store[key][0]
-                    return None
-
-                def put(self, key, value):
-                    now = self.time_fn()
-                    if key not in self.store and len(self.store) >= self.capacity:
-                        oldest = self.order.pop(0)   # bug: FIFO, not LRU
-                        del self.store[oldest]
-                    self.store[key] = (value, now)
-                    self.order.append(key)
-        """),
-        test_code=textwrap.dedent("""\
-            clock = {"t": 0.0}
-            c = TTLCache(2, 10.0, time_fn=lambda: clock["t"])
-            c.put("a", 1)
-            c.put("b", 2)
-            assert c.get("a") == 1,    "a present, now most-recently-used"
-            c.put("c", 3)
-            assert c.get("b") is None, "b was LRU, evicted by c"
-            assert c.get("a") == 1,    "a survived eviction"
-            assert c.get("c") == 3,    "c present"
-            clock["t"] = 5.0
-            c.put("d", 4)
-            assert c.get("a") is None, "a is now LRU, evicted by d"
-            clock["t"] = 20.0
-            assert c.get("c") is None, "c expired past ttl"
-            assert c.get("d") is None, "d expired past ttl"
-            c.put("e", 5)
-            assert c.get("e") == 5,    "fresh entry after expiries"
-        """),
-        n_tests=8,
-        signature="class TTLCache  (capacity: int, ttl: float, time_fn=None)  →  .get(key), .put(key, value)",
+        n_tests=7,
+        signature=(
+            "def simulate_pendulum(length_m, theta0_deg, dt=0.01, steps=500)"
+            " -> list[tuple[float,float,float,float]]"
+        ),
     ),
 ]
 
@@ -595,6 +590,21 @@ def _extract_code(raw: str, task: OptTask) -> str:
 # Simulated improvement curves per task (pass_rate by round for each strategy).
 # Models the effect of more tokens on harder problems.
 _STUB_IMPROVEMENT: dict[str, dict[str, list[float]]] = {
+    # Physics tasks: "efficiency" and "rewrite" strategies know the correct formula
+    "vocal-formant-calc": {
+        "edge_case":      [0.2, 0.4, 0.6, 0.8, 1.0],
+        "efficiency":     [0.3, 0.6, 0.9, 1.0, 1.0],
+        "error_handling": [0.1, 0.3, 0.5, 0.7, 0.9],
+        "simplify":       [0.4, 0.7, 1.0, 1.0, 1.0],
+        "rewrite":        [0.6, 1.0, 1.0, 1.0, 1.0],
+    },
+    "pendulum-energy": {
+        "edge_case":      [0.1, 0.3, 0.6, 0.8, 1.0],
+        "efficiency":     [0.2, 0.4, 0.7, 0.9, 1.0],
+        "error_handling": [0.1, 0.3, 0.5, 0.7, 0.9],
+        "simplify":       [0.3, 0.6, 0.9, 1.0, 1.0],
+        "rewrite":        [0.5, 0.9, 1.0, 1.0, 1.0],
+    },
     "buggy-binary-search": {
         "edge_case":      [0.3, 0.7, 0.9, 1.0, 1.0],
         "efficiency":     [0.2, 0.5, 0.8, 0.9, 1.0],
@@ -631,6 +641,9 @@ _STUB_BASELINE: dict[str, list[float]] = {
     "slow-palindrome":     [0.4, 0.6, 0.7, 0.9, 0.9],
     "broken-merge-sort":   [0.4, 0.6, 0.7, 0.8, 0.9],
     "leaky-rate-limiter":  [0.3, 0.5, 0.6, 0.8, 0.9],
+    # Physics tasks: formula bugs → model needs to know the correct physics
+    "vocal-formant-calc":  [0.2, 0.5, 0.8, 1.0, 1.0],
+    "pendulum-energy":     [0.1, 0.4, 0.7, 0.9, 1.0],
 }
 
 
