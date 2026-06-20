@@ -206,9 +206,10 @@ class InferenceOS:
         self._classifier_arg  = classifier
         self._policy_arg      = policy
         # Lazily initialised
-        self._retriever       = None
-        self._cosmos_retriever = None  # CosmosLayeredRetriever (wraps _retriever)
-        self._cosmos_builder  = None   # CosmosContextBuilder
+        self._retriever        = None
+        self._cosmos_retriever = None   # CosmosLayeredRetriever (wraps _retriever)
+        self._cosmos_builder   = None   # CosmosContextBuilder
+        self._prefix_cache     = None   # DomainPrefixCache — static system prompts
         self._backend    = None
         self._audit      = None
         self._classifier = None
@@ -229,6 +230,14 @@ class InferenceOS:
         self._audit     = (self._build_audit()     if self._audit_arg     is _UNSET
                            else self._audit_arg)
         self._policy    = self._policy_arg or self._build_policy()
+        # Domain prefix cache — static system prompts + startup warming
+        try:
+            from axiom_prefix_cache import DomainPrefixCache
+            self._prefix_cache = DomainPrefixCache()
+            if self._backend is not None and hasattr(self._backend, "_url"):
+                self._prefix_cache.warm_all(self._backend._url, self._backend.model)
+        except Exception:
+            pass
         # Cosmos layered retrieval needs a LocalRetriever that accepts intent_filter.
         # MultiProviderRetriever wraps local + remote APIs; only local docs have
         # cosmos-level sidecars, so we build a plain LocalRetriever for cosmos use.
@@ -384,18 +393,22 @@ class InferenceOS:
         t0 = time.perf_counter()
         if request.use_retrieval and self._retriever is not None:
             try:
+                # Use per-domain context budget to cap input tokens at General RAG level
+                ctx_budget = (
+                    self._prefix_cache.context_budget(request.domain)
+                    if self._prefix_cache is not None
+                    else request.max_context_chars
+                )
                 if self._cosmos_retriever is not None:
                     # Layered cosmos retrieval: galaxy → planet → star
                     cosmos_result = self._cosmos_retriever.retrieve_layered(
                         request.query, k=_MAX_RETRIEVAL_K, anticipate=True
                     )
-                    base_system = (
-                        "You are a helpful, accurate assistant governed by the Axiom Inference OS. "
-                        "Answer concisely based on the provided context."
-                    )
+                    # Pass base_system="" — static system prompt is handled by
+                    # DomainPrefixCache.make_system(), not baked into context_str.
                     context_str = self._cosmos_builder.build(
-                        cosmos_result, base_system,
-                        max_chars=request.max_context_chars,
+                        cosmos_result, "",
+                        max_chars=ctx_budget,
                     )
                     hits = cosmos_result.all_hits()
                     context_hits = len(hits)
@@ -409,7 +422,7 @@ class InferenceOS:
                     )
                     if hits:
                         context_str, context_hits = self._pack_context(
-                            hits, request.max_context_chars
+                            hits, ctx_budget
                         )
 
                 context_snippet = context_str[:200]
@@ -440,22 +453,27 @@ class InferenceOS:
         t0 = time.perf_counter()
         if self._backend is not None:
             try:
-                base_system = (
-                    "You are a helpful, accurate assistant governed by the Axiom Inference OS. "
-                    "Answer concisely based on the provided context."
-                )
-                # If cosmos built the context string (includes base_system already), use it;
-                # otherwise prepend context to the base system prompt.
-                if context_str and self._cosmos_builder is not None:
-                    system_prompt = context_str  # already includes base_system from builder
-                elif context_str:
-                    system_prompt = context_str + "\n\n" + base_system
+                # Static system prompt — always identical per domain → Ollama caches it.
+                # Dynamic retrieved context goes in the user turn (make_user_prompt).
+                if self._prefix_cache is not None:
+                    system_prompt = self._prefix_cache.make_system(request.domain)
+                    user_message  = self._prefix_cache.make_user_prompt(
+                        context_str, request.query
+                    )
                 else:
-                    system_prompt = base_system
+                    # Fallback when prefix cache not available
+                    system_prompt = (
+                        "You are a helpful, accurate assistant governed by the "
+                        "Axiom Inference OS. Answer concisely based on the provided context."
+                    )
+                    user_message = (
+                        f"Context:\n{context_str}\n\nQuestion: {request.query}"
+                        if context_str else request.query
+                    )
 
                 result = self._backend.generate(
                     system=system_prompt,
-                    prompt=request.query,
+                    prompt=user_message,
                     max_output_tokens=512,
                 )
                 output        = result.text
@@ -463,6 +481,10 @@ class InferenceOS:
                 output_tokens = result.output_tokens
                 route         = result.backend
                 model_used    = result.model
+                prefix_warm   = (
+                    self._prefix_cache.detect_cache_hit(result.prefill_ms, input_tokens)
+                    if self._prefix_cache is not None else False
+                )
                 stages.append(InferenceStageResult.make(
                     "generation", "ok", _ms(t0),
                     {
@@ -470,6 +492,8 @@ class InferenceOS:
                         "model":         result.model,
                         "input_tokens":  input_tokens,
                         "output_tokens": output_tokens,
+                        "prefill_ms":    result.prefill_ms,
+                        "prefix_warm":   prefix_warm,
                     }
                 ))
             except Exception as exc:

@@ -39,6 +39,7 @@ class BackendResult:
     latency_ms:     int
     backend:        str
     model:          str
+    prefill_ms:     int = 0   # Ollama prompt_eval_duration / 1e6; 0 = not reported
 
 
 class BackendError(RuntimeError):
@@ -175,11 +176,18 @@ class LocalNanoBackend:
         max_output_tokens: int,
         timeout_s: float = 60.0,
     ) -> BackendResult:
+        # /api/chat sends system and user as named roles so Ollama can cache
+        # the system tokens independently across requests.  keep_alive holds
+        # the model (and its KV state) in memory between calls.
         body = {
-            "model":  self.model,
-            "prompt": f"{system}\n\n{prompt}",
-            "stream": False,
-            "options": {
+            "model":      self.model,
+            "messages":   [
+                {"role": "system", "content": system},
+                {"role": "user",   "content": prompt},
+            ],
+            "stream":     False,
+            "keep_alive": "10m",
+            "options":    {
                 "temperature": 0.3,
                 "num_predict": int(max_output_tokens),
             },
@@ -187,7 +195,7 @@ class LocalNanoBackend:
         t0 = time.monotonic()
         try:
             resp = requests.post(
-                f"{self._url}/api/generate",
+                f"{self._url}/api/chat",
                 json=body, timeout=timeout_s,
             )
         except requests.RequestException as e:
@@ -199,13 +207,16 @@ class LocalNanoBackend:
             data = resp.json()
         except ValueError as e:
             raise BackendError(f"Ollama malformed JSON: {e}") from e
+        # prompt_eval_duration is nanoseconds; convert to ms for cache-hit detection
+        prefill_ms = int(data.get("prompt_eval_duration", 0) / 1_000_000)
         return BackendResult(
-            text=data.get("response", ""),
+            text=data.get("message", {}).get("content", ""),
             input_tokens=int(data.get("prompt_eval_count", 0)),
             output_tokens=int(data.get("eval_count", 0)),
             latency_ms=latency_ms,
             backend=self.name,
             model=self.model,
+            prefill_ms=prefill_ms,
         )
 
 
