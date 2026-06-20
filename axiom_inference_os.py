@@ -206,7 +206,9 @@ class InferenceOS:
         self._classifier_arg  = classifier
         self._policy_arg      = policy
         # Lazily initialised
-        self._retriever  = None
+        self._retriever       = None
+        self._cosmos_retriever = None  # CosmosLayeredRetriever (wraps _retriever)
+        self._cosmos_builder  = None   # CosmosContextBuilder
         self._backend    = None
         self._audit      = None
         self._classifier = None
@@ -227,6 +229,20 @@ class InferenceOS:
         self._audit     = (self._build_audit()     if self._audit_arg     is _UNSET
                            else self._audit_arg)
         self._policy    = self._policy_arg or self._build_policy()
+        # Cosmos layered retrieval needs a LocalRetriever that accepts intent_filter.
+        # MultiProviderRetriever wraps local + remote APIs; only local docs have
+        # cosmos-level sidecars, so we build a plain LocalRetriever for cosmos use.
+        try:
+            from axiom_research_retriever import LocalRetriever
+            from axiom_semantic_cosmos import CosmosLayeredRetriever, CosmosContextBuilder
+            cosmos_local = self._extract_local_retriever(self._retriever)
+            if cosmos_local is None:
+                cosmos_local = self._build_local_retriever()
+            if cosmos_local is not None:
+                self._cosmos_retriever = CosmosLayeredRetriever(cosmos_local)
+                self._cosmos_builder   = CosmosContextBuilder()
+        except Exception:
+            pass
         self._ready = True
 
     @staticmethod
@@ -264,6 +280,46 @@ class InferenceOS:
         try:
             from axiom_firewall import policy as pm
             return pm
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_local_retriever(retriever):
+        """Unwrap DomainRoutedRetriever → LocalRetriever for cosmos use."""
+        if retriever is None:
+            return None
+        from axiom_research_retriever import LocalRetriever, DomainRoutedRetriever
+        if isinstance(retriever, LocalRetriever):
+            return retriever
+        if isinstance(retriever, DomainRoutedRetriever):
+            return retriever._default  # bare LocalRetriever with intent_filter support
+        # MultiProviderRetriever or other wrappers — extract first provider if possible
+        try:
+            providers = retriever._providers
+            if providers:
+                inner = providers[0]
+                inner_r = getattr(inner, "_retriever", None) or getattr(inner, "_inner", None)
+                if isinstance(inner_r, (LocalRetriever, DomainRoutedRetriever)):
+                    return inner_r if isinstance(inner_r, LocalRetriever) else inner_r._default
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _build_local_retriever():
+        """Build a minimal LocalRetriever over docs/ for cosmos layered retrieval."""
+        try:
+            from axiom_research_retriever import LocalRetriever
+            roots = []
+            for name in ("docs", "README.md"):
+                p = Path.cwd() / name
+                if p.exists():
+                    roots.append(p)
+            if not roots:
+                return None
+            r = LocalRetriever(roots=roots)
+            r.build()
+            return r
         except Exception:
             return None
 
@@ -324,27 +380,47 @@ class InferenceOS:
 
         # ── Stage 2 / Step 4: Retrieval ───────────────────────────────────────
         context_str, context_hits, context_snippet = "", 0, ""
+        cosmos_level_counts: dict = {}
         t0 = time.perf_counter()
         if request.use_retrieval and self._retriever is not None:
             try:
-                hits = self._retriever.retrieve(
-                    request.query,
-                    k=_MAX_RETRIEVAL_K,
-                    domain=request.domain,
-                )
-                if hits:
-                    context_str, context_hits = self._pack_context(
-                        hits, request.max_context_chars
+                if self._cosmos_retriever is not None:
+                    # Layered cosmos retrieval: galaxy → planet → star
+                    cosmos_result = self._cosmos_retriever.retrieve_layered(
+                        request.query, k=_MAX_RETRIEVAL_K, anticipate=True
                     )
-                    context_snippet = context_str[:200]
-                    stages.append(InferenceStageResult.make(
-                        "retrieval", "ok", _ms(t0),
-                        {"hits": context_hits, "snippet": context_snippet}
-                    ))
+                    base_system = (
+                        "You are a helpful, accurate assistant governed by the Axiom Inference OS. "
+                        "Answer concisely based on the provided context."
+                    )
+                    context_str = self._cosmos_builder.build(
+                        cosmos_result, base_system,
+                        max_chars=request.max_context_chars,
+                    )
+                    hits = cosmos_result.all_hits()
+                    context_hits = len(hits)
+                    cosmos_level_counts = cosmos_result.level_counts()
                 else:
-                    stages.append(InferenceStageResult.make(
-                        "retrieval", "ok", _ms(t0), {"hits": 0}
-                    ))
+                    # Flat BM25 fallback
+                    hits = self._retriever.retrieve(
+                        request.query,
+                        k=_MAX_RETRIEVAL_K,
+                        domain=request.domain,
+                    )
+                    if hits:
+                        context_str, context_hits = self._pack_context(
+                            hits, request.max_context_chars
+                        )
+
+                context_snippet = context_str[:200]
+                detail: dict = {"hits": context_hits}
+                if cosmos_level_counts:
+                    detail["galaxy"] = cosmos_level_counts.get("galaxy", 0)
+                    detail["planet"] = cosmos_level_counts.get("planet", 0)
+                    detail["star"]   = cosmos_level_counts.get("star",   0)
+                stages.append(InferenceStageResult.make(
+                    "retrieval", "ok", _ms(t0), detail
+                ))
             except Exception as exc:
                 stages.append(InferenceStageResult.make(
                     "retrieval", "degraded", _ms(t0), {"error": str(exc)[:120]}
@@ -356,19 +432,26 @@ class InferenceOS:
             ))
 
         # Estimated tokens saved from context reuse (rough: 4 chars ≈ 1 token)
-        tokens_saved = len(context_str) // 4 if context_str else 0
+        # Only count when actual documents were retrieved, not just the base system prompt.
+        tokens_saved = len(context_str) // 4 if (context_str and context_hits > 0) else 0
 
         # ── Stage 3 / Step 5: Generation ──────────────────────────────────────
         output, input_tokens, output_tokens = "", 0, 0
         t0 = time.perf_counter()
         if self._backend is not None:
             try:
-                system_prompt = (
+                base_system = (
                     "You are a helpful, accurate assistant governed by the Axiom Inference OS. "
                     "Answer concisely based on the provided context."
                 )
-                if context_str:
-                    system_prompt = context_str + "\n\n" + system_prompt
+                # If cosmos built the context string (includes base_system already), use it;
+                # otherwise prepend context to the base system prompt.
+                if context_str and self._cosmos_builder is not None:
+                    system_prompt = context_str  # already includes base_system from builder
+                elif context_str:
+                    system_prompt = context_str + "\n\n" + base_system
+                else:
+                    system_prompt = base_system
 
                 result = self._backend.generate(
                     system=system_prompt,
