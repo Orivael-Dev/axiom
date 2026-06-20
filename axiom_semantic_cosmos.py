@@ -453,6 +453,115 @@ class FTS5CosmosRetriever:
         self.close()
 
 
+class CosmosContextBuilder:
+    """Pack a CosmosResult into a structured context string for a long-context LLM.
+
+    Designed for SubQBackend's 12M-token window: instead of passing only
+    the top-k retrieved snippets, we include ALL retrieved documents at
+    every cosmos level in a labelled hierarchy.  SubQ's SSA then decides
+    internally which cross-document token relationships matter.
+
+    Output structure::
+
+        === GALAXY: broad domain context ===
+        <galaxy doc 1 content>
+        ...
+        === PLANET: dense concept cluster ===
+        <planet doc 1 content>
+        ...
+        === STAR: verified facts ===
+        <star doc 1 content>
+        ...
+
+    For a traditional (short-context) backend, call ``build()`` with
+    ``max_chars`` set to a small value — it will truncate gracefully,
+    prioritising stars over planets over galaxy.
+    """
+
+    LEVEL_ORDER = ("star", "planet", "galaxy", "constellation", "wormhole")
+    LEVEL_HEADER = {
+        "galaxy":       "GALAXY: broad domain context",
+        "planet":       "PLANET: concept cluster",
+        "star":         "STAR: verified facts",
+        "constellation": "CONSTELLATION: reasoning pattern",
+        "wormhole":     "WORMHOLE: cross-domain bridge",
+    }
+
+    def build(
+        self,
+        result: CosmosResult,
+        base_system: str = "",
+        *,
+        max_chars: int = 0,   # 0 = unlimited (for SubQ 12M window)
+    ) -> str:
+        """Return a structured context string ready to pass as the LLM system prompt.
+
+        Args:
+            result:      CosmosResult from CosmosLayeredRetriever or FTS5CosmosRetriever.
+            base_system: Optional base system prompt prepended before the cosmos context.
+            max_chars:   Hard cap on returned string length (0 = no cap).
+                         When capped, stars are included first (highest priority),
+                         then planets, then galaxies.
+        """
+        sections: list[str] = []
+        if base_system:
+            sections.append(base_system.strip())
+
+        # Build per-level groups from the passes
+        level_docs: dict[str, list] = {
+            "galaxy":       result.galaxy_pass.hits,
+            "planet":       result.planet_pass.hits,
+            "star":         result.star_pass.hits,
+        }
+
+        for level in self.LEVEL_ORDER:
+            hits = level_docs.get(level, [])
+            if not hits:
+                continue
+            header = f"=== {self.LEVEL_HEADER.get(level, level.upper())} ==="
+            bodies: list[str] = []
+            for h in hits:
+                # Both RetrievedSource (LocalRetriever) and FTS5Hit have snippet/content
+                body = getattr(h, "snippet", None) or getattr(h, "content", "")
+                if body:
+                    bodies.append(body.strip())
+            if bodies:
+                sections.append(header + "\n" + "\n---\n".join(bodies))
+
+        text = "\n\n".join(sections)
+
+        if max_chars and len(text) > max_chars:
+            # Truncate: rebuild with only stars first, then extend if room
+            parts: list[str] = []
+            if base_system:
+                parts.append(base_system.strip())
+            budget = max_chars - len(base_system or "")
+            for level in self.LEVEL_ORDER:
+                hits = level_docs.get(level, [])
+                for h in hits:
+                    body = getattr(h, "snippet", None) or getattr(h, "content", "")
+                    chunk = f"=== {self.LEVEL_HEADER.get(level, level.upper())} ===\n{body.strip()}"
+                    if budget - len(chunk) > 0:
+                        parts.append(chunk)
+                        budget -= len(chunk)
+            text = "\n\n".join(parts)
+
+        return text
+
+    def estimate_tokens(self, text: str) -> int:
+        """Rough token estimate (4 chars/token) — good enough for budget checks."""
+        return max(1, len(text) // 4)
+
+    def fits_subq(self, text: str) -> bool:
+        """True if the packed context fits within SubQ's 12M token window."""
+        # Import lazily to avoid circular dependency
+        try:
+            from axiom_event_token.backends import SubQBackend
+            return self.estimate_tokens(text) < SubQBackend.CONTEXT_WINDOW_TOKENS
+        except ImportError:
+            return self.estimate_tokens(text) < 12_000_000
+
+
 def _fts5_escape(query: str) -> str:
     """Escape a free-text query for safe use in FTS5 MATCH expressions.
 

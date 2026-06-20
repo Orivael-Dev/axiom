@@ -212,6 +212,60 @@ class LocalNanoBackend:
 # ── Chained fallback ──────────────────────────────────────────────────────
 
 
+# ── Subquadratic SubQ (hosted, OpenAI-compatible, 12M context) ───────────
+
+
+class SubQBackend(NIMBackend):
+    """Subquadratic SubQ API — 12M-token SSA context window.
+
+    SubQ uses Subquadratic Selective Attention (SSA) internally: for each
+    query token it selects the k most relevant key positions and computes
+    exact attention only over those, giving O(n·k) rather than O(n²).
+    From the API caller's perspective it is a standard OpenAI-compatible
+    chat-completions endpoint — the SSA is transparent.
+
+    The headline difference vs. every other backend: the context window is
+    12 000 000 tokens.  This means a ``CosmosContextBuilder``-packed system
+    prompt containing the full galaxy + planet + star + constellation layers
+    (~100 documents) fits comfortably without chunking.  SubQ's SSA then
+    selects which cross-document token relationships actually matter —
+    exactly the application-layer equivalent of what the Semantic Cosmos
+    model describes as "gravity pulling toward verified mass."
+
+    Environment:
+      SUBQ_API_KEY   — required (your subq.ai API key)
+      SUBQ_MODEL     — default "subq-12m"
+      SUBQ_BASE_URL  — default "https://api.subq.ai/v1"
+
+    Reads from:
+      AXIOM_BACKEND=subq            → auto-selected by default_backend()
+      AXIOM_BACKEND_MEDICAL=subq    → route medical domain to SubQ
+    """
+
+    name: str = "subq"
+    CONTEXT_WINDOW_TOKENS: int = 12_000_000
+
+    def __init__(
+        self,
+        *,
+        api_key:  Optional[str] = None,
+        model:    Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> None:
+        key = api_key or os.environ.get("SUBQ_API_KEY")
+        if not key:
+            raise BackendError(
+                "SubQBackend requires SUBQ_API_KEY (get one at subq.ai). "
+                "Set AXIOM_BACKEND=subq and SUBQ_API_KEY=<key>."
+            )
+        self._api_key  = key
+        self.model     = model or os.environ.get("SUBQ_MODEL", "subq-12m")
+        self._base_url = (
+            base_url
+            or os.environ.get("SUBQ_BASE_URL", "https://api.subq.ai/v1")
+        ).rstrip("/")
+
+
 # ── DeepSeek API (hosted, OpenAI-compatible) ────────────────────────────
 
 
@@ -357,6 +411,7 @@ _BACKEND_FACTORIES = {
     "local":    lambda: LocalNanoBackend(),
     "deepseek": lambda: DeepSeekBackend(),
     "custom":   lambda: CustomBackend(),
+    "subq":     lambda: SubQBackend(),
 }
 
 
@@ -594,10 +649,12 @@ def default_backend() -> SLMBackend:
     AXIOM_BACKEND="local"         → LocalNanoBackend
     AXIOM_BACKEND="deepseek"      → DeepSeekBackend
     AXIOM_BACKEND="custom"        → CustomBackend
+    AXIOM_BACKEND="subq"          → SubQBackend (12M-token SSA context)
     AXIOM_BACKEND="local,deepseek"→ ChainedBackend (try local first,
                                                     fall back to DeepSeek)
     AXIOM_BACKEND="local,nim"     → ChainedBackend([local, nim])
-    unset                         → CustomBackend if AXIOM_BASE_URL +
+    unset                         → SubQBackend   if SUBQ_API_KEY set;
+                                    CustomBackend if AXIOM_BASE_URL +
                                     AXIOM_API_KEY + AXIOM_MODEL are
                                     all set (explicit user-endpoint
                                     opt-in via env);
@@ -625,6 +682,8 @@ def default_backend() -> SLMBackend:
     spec = os.environ.get("AXIOM_BACKEND")
     if spec:
         base = make_backend(spec.split(","))
+    elif os.environ.get("SUBQ_API_KEY"):
+        base = SubQBackend()
     elif _custom_backend_env_complete():
         base = CustomBackend()
     elif os.environ.get("OLLAMA_URL") or not (
