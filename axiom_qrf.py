@@ -22,9 +22,10 @@ import json
 import logging
 import sys
 import types as _types
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 # ── BUG-003: UTF-8 stdout/stderr ──────────────────────────────────────────
 if hasattr(sys.stdout, "reconfigure"):
@@ -83,6 +84,35 @@ class QRFResult:
     manifold: Optional[dict]   # manifold distance data if available
     timestamp: str
     hmac_signature: str
+    layer_disagreement: Dict[str, float] = field(default_factory=dict)
+    # {band_name: std_value} — populated when forecast(calibration_mode=True).
+    # Keys: "early" (0-40%), "reasoning" (40-77%), "output" (77-100%).
+    # Feed into QRFSRDCalibrator to drive per-layer SRD alpha selection.
+
+
+# ── Branch disagreement helper ────────────────────────────────────────────
+
+def _compute_layer_disagreement(weighted_branches: list) -> Dict[str, float]:
+    """Compute per-band disagreement from branch weight std.
+
+    Used by QRFEngine.forecast(calibration_mode=True) to populate
+    QRFResult.layer_disagreement for downstream QRFSRDCalibrator consumption.
+
+    The reasoning band receives the full std signal; early and output bands
+    are dampened to match their relative sensitivity to SRD correction.
+    """
+    weights = [b.get("probability_weight", 0.0) for b in weighted_branches]
+    n = len(weights)
+    if n < 2:
+        return {}
+    mean = sum(weights) / n
+    var  = sum((w - mean) ** 2 for w in weights) / (n - 1)
+    std  = math.sqrt(max(var, 0.0))
+    return {
+        "early":     round(std * 0.40, 4),   # 0-40% layers — factual, dampened
+        "reasoning": round(std * 1.00, 4),   # 40-77% layers — full disagreement
+        "output":    round(std * 0.60, 4),   # 77-100% layers — moderate
+    }
 
 
 # ── QRFEngine ────────────────────────────────────────────────────────────
@@ -166,8 +196,17 @@ class QRFEngine:
 
     # ── Core forecast ────────────────────────────────────────────────
 
-    def forecast(self, prompt: str) -> QRFResult:
-        """Run LatentEngine and reframe branches as probability forecast."""
+    def forecast(self, prompt: str, *, calibration_mode: bool = False) -> QRFResult:
+        """Run LatentEngine and reframe branches as probability forecast.
+
+        Args:
+            prompt:           The question to forecast.
+            calibration_mode: When True, populates QRFResult.layer_disagreement
+                              with per-band branch weight std values. Feed the
+                              result into QRFSRDCalibrator.calibrate_from_results()
+                              to generate a data-driven layer_alpha_map for SRD.
+                              Defaults to False (zero overhead in production).
+        """
         # Run latent reasoning with trajectory
         result = self._engine.run(prompt, trajectory=True)
 
@@ -210,6 +249,11 @@ class QRFEngine:
             n_killed=len(killed),
         )
 
+        # Optional: per-band disagreement for SRD calibration
+        layer_disagreement = (
+            _compute_layer_disagreement(weighted) if calibration_mode else {}
+        )
+
         return QRFResult(
             prompt=prompt,
             domain=self._domain,
@@ -220,6 +264,7 @@ class QRFEngine:
             manifold=manifold,
             timestamp=timestamp,
             hmac_signature=signature,
+            layer_disagreement=layer_disagreement,
         )
 
 
