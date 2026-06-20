@@ -70,6 +70,7 @@ import sys
 import tempfile
 import textwrap
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -441,21 +442,27 @@ def _run_tests(code: str, task: OptTask) -> tuple[int, int]:
             print(f"CODE_ERROR: {{e}}", file=sys.stderr)
             sys.exit({task.n_tests})
 
-        tests = [
-{textwrap.indent(task.test_code, '            ')}
-        ]
-        # run each assert individually
-        import ast, types
+        # Run test lines in order in ONE shared namespace so stateful
+        # setup (e.g. `rl = RateLimiter(...)`) persists across asserts.
+        # Only `assert` lines count toward the test total; setup lines
+        # (imports, assignments) just execute. A failing setup line is a
+        # hard CODE_ERROR — it means the candidate code is unusable.
         src = {repr(task.test_code)}
         lines = [l.strip() for l in src.splitlines() if l.strip()]
         for line in lines:
+            is_assert = line.startswith("assert ")
             try:
-                exec(compile(line, '<test>', 'exec'), dict(locals()))
-                passed += 1
-            except AssertionError as e:
+                exec(compile(line, '<test>', 'exec'), globals())
+                if is_assert:
+                    passed += 1
+            except AssertionError:
                 failed += 1
             except Exception as e:
-                failed += 1
+                if is_assert:
+                    failed += 1
+                else:
+                    print(f"CODE_ERROR: setup line failed: {{e}}", file=sys.stderr)
+                    sys.exit({task.n_tests})
         print(f"PASSED={{passed}} FAILED={{failed}}")
         sys.exit(failed)
     """)
@@ -523,6 +530,49 @@ def _call_llamacpp(prompt: str, max_tokens: int = 512,
     with urllib.request.urlopen(req, timeout=120) as resp:
         body = json.loads(resp.read())
     return body.get("content", ""), body.get("tokens_predicted", max_tokens)
+
+
+def _call_nim(prompt: str, model: str, max_tokens: int = 512,
+              base_url: str = "https://integrate.api.nvidia.com/v1",
+              api_key: Optional[str] = None) -> tuple[str, int]:
+    """NVIDIA NIM (hosted, OpenAI-compatible chat-completions).
+
+    Reads the key from NVIDIA_NIM_API_KEY (or NVIDIA_API_KEY) when not
+    passed explicitly. Token count comes from the API `usage` field.
+    """
+    key = (api_key or os.environ.get("NVIDIA_NIM_API_KEY")
+           or os.environ.get("NVIDIA_API_KEY"))
+    if not key:
+        raise RuntimeError(
+            "NIM backend needs NVIDIA_NIM_API_KEY (or NVIDIA_API_KEY) "
+            "in the environment")
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+        "stream": False,
+    }).encode()
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/chat/completions", data=payload,
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {key}",
+                 "Accept": "application/json"})
+    last_err: Optional[Exception] = None
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = json.loads(resp.read())
+            text   = body["choices"][0]["message"]["content"]
+            tokens = body.get("usage", {}).get("completion_tokens", max_tokens)
+            return text, tokens
+        except urllib.error.HTTPError as e:
+            last_err = e
+            if e.code in (429, 503):       # rate-limited / overloaded
+                time.sleep(2 ** attempt)   # 1, 2, 4, 8, 16s backoff
+                continue
+            raise
+    raise RuntimeError(f"NIM rate-limited after retries: {last_err}")
 
 
 def _extract_code(raw: str, task: OptTask) -> str:
@@ -633,6 +683,7 @@ def run_hypothesis_round(
     model: str,
     ollama_url: str,
     llamacpp_url: str,
+    nim_base_url: str,
     dry_run: bool,
 ) -> RoundResult:
     hypotheses: list[HypothesisResult] = []
@@ -656,6 +707,8 @@ def run_hypothesis_round(
             )
             if backend == "ollama":
                 raw, tokens = _call_ollama(prompt, model, url=ollama_url)
+            elif backend == "nim":
+                raw, tokens = _call_nim(prompt, model, base_url=nim_base_url)
             else:
                 raw, tokens = _call_llamacpp(prompt, url=llamacpp_url)
             code = _extract_code(raw, task)
@@ -701,6 +754,7 @@ def run_benchmark_on_task(
     model: str,
     ollama_url: str,
     llamacpp_url: str,
+    nim_base_url: str,
     dry_run: bool,
     verbose: bool,
 ) -> tuple[BenchmarkRun, BenchmarkRun]:
@@ -724,6 +778,7 @@ def run_benchmark_on_task(
                 condition, strats,
                 backend=backend, model=model,
                 ollama_url=ollama_url, llamacpp_url=llamacpp_url,
+                nim_base_url=nim_base_url,
                 dry_run=dry_run,
             )
             rounds.append(rr)
@@ -776,9 +831,9 @@ def _print_task_comparison(task: OptTask,
               f"{delta*100:>+5.0f}%{marker}")
     print(f"  {'─'*34}")
 
-    eff = (qrf.quality_auc / baseline.quality_auc
-           if baseline.quality_auc else 0.0)
-    tok_saving = (1 - qrf.total_tokens / baseline.total_tokens) * 100
+    eff = _efficiency(baseline.quality_auc, qrf.quality_auc)
+    tok_saving = ((1 - qrf.total_tokens / baseline.total_tokens) * 100
+                  if baseline.total_tokens else 0.0)
 
     def _solve(run: BenchmarkRun) -> str:
         return f"round {run.rounds_to_solve}" if run.rounds_to_solve >= 0 else "never"
@@ -786,11 +841,29 @@ def _print_task_comparison(task: OptTask,
     print(f"  Final pass    : baseline {baseline.final_pass_rate*100:.0f}%  "
           f"→ QRF {qrf.final_pass_rate*100:.0f}%")
     print(f"  Quality AUC   : baseline {baseline.quality_auc:.3f}  "
-          f"→ QRF {qrf.quality_auc:.3f}  ({eff:.2f}× efficiency)")
+          f"→ QRF {qrf.quality_auc:.3f}  ({_fmt_eff(eff)} efficiency)")
     print(f"  Solved at     : baseline {_solve(baseline)}"
           f"  /  QRF {_solve(qrf)}")
     print(f"  Token cost    : baseline {baseline.total_tokens:,}"
           f"  /  QRF {qrf.total_tokens:,}  ({tok_saving:+.1f}%)")
+
+
+def _efficiency(baseline_auc: float, qrf_auc: float) -> float:
+    """QRF quality-AUC ÷ baseline quality-AUC.
+
+    Returns ``inf`` when QRF rescues a task baseline scored 0 on — that is
+    QRF's STRONGEST possible win, not a 0.0× regression (the old
+    ``... else 0.0`` inverted its meaning). Returns 1.0 when both scored 0
+    (no change). Callers exclude ``inf`` from ratio means and count it as a
+    "rescue" so one un-dividable task can't drag the average to nonsense.
+    """
+    if baseline_auc > 0:
+        return qrf_auc / baseline_auc
+    return float("inf") if qrf_auc > 0 else 1.0
+
+
+def _fmt_eff(eff: float) -> str:
+    return "rescue" if eff == float("inf") else f"{eff:.2f}×"
 
 
 def _print_summary(task_pairs: list[tuple[OptTask, BenchmarkRun, BenchmarkRun]]) -> None:
@@ -803,16 +876,25 @@ def _print_summary(task_pairs: list[tuple[OptTask, BenchmarkRun, BenchmarkRun]])
     print(f"  {'─'*66}")
 
     total_eff = 0.0
+    n_ratio = 0
+    rescued = 0
     for task, baseline, qrf in task_pairs:
-        eff = qrf.quality_auc / baseline.quality_auc if baseline.quality_auc else 0.0
-        tok_s = (1 - qrf.total_tokens / baseline.total_tokens) * 100
-        total_eff += eff
+        eff = _efficiency(baseline.quality_auc, qrf.quality_auc)
+        tok_s = ((1 - qrf.total_tokens / baseline.total_tokens) * 100
+                 if baseline.total_tokens else 0.0)
+        if eff == float("inf"):
+            rescued += 1
+        else:
+            total_eff += eff
+            n_ratio += 1
         print(f"  {task.name:<28}  {baseline.quality_auc:>8.3f}  "
-              f"{qrf.quality_auc:>7.3f}  {eff:>6.2f}×  {tok_s:>+10.1f}%")
+              f"{qrf.quality_auc:>7.3f}  {_fmt_eff(eff):>7}  {tok_s:>+10.1f}%")
 
-    avg_eff = total_eff / len(task_pairs) if task_pairs else 0.0
+    avg_eff = total_eff / n_ratio if n_ratio else 0.0
     print(f"  {'─'*66}")
     print(f"  {'AVERAGE':<28}  {'':>9}  {'':>8}  {avg_eff:>6.2f}×")
+    if rescued:
+        print(f"  (+ {rescued} task(s) rescued from baseline 0% — excluded from the mean)")
     print()
     if avg_eff >= 2.0:
         print(f"  ✓ QRF Hypothesis Loop achieves {avg_eff:.2f}× average quality AUC")
@@ -848,11 +930,16 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--dry-run", action="store_true",
                    help="Built-in stub, no model needed")
-    p.add_argument("--backend", choices=["ollama", "llamacpp"], default="ollama")
+    p.add_argument("--backend", choices=["ollama", "llamacpp", "nim"], default="ollama")
     p.add_argument("--model", default="gemma2:2b",
-                   help="Ollama model (default: gemma2:2b)")
+                   help="Model id (ollama default: gemma2:2b; for --backend nim "
+                        "defaults to meta/llama-3.1-8b-instruct)")
     p.add_argument("--ollama-url",   default="http://localhost:11434")
     p.add_argument("--llamacpp-url", default="http://localhost:8080")
+    p.add_argument("--nim-base-url",
+                   default="https://integrate.api.nvidia.com/v1",
+                   help="NVIDIA NIM OpenAI-compatible base URL "
+                        "(needs NVIDIA_NIM_API_KEY or NVIDIA_API_KEY in env)")
     p.add_argument("--n-rounds", type=int, default=5,
                    help="Optimization rounds per task (default: 5)")
     p.add_argument("--n-branches", type=int, default=4,
@@ -870,6 +957,11 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     args.n_branches = max(1, min(5, args.n_branches))
+
+    # For NIM, the ollama default model id is meaningless — pick a real
+    # NVIDIA-hosted model unless the user overrode --model.
+    if args.backend == "nim" and args.model == "gemma2:2b":
+        args.model = os.environ.get("NIM_MODEL", "meta/llama-3.1-8b-instruct")
 
     tasks = ([_TASK_BY_ID[args.task]] if args.task
              else list(TASK_BANK))
@@ -901,6 +993,7 @@ def main() -> int:
             model=args.model,
             ollama_url=args.ollama_url,
             llamacpp_url=args.llamacpp_url,
+            nim_base_url=args.nim_base_url,
             dry_run=args.dry_run,
             verbose=args.verbose,
         )
@@ -911,10 +1004,9 @@ def main() -> int:
         else:
             b_final = baseline_run.final_pass_rate * 100
             q_final = qrf_run.final_pass_rate * 100
-            eff = (qrf_run.quality_auc / baseline_run.quality_auc
-                   if baseline_run.quality_auc else 0.0)
+            eff = _efficiency(baseline_run.quality_auc, qrf_run.quality_auc)
             print(f"    baseline={b_final:.0f}%  qrf={q_final:.0f}%  "
-                  f"efficiency={eff:.2f}×  "
+                  f"efficiency={_fmt_eff(eff)}  "
                   f"tokens: {baseline_run.total_tokens:,}→{qrf_run.total_tokens:,}")
 
         all_results.append({
@@ -926,10 +1018,11 @@ def main() -> int:
     _print_summary(task_pairs)
 
     if args.report:
-        avg_eff = sum(
-            q.quality_auc / b.quality_auc
-            for _, b, q in task_pairs if b.quality_auc
-        ) / len(task_pairs)
+        _ratios = [_efficiency(b.quality_auc, q.quality_auc)
+                   for _, b, q in task_pairs]
+        _finite = [e for e in _ratios if e != float("inf")]
+        avg_eff = sum(_finite) / len(_finite) if _finite else 0.0
+        rescued_n = sum(1 for e in _ratios if e == float("inf"))
 
         report = {
             "benchmark": "qrf_hypothesis_loop",
@@ -945,6 +1038,7 @@ def main() -> int:
             "tasks": all_results,
             "summary": {
                 "avg_efficiency_x": round(avg_eff, 3),
+                "rescued_tasks": rescued_n,
                 "n_tasks": len(tasks),
             },
         }
