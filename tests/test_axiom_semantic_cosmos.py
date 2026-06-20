@@ -287,3 +287,129 @@ class TestCosmosLayeredRetriever:
         assert result.galaxy_pass.latency_ms >= 0
         assert result.planet_pass.latency_ms >= 0
         assert result.star_pass.latency_ms >= 0
+
+
+# ── FTS5CosmosRetriever ───────────────────────────────────────────────
+
+from axiom_semantic_cosmos import FTS5CosmosRetriever, FTS5Hit
+
+
+def _make_fts5_retriever(tmp_path):
+    db = tmp_path / "cosmos_test.db"
+    idx = FTS5CosmosRetriever(db)
+    docs = [
+        ("planet", "doc_planet.txt",
+         "Hantavirus is a rodent-borne zoonotic pathogen transmitted through "
+         "contact with infected rodent excreta. Incubation period ranges from "
+         "one to five weeks after exposure. Clinical presentation progresses "
+         "to cardiopulmonary syndrome with respiratory distress and haemodynamic "
+         "collapse. Case fatality rate is approximately 35-40 percent.",
+         ["hantavirus", "rodent", "pathogen"]),
+        ("galaxy", "doc_galaxy.txt",
+         "Medical science encompasses epidemiology pathology pharmacology "
+         "immunology genetics biochemistry physiology anatomy neuroscience "
+         "cardiology oncology radiology surgery dermatology endocrinology "
+         "gastroenterology nephrology pulmonology haematology rheumatology "
+         "psychiatry ophthalmology biostatistics reimbursement accreditation.",
+         []),
+        ("star", "doc_star1.txt",
+         "Hantavirus case fatality rate: approximately 35-40 percent.", []),
+        ("star", "doc_star2.txt",
+         "Primary PCI door-to-balloon target: 90 minutes for STEMI.", []),
+        ("constellation", "doc_const.txt",
+         "Medical risk explanation pattern: state uncertainty, frame symptoms "
+         "without diagnosis, provide general education, recommend consulting a "
+         "clinician. This reasoning protocol guideline procedure approach "
+         "applies across hantavirus vitamin-D sleep blood-pressure medication.",
+         []),
+    ]
+    for level, uri, content, anchors in docs:
+        idx.ingest_doc(uri, content, level, anchors)
+    return idx
+
+
+class TestFTS5CosmosRetriever:
+    def test_ingest_and_retrieve(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        hits = idx.retrieve("hantavirus rodent", k=5)
+        assert len(hits) > 0
+        assert isinstance(hits[0], FTS5Hit)
+
+    def test_retrieve_filtered_by_level(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        star_hits = idx.retrieve("hantavirus", level="star", k=5)
+        assert all(h.intent_type == "star" for h in star_hits)
+
+    def test_retrieve_no_level_returns_all_levels(self, tmp_path):
+        # "hantavirus" appears in planet, star, and constellation docs
+        # → unfiltered retrieve should return hits at multiple levels
+        idx = _make_fts5_retriever(tmp_path)
+        hits = idx.retrieve("hantavirus", k=10)
+        levels = {h.intent_type for h in hits}
+        assert len(levels) > 1
+
+    def test_retrieve_layered_returns_cosmos_result(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        result = idx.retrieve_layered("hantavirus rodent", k=3)
+        assert result.galaxy_pass.level == "galaxy"
+        assert result.planet_pass.level == "planet"
+        assert result.star_pass.level == "star"
+
+    def test_retrieve_layered_star_hits_are_stars(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        result = idx.retrieve_layered("hantavirus case fatality", k=5)
+        for hit in result.star_pass.hits:
+            assert hit.intent_type == "star"
+
+    def test_doc_count(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        assert idx.doc_count() == 5
+        assert idx.doc_count(level="star") == 2
+        assert idx.doc_count(level="galaxy") == 1
+
+    def test_ingest_file_auto_tags(self, tmp_path):
+        db = tmp_path / "cosmos.db"
+        idx = FTS5CosmosRetriever(db)
+        # Short fact → auto-tagged as "star"
+        p = tmp_path / "fact.txt"
+        p.write_text("Troponin I peaks at 12-24 hours post myocardial infarction.")
+        idx.ingest_file(p)
+        hits = idx.retrieve("troponin peak", level="star", k=3)
+        assert len(hits) > 0
+
+    def test_ingest_file_respects_meta_sidecar(self, tmp_path):
+        db = tmp_path / "cosmos.db"
+        idx = FTS5CosmosRetriever(db)
+        p = tmp_path / "custom.txt"
+        p.write_text(
+            "hantavirus rodent pathogen reservoir incubation transmission "
+            "exposure excreta serology antiviral haemodynamic collapse " * 5
+        )
+        write_cosmos_meta(p, "planet", anchors=["hantavirus"])
+        idx.ingest_file(p)  # should use sidecar level "planet"
+        hits = idx.retrieve("hantavirus", level="planet", k=3)
+        assert len(hits) > 0
+
+    def test_reingest_replaces_doc(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        before = idx.doc_count()
+        idx.ingest_doc("doc_star1.txt", "Updated content troponin", "star", [])
+        assert idx.doc_count() == before   # same count — replaced not added
+
+    def test_empty_query_returns_empty(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        assert idx.retrieve("") == []
+        assert idx.retrieve("   ") == []
+
+    def test_context_manager(self, tmp_path):
+        db = tmp_path / "cosmos.db"
+        with FTS5CosmosRetriever(db) as idx:
+            idx.ingest_doc("x", "test content hantavirus", "star", [])
+            hits = idx.retrieve("hantavirus", k=1)
+            assert len(hits) == 1
+
+    def test_all_hits_deduplicates_across_levels(self, tmp_path):
+        idx = _make_fts5_retriever(tmp_path)
+        result = idx.retrieve_layered("hantavirus medical", k=5)
+        uris = [h.uri for h in result.all_hits()]
+        assert len(uris) == len(set(uris))

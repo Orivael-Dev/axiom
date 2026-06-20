@@ -249,3 +249,220 @@ class CosmosLayeredRetriever:
             anticipate=anticipate,
             total_latency_ms=total_ms,
         )
+
+
+# ── FTS5 retriever ───────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class FTS5Hit:
+    uri:          str
+    snippet:      str
+    score:        float     # BM25 rank from SQLite (lower = better; negated for display)
+    intent_type:  str
+    vocab_anchors: tuple
+
+
+class FTS5CosmosRetriever:
+    """SQLite FTS5-backed cosmos retrieval — persistent, BM25-native.
+
+    Advantages over the pure-Python LocalRetriever backend:
+    - Index is persisted to disk; survives process restart with no rebuild.
+    - BM25 scoring is computed natively by SQLite's bm25() function.
+    - Cosmos-level filtering is a SQL WHERE clause — no Python-side scan.
+    - Scales to 100k+ documents without O(N) Python overhead per query.
+
+    Schema (one FTS5 virtual table)::
+
+        CREATE VIRTUAL TABLE docs USING fts5(
+            content,
+            cosmos_level UNINDEXED,
+            uri          UNINDEXED,
+            vocab_anchors UNINDEXED,
+            tokenize = "porter ascii"
+        );
+
+    UNINDEXED columns are stored but not indexed for full-text search —
+    they act as metadata that can be filtered via normal SQL.
+
+    Usage::
+
+        idx = FTS5CosmosRetriever(Path("cosmos_index.db"))
+        idx.ingest_doc("docs/hantavirus.txt", content, level="planet")
+        result = idx.retrieve_layered("hantavirus case fatality", k=5)
+    """
+
+    _CREATE_TABLE = """
+        CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(
+            content,
+            cosmos_level UNINDEXED,
+            uri          UNINDEXED,
+            vocab_anchors UNINDEXED,
+            tokenize = "porter ascii"
+        )
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        import sqlite3
+        self._db_path = Path(db_path)
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._conn.execute(self._CREATE_TABLE)
+        self._conn.commit()
+
+    def ingest_doc(
+        self,
+        uri: str,
+        content: str,
+        level: str,
+        anchors: list[str] | None = None,
+    ) -> None:
+        """Insert or replace a document.  Existing URI is deleted first."""
+        anchors_str = " ".join(anchors or [])
+        self._conn.execute("DELETE FROM docs WHERE uri = ?", (uri,))
+        self._conn.execute(
+            "INSERT INTO docs(content, cosmos_level, uri, vocab_anchors) "
+            "VALUES (?, ?, ?, ?)",
+            (content, level, uri, anchors_str),
+        )
+        self._conn.commit()
+
+    def ingest_file(
+        self,
+        path: Path,
+        level: str | None = None,
+        anchors: list[str] | None = None,
+    ) -> None:
+        """Read a file and ingest it.  Auto-tags cosmos level if not given."""
+        path = Path(path)
+        content = path.read_text(encoding="utf-8", errors="replace")
+        if level is None:
+            level = cosmos_tag_doc(content)
+
+        # Load anchors from .meta.json sidecar if present and not provided
+        if anchors is None:
+            meta_p = path.with_name(path.stem + ".meta.json")
+            if meta_p.exists():
+                try:
+                    meta = json.loads(meta_p.read_text(encoding="utf-8"))
+                    anchors = meta.get("vocab_anchors", [])
+                except (json.JSONDecodeError, OSError):
+                    anchors = []
+
+        uri = str(path)
+        self.ingest_doc(uri, content, level, anchors)
+
+    def retrieve(
+        self,
+        query: str,
+        *,
+        level: str | None = None,
+        k: int = 5,
+    ) -> list[FTS5Hit]:
+        """BM25-ranked full-text search.  Optionally filter by cosmos_level."""
+        if not query or not query.strip():
+            return []
+        # SQLite FTS5 bm25() returns negative values (lower = better match).
+        # We negate for a conventional "higher = better" score.
+        if level:
+            sql = (
+                "SELECT uri, snippet(docs,-1,'<b>','</b>',' … ',32), "
+                "       -bm25(docs), cosmos_level, vocab_anchors "
+                "FROM docs WHERE docs MATCH ? AND cosmos_level = ? "
+                "ORDER BY bm25(docs) LIMIT ?"
+            )
+            params = (_fts5_escape(query), level, k)
+        else:
+            sql = (
+                "SELECT uri, snippet(docs,-1,'<b>','</b>',' … ',32), "
+                "       -bm25(docs), cosmos_level, vocab_anchors "
+                "FROM docs WHERE docs MATCH ? "
+                "ORDER BY bm25(docs) LIMIT ?"
+            )
+            params = (_fts5_escape(query), k)
+        try:
+            rows = self._conn.execute(sql, params).fetchall()
+        except Exception:
+            return []
+        return [
+            FTS5Hit(
+                uri=r[0],
+                snippet=r[1] or "",
+                score=round(r[2], 4),
+                intent_type=r[3] or "general",
+                vocab_anchors=tuple((r[4] or "").split()),
+            )
+            for r in rows
+        ]
+
+    def retrieve_layered(
+        self,
+        query: str,
+        *,
+        k: int = 5,
+        anticipate: bool = True,
+    ) -> CosmosResult:
+        """3-pass FTS5 retrieval with optional anticipatory warmup."""
+        t_total = time.perf_counter()
+
+        t0 = time.perf_counter()
+        galaxy_hits = self.retrieve(query, level="galaxy", k=3)
+        galaxy_ms = (time.perf_counter() - t0) * 1000
+
+        if anticipate:
+            executor = ThreadPoolExecutor(max_workers=1)
+            star_future = executor.submit(self.retrieve, query, level="star", k=k)
+
+        t0 = time.perf_counter()
+        planet_hits = self.retrieve(query, level="planet", k=3)
+        planet_ms = (time.perf_counter() - t0) * 1000
+
+        t0 = time.perf_counter()
+        if anticipate:
+            star_hits = star_future.result()
+            executor.shutdown(wait=False)
+        else:
+            star_hits = self.retrieve(query, level="star", k=k)
+        star_ms = (time.perf_counter() - t0) * 1000
+
+        total_ms = (time.perf_counter() - t_total) * 1000
+
+        # Wrap FTS5Hit in a minimal duck-typed object so CosmosResult works
+        return CosmosResult(
+            query=query,
+            galaxy_pass=PassResult("galaxy", galaxy_hits, galaxy_ms),
+            planet_pass=PassResult("planet", planet_hits, planet_ms),
+            star_pass=PassResult("star",   star_hits,   star_ms),
+            anticipate=anticipate,
+            total_latency_ms=total_ms,
+        )
+
+    def doc_count(self, level: str | None = None) -> int:
+        """Return total document count, optionally filtered by level."""
+        if level:
+            return self._conn.execute(
+                "SELECT COUNT(*) FROM docs WHERE cosmos_level = ?", (level,)
+            ).fetchone()[0]
+        return self._conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+
+def _fts5_escape(query: str) -> str:
+    """Escape a free-text query for safe use in FTS5 MATCH expressions.
+
+    FTS5 treats double-quotes as phrase delimiters and some other chars
+    as operators.  For a simple keyword search (no phrase, no prefix),
+    we strip operators and wrap each token as a plain term.
+    """
+    import re
+    # Keep only word chars; discard FTS5 operators: " ^ * ( ) OR AND NOT
+    tokens = re.findall(r"[A-Za-z0-9_]{2,}", query)
+    if not tokens:
+        return '""'   # empty match → no results
+    return " ".join(tokens)
