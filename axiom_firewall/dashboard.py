@@ -1314,6 +1314,94 @@ async def _guard_classify(request: Request, *, endpoint_label: str) -> JSONRespo
     })
 
 
+# ─── Inference OS pipeline endpoint ──────────────────────────────────────────
+
+
+@app.post("/v1/inference")
+async def inference_os_route(request: Request):
+    """Full 8-step Inference OS pipeline — classify → route → retrieve → generate → govern → audit.
+
+    Body (JSON):
+      query         str   — the user's request
+      session_id    str   — caller-assigned session identifier
+      domain        str?  — hint: "healthcare" | "legal" | "finance" | …
+      use_retrieval bool  — default true; set false to skip context retrieval
+
+    Response (JSON):
+      request_id, intent_class, intent_confidence, route, model_used,
+      context_hits, output, output_verdict, input_tokens, output_tokens,
+      tokens_saved, total_latency_ms, fallback_used, risk_class,
+      audit_id, stages[], signature
+    """
+    from time import perf_counter as _pc
+    started_at = _pc()
+
+    auth_header = request.headers.get("Authorization", "")
+    secret = auth_header.removeprefix("Bearer ").strip()
+    auth = authenticate(secret)
+    if not auth:
+        raise HTTPException(401, "Invalid or missing API key")
+    tenant, key = auth
+
+    quota_ok, used, cap = check_monthly_quota(tenant)
+    if not quota_ok:
+        retry = seconds_until_next_month()
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry)},
+            content={"detail": f"Quota exhausted ({used}/{cap}). Retry in {retry}s.",
+                     "used": used, "limit": cap, "retry_after_seconds": retry},
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Body must be valid JSON")
+
+    query = body.get("query") or body.get("text")
+    if not isinstance(query, str) or not query.strip():
+        raise HTTPException(400, "Field 'query' must be a non-empty string")
+
+    from axiom_inference_os import InferenceRequest, get_inference_os
+    ios = get_inference_os()
+    ios_req = InferenceRequest(
+        query=query,
+        session_id=str(body.get("session_id", "")),
+        tenant_id=tenant.tenant_id,
+        domain=body.get("domain") or None,
+        use_retrieval=bool(body.get("use_retrieval", True)),
+    )
+    result = ios.run(ios_req)
+
+    record_call(
+        tenant_id=tenant.tenant_id, key_id=key.key_id,
+        endpoint="/v1/inference",
+        verdict=result.output_verdict,
+        intent_class=result.intent_class,
+        confidence=result.intent_confidence,
+        started_at=started_at,
+    )
+
+    return JSONResponse(result.to_dict())
+
+
+@app.get("/v1/inference/stages")
+async def inference_os_stages():
+    """Return the schema of stage names emitted by the Inference OS pipeline."""
+    return JSONResponse({
+        "stages": [
+            {"name": "intent",     "layer": 0, "description": "Intent Kernel — classify query risk and domain"},
+            {"name": "route",      "layer": 1, "description": "Inference Router — select backend and model"},
+            {"name": "retrieval",  "layer": 2, "description": "Memory + EventToken Cache — retrieve signed context"},
+            {"name": "generation", "layer": 3, "description": "AXM Runtime — generate with retrieved context"},
+            {"name": "governance", "layer": 4, "description": "Governance Guard — verify generated output"},
+            {"name": "audit",      "layer": 6, "description": "Observability Console — sign and log decision"},
+        ],
+        "blocking_classes": ["HARM", "DECEIVE"],
+        "version": "1.0",
+    })
+
+
 # ─── Billing ─────────────────────────────────────────────────────────────
 
 

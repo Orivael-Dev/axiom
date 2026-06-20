@@ -1,9 +1,149 @@
 {% extends "base.html" %}
-{% block title %}Studio · Axiom{% endblock %}
+{% block title %}Inference OS Studio · Orivael Governance Console{% endblock %}
 
 {% block content %}
 <link rel="stylesheet" href="/static/studio.css">
 
+<!-- ═══════════════ INFERENCE OS DEMO ═══════════════════════════════════════ -->
+<div style="max-width:900px;margin:0 auto 2rem auto;padding:1rem">
+
+  <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem">
+    <h2 style="margin:0;font-size:1.3rem">Inference OS Demo</h2>
+    <span style="font-size:.75rem;background:#1a1a2e;color:#7c83fd;padding:.2rem .6rem;border-radius:4px;font-family:monospace">one request · many controls · one signed result</span>
+  </div>
+
+  <!-- Query input -->
+  <div style="display:flex;gap:.5rem;margin-bottom:1rem">
+    <select id="ios-domain" style="width:130px;padding:.5rem;background:#16213e;border:1px solid #333;color:#eee;border-radius:6px">
+      <option value="">— domain —</option>
+      <option value="healthcare">Healthcare</option>
+      <option value="legal">Legal</option>
+      <option value="finance">Finance</option>
+      <option value="security">Security</option>
+    </select>
+    <input id="ios-query" type="text" placeholder="Ask anything… e.g. What is GDPR Article 9?"
+      style="flex:1;padding:.5rem .75rem;background:#16213e;border:1px solid #333;color:#eee;border-radius:6px;font-size:.9rem"
+      value="Summarise the key protections in GDPR Article 9.">
+    <button id="ios-run" onclick="iosRun()"
+      style="padding:.5rem 1.2rem;background:#7c83fd;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">
+      Run
+    </button>
+  </div>
+
+  <!-- 8-step pipeline stages -->
+  <div id="ios-stages" style="background:#0d1117;border:1px solid #333;border-radius:8px;padding:1rem;margin-bottom:1rem;min-height:200px;font-family:monospace;font-size:.83rem">
+    <div style="color:#555">Hit <b>Run</b> to execute the full Inference OS pipeline.</div>
+    <div style="margin-top:.5rem;color:#444;font-size:.75rem">
+      [0] Intent Kernel → [1] Router → [2] Retrieval → [3] Generation → [4] Governance → [6] Audit
+    </div>
+  </div>
+
+  <!-- Result card -->
+  <div id="ios-result" style="display:none;background:#111827;border:1px solid #444;border-radius:8px;padding:1rem">
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem" id="ios-badges"></div>
+    <div id="ios-output" style="color:#e5e7eb;font-size:.9rem;line-height:1.5;white-space:pre-wrap;border-top:1px solid #333;padding-top:.75rem"></div>
+    <div id="ios-audit" style="margin-top:.5rem;font-size:.75rem;color:#555;font-family:monospace"></div>
+  </div>
+</div>
+
+<style>
+.ios-stage{display:flex;align-items:center;gap:.6rem;padding:.35rem .25rem;border-bottom:1px solid #1a1a2e}
+.ios-stage:last-child{border-bottom:none}
+.ios-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ios-dot-ok{background:#22c55e}
+.ios-dot-blocked{background:#ef4444}
+.ios-dot-degraded{background:#f59e0b}
+.ios-dot-skipped{background:#555}
+.ios-dot-pending{background:#333;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+.ios-badge{font-size:.72rem;padding:.2rem .55rem;border-radius:4px;font-family:monospace}
+.ios-badge-allow{background:#14532d;color:#86efac}
+.ios-badge-block{background:#450a0a;color:#fca5a5}
+.ios-badge-info{background:#1e3a5f;color:#93c5fd}
+.ios-badge-warn{background:#451a03;color:#fdba74}
+</style>
+
+<script>
+const STAGE_META = {
+  intent:     {label:"[0] Intent Kernel",    icon:"&#x1F9E0;"},
+  route:      {label:"[1] Inference Router", icon:"&#x1F500;"},
+  retrieval:  {label:"[2] Context Retrieval",icon:"&#x1F50D;"},
+  generation: {label:"[3] Generation",       icon:"&#x2699;"},
+  governance: {label:"[4] Governance Guard", icon:"&#x1F6E1;"},
+  audit:      {label:"[6] Audit Ledger",     icon:"&#x1F4CB;"},
+};
+
+function iosBadge(label, cls){
+  return `<span class="ios-badge ios-badge-${cls}">${label}</span>`;
+}
+
+function iosStageHtml(s){
+  const m = STAGE_META[s.stage] || {label:s.stage, icon:"&#x25CF;"};
+  const dot = `<span class="ios-dot ios-dot-${s.status}"></span>`;
+  const ms  = s.latency_ms > 0 ? `<span style="margin-left:auto;color:#555">${s.latency_ms}ms</span>` : "";
+  let detail = "";
+  if(s.stage==="intent")    detail = `→ <b>${s.detail.intent_class||""}</b> (${(+(s.detail.confidence||0)).toFixed(2)})`;
+  if(s.stage==="route")     detail = `→ ${s.detail.route||""} · ${s.detail.model||""}`;
+  if(s.stage==="retrieval") detail = `→ ${s.detail.hits||0} doc(s) retrieved`;
+  if(s.stage==="generation")detail = `→ ${s.detail.output_tokens||0} tokens`;
+  if(s.stage==="governance")detail = `→ ${s.detail.verdict||""} (risk: ${s.detail.risk_class||""})`;
+  if(s.stage==="audit")     detail = `→ audit_id: <span style="color:#7c83fd">${(s.detail.audit_id||"").slice(0,12)}…</span>`;
+  return `<div class="ios-stage">${dot}<span style="color:#888">${m.icon} ${m.label}</span><span style="color:#ccc;margin-left:.3rem">${detail}</span>${ms}</div>`;
+}
+
+async function iosRun(){
+  const query  = document.getElementById("ios-query").value.trim();
+  const domain = document.getElementById("ios-domain").value || undefined;
+  if(!query) return;
+
+  const btn = document.getElementById("ios-run");
+  btn.disabled = true; btn.textContent = "Running…";
+
+  const stagesEl = document.getElementById("ios-stages");
+  stagesEl.innerHTML = Object.entries(STAGE_META).map(([k,v])=>
+    `<div class="ios-stage"><span class="ios-dot ios-dot-pending"></span><span style="color:#444">${v.icon} ${v.label}</span></div>`
+  ).join("");
+
+  document.getElementById("ios-result").style.display = "none";
+
+  try{
+    const resp = await fetch("/v1/inference",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({query, domain, use_retrieval:true}),
+    });
+    const r = await resp.json();
+    // Render stages
+    stagesEl.innerHTML = (r.stages||[]).map(iosStageHtml).join("");
+    // Render result card
+    const badges = [
+      iosBadge(r.output_verdict==="block"?"BLOCKED":"ALLOWED", r.output_verdict==="block"?"block":"allow"),
+      iosBadge(r.intent_class||"?", "info"),
+      iosBadge(r.model_used||"?", "info"),
+      r.context_hits>0 ? iosBadge(`${r.context_hits} ctx docs`, "info") : "",
+      r.fallback_used ? iosBadge("fallback", "warn") : "",
+      iosBadge(`${r.total_latency_ms}ms`, "info"),
+      r.tokens_saved>0 ? iosBadge(`~${r.tokens_saved} tok saved`, "info") : "",
+    ].filter(Boolean).join(" ");
+    document.getElementById("ios-badges").innerHTML = badges;
+    document.getElementById("ios-output").textContent = r.output || "(blocked — no output)";
+    document.getElementById("ios-audit").textContent = r.audit_id
+      ? `audit_id: ${r.audit_id}  |  sig: ${(r.signature||"").slice(0,16)}…`
+      : "(audit not configured)";
+    document.getElementById("ios-result").style.display = "block";
+  }catch(e){
+    stagesEl.innerHTML = `<div style="color:#ef4444">Error: ${e.message}</div>`;
+  }finally{
+    btn.disabled = false; btn.textContent = "Run";
+  }
+}
+
+document.getElementById("ios-query").addEventListener("keydown",e=>{
+  if(e.key==="Enter") iosRun();
+});
+</script>
+
+<!-- ═══════════════ AXM CONTAINER STUDIO ════════════════════════════════════ -->
 <div class="studio-layout">
 
   <!-- Left: Module Palette -->
