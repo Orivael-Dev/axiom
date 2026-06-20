@@ -1,5 +1,60 @@
 # Project notes for Claude Code sessions
 
+## Inference OS — Product Vision (Organizational Framework)
+
+Axiom is an **Inference OS**: the control plane that routes, verifies, compresses,
+governs, and audits AI execution before the model spends expensive tokens.
+
+**One-liner (dev):** Route prompts, tools, memory, and models through one signed runtime.
+**Enterprise:** Run AI with policy, auditability, routing, and cost control before the model acts.
+**Investor:** The control plane between prompts, models, tools, and actions.
+**Local LLM:** Make small models act larger with routing, caching, verification, and skill packs.
+
+### Seven-Layer Architecture
+
+| Layer | Name | Purpose |
+|---|---|---|
+| 0 | Intent Kernel | Classifies intent, risk, domain, ambiguity, action permissions |
+| 1 | Inference Router | Chooses model, specialist, tool, branch count, or cloud fallback |
+| 2 | Memory + EventToken Cache | Reuses signed context, trusted packets, cached prompt/KV blocks |
+| 3 | AXM Runtime | Loads signed skill delegates and model packs only when needed |
+| 4 | Governance Guard | Enforces CANNOT_MUTATE, authority, refusal, policy, tool-access gates |
+| 5 | Adversarial Lab | Runs CAS, immune detectors, regression replay, safety probes |
+| 6 | Observability Console | Shows cost, latency, risk, cache hits, fallback rate, signed audit trails |
+
+### ORVL Module → Layer Mapping
+
+| ORVL group | Layer | Highest-value product role |
+|---|---|---|
+| 001, 010, 016, 017 | 0, 4 | Authority, immutable policy, intent gate, agent routing |
+| 004, 023, 025 | 2, 3 | Signed blocks, AXM packages, EventToken/multimodal fusion |
+| 005, 006, 009, 014 | 1, 5 | Trajectory distance, dynamic branches, QRF, world model |
+| 008, 011, 012, 020, 021 | 5 | CAS, reward engine, immune response, retrospection, VulnGuard |
+| 013, 018, 019, 022, 024 | 6 (edge) | OS shield, phone gate, physical intelligence, video topology |
+| 015 | 2 | Signed memory engine — local-first enterprise memory |
+
+### Technical Roadmap
+
+| Phase | Build | Status |
+|---|---|---|
+| 0 | Intent gate + router + audit ledger + dashboard shell | ✓ complete |
+| 1 | Ollama/llama.cpp/vLLM adapters + company policy pack | in progress |
+| 2 | Prefix/KV cache reuse, RAG, memory packets, deterministic tools | in progress (BM25 + FTS5 cosmos) |
+| 3 | Signed delegates for code, privacy, legal, IT, finance, support | in progress (AXM packs) |
+| 4 | CAS, immune detectors, retrospective regression reports | in progress |
+| 5 | Admin UI, role policies, audit export, workspace isolation | in progress (Orivael Governance Console) |
+| 6 | Phone gate, compressed models, multimodal EventTokens | SRD + AXM packaging done; phone gate next |
+
+### Coding Guidance
+- When adding new modules, identify which of the 7 layers it belongs to.
+- Layer 0–1 code (intent, routing) must be microsecond-fast — no LLM calls at runtime.
+- Layer 4 (Governance Guard) code must be CANNOT_MUTATE-safe and HMAC-signed.
+- Layer 5 (Adversarial Lab) produces regression items, not just reports.
+- The four industry-gap themes below map to Layers 3/4, 2/3, 1, and 2 respectively.
+- Full blueprint: `docs/INFERENCE_OS_BLUEPRINT.md`
+
+---
+
 ## Post-beta monetization plan
 
 After the public beta period ends, **some skill packs and some MCP patent
@@ -40,7 +95,7 @@ session sees the directional context and can flag opportunities — or
 push back if a change conflicts with a theme's first-step direction —
 when touching the named footprints.
 
-### Theme 1 — Universal AI protocol layer ("USB for AI")
+### Theme 1 — Universal AI protocol layer ("USB for AI") *(Inference OS: Layer 3 AXM Runtime — protocol envelope)*
 
 **Observation.** MCP is a starting point, but the industry needs an
 open, universal standard letting any hosted model (HuggingFace,
@@ -64,7 +119,7 @@ permission grants.
 JSON-RPC over HTTPS with mutual signed headers (model identity +
 tenant identity + scope grant), backwards-compatible with v1 stdio.
 
-### Theme 2 — Auto-quantization / distillation / sparsity
+### Theme 2 — Auto-quantization / distillation / sparsity *(Inference OS: Layers 2 + 3 — SRD quantization kernel)*
 
 **Observation.** Plug-and-play local runtimes that auto-apply
 4-bit / 2-bit quantization + knowledge distillation + sparsity to
@@ -115,7 +170,7 @@ dict would carry per-layer correction weights, not a single chunk range.
 See `research/quant/srd_selective_sidecar.py:_REASONING_START_FRAC` and
 `research/quant/bench_sidecar_hallucination.py` for current baselines.
 
-### Theme 3 — Continuous evaluation / smart routing
+### Theme 3 — Continuous evaluation / smart routing *(Inference OS: Layer 1 Inference Router)*
 
 **Observation.** Software has CI/CD; AI needs **Continuous Evaluation**
 — real-time pipelines that test production inputs against candidate
@@ -143,7 +198,7 @@ exoskeleton ledger records facts but the router doesn't read it.
 latency_ms + verified-rate per (backend, domain) tuple in the
 exoskeleton ledger.
 
-### Theme 4 — CXL memory pooling
+### Theme 4 — CXL memory pooling *(Inference OS: Layer 2 Memory — CXL backend hook, deferred)*
 
 **Observation.** Compute Express Link (CXL) lets inference engines
 transparently pool physical system memory across multiple local nodes
