@@ -1503,15 +1503,14 @@ def srd_results(request: Request):
 @app.get("/dashboard/studio", response_class=HTMLResponse)
 def studio_get(request: Request):
     t = _current_tenant(request)
-    if not t:
-        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-
-    tier       = t.tier
+    # Public for now — anonymous visitors get a read-only free-tier view
+    # (no per-tenant data; saving a container still requires login).
+    tier       = t.tier if t else "free"
     slot_limit = studio_mod.SLOT_LIMITS.get(tier, 3)
     export_fmts = studio_mod.EXPORT_FMTS.get(tier, ["colab"])
     locked_slots = list(studio_mod.LOCKED_SLOTS)
     cap        = studio_mod.CONTAINER_CAP.get(tier)
-    count      = count_studio_containers(t.tenant_id) if cap is not None else 0
+    count      = count_studio_containers(t.tenant_id) if (t and cap is not None) else 0
 
     return templates.TemplateResponse(
         request, "studio.html",
@@ -1531,8 +1530,7 @@ def studio_get(request: Request):
 @app.post("/dashboard/studio/export")
 async def studio_export(request: Request):
     t = _current_tenant(request)
-    if not t:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Public — stateless config → notebook; anonymous treated as free tier.
 
     try:
         body = await request.json()
@@ -1547,7 +1545,7 @@ async def studio_export(request: Request):
     if not cfg.model_id:
         raise HTTPException(status_code=400, detail="model_id is required")
 
-    allowed_fmts = studio_mod.EXPORT_FMTS.get(t.tier, ["colab"])
+    allowed_fmts = studio_mod.EXPORT_FMTS.get(t.tier if t else "free", ["colab"])
     if cfg.export_format not in allowed_fmts:
         raise HTTPException(
             status_code=403,
@@ -1586,10 +1584,7 @@ async def studio_export(request: Request):
 
 @app.post("/dashboard/studio/verify")
 async def studio_verify(request: Request, axm: UploadFile = File(...)):
-    t = _current_tenant(request)
-    if not t:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+    # Public — stateless .axm verification (no auth, no tenant data).
     data = await axm.read(studio_mod.MAX_AXM_UPLOAD_BYTES + 1)
     if len(data) > studio_mod.MAX_AXM_UPLOAD_BYTES:
         raise HTTPException(
@@ -1605,7 +1600,9 @@ async def studio_verify(request: Request, axm: UploadFile = File(...)):
 def studio_containers_list(request: Request):
     t = _current_tenant(request)
     if not t:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        # Anonymous: nothing saved (login to persist configs).
+        return JSONResponse({"containers": [], "count": 0,
+                             "cap": studio_mod.CONTAINER_CAP.get("free")})
 
     containers = list_studio_containers(t.tenant_id)
     cap        = studio_mod.CONTAINER_CAP.get(t.tier)
