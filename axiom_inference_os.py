@@ -139,8 +139,12 @@ class InferenceOSResult:
     audit_id:        str          # first 24 chars of AuditEvent.signature
     stages:          tuple        # tuple[InferenceStageResult, ...]
     # Chain
-    timestamp:       str
-    signature:       str
+    timestamp:       str = ""
+    signature:       str = ""
+    # Memory Trifecta telemetry (Pillars 2 + 3)
+    delta_turn:            int = 0   # DeltaState.turn_count after this call
+    memory_lod:            int = 0   # MemoryLOD used (0/1/2)
+    memory_token_estimate: int = 0   # tokens consumed by memory injection
 
     def to_dict(self) -> dict:
         return {
@@ -162,6 +166,9 @@ class InferenceOSResult:
             "risk_class":      self.risk_class,
             "audit_id":        self.audit_id,
             "stages":          [s.to_dict() for s in self.stages],
+            "delta_turn":            self.delta_turn,
+            "memory_lod":            self.memory_lod,
+            "memory_token_estimate": self.memory_token_estimate,
             "timestamp":       self.timestamp,
             "signature":       self.signature,
         }
@@ -210,6 +217,9 @@ class InferenceOS:
         self._cosmos_retriever = None   # CosmosLayeredRetriever (wraps _retriever)
         self._cosmos_builder   = None   # CosmosContextBuilder
         self._prefix_cache     = None   # DomainPrefixCache — static system prompts
+        self._delta_store      = None   # DeltaMemoryStore — Trifecta Pillar 2
+        self._delta_map        = None   # DeltaMemoryMap
+        self._mr_memory        = None   # MultiResolutionMemory — Trifecta Pillar 3
         self._backend    = None
         self._audit      = None
         self._classifier = None
@@ -262,6 +272,15 @@ class InferenceOS:
             if cosmos_local is not None:
                 self._cosmos_retriever = CosmosLayeredRetriever(cosmos_local)
                 self._cosmos_builder   = CosmosContextBuilder()
+        except Exception:
+            pass
+        # Memory Trifecta Pillars 2 + 3
+        try:
+            from axiom_delta_memory import DeltaMemoryMap, DeltaMemoryStore
+            from axiom_multiresolution_memory import MultiResolutionMemory
+            self._delta_store = DeltaMemoryStore()
+            self._delta_map   = DeltaMemoryMap()
+            self._mr_memory   = MultiResolutionMemory()
         except Exception:
             pass
         self._ready = True
@@ -385,15 +404,33 @@ class InferenceOS:
 
         # ── Stage 1 / Step 3: Inference Router ────────────────────────────────
         route, model_used, fallback_used = "local", "unknown", False
+        # Load (or create empty) session state for Memory Trifecta Pillars 2+3
+        delta_state    = None
+        mem_view       = None
+        if self._delta_store is not None and self._delta_map is not None:
+            try:
+                from axiom_delta_memory import DeltaState
+                delta_state = (
+                    self._delta_store.load(request.session_id)
+                    or DeltaState(session_id=request.session_id, domain=request.domain)
+                )
+            except Exception:
+                delta_state = None
         t0 = time.perf_counter()
         try:
             if self._backend is not None:
                 route       = self._backend.name
                 model_used  = self._backend.model
-            stages.append(InferenceStageResult.make(
-                "route", "ok", _ms(t0),
-                {"route": route, "model": model_used}
-            ))
+            route_detail: dict = {"route": route, "model": model_used}
+            # LOD 0 token pointer — routing metadata only, not injected into LLM
+            if delta_state is not None and self._mr_memory is not None:
+                try:
+                    lod0_view = self._mr_memory.to_lod0(delta_state, request.domain)
+                    route_detail["memory_lod0"]  = lod0_view.content
+                    route_detail["delta_turn"]   = delta_state.turn_count
+                except Exception:
+                    pass
+            stages.append(InferenceStageResult.make("route", "ok", _ms(t0), route_detail))
         except Exception as exc:
             stages.append(InferenceStageResult.make(
                 "route", "degraded", _ms(t0), {"error": str(exc)[:120]}
@@ -504,6 +541,19 @@ class InferenceOS:
         # Only count when actual documents were retrieved, not just the base system prompt.
         tokens_saved = len(context_str) // 4 if (context_str and context_hits > 0) else 0
 
+        # Resolve LOD for memory injection (Pillar 3) — pure function, no I/O
+        mem_lod            = 0
+        mem_token_estimate = 0
+        if delta_state is not None and self._mr_memory is not None:
+            try:
+                mem_view = self._mr_memory.view(
+                    delta_state, intent_class, request.domain
+                )
+                mem_lod            = int(mem_view.lod)
+                mem_token_estimate = mem_view.token_estimate
+            except Exception:
+                mem_view = None
+
         # ── Stage 3 / Step 5: Generation ──────────────────────────────────────
         output, input_tokens, output_tokens = "", 0, 0
         t0 = time.perf_counter()
@@ -529,6 +579,16 @@ class InferenceOS:
                         f"Context:\n{context_str}\n\nQuestion: {request.query}"
                         if context_str else request.query
                     )
+
+                # Memory Trifecta injection: LOD 1 → user turn; LOD 2 → system prompt
+                if mem_view is not None and mem_view.content:
+                    from axiom_multiresolution_memory import MemoryLOD
+                    if mem_view.lod == MemoryLOD.LOD1:
+                        user_message = f"[Session State]\n{mem_view.content}\n\n{user_message}"
+                    elif mem_view.lod == MemoryLOD.LOD2:
+                        system_prompt = (
+                            f"{system_prompt}\n\n[Full Session Context]\n{mem_view.content}"
+                        )
 
                 result = self._backend.generate(
                     system=system_prompt,
@@ -632,6 +692,22 @@ class InferenceOS:
             verified=(output_verdict == "allow"),
         )
 
+        # ── Trifecta Pillar 2: update DeltaState after audit ─────────────────
+        final_delta_turn = 0
+        if (delta_state is not None
+                and self._delta_map is not None
+                and self._delta_store is not None):
+            try:
+                from axiom_signing import derive_key
+                dirty     = self._delta_map.extract_delta(output, request.query, delta_state)
+                new_state = self._delta_map.apply_delta(delta_state, **dirty)
+                key       = derive_key(KEY_NS)
+                new_state = self._delta_map.sign(new_state, key)
+                self._delta_store.save(request.session_id, new_state)
+                final_delta_turn = new_state.turn_count
+            except Exception:
+                final_delta_turn = delta_state.turn_count
+
         # ── Step 8: Assemble signed result ────────────────────────────────────
         ts = _now_iso()
         base = {
@@ -653,6 +729,9 @@ class InferenceOS:
             "risk_class":      risk_class,
             "audit_id":        audit_id,
             "stages":          [s.to_dict() for s in stages],
+            "delta_turn":            final_delta_turn,
+            "memory_lod":            mem_lod,
+            "memory_token_estimate": mem_token_estimate,
             "timestamp":       ts,
         }
         sig = _sign(base, KEY_NS)
