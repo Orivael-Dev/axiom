@@ -94,3 +94,94 @@
     }
 }
 
+{$MCP_HOST} {
+    encode gzip
+
+    # SSE connections are long-lived — set timeouts to 0 so Caddy never
+    # cuts the stream mid-session. The MCP client sends a keep-alive ping
+    # every 25 s so idle connections are detectable at the app layer.
+    reverse_proxy axiom-mcp:8006 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For   {remote_host}
+        header_up X-Accel-Buffering no
+        transport http {
+            response_header_timeout 0s
+            read_timeout            0s
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        # Allow claude.ai to connect cross-origin (required for web MCP client)
+        Access-Control-Allow-Origin  "https://claude.ai"
+        Access-Control-Allow-Headers "Authorization, Content-Type"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
+
+
+# ── Apex landing page (static, served from /srv/orivael) ──────────────────────
+orivael.dev {
+    encode gzip
+
+    root * /srv/orivael
+    try_files {path} {path}/index.html /index.html
+    file_server
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
+
+# Canonical redirect: www → apex
+www.orivael.dev {
+    redir https://orivael.dev{uri} permanent
+}
+
+# ── Studio console — own domain, reverse-proxied to the firewall app ──────────
+# Root shows the studio page; every other path (/static/*, /dashboard/studio/*,
+# /billing) proxies straight through to the firewall app, so the page's absolute
+# URLs + fetch() endpoints resolve. Functional after the firewall is redeployed
+# with the GET /dashboard/studio route.
+srdstudio.orivael.dev {
+    encode gzip
+
+    @root path /
+    rewrite @root /dashboard/studio
+
+    reverse_proxy firewall:8004 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-For   {remote_host}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
