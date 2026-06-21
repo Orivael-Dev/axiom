@@ -232,8 +232,20 @@ class InferenceOS:
         self._policy    = self._policy_arg or self._build_policy()
         # Domain prefix cache — static system prompts + startup warming
         try:
-            from axiom_prefix_cache import DomainPrefixCache
+            from axiom_prefix_cache import DomainPrefixCache, DOMAIN_SEED_QUERIES
             self._prefix_cache = DomainPrefixCache()
+            # Build domain preambles using local retriever before warming Ollama,
+            # so warm_domain() seeds the KV cache with the full preamble string.
+            if self._retriever is not None:
+                local_r = self._extract_local_retriever(self._retriever)
+                if local_r is None:
+                    local_r = self._build_local_retriever()
+                if local_r is not None:
+                    try:
+                        for domain in DOMAIN_SEED_QUERIES:
+                            self._prefix_cache.build_preamble(domain, local_r)
+                    except Exception:
+                        pass
             if self._backend is not None and hasattr(self._backend, "_url"):
                 self._prefix_cache.warm_all(self._backend._url, self._backend.model)
         except Exception:
@@ -404,29 +416,73 @@ class InferenceOS:
                     cosmos_result = self._cosmos_retriever.retrieve_layered(
                         request.query, k=_MAX_RETRIEVAL_K, anticipate=True
                     )
+                    all_hits = cosmos_result.all_hits()
+                    cosmos_level_counts = cosmos_result.level_counts()
+                    # Filter out docs already in the preamble KV cache; use delta budget.
+                    if self._prefix_cache is not None:
+                        delta_hits = self._prefix_cache.filter_preamble_hits(
+                            request.domain, all_hits
+                        )
+                        coverage = self._prefix_cache.preamble_coverage(
+                            request.domain, all_hits
+                        )
+                        delta_budget = self._prefix_cache.delta_budget(request.domain)
+                        skip_uris = frozenset(
+                            getattr(h, "uri", "") for h in all_hits
+                            if h not in delta_hits
+                        )
+                    else:
+                        delta_hits   = all_hits
+                        coverage     = 0.0
+                        delta_budget = ctx_budget
+                        skip_uris    = frozenset()
                     # Pass base_system="" — static system prompt is handled by
-                    # DomainPrefixCache.make_system(), not baked into context_str.
+                    # DomainPrefixCache.make_system_with_preamble(), not context_str.
                     context_str = self._cosmos_builder.build(
                         cosmos_result, "",
-                        max_chars=ctx_budget,
+                        max_chars=delta_budget,
                     )
-                    hits = cosmos_result.all_hits()
-                    context_hits = len(hits)
-                    cosmos_level_counts = cosmos_result.level_counts()
+                    # Remove preamble-covered snippets from the assembled context.
+                    if skip_uris and context_str:
+                        context_str, _ = self._pack_context(
+                            delta_hits, delta_budget, skip_uris=skip_uris
+                        )
+                    context_hits = len(all_hits)
                 else:
                     # Flat BM25 fallback
-                    hits = self._retriever.retrieve(
+                    all_hits = self._retriever.retrieve(
                         request.query,
                         k=_MAX_RETRIEVAL_K,
                         domain=request.domain,
                     )
-                    if hits:
-                        context_str, context_hits = self._pack_context(
-                            hits, ctx_budget
+                    if self._prefix_cache is not None:
+                        delta_hits = self._prefix_cache.filter_preamble_hits(
+                            request.domain, all_hits
                         )
+                        coverage   = self._prefix_cache.preamble_coverage(
+                            request.domain, all_hits
+                        )
+                        skip_uris  = frozenset(
+                            getattr(h, "uri", "") for h in all_hits
+                            if h not in delta_hits
+                        )
+                        delta_budget = self._prefix_cache.delta_budget(request.domain)
+                    else:
+                        delta_hits   = all_hits
+                        coverage     = 0.0
+                        skip_uris    = frozenset()
+                        delta_budget = ctx_budget
+                    if delta_hits:
+                        context_str, _ = self._pack_context(
+                            delta_hits, delta_budget, skip_uris=skip_uris
+                        )
+                    context_hits = len(all_hits)
 
                 context_snippet = context_str[:200]
-                detail: dict = {"hits": context_hits}
+                detail: dict = {
+                    "hits":               context_hits,
+                    "preamble_coverage":  round(coverage, 2),
+                }
                 if cosmos_level_counts:
                     detail["galaxy"] = cosmos_level_counts.get("galaxy", 0)
                     detail["planet"] = cosmos_level_counts.get("planet", 0)
@@ -453,10 +509,13 @@ class InferenceOS:
         t0 = time.perf_counter()
         if self._backend is not None:
             try:
-                # Static system prompt — always identical per domain → Ollama caches it.
-                # Dynamic retrieved context goes in the user turn (make_user_prompt).
+                # Preamble-aware system prompt — identical per domain (+ preamble docs
+                # if built at startup) → Ollama caches all of it.
+                # Delta retrieved context goes in the user turn (make_user_prompt).
                 if self._prefix_cache is not None:
-                    system_prompt = self._prefix_cache.make_system(request.domain)
+                    system_prompt = self._prefix_cache.make_system_with_preamble(
+                        request.domain
+                    )
                     user_message  = self._prefix_cache.make_user_prompt(
                         context_str, request.query
                     )
@@ -656,12 +715,22 @@ class InferenceOS:
         )
 
     @staticmethod
-    def _pack_context(hits: list, max_chars: int) -> tuple[str, int]:
-        """Assemble retrieved sources into a context string for the system prompt."""
+    def _pack_context(
+        hits: list,
+        max_chars: int,
+        skip_uris: Optional[frozenset] = None,
+    ) -> tuple[str, int]:
+        """Assemble retrieved sources into a context string for the user turn.
+
+        skip_uris: URIs already in the preamble KV cache — exclude from output.
+        """
+        skip  = skip_uris or frozenset()
         parts: List[str] = ["=== RETRIEVED CONTEXT ==="]
         total = len(parts[0])
         count = 0
         for h in hits:
+            if getattr(h, "uri", "") in skip:
+                continue
             snippet = getattr(h, "snippet", "") or getattr(h, "content", "")
             title   = getattr(h, "title", "") or getattr(h, "uri", "")
             chunk   = f"\n[{title}]\n{snippet}\n---"

@@ -20,7 +20,7 @@ import sys
 import time
 import types as _types
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 
 import requests
 
@@ -73,6 +73,38 @@ DOMAIN_CONTEXT_BUDGETS: Dict[Optional[str], int] = {
 # Ollama served from its KV cache (i.e. system prompt was cached).
 _CACHE_HIT_THRESHOLD_MS_PER_TOK: float = 0.5
 
+# Seed queries used to pre-retrieve representative docs per domain.
+# The union of results across all seed queries forms the preamble corpus.
+DOMAIN_SEED_QUERIES: Dict[Optional[str], List[str]] = {
+    "legal":      ["GDPR", "contract", "liability", "compliance", "data protection"],
+    "healthcare": ["patient", "clinical", "diagnosis", "symptoms", "treatment"],
+    "finance":    ["revenue", "investment", "risk", "compliance", "financial"],
+    "security":   ["vulnerability", "authentication", "threat", "encryption"],
+    "hr":         ["policy", "employee", "leave", "benefits", "conduct"],
+    None:         [],   # general is already fast; no preamble
+}
+
+# Maximum chars of pre-loaded docs in the preamble per domain.
+MAX_PREAMBLE_CHARS: Dict[Optional[str], int] = {
+    "legal":      4_000,
+    "healthcare": 3_000,
+    "finance":    3_000,
+    "security":   3_000,
+    "hr":         2_000,
+    None:         0,
+}
+
+# Tighter DELTA budget once preamble docs are filtered out.
+# These cap the chars of NEW (non-preamble) context per query.
+DOMAIN_DELTA_BUDGETS: Dict[Optional[str], int] = {
+    "legal":      1_000,   # ~250 delta tokens max; preamble covers the rest
+    "healthcare": 2_000,
+    "finance":    2_000,
+    "security":   2_000,
+    "hr":         1_500,
+    None:         8_000,   # unchanged for general
+}
+
 
 # ── Warm-state bookkeeping ────────────────────────────────────────────────────
 
@@ -82,6 +114,15 @@ class PrefixWarmState:
     warm:            bool  = False
     warmed_at:       float = 0.0   # monotonic seconds
     cold_prefill_ms: int   = 0     # baseline from the warm-up request
+
+
+@dataclass
+class DomainPreambleEntry:
+    """Holds the pre-built preamble for one domain."""
+    domain:               Optional[str]
+    system_with_preamble: str        # base system + pre-loaded doc text
+    preamble_uris:        frozenset  # URIs of docs included in the preamble
+    preamble_chars:       int
 
 
 # ── Main class ────────────────────────────────────────────────────────────────
@@ -104,7 +145,8 @@ class DomainPrefixCache:
     """
 
     def __init__(self) -> None:
-        self._states: Dict[str, PrefixWarmState] = {}
+        self._states:   Dict[str, PrefixWarmState]    = {}
+        self._preambles: Dict[str, DomainPreambleEntry] = {}
 
     # ── prompt construction ───────────────────────────────────────────────
 
@@ -137,6 +179,101 @@ class DomainPrefixCache:
         """
         return DOMAIN_CONTEXT_BUDGETS.get(domain, DOMAIN_CONTEXT_BUDGETS[None])
 
+    # ── preamble cache ────────────────────────────────────────────────────
+
+    def build_preamble(
+        self,
+        domain: Optional[str],
+        retriever,
+        seed_queries: Optional[List[str]] = None,
+        max_preamble_chars: int = 0,
+    ) -> int:
+        """Pre-retrieve representative docs and build a stable domain preamble.
+
+        Runs each seed query through the retriever, collects the union of
+        returned documents, and formats them as a fixed block appended to the
+        domain system prompt.  Returns the number of documents included.
+
+        Idempotent — calling again replaces the previous preamble.
+        """
+        queries   = seed_queries if seed_queries is not None else DOMAIN_SEED_QUERIES.get(domain, [])
+        max_chars = max_preamble_chars or MAX_PREAMBLE_CHARS.get(domain, 0)
+        if not queries or retriever is None or max_chars == 0:
+            return 0
+
+        doc_map: Dict[str, object] = {}  # uri → first hit for that uri
+        for q in queries:
+            try:
+                hits = retriever.retrieve(q, k=5, domain=domain)
+                for h in hits:
+                    uri = getattr(h, "uri", "")
+                    if uri and uri not in doc_map:
+                        doc_map[uri] = h
+            except Exception:
+                pass
+
+        if not doc_map:
+            return 0
+
+        parts = ["=== DOMAIN REFERENCE DOCUMENTS ==="]
+        total = len(parts[0])
+        included_uris: Set[str] = set()
+        for uri, hit in doc_map.items():
+            snippet = getattr(hit, "snippet", "") or getattr(hit, "content", "")
+            title   = getattr(hit, "title", uri)
+            chunk   = f"\n[{title}]\n{snippet.strip()}\n---"
+            if total + len(chunk) > max_chars:
+                break
+            parts.append(chunk)
+            total += len(chunk)
+            included_uris.add(uri)
+
+        preamble_text        = "\n".join(parts)
+        system_with_preamble = f"{self.make_system(domain)}\n\n{preamble_text}"
+        key = domain or ""
+        self._preambles[key] = DomainPreambleEntry(
+            domain               = domain,
+            system_with_preamble = system_with_preamble,
+            preamble_uris        = frozenset(included_uris),
+            preamble_chars       = total,
+        )
+        return len(included_uris)
+
+    def make_system_with_preamble(self, domain: Optional[str]) -> str:
+        """System prompt with pre-loaded domain docs if a preamble was built.
+
+        Falls back to the plain static system prompt when no preamble exists.
+        ``warm_domain()`` must call this so Ollama caches the same string that
+        real queries will send.
+        """
+        entry = self._preambles.get(domain or "")
+        return entry.system_with_preamble if entry else self.make_system(domain)
+
+    def filter_preamble_hits(self, domain: Optional[str], hits: list) -> list:
+        """Return only hits whose URIs are NOT already in the domain preamble.
+
+        Called after retrieval so the user turn carries only delta (novel)
+        documents — preamble docs are already in Ollama's KV cache.
+        """
+        entry = self._preambles.get(domain or "")
+        if not entry:
+            return hits
+        return [h for h in hits if getattr(h, "uri", "") not in entry.preamble_uris]
+
+    def delta_budget(self, domain: Optional[str]) -> int:
+        """Max chars for DELTA (non-preamble) context in the user turn."""
+        return DOMAIN_DELTA_BUDGETS.get(domain, DOMAIN_DELTA_BUDGETS[None])
+
+    def preamble_coverage(self, domain: Optional[str], hits: list) -> float:
+        """Fraction of retrieved hits already covered by the domain preamble (0–1)."""
+        if not hits:
+            return 0.0
+        entry = self._preambles.get(domain or "")
+        if not entry:
+            return 0.0
+        covered = sum(1 for h in hits if getattr(h, "uri", "") in entry.preamble_uris)
+        return covered / len(hits)
+
     # ── pre-warming ───────────────────────────────────────────────────────
 
     def warm_domain(
@@ -154,7 +291,7 @@ class DomainPrefixCache:
 
         Returns True on success; False on any error (never raises).
         """
-        system = self.make_system(domain)
+        system = self.make_system_with_preamble(domain)
         body = {
             "model":      model,
             "messages":   [

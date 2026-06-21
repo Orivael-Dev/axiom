@@ -10,8 +10,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("AXIOM_MASTER_KEY", "f" * 64)
 
+from unittest.mock import MagicMock
+
 from axiom_prefix_cache import (
     DOMAIN_CONTEXT_BUDGETS,
+    DOMAIN_DELTA_BUDGETS,
+    DOMAIN_SEED_QUERIES,
     DOMAIN_SYSTEM_PROMPTS,
     DomainPrefixCache,
 )
@@ -179,3 +183,179 @@ def test_is_warm_before_warming_is_false() -> None:
     pc = DomainPrefixCache()
     assert pc.is_warm("legal") is False
     assert pc.is_warm(None) is False
+
+
+# ── Preamble: DOMAIN_SEED_QUERIES / DOMAIN_DELTA_BUDGETS ─────────────────────
+
+def test_seed_queries_legal_nonempty() -> None:
+    assert len(DOMAIN_SEED_QUERIES["legal"]) >= 3
+
+
+def test_seed_queries_general_empty() -> None:
+    assert DOMAIN_SEED_QUERIES[None] == []
+
+
+def test_delta_budget_legal_less_than_general() -> None:
+    assert DOMAIN_DELTA_BUDGETS["legal"] < DOMAIN_DELTA_BUDGETS[None]
+
+
+# ── DomainPrefixCache.build_preamble ─────────────────────────────────────────
+
+def _make_mock_retriever(uri: str = "docs/gdpr.txt", snippet: str = "GDPR Article 9 prohibits...") -> MagicMock:
+    hit = MagicMock()
+    hit.uri     = uri
+    hit.snippet = snippet
+    hit.title   = "GDPR Art 9"
+    mock_r = MagicMock()
+    mock_r.retrieve.return_value = [hit]
+    return mock_r
+
+
+def test_build_preamble_returns_nonzero_for_legal() -> None:
+    pc = DomainPrefixCache()
+    n = pc.build_preamble("legal", _make_mock_retriever())
+    assert n > 0
+
+
+def test_build_preamble_no_retriever_returns_zero() -> None:
+    pc = DomainPrefixCache()
+    assert pc.build_preamble("legal", None) == 0
+
+
+def test_build_preamble_general_returns_zero() -> None:
+    # DOMAIN_SEED_QUERIES[None] is empty → no preamble for general
+    pc = DomainPrefixCache()
+    assert pc.build_preamble(None, _make_mock_retriever()) == 0
+
+
+def test_build_preamble_is_idempotent() -> None:
+    pc = DomainPrefixCache()
+    mock_r = _make_mock_retriever()
+    pc.build_preamble("legal", mock_r)
+    n2 = pc.build_preamble("legal", mock_r)  # second call replaces
+    assert n2 > 0
+
+
+# ── DomainPrefixCache.make_system_with_preamble ───────────────────────────────
+
+def test_make_system_with_preamble_contains_doc_text() -> None:
+    pc = DomainPrefixCache()
+    pc.build_preamble("legal", _make_mock_retriever(snippet="GDPR Article 9 prohibits..."))
+    sys_prompt = pc.make_system_with_preamble("legal")
+    assert "GDPR" in sys_prompt
+
+
+def test_make_system_with_preamble_falls_back_before_build() -> None:
+    pc = DomainPrefixCache()
+    # No build_preamble called → should match plain make_system
+    assert pc.make_system_with_preamble("legal") == pc.make_system("legal")
+
+
+def test_make_system_with_preamble_longer_than_plain() -> None:
+    pc = DomainPrefixCache()
+    pc.build_preamble("legal", _make_mock_retriever())
+    assert len(pc.make_system_with_preamble("legal")) > len(pc.make_system("legal"))
+
+
+# ── DomainPrefixCache.filter_preamble_hits ───────────────────────────────────
+
+def _make_hit(uri: str, snippet: str = "text") -> MagicMock:
+    h = MagicMock()
+    h.uri     = uri
+    h.snippet = snippet
+    h.title   = uri
+    return h
+
+
+def test_filter_preamble_hits_removes_preamble_uris() -> None:
+    pc    = DomainPrefixCache()
+    uri   = "docs/gdpr.txt"
+    mock_r = _make_mock_retriever(uri=uri)
+    pc.build_preamble("legal", mock_r)
+
+    hit  = _make_hit(uri)
+    hits = [hit]
+    delta = pc.filter_preamble_hits("legal", hits)
+    assert len(delta) == 0
+
+
+def test_filter_preamble_hits_keeps_novel_uris() -> None:
+    pc    = DomainPrefixCache()
+    pc.build_preamble("legal", _make_mock_retriever(uri="docs/gdpr.txt"))
+
+    novel = _make_hit("docs/ccpa.txt")
+    delta = pc.filter_preamble_hits("legal", [novel])
+    assert len(delta) == 1
+
+
+def test_filter_preamble_hits_no_preamble_returns_all() -> None:
+    pc   = DomainPrefixCache()
+    hits = [_make_hit("docs/any.txt")]
+    assert pc.filter_preamble_hits("legal", hits) == hits
+
+
+# ── DomainPrefixCache.preamble_coverage ──────────────────────────────────────
+
+def test_preamble_coverage_all_covered() -> None:
+    pc    = DomainPrefixCache()
+    uri   = "docs/gdpr.txt"
+    pc.build_preamble("legal", _make_mock_retriever(uri=uri))
+    hit   = _make_hit(uri)
+    assert pc.preamble_coverage("legal", [hit]) == 1.0
+
+
+def test_preamble_coverage_none_covered() -> None:
+    pc  = DomainPrefixCache()
+    pc.build_preamble("legal", _make_mock_retriever(uri="docs/gdpr.txt"))
+    hit = _make_hit("docs/ccpa.txt")
+    assert pc.preamble_coverage("legal", [hit]) == 0.0
+
+
+def test_preamble_coverage_no_preamble_returns_zero() -> None:
+    pc  = DomainPrefixCache()
+    hit = _make_hit("docs/any.txt")
+    assert pc.preamble_coverage("legal", [hit]) == 0.0
+
+
+def test_preamble_coverage_empty_hits_returns_zero() -> None:
+    pc = DomainPrefixCache()
+    assert pc.preamble_coverage("legal", []) == 0.0
+
+
+# ── DomainPrefixCache.delta_budget ───────────────────────────────────────────
+
+def test_delta_budget_legal_less_than_context_budget() -> None:
+    pc = DomainPrefixCache()
+    assert pc.delta_budget("legal") < pc.context_budget("legal")
+
+
+def test_delta_budget_general_equals_full_budget() -> None:
+    pc = DomainPrefixCache()
+    assert pc.delta_budget(None) == DOMAIN_DELTA_BUDGETS[None]
+
+
+# ── warm_domain uses make_system_with_preamble ────────────────────────────────
+
+def test_warm_domain_uses_preamble_system_when_built() -> None:
+    """After build_preamble, warm_domain sends the preamble-included string."""
+    pc = DomainPrefixCache()
+    pc.build_preamble("legal", _make_mock_retriever(snippet="GDPR Article 9 prohibits..."))
+
+    sent_bodies: list = []
+
+    import requests as _req
+    original_post = _req.post
+
+    def fake_post(url, json=None, timeout=None):
+        sent_bodies.append(json)
+        resp = MagicMock()
+        resp.ok = False  # don't need a successful response
+        return resp
+
+    import unittest.mock as _mock
+    with _mock.patch("requests.post", fake_post):
+        pc.warm_domain("legal", "http://localhost:11434", "llama3.2:3b", timeout_s=1.0)
+
+    assert len(sent_bodies) == 1
+    system_content = sent_bodies[0]["messages"][0]["content"]
+    assert "GDPR" in system_content
