@@ -9,9 +9,11 @@ Environment:
   NVIDIA_NIM_API_KEY   — required for NIMBackend
   NIM_MODEL            — default "meta/llama-3.1-8b-instruct"
   NIM_BASE_URL         — default "https://integrate.api.nvidia.com/v1"
+  TRTLLM_URL           — local trtllm-serve endpoint (enables TRTLLMBackend)
+  TRTLLM_MODEL         — model served by trtllm-serve
   OLLAMA_URL           — default "http://localhost:11434"
   OLLAMA_MODEL         — default "llama3.2:3b"
-  AXIOM_BACKEND        — override: "nim" | "local" | "local,nim"
+  AXIOM_BACKEND        — override: "nim" | "local" | "trtllm" | "local,nim"
 
 The local backend lifts its HTTP body from
 `axiom_terminus._ollama_generate` — same proven shape, no
@@ -144,6 +146,108 @@ class NIMBackend:
             backend=self.name,
             model=self.model,
         )
+
+
+# ── NVIDIA TensorRT-LLM (local trtllm-serve) ─────────────────────────────
+
+
+class TRTLLMBackend(NIMBackend):
+    """NVIDIA TensorRT-LLM local inference — drop-in for NIMBackend.
+
+    ``trtllm-serve`` exposes the same OpenAI-compatible ``/v1/chat/completions``
+    API as NVIDIA NIM, so the wire format is identical. The only differences
+    are the endpoint URL, no API-key requirement, and the added
+    ``generate_batch()`` method for parallel QRF branch execution.
+
+    Quick-start (one command, no Dockerfile needed)::
+
+        trtllm-serve meta/llama-3.1-8b-instruct --port 8000
+        export TRTLLM_URL=http://localhost:8000/v1
+        export TRTLLM_MODEL=meta/llama-3.1-8b-instruct
+        export AXIOM_BACKEND=trtllm
+
+    Drop-in switch: any code that currently calls ``NIMBackend.generate()``
+    works unchanged with ``TRTLLMBackend.generate()``. The ``name`` field
+    in ``BackendResult`` changes to ``"trtllm"`` so the exoskeleton ledger
+    and RouterPolicy distinguish the two cleanly.
+
+    **QRF parallel branches** — ``generate_batch(prompts, system=...)``::
+
+        backend = TRTLLMBackend()
+        results = backend.generate_batch(
+            ["Branch A hypothesis", "Branch B hypothesis", ...],
+            system=domain_system_prompt,
+        )
+
+    All prompts share the same ``system`` string.  TRT-LLM's in-flight
+    batching schedules them on the GPU in one cycle; branches that share
+    the same prefix (= the system prompt) reuse the same KV-cache blocks,
+    so the shared prefix is prefilled exactly once regardless of branch
+    count — the same saving the Trifecta preamble cache delivers, but
+    native on GPU.
+    """
+
+    name: str = "trtllm"
+
+    def __init__(
+        self,
+        *,
+        base_url: Optional[str] = None,
+        model:    Optional[str] = None,
+    ) -> None:
+        url = (base_url or os.environ.get("TRTLLM_URL", "http://localhost:8000/v1")).rstrip("/")
+        mdl = model    or os.environ.get("TRTLLM_MODEL", "meta/llama-3.1-8b-instruct")
+        # Pass api_key="none" — trtllm-serve doesn't require auth on localhost.
+        # NIMBackend.__init__ only checks for presence, not validity.
+        super().__init__(api_key="none", base_url=url, model=mdl)
+
+    # generate() is inherited from NIMBackend unchanged — same wire format.
+
+    def generate_batch(
+        self,
+        prompts: List[str],
+        *,
+        system:            str   = "",
+        max_output_tokens: int   = 256,
+        timeout_s:         float = 60.0,
+    ) -> List[BackendResult]:
+        """Fire N prompts simultaneously against TRT-LLM.
+
+        Uses a ``ThreadPoolExecutor`` so all branch HTTP requests are
+        in-flight at the same time.  TRT-LLM's in-flight batcher then
+        schedules them together on the GPU.  Branches sharing the same
+        ``system`` string reuse the same KV-cache blocks — the shared
+        prefix is computed once.
+
+        Failed branches return an empty ``BackendResult`` (text="") rather
+        than raising, so the caller always gets ``len(prompts)`` results
+        and can filter on ``result.text``.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        results: List[Optional[BackendResult]] = [None] * len(prompts)
+        with ThreadPoolExecutor(max_workers=len(prompts)) as pool:
+            futures = {
+                pool.submit(
+                    self.generate,
+                    system=system,
+                    prompt=p,
+                    max_output_tokens=max_output_tokens,
+                    timeout_s=timeout_s,
+                ): i
+                for i, p in enumerate(prompts)
+            }
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    results[idx] = future.result()
+                except BackendError:
+                    results[idx] = BackendResult(
+                        text="", input_tokens=0, output_tokens=0,
+                        latency_ms=0, backend=self.name, model=self.model,
+                    )
+        # Return in original prompt order (futures resolve out-of-order)
+        return [r for r in results if r is not None]
 
 
 # ── Local nano SLM (Ollama on Orin Nano or any host) ──────────────────────
@@ -420,6 +524,7 @@ class ChainedBackend:
 _BACKEND_FACTORIES = {
     "nim":      lambda: NIMBackend(),
     "local":    lambda: LocalNanoBackend(),
+    "trtllm":   lambda: TRTLLMBackend(),
     "deepseek": lambda: DeepSeekBackend(),
     "custom":   lambda: CustomBackend(),
     "subq":     lambda: SubQBackend(),
@@ -656,24 +761,25 @@ def _custom_backend_env_complete() -> bool:
 def default_backend() -> SLMBackend:
     """Resolve the default backend from environment.
 
-    AXIOM_BACKEND="nim"           → NIMBackend
-    AXIOM_BACKEND="local"         → LocalNanoBackend
+    AXIOM_BACKEND="nim"           → NIMBackend (hosted NVIDIA NIM API)
+    AXIOM_BACKEND="trtllm"        → TRTLLMBackend (local trtllm-serve)
+    AXIOM_BACKEND="local"         → LocalNanoBackend (Ollama)
     AXIOM_BACKEND="deepseek"      → DeepSeekBackend
     AXIOM_BACKEND="custom"        → CustomBackend
     AXIOM_BACKEND="subq"          → SubQBackend (12M-token SSA context)
-    AXIOM_BACKEND="local,deepseek"→ ChainedBackend (try local first,
-                                                    fall back to DeepSeek)
+    AXIOM_BACKEND="local,trtllm"  → ChainedBackend (Ollama → TRT-LLM)
+    AXIOM_BACKEND="trtllm,nim"    → ChainedBackend (local → hosted fallback)
     AXIOM_BACKEND="local,nim"     → ChainedBackend([local, nim])
     unset                         → SubQBackend   if SUBQ_API_KEY set;
                                     CustomBackend if AXIOM_BASE_URL +
                                     AXIOM_API_KEY + AXIOM_MODEL are
-                                    all set (explicit user-endpoint
-                                    opt-in via env);
-                                    else "local" if OLLAMA_URL appears
-                                    reachable in env;
-                                    else "deepseek" if DEEPSEEK_API_KEY
-                                    is set;
-                                    else "nim"
+                                    all set;
+                                    TRTLLMBackend if TRTLLM_URL is set
+                                    (local GPU takes priority over Ollama);
+                                    LocalNanoBackend if OLLAMA_URL set or
+                                    no cloud key present;
+                                    DeepSeekBackend if DEEPSEEK_API_KEY;
+                                    else NIMBackend
 
     The CustomBackend auto-detection is the fix for the silent-NIM-
     fallback bug: previously, configuring AXIOM_BASE_URL/AXIOM_API_KEY/
@@ -697,6 +803,8 @@ def default_backend() -> SLMBackend:
         base = SubQBackend()
     elif _custom_backend_env_complete():
         base = CustomBackend()
+    elif os.environ.get("TRTLLM_URL"):
+        base = TRTLLMBackend()
     elif os.environ.get("OLLAMA_URL") or not (
         os.environ.get("NVIDIA_NIM_API_KEY")
         or os.environ.get("DEEPSEEK_API_KEY")
