@@ -22,6 +22,7 @@ os.environ.setdefault("AXIOM_MASTER_KEY", "f" * 64)
 
 from axiom_delta_memory import DeltaMemoryMap, DeltaMemoryStore, DeltaState
 from axiom_multiresolution_memory import MemoryLOD, MultiResolutionMemory
+from axiom_output_shaper import OutputShaper
 from axiom_blt_bench import BLTBenchmark, BLTConfig
 
 W = 72
@@ -246,6 +247,85 @@ def run_pillar3() -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# OUTPUT SHAPING — complementary to the Trifecta
+# ─────────────────────────────────────────────────────────────────────────────
+
+SHAPING_SAMPLES = [
+    # (intent_class, raw_output)
+    (
+        "CLASSIFY",
+        (
+            "Analyzing the ticket: Maya Torres was charged twice for her Pro plan "
+            "this month — once on the 3rd (invoice INV-8842) and again on the 7th "
+            "(invoice INV-8861) — and is requesting a refund of the duplicate. "
+            "Because the issue concerns payment, invoicing, and a refund request, "
+            "and does not involve technical failure, login, or cancellation, the "
+            "correct classification among {billing, technical, account_access, "
+            "feature_request, cancellation, general} is: billing"
+        ),
+    ),
+    (
+        "INFORM",
+        (
+            "Certainly! GDPR Article 9 prohibits the processing of special categories "
+            "of personal data, including biometric and health data, unless a specific "
+            "exemption under Article 9(2) applies — for example, explicit consent or "
+            "substantial public interest. Please let me know if you need anything else."
+        ),
+    ),
+    (
+        "INFORM",
+        (
+            "Of course! Your invoice INV-8842 appears to be a duplicate charge. "
+            "The original charge was applied on the 3rd; the second charge on the 7th "
+            "will be refunded within 5 business days. I hope this helps!"
+        ),
+    ),
+]
+
+def run_output_shaping() -> None:
+    _bar("OUTPUT SHAPING  (CoT preamble · politeness trim · intent structuring)")
+
+    shaper = OutputShaper()
+    total_in_tok  = 0
+    total_out_tok = 0
+
+    print(f"\n  {'#':>2}  {'Intent':10}  {'IN tok':>7}  {'OUT tok':>8}  "
+          f"{'Saved':>6}  {'Transforms'}")
+    print(f"  {'─':>2}  {'──────':10}  {'──────':>7}  {'───────':>8}  "
+          f"{'─────':>6}  {'──────────'}")
+
+    for i, (intent, raw) in enumerate(SHAPING_SAMPLES, 1):
+        result  = shaper.shape(raw, intent)
+        in_tok  = len(raw)    // 4
+        out_tok = len(result.text) // 4
+        saved   = in_tok - out_tok
+        total_in_tok  += in_tok
+        total_out_tok += out_tok
+        transforms = "+".join(result.transforms) or "none"
+        print(f"  {i:>2}  {intent:<10}  {in_tok:>7}  {out_tok:>8}  "
+              f"{saved:>5} t  {transforms}")
+
+    print(f"\n  Sample 1 raw  ({len(SHAPING_SAMPLES[0][1]) // 4} tok):")
+    raw1   = SHAPING_SAMPLES[0][1]
+    shaped1 = shaper.shape(raw1, "CLASSIFY")
+    print(f"    → {shaped1.text}")
+
+    print(f"\n  Format hints injected upstream (reduce output tokens at source):")
+    for intent in ("CLASSIFY", "INFORM", "UNCERTAIN"):
+        hint = shaper.output_format_hint(intent)
+        hint_tok = len(hint) // 4
+        preview  = hint.strip().replace("\n", " ")[:60] if hint else "(none)"
+        print(f"    {intent:<12} +{hint_tok:>2} sys-prompt tok → \"{preview}\"")
+
+    total_saved = total_in_tok - total_out_tok
+    reduction   = total_saved / max(total_in_tok, 1)
+    print(f"\n  Across {len(SHAPING_SAMPLES)} samples : "
+          f"{total_in_tok} → {total_out_tok} tokens  "
+          f"({reduction:.0%} output reduction, {total_saved} tok saved)")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -258,6 +338,7 @@ def main() -> None:
     run_pillar1()
     run_pillar2()
     run_pillar3()
+    run_output_shaping()
 
     _bar("SUMMARY", char="═")
     print("""
@@ -269,6 +350,10 @@ def main() -> None:
 
   Pillar 3  Multi-Resolution    LOD 0 → routing (1 token) · LOD 1 → task (~60 tok)
                                   LOD 2 → compliance code gen · auto-selected from intent+domain
+
+  Output Shaping                CoT preamble strip + politeness trim + intent structuring
+                                  Deterministic, LLM-free · runs in microseconds post-generation
+                                  Complementary to prompt-level format hints (reduce at source)
 """)
 
 

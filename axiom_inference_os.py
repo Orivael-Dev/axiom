@@ -145,6 +145,9 @@ class InferenceOSResult:
     delta_turn:            int = 0   # DeltaState.turn_count after this call
     memory_lod:            int = 0   # MemoryLOD used (0/1/2)
     memory_token_estimate: int = 0   # tokens consumed by memory injection
+    # Output shaping telemetry
+    shaping_tokens_saved:  int   = 0   # tokens removed by OutputShaper
+    shaping_transforms:    tuple = ()  # tuple[str, ...] — applied transforms
 
     def to_dict(self) -> dict:
         return {
@@ -169,6 +172,8 @@ class InferenceOSResult:
             "delta_turn":            self.delta_turn,
             "memory_lod":            self.memory_lod,
             "memory_token_estimate": self.memory_token_estimate,
+            "shaping_tokens_saved":  self.shaping_tokens_saved,
+            "shaping_transforms":    list(self.shaping_transforms),
             "timestamp":       self.timestamp,
             "signature":       self.signature,
         }
@@ -220,6 +225,7 @@ class InferenceOS:
         self._delta_store      = None   # DeltaMemoryStore — Trifecta Pillar 2
         self._delta_map        = None   # DeltaMemoryMap
         self._mr_memory        = None   # MultiResolutionMemory — Trifecta Pillar 3
+        self._output_shaper    = None   # OutputShaper — post-gen normalisation
         self._backend    = None
         self._audit      = None
         self._classifier = None
@@ -281,6 +287,11 @@ class InferenceOS:
             self._delta_store = DeltaMemoryStore()
             self._delta_map   = DeltaMemoryMap()
             self._mr_memory   = MultiResolutionMemory()
+        except Exception:
+            pass
+        try:
+            from axiom_output_shaper import OutputShaper
+            self._output_shaper = OutputShaper()
         except Exception:
             pass
         self._ready = True
@@ -590,6 +601,12 @@ class InferenceOS:
                             f"{system_prompt}\n\n[Full Session Context]\n{mem_view.content}"
                         )
 
+                # Output shaping: inject format hint to reduce model verbosity upstream
+                if self._output_shaper is not None:
+                    hint = self._output_shaper.output_format_hint(intent_class)
+                    if hint:
+                        system_prompt = system_prompt + hint
+
                 result = self._backend.generate(
                     system=system_prompt,
                     prompt=user_message,
@@ -692,6 +709,19 @@ class InferenceOS:
             verified=(output_verdict == "allow"),
         )
 
+        # ── Output shaping: strip CoT / politeness post-audit ────────────────
+        shaping_tokens_saved = 0
+        shaping_transforms: tuple = ()
+        if output and self._output_shaper is not None:
+            try:
+                shaped = self._output_shaper.shape(output, intent_class)
+                if shaped.transforms:
+                    output               = shaped.text
+                    shaping_tokens_saved = shaped.tokens_saved
+                    shaping_transforms   = shaped.transforms
+            except Exception:
+                pass
+
         # ── Trifecta Pillar 2: update DeltaState after audit ─────────────────
         final_delta_turn = 0
         if (delta_state is not None
@@ -732,6 +762,8 @@ class InferenceOS:
             "delta_turn":            final_delta_turn,
             "memory_lod":            mem_lod,
             "memory_token_estimate": mem_token_estimate,
+            "shaping_tokens_saved":  shaping_tokens_saved,
+            "shaping_transforms":    shaping_transforms,
             "timestamp":       ts,
         }
         sig = _sign(base, KEY_NS)
