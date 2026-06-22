@@ -81,28 +81,32 @@ def test_nim_transport_error_raises(isolated):
 
 
 def test_local_parses_ollama_response_shape(isolated):
+    """LocalNanoBackend uses /api/chat (messages format), not /api/generate."""
     from axiom_event_token.backends import LocalNanoBackend
     b = LocalNanoBackend(model="llama3.2:3b", url="http://orin:11434")
     fake = MagicMock(ok=True)
     fake.json.return_value = {
-        "response":          "hello back",
+        "message":           {"role": "assistant", "content": "hello back"},
         "prompt_eval_count": 18,
         "eval_count":        4,
+        "prompt_eval_duration": 0,
     }
     with patch("axiom_event_token.backends.requests.post",
                return_value=fake) as mp:
         r = b.generate(system="be brief", prompt="say hi",
                        max_output_tokens=50)
+    call_url, = mp.call_args.args
     body = mp.call_args.kwargs["json"]
+    assert call_url.endswith("/api/chat")
     assert body["model"] == "llama3.2:3b"
-    assert "be brief" in body["prompt"]
-    assert "say hi" in body["prompt"]
+    assert body["messages"][0] == {"role": "system", "content": "be brief"}
+    assert body["messages"][1] == {"role": "user",   "content": "say hi"}
     assert body["options"]["num_predict"] == 50
-    assert r.text == "hello back"
+    assert r.text         == "hello back"
     assert r.input_tokens == 18
     assert r.output_tokens == 4
-    assert r.backend == "local"
-    assert r.model == "llama3.2:3b"
+    assert r.backend      == "local"
+    assert r.model        == "llama3.2:3b"
 
 
 def test_local_http_error_raises(isolated):
