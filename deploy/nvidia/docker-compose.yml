@@ -1,0 +1,81 @@
+# Axiom Inference OS — NVIDIA TRT-LLM compose stack
+#
+# Two services:
+#   trtllm   — NVIDIA TensorRT-LLM server (GPU, serves the model)
+#   axiom    — Axiom Inference OS control plane (CPU, routes + governs)
+#
+# Quick start:
+#   cp deploy/nvidia/.env.example .env      # fill in AXIOM_MASTER_KEY
+#   docker compose -f deploy/nvidia/docker-compose.yml up
+#
+# Axiom API will be available at http://localhost:8080/v1/infer
+# TRT-LLM will be available at  http://localhost:8000 (internal only by default)
+
+version: "3.9"
+
+services:
+
+  # ── NVIDIA TensorRT-LLM inference server ─────────────────────────────────
+  trtllm:
+    image: nvcr.io/nvidia/tritonserver:25.01-trtllm-python-py3
+    container_name: axiom-trtllm
+    command: >
+      trtllm-serve ${TRTLLM_MODEL:-meta/llama-3.1-8b-instruct}
+      --port 8000
+      --max_beam_width 1
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - trtllm-cache:/root/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v2/health/ready"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+
+  # ── Axiom Inference OS control plane ─────────────────────────────────────
+  axiom:
+    image: nvcr.io/${NGC_ORG:-your-org}/axiom-inference-os:latest
+    build:
+      context: ../..
+      dockerfile: deploy/nvidia/Dockerfile
+    container_name: axiom-inference-os
+    depends_on:
+      trtllm:
+        condition: service_healthy
+    environment:
+      - AXIOM_MASTER_KEY=${AXIOM_MASTER_KEY:?Set AXIOM_MASTER_KEY in .env}
+      - AXIOM_BACKEND=trtllm
+      - TRTLLM_URL=http://trtllm:8000/v1
+      - TRTLLM_MODEL=${TRTLLM_MODEL:-meta/llama-3.1-8b-instruct}
+      - AXIOM_PORT=8080
+      # Optional: per-domain NIM fallback
+      - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      - axiom-audit:/var/axiom/audit
+      - axiom-memory:/var/axiom/memory
+      - axiom-delta:/var/axiom/delta
+    restart: unless-stopped
+
+volumes:
+  trtllm-cache:
+    name: axiom-trtllm-cache
+  axiom-audit:
+    name: axiom-audit-data
+  axiom-memory:
+    name: axiom-memory-data
+  axiom-delta:
+    name: axiom-delta-data
