@@ -723,8 +723,11 @@ class InferenceOS:
                 pass
 
         # ── Trifecta Pillar 2: update DeltaState after audit ─────────────────
+        # Only advance session state when a real output was produced; blocked
+        # or empty responses must not increment turn_count (it would corrupt
+        # LOD escalation thresholds on the next request for this session).
         final_delta_turn = 0
-        if (delta_state is not None
+        if (output and delta_state is not None
                 and self._delta_map is not None
                 and self._delta_store is not None):
             try:

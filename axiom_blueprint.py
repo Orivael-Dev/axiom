@@ -517,6 +517,7 @@ class BlueprintStateMachine:
                 break
 
             # enforce all invariants before executing the state
+            _do_retry = False
             for inv in self._bp.invariants:
                 try:
                     self._enforce_invariant(inv, context or {})
@@ -535,12 +536,12 @@ class BlueprintStateMachine:
                                 self._bp.runtime_config.temperature_min,
                                 temperature + retry.temperature_delta,
                             )
-                            # re-try same state
                             tel.states_visited.append(f"{current}:retry#{tel.retry_count}")
-                            continue
-                        else:
-                            break
-                    break
+                            _do_retry = True
+                    break  # stop checking further invariants on first violation
+
+            if _do_retry:
+                continue  # re-enter outer while with the same state
 
             # route to next state
             current = self._route(state, certainty, temperature)
@@ -617,9 +618,12 @@ class BlueprintStateMachine:
                     return None  # undefined → terminate
                 return t.target_state
         # no matching transition → advance to next state in definition order
-        names = [s.name for s in self._bp.states]
-        idx   = names.index(state.name)
-        return names[idx + 1] if idx + 1 < len(names) else None
+        # compare by identity (not name) so revisited states advance correctly
+        states = self._bp.states
+        idx = next((i for i, s in enumerate(states) if s is state), None)
+        if idx is None:
+            return None
+        return states[idx + 1].name if idx + 1 < len(states) else None
 
     def _eval_condition(
         self,
@@ -673,29 +677,26 @@ class BlueprintStateMachine:
         import hmac as _hmac
         try:
             payload = json.dumps(tel.to_dict(), sort_keys=True, default=str)
-            # Try axiom_signing first; fall back to stdlib hmac if key unavailable
-            try:
-                from axiom_signing import hmac_sign
-                return hmac_sign(payload.encode(), self._key)
-            except Exception:
-                return _hmac.new(
-                    self._key, payload.encode(), hashlib.sha256
-                ).hexdigest()
+            return _hmac.new(
+                self._key, payload.encode(), hashlib.sha256
+            ).hexdigest()
         except Exception:
             return ""
 
     @staticmethod
     def _default_key() -> bytes:
-        import hashlib
         import os
+        try:
+            from axiom_signing import derive_key
+            return derive_key(b"axiom-blueprint-v1")
+        except Exception:
+            pass
+        # Derive from the raw env-var bytes when axiom_signing is unavailable
+        # (e.g. test environment). Never use a hardcoded constant.
+        import hashlib
         master = os.environ.get("AXIOM_MASTER_KEY", "")
-        if master:
-            try:
-                from axiom_signing import derive_key
-                return derive_key(b"axiom-blueprint-v1")
-            except Exception:
-                pass
-        return hashlib.sha256(b"axiom-blueprint-default").digest()
+        seed = master.encode() if master else os.urandom(32)
+        return hashlib.sha256(seed + b":axiom-blueprint-v1").digest()
 
 
 # ── Convenience API ───────────────────────────────────────────────────────────

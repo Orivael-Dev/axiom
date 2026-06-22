@@ -189,14 +189,20 @@ class DeltaMemoryStore:
     The file is append-only; on ``load()`` the last entry for a given
     session_id wins (deduplication happens at read time, not write time).
     This avoids seek-and-overwrite on a potentially hot file.
+
+    Thread safety: a per-instance ``threading.Lock`` serialises ``save()``
+    and ``forget()`` within a single process.  For multi-process safety,
+    callers should use separate store paths per process or an external lock.
     """
 
     def __init__(self, path: Optional[Path] = None) -> None:
+        import threading
         env_path = os.environ.get("AXIOM_DELTA_MEMORY_PATH", "")
         self._path: Path = (
             path if path is not None
             else (Path(env_path) if env_path else Path(_DEFAULT_STORE_PATH).expanduser())
         )
+        self._lock = threading.Lock()
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -228,30 +234,33 @@ class DeltaMemoryStore:
                 f"session_id mismatch: arg={session_id!r} vs state={state.session_id!r}"
             )
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(_state_to_dict(state), ensure_ascii=True) + "\n")
+        with self._lock:
+            with self._path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(_state_to_dict(state), ensure_ascii=True) + "\n")
+                fh.flush()
 
     def forget(self, session_id: str) -> None:
         """Remove all entries for *session_id* from the store."""
         if not self._path.exists():
             return
         keep: List[str] = []
-        try:
-            with self._path.open(encoding="utf-8") as fh:
-                for line in fh:
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    try:
-                        d = json.loads(stripped)
-                        if d.get("session_id") != session_id:
+        with self._lock:
+            try:
+                with self._path.open(encoding="utf-8") as fh:
+                    for line in fh:
+                        stripped = line.strip()
+                        if not stripped:
+                            continue
+                        try:
+                            d = json.loads(stripped)
+                            if d.get("session_id") != session_id:
+                                keep.append(line)
+                        except (json.JSONDecodeError, TypeError):
                             keep.append(line)
-                    except (json.JSONDecodeError, TypeError):
-                        keep.append(line)
-        except OSError:
-            return
-        with self._path.open("w", encoding="utf-8") as fh:
-            fh.writelines(keep)
+            except OSError:
+                return
+            with self._path.open("w", encoding="utf-8") as fh:
+                fh.writelines(keep)
 
     def purge_older_than(self, days: int = 30) -> int:
         """Remove entries with last_updated older than *days* days.

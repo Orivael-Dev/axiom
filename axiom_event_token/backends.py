@@ -225,6 +225,8 @@ class TRTLLMBackend(NIMBackend):
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
+        if not prompts:
+            return []
         results: List[Optional[BackendResult]] = [None] * len(prompts)
         with ThreadPoolExecutor(max_workers=len(prompts)) as pool:
             futures = {

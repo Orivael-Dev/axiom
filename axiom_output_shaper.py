@@ -56,12 +56,17 @@ class ShapedOutput:
 
 # ── Compiled patterns ─────────────────────────────────────────────────────────
 
-# CoT preamble: ≥60 char reasoning block ending in "... is: ANSWER"
+# CoT preamble: reasoning block that STARTS with a recognisable analysis opener
+# and ends with "... <keyword> is: ".  Anchoring the opener prevents stripping
+# valid response content that incidentally contains "the answer is:" mid-text.
 # Matches patterns like:
 #   "Analyzing the ticket: <long text>... the classification is: "
 #   "After reviewing the context, the correct answer is: "
+#   "Let me think through this... the verdict is: "
 _RE_COT_PREAMBLE = re.compile(
-    r"^.{60,}\b(?:classification|answer|verdict|response|category|result)\s+"
+    r"^(?:Let(?:'s| me)|I(?:'ll| will| am)|After|Based|Given|Looking|"
+    r"Analyzing|Reviewing|OK[,.]?|Alright[,.]?|Sure[,.]?|To (?:answer|classify|determine))"
+    r".{40,}\b(?:classification|answer|verdict|response|category|result)\s+"
     r"(?:among\s+\{[^}]{1,200}\}\s+)?is:\s+",
     re.IGNORECASE | re.DOTALL,
 )
