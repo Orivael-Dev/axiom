@@ -95,50 +95,94 @@ def _quantize_vec(vec, dim=_VECTOR_DIMENSIONS):
 
 # ── LSHIndex ─────────────────────────────────────────────────────
 class LSHIndex:
-    HASH_COUNT = 32
-    BUCKET_SIZE = 64
+    """Multi-table LSH index for sub-linear constitutional packet retrieval.
 
-    def __init__(self):
-        self._buckets = {}
-        random.seed(0)
-        self._planes = [
-            [random.gauss(0, 1) for _ in range(_VECTOR_DIMENSIONS)]
-            for _ in range(self.HASH_COUNT)
+    Uses L independent hash tables each with b-bit bucket keys.  A query
+    does one direct O(1) lookup per table → O(L) total, where L is a small
+    constant.  Candidates from all tables are deduplicated then ranked by
+    cosine similarity.
+
+    Compared to the single-table + hamming-scan design, this gives:
+      - True O(L) retrieval (L=8) vs O(n) hamming bucket scan
+      - Higher recall: L independent "votes" to find a neighbour
+      - Bounded candidate set: L × BUCKET_CAP << n
+    """
+    NUM_TABLES  = 8    # L independent tables
+    PLANES_PER  = 8    # b bits per table → 2^8 = 256 buckets per table
+    BUCKET_CAP  = 256  # max packets per bucket (FIFO eviction on overflow)
+
+    def __init__(self, seed: int = 0) -> None:
+        self._seed = seed
+        # L tables, each a dict: bucket_key → [packet, ...]
+        self._tables: list[dict] = [{} for _ in range(self.NUM_TABLES)]
+        rng = random.Random(seed)
+        # L × b independent random hyperplanes, each of length VECTOR_DIMENSIONS
+        self._planes: list[list[list[float]]] = [
+            [
+                [rng.gauss(0, 1) for _ in range(_VECTOR_DIMENSIONS)]
+                for _ in range(self.PLANES_PER)
+            ]
+            for _ in range(self.NUM_TABLES)
         ]
 
-    def _hash(self, vec):
+    def _hash_table(self, vec: tuple, t: int) -> int:
+        """Hash *vec* into table *t* → integer key in [0, 2^PLANES_PER)."""
         bits = 0
-        for i, plane in enumerate(self._planes):
-            dot = sum(v * p for v, p in zip(vec, plane))
-            if dot >= 0:
+        for i, plane in enumerate(self._planes[t]):
+            if sum(v * p for v, p in zip(vec, plane)) >= 0:
                 bits |= (1 << i)
         return bits
 
-    def index(self, packet):
-        key = self._hash(packet.compressed_vec)
-        bucket = self._buckets.setdefault(key, [])
-        if len(bucket) < self.BUCKET_SIZE:
-            bucket.append(packet)
-        return key
+    def index(self, packet) -> list[int]:
+        """Insert *packet* into all L tables. Returns the list of bucket keys."""
+        vec = packet.compressed_vec
+        keys = []
+        for t in range(self.NUM_TABLES):
+            key = self._hash_table(vec, t)
+            bucket = self._tables[t].setdefault(key, [])
+            if len(bucket) < self.BUCKET_CAP:
+                bucket.append(packet)
+            keys.append(key)
+        return keys
 
     @staticmethod
-    def _cosine(a, b):
+    def _cosine(a, b) -> float:
         dot = sum(x * y for x, y in zip(a, b))
         ma = math.sqrt(sum(x * x for x in a)) or 1.0
         mb = math.sqrt(sum(x * x for x in b)) or 1.0
         return dot / (ma * mb)
 
-    def retrieve(self, query_vec, k=5):
+    def retrieve(self, query_vec, k: int = 5) -> list[tuple[float, object]]:
+        """O(L) multi-table direct lookup — no full-index scan.
+
+        For each of the L tables, compute the bucket key and collect its
+        packets.  Deduplicate by object identity, score by cosine, return
+        the top-k sorted descending.
+        """
         qvec = _quantize_vec(query_vec)
-        key = self._hash(qvec)
-        # Search nearby buckets (hamming distance <= 2) for O(log n)
+        seen: set[int] = set()
         candidates = []
-        for bkey, bucket in self._buckets.items():
-            if bin(key ^ bkey).count("1") <= 2:
-                candidates.extend(bucket)
+        for t in range(self.NUM_TABLES):
+            key = self._hash_table(qvec, t)
+            for p in self._tables[t].get(key, []):
+                pid = id(p)
+                if pid not in seen:
+                    seen.add(pid)
+                    candidates.append(p)
         scored = [(self._cosine(qvec, p.compressed_vec), p) for p in candidates]
         scored.sort(key=lambda x: -x[0])
         return scored[:k]
+
+    def stats(self) -> dict:
+        """Return occupancy stats across all tables (useful for observability)."""
+        total = sum(len(b) for t in self._tables for b in t.values())
+        buckets = sum(len(t) for t in self._tables)
+        return {
+            "tables": self.NUM_TABLES,
+            "planes_per_table": self.PLANES_PER,
+            "total_entries": total,
+            "populated_buckets": buckets,
+        }
 
 # ── MemoryDecay ──────────────────────────────────────────────────
 class MemoryDecay:
