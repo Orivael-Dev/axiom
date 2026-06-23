@@ -521,6 +521,18 @@ def _handle_trace(args: dict) -> dict:
     mags = [sum(v**2 for v in out.get(f"{s}_vec", []))**0.5
             for s in ("preflight", "mid_chain", "final_synthesis")]
     out["monotonic"] = all(mags[i] <= mags[i+1] for i in range(len(mags)-1)) if len(mags) >= 2 else True
+
+    # Surface the winning branch response so the caller sees an actual answer,
+    # not just the constitutional path metadata.
+    multiplex = result.get("phases", {}).get("multiplex", {})
+    winner = multiplex.get("winner") or {}
+    if winner.get("response"):
+        out["answer"] = winner["response"]
+    elif multiplex.get("all_branches"):
+        # Fall back to the highest-scored branch
+        best = max(multiplex["all_branches"], key=lambda b: b.get("score", 0))
+        out["answer"] = best.get("response", "")
+
     out["hmac_signature"] = _sign({"question": question[:200], "verdict": out["verdict"]})
     return out
 
@@ -535,10 +547,20 @@ def _handle_qrf(args: dict) -> dict:
         return {"error": f"Unknown domain: {domain}", "hmac_signature": _sign({"error": domain})}
     key = derive_key(b"axiom-qrf-v1")
     r = QRFEngine(engine_domain, key, n_branches=n or None).forecast(prompt)
+
+    # Include each branch's response text so the caller sees what each
+    # reasoning path actually concluded, not just its probability weight.
     branches = [{"id": b.get("branch", ""), "prob": round(b.get("probability_weight", 0), 4),
                   "dist": round(b.get("constitutional_distance", 0), 4),
-                  "outcome": b.get("outcome", "")} for b in r.branches[:8]]
+                  "outcome": b.get("outcome", ""),
+                  "answer": b.get("response", "")} for b in r.branches[:8]]
+
+    # Surface the winner's answer at the top level for quick access.
+    winner_branch = next((b for b in r.branches if b.get("branch") == r.top_branch), None)
+    winner_answer = winner_branch.get("response", "") if winner_branch else ""
+
     return {"branches": branches, "winner": r.top_branch,
+            "answer": winner_answer,
             "manifold_alert": bool(r.manifold), "band": r.probability_band,
             "hmac_signature": r.hmac_signature}
 

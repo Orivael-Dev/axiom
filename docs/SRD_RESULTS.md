@@ -533,3 +533,100 @@ not the instruct variant. The instruct fine-tune + LoRA adapter improves
 WikiText-2 PPL because the instruction data includes more clean English text.
 The two numbers are not directly comparable — use 21.54 as the correct
 instruct-model reference.
+
+---
+
+## Phase E — Selective Sidecar (Pending GPU Run)
+
+> **Status: design complete, benchmark pending.** The Python prototype in
+> `research/quant/srd_selective_sidecar.py` + `bench_sidecar_hallucination.py`
+> is fully implemented and importable. GPU results require Colab T4 or better
+> with the four SLMs (~2–14 GB model downloads). Unit tests in
+> `tests/test_axiom_quant.py` (35 passing, CPU-only) verify all kernel invariants.
+
+### Design rationale
+
+**Problem.** At 4-bit (W4 only, no residue), SLMs hallucinate more than larger
+models for two compounding reasons: limited capacity and INT4 degradation
+concentrated in the *reasoning chunk* (transformer layers ~40–77% of depth),
+where multi-step chain-of-thought precision matters most.
+
+**Insight.** Not all layers need the same precision. Early layers handle factual
+lookup (INT4 fine). The reasoning chunk handles chain-of-thought composition
+(INT4 is the bottleneck). The D8 sidecar stores 8-bit residuals for every layer
+but we only need to apply them to the reasoning chunk. For sparse D8
+(`top_k_pct=0.25`), the per-model overhead is small enough to fit on mobile:
+
+| Model | Reasoning layers | Sparse D8 overhead |
+|---|---|---|
+| SmolLM2-135M | 11 layers | ~10 MB |
+| Qwen2.5-Coder-0.5B | 9 layers | ~35 MB |
+| Gemma3-1B | 7 layers | ~49 MB |
+| TinyLlama-1.1B | 8 layers | ~98 MB |
+
+**Correction is applied once at load time** — inference speed is identical to
+vanilla llama.cpp after the initial load. No per-token overhead.
+
+### Three-mode benchmark protocol
+
+`bench_sidecar_hallucination.py` compares three modes per model:
+
+| Mode | Description |
+|---|---|
+| `baseline` | Vanilla Q4_K_M, no sidecar |
+| `full_srd` | D8 residual on ALL layers (full SRD α=1.0) |
+| `selective` | D8 residual on reasoning chunk only (40–77% depth) |
+
+Metrics: **TruthfulQA MC1** (direct hallucination measure; higher = better)
+and **WikiText-2 PPL** (language quality; lower = better).
+
+### Expected operating point
+
+If the selective sidecar hypothesis holds, `selective` mode should:
+- Match or exceed `full_srd` on TruthfulQA MC1 (reasoning quality)
+- Approach `full_srd` on WikiText-2 PPL (within 0.1–0.3 PPL)
+- Consume 1/3 to 1/4 the D8 overhead of `full_srd`
+
+This would make the selective sidecar the **dominant operating point** for
+mobile/edge deployment: near-full-SRD quality at 35–49 MB sidecar overhead
+instead of 3–9× more for full coverage.
+
+### Architecture-fingerprinted chunk detection (next research step)
+
+The current implementation uses fixed MET boundaries
+(`_REASONING_START_FRAC = 0.40`, `_REASONING_END_FRAC = 0.77`) — a flat EQ
+preset that works for general instruction models but is architecture-specific:
+
+- **Code models** (Qwen Coder): precision-sensitive layers start earlier
+  (~15–50%), syntax/identifier encoding lives in the factual chunk.
+- **Chat/instruction models** (Gemma3): reasoning chunk is correctly targeted.
+- **Tiny models** (<200M): insufficient layer specialization; uniform or no
+  correction preferred.
+- **Multimodal models**: the cross-modal connector is the highest-leverage
+  correction target, not a standard MET layer range.
+
+`calibrate_layer_alphas.py` already implements both calibration paths
+(`calibrate_weight_norm` and `calibrate_activation_error`). The next step is
+to derive correction boundaries from per-layer activation variance or gradient
+norms during a short calibration pass, making `quant_map` carry per-layer
+weights rather than a single depth range.
+
+### To run Phase E
+
+```bash
+# Full sweep (Colab T4 or better, ~14 GB downloads)
+python -m research.quant.bench_sidecar_hallucination --sweep \
+    --output research/quant/results/sidecar_hallucination_sweep.json
+
+# Single model — faster iteration
+python -m research.quant.bench_sidecar_hallucination \
+    --model tinyllama-1.1b \
+    --output research/quant/results/sidecar_hallucination_tinyllama.json
+
+# Dry-run (verifies imports + GPU availability, skips model load)
+python -m research.quant.bench_sidecar_hallucination --dry-run
+```
+
+Results, when available, will be committed to
+`research/quant/results/sidecar_hallucination_sweep.json` and this section
+will be updated with the TruthfulQA MC1 and WikiText-2 PPL table.

@@ -87,7 +87,12 @@ STATUS_COLOR = {
 STAGE_DETAIL = {
     "intent":     lambda d: f"→ {d.get('intent_class','?')}  conf={d.get('confidence',0):.2f}",
     "route":      lambda d: f"→ {d.get('route','?')} · {d.get('model','?')}",
-    "retrieval":  lambda d: f"→ {d.get('hits',0)} doc(s)" if d.get("error") is None else f"→ degraded: {d.get('error','')}",
+    "retrieval":  lambda d: (
+        f"→ {d.get('hits',0)} doc(s)"
+        + (f"  (galaxy={d['galaxy']} planet={d['planet']} star={d['star']})"
+           if d.get("galaxy") is not None else "")
+        if d.get("error") is None else f"→ degraded: {d.get('error','')}"
+    ),
     "generation": lambda d: f"→ {d.get('input_tokens',0)} in / {d.get('output_tokens',0)} out tokens" if not d.get("error") else f"→ {d.get('error','')}",
     "governance": lambda d: f"→ {d.get('verdict','?')}  risk={d.get('risk_class','?')}",
     "audit":      lambda d: f"→ audit_id: {(d.get('audit_id') or '')[:16]}…" if d.get("audit_id") else "→ (no ledger configured)",

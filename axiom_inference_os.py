@@ -139,8 +139,15 @@ class InferenceOSResult:
     audit_id:        str          # first 24 chars of AuditEvent.signature
     stages:          tuple        # tuple[InferenceStageResult, ...]
     # Chain
-    timestamp:       str
-    signature:       str
+    timestamp:       str = ""
+    signature:       str = ""
+    # Memory Trifecta telemetry (Pillars 2 + 3)
+    delta_turn:            int = 0   # DeltaState.turn_count after this call
+    memory_lod:            int = 0   # MemoryLOD used (0/1/2)
+    memory_token_estimate: int = 0   # tokens consumed by memory injection
+    # Output shaping telemetry
+    shaping_tokens_saved:  int   = 0   # tokens removed by OutputShaper
+    shaping_transforms:    tuple = ()  # tuple[str, ...] — applied transforms
 
     def to_dict(self) -> dict:
         return {
@@ -162,6 +169,11 @@ class InferenceOSResult:
             "risk_class":      self.risk_class,
             "audit_id":        self.audit_id,
             "stages":          [s.to_dict() for s in self.stages],
+            "delta_turn":            self.delta_turn,
+            "memory_lod":            self.memory_lod,
+            "memory_token_estimate": self.memory_token_estimate,
+            "shaping_tokens_saved":  self.shaping_tokens_saved,
+            "shaping_transforms":    list(self.shaping_transforms),
             "timestamp":       self.timestamp,
             "signature":       self.signature,
         }
@@ -206,7 +218,14 @@ class InferenceOS:
         self._classifier_arg  = classifier
         self._policy_arg      = policy
         # Lazily initialised
-        self._retriever  = None
+        self._retriever        = None
+        self._cosmos_retriever = None   # CosmosLayeredRetriever (wraps _retriever)
+        self._cosmos_builder   = None   # CosmosContextBuilder
+        self._prefix_cache     = None   # DomainPrefixCache — static system prompts
+        self._delta_store      = None   # DeltaMemoryStore — Trifecta Pillar 2
+        self._delta_map        = None   # DeltaMemoryMap
+        self._mr_memory        = None   # MultiResolutionMemory — Trifecta Pillar 3
+        self._output_shaper    = None   # OutputShaper — post-gen normalisation
         self._backend    = None
         self._audit      = None
         self._classifier = None
@@ -227,6 +246,54 @@ class InferenceOS:
         self._audit     = (self._build_audit()     if self._audit_arg     is _UNSET
                            else self._audit_arg)
         self._policy    = self._policy_arg or self._build_policy()
+        # Domain prefix cache — static system prompts + startup warming
+        try:
+            from axiom_prefix_cache import DomainPrefixCache, DOMAIN_SEED_QUERIES
+            self._prefix_cache = DomainPrefixCache()
+            # Build domain preambles using local retriever before warming Ollama,
+            # so warm_domain() seeds the KV cache with the full preamble string.
+            if self._retriever is not None:
+                local_r = self._extract_local_retriever(self._retriever)
+                if local_r is None:
+                    local_r = self._build_local_retriever()
+                if local_r is not None:
+                    try:
+                        for domain in DOMAIN_SEED_QUERIES:
+                            self._prefix_cache.build_preamble(domain, local_r)
+                    except Exception:
+                        pass
+            if self._backend is not None and hasattr(self._backend, "_url"):
+                self._prefix_cache.warm_all(self._backend._url, self._backend.model)
+        except Exception:
+            pass
+        # Cosmos layered retrieval needs a LocalRetriever that accepts intent_filter.
+        # MultiProviderRetriever wraps local + remote APIs; only local docs have
+        # cosmos-level sidecars, so we build a plain LocalRetriever for cosmos use.
+        try:
+            from axiom_research_retriever import LocalRetriever
+            from axiom_semantic_cosmos import CosmosLayeredRetriever, CosmosContextBuilder
+            cosmos_local = self._extract_local_retriever(self._retriever)
+            if cosmos_local is None:
+                cosmos_local = self._build_local_retriever()
+            if cosmos_local is not None:
+                self._cosmos_retriever = CosmosLayeredRetriever(cosmos_local)
+                self._cosmos_builder   = CosmosContextBuilder()
+        except Exception:
+            pass
+        # Memory Trifecta Pillars 2 + 3
+        try:
+            from axiom_delta_memory import DeltaMemoryMap, DeltaMemoryStore
+            from axiom_multiresolution_memory import MultiResolutionMemory
+            self._delta_store = DeltaMemoryStore()
+            self._delta_map   = DeltaMemoryMap()
+            self._mr_memory   = MultiResolutionMemory()
+        except Exception:
+            pass
+        try:
+            from axiom_output_shaper import OutputShaper
+            self._output_shaper = OutputShaper()
+        except Exception:
+            pass
         self._ready = True
 
     @staticmethod
@@ -264,6 +331,46 @@ class InferenceOS:
         try:
             from axiom_firewall import policy as pm
             return pm
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_local_retriever(retriever):
+        """Unwrap DomainRoutedRetriever → LocalRetriever for cosmos use."""
+        if retriever is None:
+            return None
+        from axiom_research_retriever import LocalRetriever, DomainRoutedRetriever
+        if isinstance(retriever, LocalRetriever):
+            return retriever
+        if isinstance(retriever, DomainRoutedRetriever):
+            return retriever._default  # bare LocalRetriever with intent_filter support
+        # MultiProviderRetriever or other wrappers — extract first provider if possible
+        try:
+            providers = retriever._providers
+            if providers:
+                inner = providers[0]
+                inner_r = getattr(inner, "_retriever", None) or getattr(inner, "_inner", None)
+                if isinstance(inner_r, (LocalRetriever, DomainRoutedRetriever)):
+                    return inner_r if isinstance(inner_r, LocalRetriever) else inner_r._default
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _build_local_retriever():
+        """Build a minimal LocalRetriever over docs/ for cosmos layered retrieval."""
+        try:
+            from axiom_research_retriever import LocalRetriever
+            roots = []
+            for name in ("docs", "README.md"):
+                p = Path.cwd() / name
+                if p.exists():
+                    roots.append(p)
+            if not roots:
+                return None
+            r = LocalRetriever(roots=roots)
+            r.build()
+            return r
         except Exception:
             return None
 
@@ -308,15 +415,33 @@ class InferenceOS:
 
         # ── Stage 1 / Step 3: Inference Router ────────────────────────────────
         route, model_used, fallback_used = "local", "unknown", False
+        # Load (or create empty) session state for Memory Trifecta Pillars 2+3
+        delta_state    = None
+        mem_view       = None
+        if self._delta_store is not None and self._delta_map is not None:
+            try:
+                from axiom_delta_memory import DeltaState
+                delta_state = (
+                    self._delta_store.load(request.session_id)
+                    or DeltaState(session_id=request.session_id, domain=request.domain)
+                )
+            except Exception:
+                delta_state = None
         t0 = time.perf_counter()
         try:
             if self._backend is not None:
                 route       = self._backend.name
                 model_used  = self._backend.model
-            stages.append(InferenceStageResult.make(
-                "route", "ok", _ms(t0),
-                {"route": route, "model": model_used}
-            ))
+            route_detail: dict = {"route": route, "model": model_used}
+            # LOD 0 token pointer — routing metadata only, not injected into LLM
+            if delta_state is not None and self._mr_memory is not None:
+                try:
+                    lod0_view = self._mr_memory.to_lod0(delta_state, request.domain)
+                    route_detail["memory_lod0"]  = lod0_view.content
+                    route_detail["delta_turn"]   = delta_state.turn_count
+                except Exception:
+                    pass
+            stages.append(InferenceStageResult.make("route", "ok", _ms(t0), route_detail))
         except Exception as exc:
             stages.append(InferenceStageResult.make(
                 "route", "degraded", _ms(t0), {"error": str(exc)[:120]}
@@ -324,27 +449,95 @@ class InferenceOS:
 
         # ── Stage 2 / Step 4: Retrieval ───────────────────────────────────────
         context_str, context_hits, context_snippet = "", 0, ""
+        cosmos_level_counts: dict = {}
         t0 = time.perf_counter()
         if request.use_retrieval and self._retriever is not None:
             try:
-                hits = self._retriever.retrieve(
-                    request.query,
-                    k=_MAX_RETRIEVAL_K,
-                    domain=request.domain,
+                # Use per-domain context budget to cap input tokens at General RAG level
+                ctx_budget = (
+                    self._prefix_cache.context_budget(request.domain)
+                    if self._prefix_cache is not None
+                    else request.max_context_chars
                 )
-                if hits:
-                    context_str, context_hits = self._pack_context(
-                        hits, request.max_context_chars
+                if self._cosmos_retriever is not None:
+                    # Layered cosmos retrieval: galaxy → planet → star
+                    cosmos_result = self._cosmos_retriever.retrieve_layered(
+                        request.query, k=_MAX_RETRIEVAL_K, anticipate=True
                     )
-                    context_snippet = context_str[:200]
-                    stages.append(InferenceStageResult.make(
-                        "retrieval", "ok", _ms(t0),
-                        {"hits": context_hits, "snippet": context_snippet}
-                    ))
+                    all_hits = cosmos_result.all_hits()
+                    cosmos_level_counts = cosmos_result.level_counts()
+                    # Filter out docs already in the preamble KV cache; use delta budget.
+                    if self._prefix_cache is not None:
+                        delta_hits = self._prefix_cache.filter_preamble_hits(
+                            request.domain, all_hits
+                        )
+                        coverage = self._prefix_cache.preamble_coverage(
+                            request.domain, all_hits
+                        )
+                        delta_budget = self._prefix_cache.delta_budget(request.domain)
+                        skip_uris = frozenset(
+                            getattr(h, "uri", "") for h in all_hits
+                            if h not in delta_hits
+                        )
+                    else:
+                        delta_hits   = all_hits
+                        coverage     = 0.0
+                        delta_budget = ctx_budget
+                        skip_uris    = frozenset()
+                    # Pass base_system="" — static system prompt is handled by
+                    # DomainPrefixCache.make_system_with_preamble(), not context_str.
+                    context_str = self._cosmos_builder.build(
+                        cosmos_result, "",
+                        max_chars=delta_budget,
+                    )
+                    # Remove preamble-covered snippets from the assembled context.
+                    if skip_uris and context_str:
+                        context_str, _ = self._pack_context(
+                            delta_hits, delta_budget, skip_uris=skip_uris
+                        )
+                    context_hits = len(all_hits)
                 else:
-                    stages.append(InferenceStageResult.make(
-                        "retrieval", "ok", _ms(t0), {"hits": 0}
-                    ))
+                    # Flat BM25 fallback
+                    all_hits = self._retriever.retrieve(
+                        request.query,
+                        k=_MAX_RETRIEVAL_K,
+                        domain=request.domain,
+                    )
+                    if self._prefix_cache is not None:
+                        delta_hits = self._prefix_cache.filter_preamble_hits(
+                            request.domain, all_hits
+                        )
+                        coverage   = self._prefix_cache.preamble_coverage(
+                            request.domain, all_hits
+                        )
+                        skip_uris  = frozenset(
+                            getattr(h, "uri", "") for h in all_hits
+                            if h not in delta_hits
+                        )
+                        delta_budget = self._prefix_cache.delta_budget(request.domain)
+                    else:
+                        delta_hits   = all_hits
+                        coverage     = 0.0
+                        skip_uris    = frozenset()
+                        delta_budget = ctx_budget
+                    if delta_hits:
+                        context_str, _ = self._pack_context(
+                            delta_hits, delta_budget, skip_uris=skip_uris
+                        )
+                    context_hits = len(all_hits)
+
+                context_snippet = context_str[:200]
+                detail: dict = {
+                    "hits":               context_hits,
+                    "preamble_coverage":  round(coverage, 2),
+                }
+                if cosmos_level_counts:
+                    detail["galaxy"] = cosmos_level_counts.get("galaxy", 0)
+                    detail["planet"] = cosmos_level_counts.get("planet", 0)
+                    detail["star"]   = cosmos_level_counts.get("star",   0)
+                stages.append(InferenceStageResult.make(
+                    "retrieval", "ok", _ms(t0), detail
+                ))
             except Exception as exc:
                 stages.append(InferenceStageResult.make(
                     "retrieval", "degraded", _ms(t0), {"error": str(exc)[:120]}
@@ -356,23 +549,67 @@ class InferenceOS:
             ))
 
         # Estimated tokens saved from context reuse (rough: 4 chars ≈ 1 token)
-        tokens_saved = len(context_str) // 4 if context_str else 0
+        # Only count when actual documents were retrieved, not just the base system prompt.
+        tokens_saved = len(context_str) // 4 if (context_str and context_hits > 0) else 0
+
+        # Resolve LOD for memory injection (Pillar 3) — pure function, no I/O
+        mem_lod            = 0
+        mem_token_estimate = 0
+        if delta_state is not None and self._mr_memory is not None:
+            try:
+                mem_view = self._mr_memory.view(
+                    delta_state, intent_class, request.domain
+                )
+                mem_lod            = int(mem_view.lod)
+                mem_token_estimate = mem_view.token_estimate
+            except Exception:
+                mem_view = None
 
         # ── Stage 3 / Step 5: Generation ──────────────────────────────────────
         output, input_tokens, output_tokens = "", 0, 0
         t0 = time.perf_counter()
         if self._backend is not None:
             try:
-                system_prompt = (
-                    "You are a helpful, accurate assistant governed by the Axiom Inference OS. "
-                    "Answer concisely based on the provided context."
-                )
-                if context_str:
-                    system_prompt = context_str + "\n\n" + system_prompt
+                # Preamble-aware system prompt — identical per domain (+ preamble docs
+                # if built at startup) → Ollama caches all of it.
+                # Delta retrieved context goes in the user turn (make_user_prompt).
+                if self._prefix_cache is not None:
+                    system_prompt = self._prefix_cache.make_system_with_preamble(
+                        request.domain
+                    )
+                    user_message  = self._prefix_cache.make_user_prompt(
+                        context_str, request.query
+                    )
+                else:
+                    # Fallback when prefix cache not available
+                    system_prompt = (
+                        "You are a helpful, accurate assistant governed by the "
+                        "Axiom Inference OS. Answer concisely based on the provided context."
+                    )
+                    user_message = (
+                        f"Context:\n{context_str}\n\nQuestion: {request.query}"
+                        if context_str else request.query
+                    )
+
+                # Memory Trifecta injection: LOD 1 → user turn; LOD 2 → system prompt
+                if mem_view is not None and mem_view.content:
+                    from axiom_multiresolution_memory import MemoryLOD
+                    if mem_view.lod == MemoryLOD.LOD1:
+                        user_message = f"[Session State]\n{mem_view.content}\n\n{user_message}"
+                    elif mem_view.lod == MemoryLOD.LOD2:
+                        system_prompt = (
+                            f"{system_prompt}\n\n[Full Session Context]\n{mem_view.content}"
+                        )
+
+                # Output shaping: inject format hint to reduce model verbosity upstream
+                if self._output_shaper is not None:
+                    hint = self._output_shaper.output_format_hint(intent_class)
+                    if hint:
+                        system_prompt = system_prompt + hint
 
                 result = self._backend.generate(
                     system=system_prompt,
-                    prompt=request.query,
+                    prompt=user_message,
                     max_output_tokens=512,
                 )
                 output        = result.text
@@ -380,6 +617,10 @@ class InferenceOS:
                 output_tokens = result.output_tokens
                 route         = result.backend
                 model_used    = result.model
+                prefix_warm   = (
+                    self._prefix_cache.detect_cache_hit(result.prefill_ms, input_tokens)
+                    if self._prefix_cache is not None else False
+                )
                 stages.append(InferenceStageResult.make(
                     "generation", "ok", _ms(t0),
                     {
@@ -387,6 +628,8 @@ class InferenceOS:
                         "model":         result.model,
                         "input_tokens":  input_tokens,
                         "output_tokens": output_tokens,
+                        "prefill_ms":    result.prefill_ms,
+                        "prefix_warm":   prefix_warm,
                     }
                 ))
             except Exception as exc:
@@ -466,6 +709,38 @@ class InferenceOS:
             verified=(output_verdict == "allow"),
         )
 
+        # ── Output shaping: strip CoT / politeness post-audit ────────────────
+        shaping_tokens_saved = 0
+        shaping_transforms: tuple = ()
+        if output and self._output_shaper is not None:
+            try:
+                shaped = self._output_shaper.shape(output, intent_class)
+                if shaped.transforms:
+                    output               = shaped.text
+                    shaping_tokens_saved = shaped.tokens_saved
+                    shaping_transforms   = shaped.transforms
+            except Exception:
+                pass
+
+        # ── Trifecta Pillar 2: update DeltaState after audit ─────────────────
+        # Only advance session state when a real output was produced; blocked
+        # or empty responses must not increment turn_count (it would corrupt
+        # LOD escalation thresholds on the next request for this session).
+        final_delta_turn = 0
+        if (output and delta_state is not None
+                and self._delta_map is not None
+                and self._delta_store is not None):
+            try:
+                from axiom_signing import derive_key
+                dirty     = self._delta_map.extract_delta(output, request.query, delta_state)
+                new_state = self._delta_map.apply_delta(delta_state, **dirty)
+                key       = derive_key(KEY_NS)
+                new_state = self._delta_map.sign(new_state, key)
+                self._delta_store.save(request.session_id, new_state)
+                final_delta_turn = new_state.turn_count
+            except Exception:
+                final_delta_turn = delta_state.turn_count
+
         # ── Step 8: Assemble signed result ────────────────────────────────────
         ts = _now_iso()
         base = {
@@ -487,6 +762,11 @@ class InferenceOS:
             "risk_class":      risk_class,
             "audit_id":        audit_id,
             "stages":          [s.to_dict() for s in stages],
+            "delta_turn":            final_delta_turn,
+            "memory_lod":            mem_lod,
+            "memory_token_estimate": mem_token_estimate,
+            "shaping_tokens_saved":  shaping_tokens_saved,
+            "shaping_transforms":    shaping_transforms,
             "timestamp":       ts,
         }
         sig = _sign(base, KEY_NS)
@@ -549,12 +829,22 @@ class InferenceOS:
         )
 
     @staticmethod
-    def _pack_context(hits: list, max_chars: int) -> tuple[str, int]:
-        """Assemble retrieved sources into a context string for the system prompt."""
+    def _pack_context(
+        hits: list,
+        max_chars: int,
+        skip_uris: Optional[frozenset] = None,
+    ) -> tuple[str, int]:
+        """Assemble retrieved sources into a context string for the user turn.
+
+        skip_uris: URIs already in the preamble KV cache — exclude from output.
+        """
+        skip  = skip_uris or frozenset()
         parts: List[str] = ["=== RETRIEVED CONTEXT ==="]
         total = len(parts[0])
         count = 0
         for h in hits:
+            if getattr(h, "uri", "") in skip:
+                continue
             snippet = getattr(h, "snippet", "") or getattr(h, "content", "")
             title   = getattr(h, "title", "") or getattr(h, "uri", "")
             chunk   = f"\n[{title}]\n{snippet}\n---"
