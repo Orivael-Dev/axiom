@@ -92,17 +92,39 @@ class DelegateRouter:
 
 # ── RouterPolicy — ledger-fed backend health scores ───────────────────────────
 
+def _ewma(values: List[float], alpha: float = 0.1) -> float:
+    """Exponentially weighted moving average over an ordered sequence.
+
+    Entries are processed oldest-first (values[0] is oldest).
+    Recent entries weigh more: each new observation gets weight ``alpha``,
+    the accumulated estimate gets ``1 - alpha``.
+
+    Returns 0.0 for an empty sequence.
+    """
+    if not values:
+        return 0.0
+    result = values[0]
+    for v in values[1:]:
+        result = alpha * v + (1.0 - alpha) * result
+    return result
+
+
 class RouterPolicy:
-    """EWMA-backed health score per backend from the exoskeleton ledger.
+    """EWMA-backed health score per (backend, domain) from the exoskeleton ledger.
 
-    Reads the last `max_age_entries` ledger entries, computes per-backend
-    average latency and verified-rate, and scores each backend:
-      - score = 1.0  when avg_latency < latency_threshold AND
-                     verified_rate >= verified_floor
-      - score = 0.0  otherwise
+    Reads the last ``max_age_entries`` ledger entries and computes per-
+    (backend, domain) EWMA of latency_ms and verified-rate.  Recent entries
+    weigh more than older ones (α = ``ewma_alpha``, default 0.1).
 
-    Call `refresh()` before routing to update scores from disk. The
-    `LatencyAwareRouter` calls this automatically on every `route()`.
+    Scoring:
+      1.0  when ewma_latency < latency_threshold AND ewma_verified_rate >= verified_floor
+      0.0  otherwise
+
+    ``score(backend, domain)`` falls back to the per-backend aggregate (domain="")
+    when no domain-specific history exists.  Unknown backends return 1.0 (healthy).
+
+    Call ``refresh()`` before routing to update from disk.  ``LatencyAwareRouter``
+    calls this automatically on every ``route()``.
     """
 
     def __init__(
@@ -111,38 +133,56 @@ class RouterPolicy:
         latency_threshold_ms: int = 1500,
         verified_floor: float = 0.90,
         max_age_entries: int = 200,
+        ewma_alpha: float = 0.1,
     ) -> None:
-        self._path             = ledger_path
-        self._lat_threshold    = latency_threshold_ms
-        self._ver_floor        = verified_floor
-        self._max_entries      = max_age_entries
-        self._scores: Dict[str, float] = {}
+        self._path          = ledger_path
+        self._lat_threshold = latency_threshold_ms
+        self._ver_floor     = verified_floor
+        self._max_entries   = max_age_entries
+        self._alpha         = ewma_alpha
+        # keyed by (backend, domain); domain="" = aggregate across all domains
+        self._scores: Dict[Tuple[str, str], float] = {}
 
     def refresh(self) -> None:
-        """Re-compute per-backend scores from the last N ledger entries."""
+        """Re-compute per-(backend, domain) EWMA scores from the last N entries."""
         from axiom_exoskeleton_ledger import read_ledger
         entries = read_ledger(self._path)[-self._max_entries:]
 
-        stats: Dict[str, List[Tuple[int, bool]]] = {}
+        # samples[(backend, domain)] = [(latency_ms, verified), ...]  oldest-first
+        samples: Dict[Tuple[str, str], List[Tuple[int, bool]]] = {}
         for e in entries:
-            stats.setdefault(e.backend, []).append((e.latency_ms, e.verified))
+            key_domain = (e.backend, e.domain)
+            key_agg    = (e.backend, "")
+            pair       = (e.latency_ms, e.verified)
+            samples.setdefault(key_domain, []).append(pair)
+            if key_domain != key_agg:
+                samples.setdefault(key_agg, []).append(pair)
 
-        scores: Dict[str, float] = {}
-        for backend, samples in stats.items():
-            avg_lat  = sum(s[0] for s in samples) / len(samples)
-            ver_rate = sum(1 for s in samples if s[1]) / len(samples)
-            healthy  = (avg_lat < self._lat_threshold
-                        and ver_rate >= self._ver_floor)
-            scores[backend] = 1.0 if healthy else 0.0
+        scores: Dict[Tuple[str, str], float] = {}
+        for key, slist in samples.items():
+            lat_ewma = _ewma([float(s[0]) for s in slist], self._alpha)
+            ver_ewma = _ewma([1.0 if s[1] else 0.0 for s in slist], self._alpha)
+            healthy  = (lat_ewma < self._lat_threshold
+                        and ver_ewma >= self._ver_floor)
+            scores[key] = 1.0 if healthy else 0.0
         self._scores = scores
 
-    def score(self, backend: str) -> float:
-        """Return 1.0 (healthy) or 0.0 (unhealthy). Unknown backend → 1.0 (assume healthy)."""
-        return self._scores.get(backend, 1.0)
+    def score(self, backend: str, domain: str = "") -> float:
+        """Return 1.0 (healthy) or 0.0 (unhealthy) for a (backend, domain) pair.
+
+        Lookup order:
+          1. (backend, domain)    — specific match
+          2. (backend, "")        — per-backend aggregate (all domains)
+          3. 1.0                  — unknown backend, assume healthy
+        """
+        specific = self._scores.get((backend, domain))
+        if specific is not None:
+            return specific
+        return self._scores.get((backend, ""), 1.0)
 
     @property
-    def scores(self) -> Dict[str, float]:
-        """Read-only snapshot of last computed scores (useful for logging)."""
+    def scores(self) -> Dict[Tuple[str, str], float]:
+        """Read-only snapshot of last computed (backend, domain) scores."""
         return dict(self._scores)
 
 
@@ -180,6 +220,7 @@ class LatencyAwareRouter:
         delegates: Sequence,
         text:      Optional[str] = None,
         audio_transcript: Optional[str] = None,
+        domain:    Optional[str] = None,
     ) -> RoutingDecision:
         self._policy.refresh()
         decision = self._base.route(
@@ -200,7 +241,7 @@ class LatencyAwareRouter:
         degraded: List[str] = []
         for dname in decision.delegate_names:
             b = _primary_backend(dname)
-            if self._policy.score(b) > 0.0:
+            if self._policy.score(b, domain or "") > 0.0:
                 healthy.append(dname)
             else:
                 degraded.append(dname)
