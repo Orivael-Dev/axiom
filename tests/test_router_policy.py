@@ -116,10 +116,11 @@ def test_policy_scores_property_returns_snapshot(tmp_path):
     policy = RouterPolicy(ledger_path=path)
     policy.refresh()
     snapshot = policy.scores
-    assert "local" in snapshot
-    assert snapshot["local"] == 1.0
+    # scores are keyed by (backend, domain) tuples; no-domain entries use ""
+    assert ("local", "") in snapshot
+    assert snapshot[("local", "")] == 1.0
     # mutating snapshot doesn't affect policy
-    snapshot["local"] = 0.0
+    snapshot[("local", "")] = 0.0
     assert policy.score("local") == 1.0
 
 
@@ -266,6 +267,166 @@ def test_latency_aware_intent_class_passthrough(tmp_path):
     assert decision.intent_class == "INFORM"
     assert decision.confidence   == pytest.approx(0.80)
     assert decision.matched_on   == "text"
+
+
+# ── RouterPolicy: EWMA weighting ─────────────────────────────────────────────
+
+def test_policy_ewma_recent_entries_dominate(tmp_path):
+    """Recent entries should dominate older ones under EWMA (α=0.9 ≈ heavy recent)."""
+    # 8 old slow entries followed by 2 recent fast entries
+    entries = (
+        [{"backend": "nim", "latency_ms": 9000, "verified": True}] * 8
+        + [{"backend": "nim", "latency_ms": 100, "verified": True}] * 2
+    )
+    path = _make_ledger(entries, tmp_path)
+    # α=0.9 means recent entries dominate almost entirely
+    policy = RouterPolicy(ledger_path=path, latency_threshold_ms=1500, ewma_alpha=0.9)
+    policy.refresh()
+    # With α=0.9, the last two fast entries (100ms) dominate → healthy
+    assert policy.score("nim") == 1.0
+
+
+def test_policy_ewma_old_slow_entries_dont_hurt_with_high_alpha(tmp_path):
+    """Low alpha means old entries persist; high alpha makes recent entries dominate."""
+    # 1 old slow entry, then 5 fast recent entries
+    entries = (
+        [{"backend": "local", "latency_ms": 5000, "verified": True}]
+        + [{"backend": "local", "latency_ms": 100, "verified": True}] * 5
+    )
+    path = _make_ledger(entries, tmp_path)
+    # high alpha → recent fast entries win → healthy
+    policy_high = RouterPolicy(ledger_path=path, latency_threshold_ms=1500, ewma_alpha=0.9)
+    policy_high.refresh()
+    assert policy_high.score("local") == 1.0
+
+
+def test_policy_ewma_default_alpha_degrades_slowly(tmp_path):
+    """With α=0.1 (default), 1 very slow entry followed by many fast ones stays unhealthy."""
+    # The default 0.1 alpha means old observations decay slowly
+    entries = (
+        [{"backend": "local", "latency_ms": 9000, "verified": True}]
+        + [{"backend": "local", "latency_ms": 100, "verified": True}] * 3
+    )
+    path = _make_ledger(entries, tmp_path)
+    # α=0.1: EWMA after [9000, 100, 100, 100]
+    # s1=9000, s2=0.1*100 + 0.9*9000 = 10+8100=8110, ...still high
+    policy = RouterPolicy(ledger_path=path, latency_threshold_ms=1500, ewma_alpha=0.1)
+    policy.refresh()
+    assert policy.score("local") == 0.0   # still degraded — old 9000ms persists
+
+
+# ── RouterPolicy: domain-specific scoring ─────────────────────────────────────
+
+def _make_ledger_with_domain(entries: list[dict], tmp_path: Path) -> Path:
+    """Write ledger with domain field included."""
+    path = tmp_path / "ledger_domain.jsonl"
+    lines = []
+    for e in entries:
+        row = {
+            "timestamp_utc": "2026-06-23T00:00:00Z",
+            "use_case": "test:case",
+            "token_id": "tok_xyz",
+            "input_excerpt": "hello",
+            "input_chars": 5,
+            "backend": e.get("backend", "local"),
+            "model": e.get("model", "llama3"),
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "latency_ms": e.get("latency_ms", 500),
+            "verified": e.get("verified", True),
+            "signature": "",
+            "domain": e.get("domain", ""),
+        }
+        lines.append(json.dumps(row))
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def test_policy_domain_specific_score_used_when_available(tmp_path):
+    """When domain-specific entries exist, domain score overrides aggregate.
+
+    Aggregate (backend, "") collects ALL entries (cross-domain included).
+    We need enough slow no-domain entries so the aggregate EWMA stays > threshold
+    despite the fast legal entry being included in the aggregate pool.
+
+    With α=0.1 and entries [100, 3000×7] oldest-first, EWMA ends at ~1612ms > 1500.
+    The legal-only bucket has just the 100ms entry → healthy.
+    """
+    entries = [
+        {"backend": "nim", "latency_ms": 100,  "verified": True,  "domain": "legal"},
+        *[{"backend": "nim", "latency_ms": 3000, "verified": True,  "domain": ""}
+          for _ in range(7)],
+    ]
+    path = _make_ledger_with_domain(entries, tmp_path)
+    policy = RouterPolicy(ledger_path=path, latency_threshold_ms=1500)
+    policy.refresh()
+    # legal domain: only 1 entry at 100ms → healthy
+    assert policy.score("nim", "legal") == 1.0
+    # aggregate ("nim", ""): [100, 3000×7]; EWMA with α=0.1 ends ≈ 1612ms → unhealthy
+    assert policy.score("nim", "") == 0.0
+
+
+def test_policy_domain_falls_back_to_aggregate(tmp_path):
+    """When domain has no entries, falls back to (backend, '') aggregate."""
+    entries = [
+        {"backend": "nim", "latency_ms": 200, "verified": True, "domain": ""},
+    ]
+    path = _make_ledger_with_domain(entries, tmp_path)
+    policy = RouterPolicy(ledger_path=path, latency_threshold_ms=1500)
+    policy.refresh()
+    # "finance" has no entries → fallback to (nim, "") → 200ms → healthy
+    assert policy.score("nim", "finance") == 1.0
+
+
+def test_policy_unknown_domain_unknown_backend_returns_healthy(tmp_path):
+    """No entries at all for a backend → 1.0 (healthy by default)."""
+    path = tmp_path / "empty.jsonl"
+    path.write_text("")
+    policy = RouterPolicy(ledger_path=path)
+    policy.refresh()
+    assert policy.score("exotic_backend", "some_domain") == 1.0
+
+
+def test_policy_domain_specific_slow_overrides_healthy_aggregate(tmp_path):
+    """Domain entry can be unhealthy even when overall backend aggregate is healthy."""
+    entries = [
+        # fast entries on other domains or no-domain
+        {"backend": "nim", "latency_ms": 100,  "verified": True,  "domain": ""},
+        {"backend": "nim", "latency_ms": 100,  "verified": True,  "domain": "general"},
+        # legal domain is very slow
+        {"backend": "nim", "latency_ms": 5000, "verified": True,  "domain": "legal"},
+        {"backend": "nim", "latency_ms": 5000, "verified": True,  "domain": "legal"},
+    ]
+    path = _make_ledger_with_domain(entries, tmp_path)
+    policy = RouterPolicy(ledger_path=path, latency_threshold_ms=1500)
+    policy.refresh()
+    # legal-specific score: 5000ms → unhealthy
+    assert policy.score("nim", "legal") == 0.0
+    # no-domain aggregate: includes all entries; 100ms entries help
+    # but ("nim","") will have ALL entries aggregated → still some slow ones
+    # The exact result depends on EWMA; what matters is the domain check works
+
+
+def test_latency_aware_router_passes_domain_to_policy(tmp_path):
+    """LatencyAwareRouter.route(domain=...) uses domain in policy scoring."""
+    entries = [
+        # local is healthy on "finance", degraded overall
+        {"backend": "local", "latency_ms": 200,  "verified": True,  "domain": "finance"},
+        {"backend": "local", "latency_ms": 5000, "verified": True,  "domain": ""},
+    ]
+    path = _make_ledger_with_domain(entries, tmp_path)
+    policy = RouterPolicy(ledger_path=path, latency_threshold_ms=1500)
+
+    delegates = [_FakeDelegate("alpha", backend_chain=("local",))]
+    router = LatencyAwareRouter(
+        policy=policy,
+        base=_base_router_with_result(("alpha",)),
+    )
+    # With domain="finance", local scores healthy → alpha should be in healthy list
+    decision = router.route(delegates=delegates, text="review contract", domain="finance")
+    assert "alpha" in decision.delegate_names
+    # Policy saw finance domain → healthy score used
+    assert policy.score("local", "finance") == 1.0
 
 
 # ── Regression: DelegateRouter unchanged ─────────────────────────────────────

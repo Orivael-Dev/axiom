@@ -707,6 +707,7 @@ class InferenceOS:
             output_tokens=output_tokens,
             total_latency_ms=_ms(t_total),
             verified=(output_verdict == "allow"),
+            domain=request.domain or "",
         )
 
         # ── Output shaping: strip CoT / politeness post-audit ────────────────
@@ -894,6 +895,7 @@ class InferenceOS:
         backend: str, model: str,
         input_tokens: int, output_tokens: int,
         total_latency_ms: int, verified: bool,
+        domain: str = "",
     ) -> None:
         """Direct-write a signed LedgerEntry so RouterPolicy gets health data."""
         try:
@@ -919,7 +921,8 @@ class InferenceOS:
             data = json.dumps(payload, sort_keys=True, separators=(",", ":"),
                               ensure_ascii=True).encode("utf-8")
             sig  = hmac.new(key, data, hashlib.sha256).hexdigest()
-            entry = LedgerEntry(**payload, signature=sig)
+            # domain is outside the HMAC payload (backward-compat with old entries)
+            entry = LedgerEntry(**payload, signature=sig, domain=domain)
             path  = default_ledger_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as fh:
