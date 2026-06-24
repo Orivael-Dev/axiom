@@ -16,16 +16,12 @@ Flow:
                             └─► response ─► inbound_gate ─► display
 
 Setup (one-time):
-    # Pull a nano model — pick any that fits your VRAM
-    ollama pull qwen2.5:0.5b          # 0.5B  — Jetson Nano / phone
-    ollama pull gemma3:1b              # 1B    — laptop
-    ollama pull phi3:mini              # 3.8B  — workstation
+    # Start your OpenAI-compatible local runtime on your edge device or cloud worker
+    # and load an edge-compatible model, then set environment variables:
+    export NANO_BASE_URL=http://localhost:11434/v1   # base URL of your runtime
+    export NANO_MODEL=<your-model-name>              # model loaded in your runtime
 
-    # Optional: point at a different Nano runtime (NIM, LM Studio, etc.)
-    export NANO_BASE_URL=http://localhost:11434/v1
-    export NANO_MODEL=qwen2.5:0.5b
-
-    # Point at your Guard API (local or Hetzner)
+    # Point at your Guard API (local or cloud)
     export CLOUD_URL=https://firewall.orivael.dev   # or http://localhost:8001
 
 Usage:
@@ -52,7 +48,7 @@ from typing import Optional
 
 # ── Config ────────────────────────────────────────────────────────────────
 NANO_BASE_URL = os.environ.get("NANO_BASE_URL", "http://localhost:11434/v1")
-NANO_MODEL    = os.environ.get("NANO_MODEL",    "qwen2.5:0.5b")
+NANO_MODEL    = os.environ.get("NANO_MODEL",    "")
 CLOUD_URL     = os.environ.get("CLOUD_URL",     "https://firewall.orivael.dev")
 
 # Simple INFORM queries answered locally; complex ones go to cloud
@@ -62,10 +58,10 @@ _INFORM_CLASSES   = {"INFORM", "CLARIFY"}
 
 # ── Nano SLM (local, on-device) ───────────────────────────────────────────
 def _nano_generate(prompt: str, max_tokens: int = _LOCAL_MAX_TOKENS) -> Optional[str]:
-    """Call local Nano model via Ollama / OpenAI-compatible API."""
+    """Call local OpenAI-compatible runtime for on-device answer generation."""
     try:
         from openai import OpenAI
-        client = OpenAI(base_url=NANO_BASE_URL, api_key="ollama")
+        client = OpenAI(base_url=NANO_BASE_URL, api_key="local")
         resp = client.chat.completions.create(
             model=NANO_MODEL,
             messages=[{"role": "user", "content": prompt}],
@@ -79,7 +75,7 @@ def _nano_generate(prompt: str, max_tokens: int = _LOCAL_MAX_TOKENS) -> Optional
 def _nano_available() -> bool:
     try:
         from openai import OpenAI
-        OpenAI(base_url=NANO_BASE_URL, api_key="ollama").models.list()
+        OpenAI(base_url=NANO_BASE_URL, api_key="local").models.list()
         return True
     except Exception:
         return False
@@ -337,7 +333,7 @@ def show_status():
     _print_status("NANO", f"{'✓ READY' if nano_ok else '✗ UNAVAILABLE'}  "
                            f"model={NANO_MODEL}  url={NANO_BASE_URL}")
     if not nano_ok:
-        print("         → run: ollama pull " + NANO_MODEL)
+        print("         → set NANO_BASE_URL and NANO_MODEL to point at your local runtime")
 
     # Cloud phone status
     s = _cloud_get("/phone/status")

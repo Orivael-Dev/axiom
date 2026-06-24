@@ -162,17 +162,17 @@ class SovereignAlert:
 class NanoSLM:
     """Local small-language-model for BYOD on-device answer generation.
 
-    Calls any OpenAI-compatible local endpoint (Ollama by default).
+    Calls any OpenAI-compatible local endpoint — edge device or cloud worker.
     Used by NeuralComputeBlock to answer simple INFORM queries locally
     without any cloud call — per ORVL-019 §2 Block 1 "Simple answer generation".
 
     Env vars:
         NANO_BASE_URL  base URL of OpenAI-compatible runtime (default: http://localhost:11434/v1)
-        NANO_MODEL     model identifier (default: qwen2.5:0.5b)
+        NANO_MODEL     model identifier — must be set to match what your runtime has loaded
     """
 
     DEFAULT_URL   = "http://localhost:11434/v1"
-    DEFAULT_MODEL = "qwen2.5:0.5b"
+    DEFAULT_MODEL = ""
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None):
         self.base_url = base_url or _os.environ.get("NANO_BASE_URL", self.DEFAULT_URL)
@@ -183,7 +183,7 @@ class NanoSLM:
         if self._client is None:
             try:
                 from openai import OpenAI as _OAI
-                self._client = _OAI(base_url=self.base_url, api_key="ollama")
+                self._client = _OAI(base_url=self.base_url, api_key="local")
             except ImportError as exc:
                 raise RuntimeError(
                     "openai package required for NanoSLM: pip install openai"
@@ -191,7 +191,7 @@ class NanoSLM:
         return self._client
 
     def is_available(self) -> bool:
-        """Ping the Nano runtime. Returns False if Ollama/NIM is not running."""
+        """Ping the local runtime. Returns False if the runtime is not reachable."""
         try:
             self._get_client().models.list()
             return True

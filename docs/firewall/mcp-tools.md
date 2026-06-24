@@ -46,7 +46,7 @@ without spinning up a worker, without leaving the file you're editing.
 | `axiom_cmaa_route` | ORVL-017 | Route a constitutional packet through the multi-agent orchestrator. HARM / DECEIVE refused before reaching the orchestrator; bonded-pair revocations short-circuit authority without rotating keys. |
 | `axiom_cmaa_fleet` | ORVL-017 | Inspect fleet trust levels, suspended containers, review queue depth. |
 | `axiom_shield` | ORVL-013 | Drive the OS Shield daemon — constitutional ransomware defence that stops attackers at the enumeration stage. Actions: `status`, `tick`, `restore`. |
-| `axiom_phone_gate` | ORVL-019 | Run text through the Sovereign Phone constitutional coprocessor. `out` gates outbound queries; `in` gates inbound cloud responses. |
+| `axiom_phone_gate` | ORVL-019 | Run text through the Sovereign Phone constitutional coprocessor for BYOD and edge deployments. `out` gates outbound queries (PII redaction + intent pre-check); `in` gates inbound cloud responses (manipulation + privacy screening); `trajectory` scores a single utterance through the Hello Operator call-trajectory detector. |
 | `axiom_axm` | ORVL-023 | Operate an `.AXM` container — successor-to-GGUF format treating models as living execution graphs with signed skill delegates and proof ledgers. Actions: `inspect`, `verify`, `route`. |
 | `axiom_cpi` | ORVL-022 | Drive the Constitutional Physical Intelligence agent — toddler-reflex / supervisor / curriculum / examiner stack for robotics, prosthetics, vehicles. Actions: `stability`, `classify`, `simulate`, `pickup`, `status`. |
 
