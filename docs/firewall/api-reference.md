@@ -278,6 +278,69 @@ Per-IP rate-limited: 5 attempts per hour. Exceeding returns 429 with a
 Browser-only — session-cookie auth for the dashboard. Not part of the
 public API.
 
+## `POST /research/run`
+
+Run the 9-agent constitutional research pipeline against a question.
+Safety and Ethics agents can HALT the pipeline early if critical risks
+are detected. All per-step results are HMAC-signed.
+
+Uses the same NIM > Anthropic backend as the guard API — configure
+`NIM_API_KEY` / `NVIDIA_API_KEY` for NIM or `ANTHROPIC_API_KEY` for
+Anthropic. `NIM_MODEL` controls the model when NIM is active.
+
+### Request
+
+```json
+{
+  "question": "Does intermittent fasting reduce inflammation?",
+  "steps": 9,
+  "model": null
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `question` | string | Research question to investigate |
+| `steps` | integer 1–9 | Number of pipeline steps (default 9) |
+| `model` | string \| null | Override model for all agents (optional) |
+
+### Response (`200 OK`)
+
+```json
+{
+  "question": "Does intermittent fasting reduce inflammation?",
+  "steps_completed": 9,
+  "halted": false,
+  "halt_reason": null,
+  "manifests": [...],
+  "context": {
+    "hypothesis": {...},
+    "literature": {...},
+    "simulation": {...},
+    "critique": {...},
+    "safety": {...},
+    "ethics": {...},
+    "data": {...},
+    "experiment": {...},
+    "report": {...}
+  }
+}
+```
+
+If `halted` is `true`, the pipeline stopped early (step 5 Safety or
+step 6 Ethics). `halt_reason` explains why. Steps after the halt are
+absent from `context`.
+
+### Errors
+
+| Code | Meaning |
+|---|---|
+| `400` | Empty question |
+| `500` | Pipeline error (backend unavailable, model error) |
+| `503` | ResearchPipeline not available — check server logs |
+
+---
+
 ## Billing endpoints
 
 `POST /billing/upgrade/{tier}`, `POST /billing/portal`,

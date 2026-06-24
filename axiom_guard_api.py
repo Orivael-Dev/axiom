@@ -171,6 +171,13 @@ try:
 except ImportError:
     ERASURE_AVAILABLE = False
 
+# ── Research Pipeline ─────────────────────────────────────────
+try:
+    from axiom_research_pipeline import ResearchPipeline
+    RESEARCH_AVAILABLE = True
+except (ImportError, RuntimeError):
+    RESEARCH_AVAILABLE = False
+
 # ── Constants ─────────────────────────────────────────────────
 from axiom_signing import derive_key
 SIGNING_KEY      = derive_key(b"axiom-guard-api-v1")
@@ -1670,6 +1677,40 @@ async def phone_call_trajectory(
     d["timestamp_s"]  = timestamp_s
     d["session_id"]   = session_id
     return d
+
+
+# ── Research Pipeline endpoint ────────────────────────────────
+
+class _ResearchRequest(BaseModel):
+    question: str
+    steps: int = 9
+    model: Optional[str] = None
+
+
+@app.post("/research/run")
+async def research_run(req: _ResearchRequest):
+    """Run the 9-agent constitutional research pipeline.
+
+    Streams through hypothesis → literature → simulation → critic →
+    safety → ethics → data → experiment → report agents. Safety and
+    Ethics agents can HALT the pipeline early.
+
+    Uses the same NIM > Anthropic backend priority as the rest of the
+    guard API — set NIM_API_KEY / NVIDIA_API_KEY for NIM, or
+    ANTHROPIC_API_KEY for Anthropic. NIM_MODEL controls the model when
+    NIM is active.
+    """
+    if not RESEARCH_AVAILABLE:
+        raise HTTPException(503, "ResearchPipeline not available")
+    if not req.question.strip():
+        raise HTTPException(400, "question is required")
+    steps = max(1, min(9, req.steps))
+    try:
+        pipeline = ResearchPipeline(model_override=req.model)
+        result = pipeline.run(req.question, max_steps=steps)
+    except Exception as exc:
+        raise HTTPException(500, f"Research pipeline error: {exc}") from exc
+    return result
 
 
 # ── Entry point ───────────────────────────────────────────────
