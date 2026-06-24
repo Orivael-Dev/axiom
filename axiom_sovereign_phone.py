@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import hmac as hmac_lib
 import json
+import os as _os
 import re
 import sys
 import types as _types
@@ -157,6 +158,59 @@ class SovereignAlert:
     signature:      str = ""
 
 
+# ── Nano SLM — local constitutional answer generator ─────────────────────
+class NanoSLM:
+    """Local small-language-model for BYOD on-device answer generation.
+
+    Calls any OpenAI-compatible local endpoint (Ollama by default).
+    Used by NeuralComputeBlock to answer simple INFORM queries locally
+    without any cloud call — per ORVL-019 §2 Block 1 "Simple answer generation".
+
+    Env vars:
+        NANO_BASE_URL  base URL of OpenAI-compatible runtime (default: http://localhost:11434/v1)
+        NANO_MODEL     model identifier (default: qwen2.5:0.5b)
+    """
+
+    DEFAULT_URL   = "http://localhost:11434/v1"
+    DEFAULT_MODEL = "qwen2.5:0.5b"
+
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None):
+        self.base_url = base_url or _os.environ.get("NANO_BASE_URL", self.DEFAULT_URL)
+        self.model    = model    or _os.environ.get("NANO_MODEL",    self.DEFAULT_MODEL)
+        self._client  = None  # lazy — avoids import cost at module load
+
+    def _get_client(self):
+        if self._client is None:
+            try:
+                from openai import OpenAI as _OAI
+                self._client = _OAI(base_url=self.base_url, api_key="ollama")
+            except ImportError as exc:
+                raise RuntimeError(
+                    "openai package required for NanoSLM: pip install openai"
+                ) from exc
+        return self._client
+
+    def is_available(self) -> bool:
+        """Ping the Nano runtime. Returns False if Ollama/NIM is not running."""
+        try:
+            self._get_client().models.list()
+            return True
+        except Exception:
+            return False
+
+    def generate(self, prompt: str, max_tokens: int = 256) -> str:
+        """Generate a response locally. Returns empty string on any failure."""
+        try:
+            resp = self._get_client().chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+            )
+            return resp.choices[0].message.content or ""
+        except Exception:
+            return ""
+
+
 # ── Neural Compute Block ─────────────────────────────────────────────────
 class NeuralComputeBlock:
     """On-device intent pre-classification. Thin wrapper around
@@ -167,9 +221,26 @@ class NeuralComputeBlock:
     container handles MKB registration; the phone just provides the
     classification signal."""
 
-    def __init__(self, classifier, axm_container=None):
+    def __init__(self, classifier, axm_container=None,
+                 nano_slm: Optional["NanoSLM"] = None):
         self._classifier = classifier
         self.axm_container = axm_container
+        self._nano = nano_slm  # None unless BYOD/Nano mode is active
+
+    def answer_locally(self, query: str, max_tokens: int = 256) -> Optional[str]:
+        """Answer a simple INFORM query using the on-device Nano SLM.
+
+        Returns None when Nano is not configured or unavailable — callers
+        then fall through to the cloud path as usual.
+        """
+        if self._nano is None:
+            return None
+        answer = self._nano.generate(query, max_tokens=max_tokens)
+        return answer or None
+
+    @property
+    def nano_ready(self) -> bool:
+        return self._nano is not None and self._nano.is_available()
 
     def pre_classify(self, text: str, trajectory=None):
         result = self._classifier.classify(text, trajectory=trajectory)
@@ -465,7 +536,14 @@ class SovereignPhone:
         anf_key        = derive_key(b"axiom-aspa-anf-v1")
         shield_key     = derive_key(b"axiom-aspa-shield-v1")
 
-        self.neural   = NeuralComputeBlock(IntentClassifier(classifier_key))
+        # Wire Nano SLM when BYOD env vars are present.
+        _nano = None
+        if _os.environ.get("NANO_BASE_URL") or _os.environ.get("NANO_MODEL"):
+            _nano = NanoSLM()
+
+        self.nano   = _nano  # expose for status / testing
+        self.neural = NeuralComputeBlock(IntentClassifier(classifier_key),
+                                         nano_slm=_nano)
         self.memory   = VectorMemoryBlock()
         self.identity = SecureIdentityBlock()
         self.events   = EventMonitor(hmac_key=shield_key)
@@ -488,4 +566,7 @@ class SovereignPhone:
             "events_suspended":   sorted(self.events.suspended),
             "anf_calls":          self.coprocessor.anf_calls,
             "trust_level":        TRUST_LEVEL,
+            "nano_model":         self.nano.model    if self.nano else None,
+            "nano_base_url":      self.nano.base_url if self.nano else None,
+            "nano_ready":         self.neural.nano_ready,
         }

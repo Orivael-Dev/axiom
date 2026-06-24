@@ -1545,6 +1545,133 @@ async def data_gate_erasure(
     return cert
 
 
+
+# ════════════════════════════════════════════════════════════
+# PHONE GATE / BYOD  (ORVL-019)
+# ════════════════════════════════════════════════════════════
+#
+# Exposes the AXIOM Sovereign Phone Architecture (ASPA) pipeline as REST
+# endpoints so BYOD clients (Android app, Nano test client) can call the
+# constitutional coprocessor without bundling the full Python stack.
+#
+# BYOD Nano env vars:
+#   NANO_BASE_URL   OpenAI-compatible local endpoint (default: http://localhost:11434/v1)
+#   NANO_MODEL      model name (default: qwen2.5:0.5b)
+#
+# If NANO_BASE_URL / NANO_MODEL are set on the Hetzner server they wire the
+# cloud-side Nano stub; for real BYOD the client runs NanoSLM locally and
+# only calls /phone/outbound + /phone/inbound for the coprocessor gates.
+
+_phone_singleton = None
+
+
+def _get_phone():
+    global _phone_singleton
+    if _phone_singleton is None:
+        try:
+            from axiom_sovereign_phone import SovereignPhone
+            _phone_singleton = SovereignPhone()
+        except Exception as exc:
+            raise HTTPException(503, f"SovereignPhone not available: {exc}")
+    return _phone_singleton
+
+
+class PhoneOutboundRequest(BaseModel):
+    text:       str
+    session_id: Optional[str]  = None
+    trajectory: Optional[list] = None
+
+
+class PhoneInboundRequest(BaseModel):
+    text:                str
+    session_id:          Optional[str]  = None
+    trajectory:          Optional[list] = None
+    redacted_categories: Optional[list] = None
+
+
+@app.post("/phone/outbound")
+async def phone_outbound(req: PhoneOutboundRequest):
+    """Outbound constitutional gate.
+
+    Classifies intent, redacts PII, and either blocks (HARM/DECEIVE) or
+    returns a signed OutboundDecision with the redacted text ready for
+    cloud transmission.  If the server has NANO_BASE_URL configured and
+    the query is a simple INFORM, also returns a local nano_answer so
+    the BYOD client can respond without a cloud round-trip.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.outbound_gate(
+        req.text, trajectory=req.trajectory, session_id=req.session_id
+    )
+    d = asdict(result)
+    d["blocked"] = "level" in d and d.get("level") is not None
+
+    # Local Nano answer for benign INFORM queries
+    if not d["blocked"] and d.get("intent_class") in ("INFORM", "CLARIFY"):
+        nano_answer = phone.neural.answer_locally(req.text)
+        if nano_answer:
+            d["nano_answer"]      = nano_answer
+            d["answered_locally"] = True
+    return d
+
+
+@app.post("/phone/inbound")
+async def phone_inbound(req: PhoneInboundRequest):
+    """Inbound constitutional gate.
+
+    Checks every cloud response for MANIPULATE/DECEIVE intent, monotonic
+    trajectory violations, and PII injection before the BYOD client displays
+    it to the user.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.inbound_gate(
+        req.text,
+        trajectory=req.trajectory,
+        redacted_categories=req.redacted_categories or [],
+        session_id=req.session_id,
+    )
+    d = asdict(result)
+    d["blocked"] = "level" in d and d.get("level") is not None
+    return d
+
+
+@app.get("/phone/status")
+async def phone_status():
+    """ASPA pipeline status — device fingerprint, ANF call count, Nano readiness."""
+    phone = _get_phone()
+    s = phone.status()
+    # Prefer env over SovereignPhone defaults for display
+    s["nano_base_url"] = os.environ.get("NANO_BASE_URL", s.get("nano_base_url", ""))
+    s["nano_model"]    = os.environ.get("NANO_MODEL",    s.get("nano_model", ""))
+    return s
+
+
+@app.post("/phone/call_trajectory")
+async def phone_call_trajectory(
+    session_id: str,
+    utterance:  str,
+    timestamp_s: float = 0.0,
+):
+    """Hello Operator — feed one call utterance and get a trajectory verdict.
+
+    Call repeatedly as the call develops. The coprocessor accumulates
+    session blocks and escalates L1 → L2 → L3 per ORVL-019 §4.
+    Returns the OutboundDecision or SovereignAlert for this utterance.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.outbound_gate(
+        utterance, session_id=session_id
+    )
+    d = asdict(result)
+    d["blocked"]      = "level" in d and d.get("level") is not None
+    d["timestamp_s"]  = timestamp_s
+    d["session_id"]   = session_id
+    return d
+
+
 # ── Entry point ───────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
