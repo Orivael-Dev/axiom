@@ -464,6 +464,50 @@ def get_decision(tenant_id: str, decision_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_decision_with_trace(tenant_id: str, decision_id: str) -> dict:
+    """Fetch a decision row and enrich it with its latent manifest trace.
+
+    Steps:
+      1. Query decisions table for the row.
+      2. Extract manifest_id from the row.
+      3. Scan latent_manifests.jsonl in the repo root for a matching entry.
+      4. Return {"decision": {...} | None, "trace": {...} | None}.
+    """
+    decision = get_decision(tenant_id, decision_id)
+    if decision is None:
+        return {"decision": None, "trace": None}
+
+    manifest_id = decision.get("manifest_id")
+    trace = None
+    if manifest_id:
+        candidates = [
+            Path(__file__).parent.parent / "latent_manifests.jsonl",
+            Path("latent_manifests.jsonl"),
+        ]
+        for manifest_path in candidates:
+            if not manifest_path.is_file():
+                continue
+            try:
+                with manifest_path.open("r", encoding="utf-8") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if entry.get("manifest_id") == manifest_id:
+                            trace = entry
+                            break
+            except OSError:
+                pass
+            if trace:
+                break
+
+    return {"decision": decision, "trace": trace}
+
+
 def query_decisions(
     tenant_id: str,
     *,

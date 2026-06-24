@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Axiom Firewall{% endblock %}
+{% block title %}Dashboard — Orivael Governance Console{% endblock %}
 
 {% block content %}
 <section class="dashboard">
@@ -61,6 +61,19 @@
       <span class="value">{{ usage.avg_latency_ms }}</span>
       <span class="label">ms avg latency</span>
     </div>
+    {% if current_model %}
+    <div class="metric" style="border: 1px solid rgba(114,247,212,0.25); border-radius: 8px; padding: 10px 16px;">
+      <span class="value" style="font-size: 16px;">{{ current_model.model }}</span>
+      <span class="label">{{ current_model.backend }} · {{ current_model.latency_ms }} ms last</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div style="display:flex; gap:12px; flex-wrap:wrap; margin: 1rem 0;">
+    <a href="/dashboard/enterprise" style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">BLT Enterprise →</a>
+    <a href="/dashboard/os-shield"  style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">OS Shield →</a>
+    <a href="/dashboard/compliance" style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">Compliance →</a>
+    <a href="/dashboard/local-llm"  style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">Local LLM / RAG →</a>
   </div>
 
   {% if request.session.get('new_recovery_code') %}

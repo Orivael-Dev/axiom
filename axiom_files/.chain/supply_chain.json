@@ -832,5 +832,11 @@
     "registered_at": "2026-06-16T02:01:26.628511+00:00",
     "version": "",
     "size_bytes": 6382
+  },
+  "research/research_orchestrator": {
+    "sha256": "430a446fcb31e59a2eef9c0124bfb303665ac7850c8b9921a9544329d827761e",
+    "registered_at": "2026-06-24T23:06:49.148928+00:00",
+    "version": "",
+    "size_bytes": 4786
   }
 }

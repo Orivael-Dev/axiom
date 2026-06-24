@@ -84,6 +84,50 @@ def _build_chunk_map() -> dict[str, str]:
     return cm
 
 
+_SRD4_MAGIC = b"AXMSRD4\x00"
+
+
+def _detect_quant_method(gguf_path: Path, override: str = "auto") -> str:
+    """Return the quant method string for this GGUF.
+
+    Detection order when override="auto":
+      1. ``.srd4`` sidecar beside the GGUF (magic bytes ``AXMSRD4\\x00``)
+      2. Existing ``axiom.quant_method`` KV in the GGUF itself
+      3. Falls back to ``"Q4_K_M"``
+
+    override values: "auto" | "srd_q4km" | "q4km"
+    """
+    if override.lower() in ("srd_q4km", "srd"):
+        return "SRD_Q4_K_M"
+    if override.lower() == "q4km":
+        return "Q4_K_M"
+
+    # Check for a .srd4 sidecar
+    srd4_path = gguf_path.with_suffix(".srd4")
+    if srd4_path.exists():
+        try:
+            with open(srd4_path, "rb") as fh:
+                if fh.read(8) == _SRD4_MAGIC:
+                    return "SRD_Q4_K_M"
+        except Exception:
+            pass
+
+    # Check existing axiom.quant_method KV in the GGUF
+    try:
+        from gguf import GGUFReader
+        reader = GGUFReader(str(gguf_path))
+        for name, field in reader.fields.items():
+            if name == "axiom.quant_method":
+                raw = bytes(field.parts[field.data[0]].tolist()).decode(
+                    "utf-8", errors="replace")
+                if "srd" in raw.lower():
+                    return "SRD_Q4_K_M"
+    except Exception:
+        pass
+
+    return "Q4_K_M"
+
+
 def _read_gguf_info(gguf_path: Path) -> dict:
     """Read GGUF header metadata for validation and sidecar enrichment."""
     try:
@@ -121,7 +165,8 @@ def _read_gguf_info(gguf_path: Path) -> dict:
 
 def build_sidecar(gguf_path: Path, fingerprint: str = "",
                   storage_mbs: int = DEFAULT_STORAGE_MBS,
-                  gguf_info: Optional[dict] = None) -> dict:
+                  gguf_info: Optional[dict] = None,
+                  quant_method: str = "Q4_K_M") -> dict:
     """Construct the full axiom_meta sidecar dict."""
     chunk_map = _build_chunk_map()
     file_mb   = round(gguf_path.stat().st_size / (1024 ** 2), 1) if gguf_path.exists() else None
@@ -157,12 +202,13 @@ def build_sidecar(gguf_path: Path, fingerprint: str = "",
             slot: {
                 "layers":    f"{lo}-{hi}",
                 "mb":        SLOT_MB[slot],
-                "precision": "Q4_K_M",
+                "precision": quant_method,
                 "first_layer": lo,
                 "last_layer":  hi,
             }
             for slot, (lo, hi) in SLOT_RANGES.items()
         },
+        "quant_method": quant_method,
         "chunk_map":         chunk_map,
         "hydration_policy":  HYDRATION_POLICY,
         "intent_ram_budget": intent_ram,
@@ -237,6 +283,7 @@ def write_annotated_gguf(gguf_path: Path, out_path: Path,
     writer.add_string("axiom.embedding_precision", EMBEDDING_PRECISION)
     writer.add_string("axiom.storage_speed_mbs",   str(DEFAULT_STORAGE_MBS))
     writer.add_string("axiom.fingerprint",         fingerprint)
+    writer.add_string("axiom.quant_method",        meta.get("quant_method", "Q4_K_M"))
     for slot, (lo, hi) in SLOT_RANGES.items():
         writer.add_string(f"axiom.slot.{slot}", f"{lo}-{hi}")
     writer.add_string("axiom.chunk_map",        json.dumps(meta["chunk_map"]))
@@ -261,6 +308,67 @@ def write_annotated_gguf(gguf_path: Path, out_path: Path,
     print(f"  [annotate] done → {out_path}  ({out_mb} MB)")
 
 
+# ── Patch mode ───────────────────────────────────────────────────────────────
+
+def patch_gguf_keys(gguf_path: Path, out_path: Path, keys: dict[str, str]) -> None:
+    """Copy a GGUF and add/overwrite the given KV string entries.
+
+    keys: {full_key_name: string_value}
+      e.g. {"axiom.quant_method": "SRD_Q4_K_M", "axiom.my_tag": "v2"}
+    """
+    import numpy as np
+    from gguf import GGUFReader, GGUFWriter, GGUFValueType
+
+    reader = GGUFReader(str(gguf_path))
+    arch_field = reader.fields.get("general.architecture")
+    arch = "llama"
+    if arch_field:
+        try:
+            arch = bytes(arch_field.parts[arch_field.data[0]].tolist()).decode("utf-8")
+        except Exception:
+            pass
+
+    writer = GGUFWriter(str(out_path), arch=arch)
+
+    for name, field in reader.fields.items():
+        if name.startswith("GGUF.") or name in keys:
+            continue
+        try:
+            vtype = field.types[0]
+            val   = field.parts[field.data[0]]
+            if vtype == GGUFValueType.STRING:
+                raw = bytes(val.tolist())
+                writer.add_string(name, raw.decode("utf-8", errors="replace"))
+            elif vtype == GGUFValueType.UINT32:
+                writer.add_uint32(name, int(val[0]))
+            elif vtype == GGUFValueType.UINT64:
+                writer.add_uint64(name, int(val[0]))
+            elif vtype == GGUFValueType.INT32:
+                writer.add_int32(name, int(val[0]))
+            elif vtype == GGUFValueType.FLOAT32:
+                writer.add_float32(name, float(val[0]))
+            elif vtype == GGUFValueType.BOOL:
+                writer.add_bool(name, bool(val[0]))
+        except Exception:
+            pass
+
+    for key, value in keys.items():
+        writer.add_string(key, value)
+        print(f"  [patch] set {key!r} = {value!r}")
+
+    print(f"  [patch] copying {len(reader.tensors)} tensors ...")
+    for t in reader.tensors:
+        raw_data = np.frombuffer(bytes(t.data), dtype=np.uint8)
+        writer.add_tensor(t.name, raw_data, raw_shape=list(t.shape), raw_dtype=t.tensor_type)
+
+    writer.write_header_to_file()
+    writer.write_kv_data_to_file()
+    writer.write_tensors_to_file()
+    writer.close()
+    out_mb = round(out_path.stat().st_size / (1024 ** 2), 1)
+    print(f"  [patch] done → {out_path}  ({out_mb} MB)")
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def _parse_args() -> argparse.Namespace:
@@ -278,6 +386,25 @@ def _parse_args() -> argparse.Namespace:
                    help="AXM container fingerprint to embed (from axm_cli.py verify)")
     p.add_argument("--storage-mbs", type=int, default=DEFAULT_STORAGE_MBS,
                    help=f"storage read speed in MB/s (default: {DEFAULT_STORAGE_MBS} = UFS 3.1)")
+    p.add_argument(
+        "--quant-method",
+        choices=["auto", "srd_q4km", "q4km"],
+        default="auto",
+        help=(
+            "Quantisation method tag written to axiom.quant_method KV. "
+            "'auto' detects from a .srd4 sidecar or existing GGUF KV; "
+            "'srd_q4km' forces SRD; 'q4km' forces plain Q4_K_M."
+        ),
+    )
+    p.add_argument(
+        "--set-key", nargs=2, metavar=("KEY", "VALUE"), action="append",
+        default=[],
+        help=(
+            "Add or overwrite a KV string entry in the GGUF copy. "
+            "KEY should be the full name, e.g. axiom.quant_method. "
+            "Repeatable: --set-key axiom.tag v2 --set-key axiom.owner me"
+        ),
+    )
     return p.parse_args()
 
 
@@ -290,6 +417,21 @@ def main() -> int:
         print("        Pass a local path; for phone files, copy first with adb pull:")
         print("        adb pull /storage/emulated/0/models/smollm2_135m_instruct_q4km.gguf .")
         return 1
+
+    # Patch mode: add/overwrite specific KV entries without rebuilding sidecar
+    if args.set_key:
+        kv = {k: v for k, v in args.set_key}
+        out_p = Path(args.annotated_out) if args.annotated_out \
+                else gguf_p.with_name(gguf_p.stem + ".patched.gguf")
+        print()
+        print(f"  Patch mode: writing {len(kv)} key(s) → {out_p}")
+        try:
+            patch_gguf_keys(gguf_p, out_p, kv)
+        except ImportError:
+            print("  [patch] gguf and numpy required: pip install gguf numpy")
+            return 1
+        print("═" * 68)
+        return 0
 
     print()
     print("═" * 68)
@@ -313,10 +455,15 @@ def main() -> int:
             print(f"  [warn] block_count={gguf_info['block_count']} — "
                   "chunk boundaries tuned for 30-layer SmolLM2-135M; review SLOT_RANGES if different")
 
+    # Detect quant method
+    qm = _detect_quant_method(gguf_p, override=args.quant_method)
+    print(f"  Quant method : {qm}")
+
     # Build sidecar
     meta = build_sidecar(
         gguf_p, fingerprint=args.fingerprint,
         storage_mbs=args.storage_mbs, gguf_info=gguf_info,
+        quant_method=qm,
     )
 
     # Write sidecar JSON
@@ -332,7 +479,7 @@ def main() -> int:
     print("  " + "─" * 52)
     print(f"  {'embedding':<14}  {'—embed—':<8}  {EMBEDDING_MB:>5.0f}  {'F16':>9}  ✓ pinned")
     for slot, (lo, hi) in SLOT_RANGES.items():
-        print(f"  {slot:<14}  {lo}-{hi:<6}  {SLOT_MB[slot]:>5.0f}  {'Q4_K_M':>9}  on demand")
+        print(f"  {slot:<14}  {lo}-{hi:<6}  {SLOT_MB[slot]:>5.0f}  {qm:>9}  on demand")
 
     print()
     print("  HYDRATION POLICY  (intent → chunks loaded from storage)")

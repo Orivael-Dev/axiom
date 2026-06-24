@@ -1,0 +1,87 @@
+specVersion: v2
+
+meta:
+  name: axiom-inference-os
+  image: project-axiom-inference-os
+  description: >
+    Axiom Inference OS — a signed control plane that routes, governs,
+    and compresses AI execution before the model spends tokens.
+    Powered by NVIDIA TensorRT-LLM for local GPU inference.
+  labels:
+    - LLM
+    - Inference
+    - Governance
+    - TRT-LLM
+  createdOn: "2026-06-22"
+  defaultBranch: main
+
+layout:
+  - path: code/
+    type: code
+    storage: gitRepo
+  - path: data/
+    type: data
+    storage: localStorage
+  - path: models/
+    type: models
+    storage: localStorage
+  - path: outputs/
+    type: outputs
+    storage: localStorage
+
+environment:
+  base:
+    registry: nvcr.io
+    image: nvidia/tritonserver
+    tag: 25.01-trtllm-python-py3
+    build:
+      buildArgs:
+        DEBIAN_FRONTEND: noninteractive
+      packages:
+        pip:
+          - requests>=2.32.0
+          - fastapi>=0.115.0
+          - uvicorn[standard]>=0.32.0
+          - python-dotenv>=1.0.0
+
+  variables:
+    - name: AXIOM_MASTER_KEY
+      description: "64-hex-char HMAC root key. Generate: python3 -c \"import secrets; print(secrets.token_hex(32))\""
+      default: ""
+    - name: AXIOM_BACKEND
+      description: "Backend selection: trtllm | nim | trtllm,nim"
+      default: "trtllm"
+    - name: TRTLLM_URL
+      description: "TRT-LLM server endpoint"
+      default: "http://localhost:8000/v1"
+    - name: TRTLLM_MODEL
+      description: "Model to serve via trtllm-serve"
+      default: "meta/llama-3.1-8b-instruct"
+    - name: HF_TOKEN
+      description: "HuggingFace token for gated models (Llama)"
+      default: ""
+    - name: NVIDIA_NIM_API_KEY
+      description: "NVIDIA NIM API key — optional cloud fallback"
+      default: ""
+    - name: AXIOM_PORT
+      description: "Port for Axiom HTTP server"
+      default: "8080"
+
+  ports:
+    - name: axiom-api
+      port: 8080
+      protocol: HTTPS
+      description: "Axiom Inference OS REST API"
+
+  mounts:
+    - mountType: PROJECT
+      target: /axiom
+      description: "Axiom source code"
+    - mountType: HOST
+      target: /var/axiom
+      hostPath: axiom-data
+      description: "Audit logs, memory, delta state"
+
+resources:
+  gpu:
+    requested: 1

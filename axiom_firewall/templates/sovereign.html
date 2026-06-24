@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}Sovereign Fleet — Orivael Governance Console{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page shell ──────────────────────────────────────────────────────── */
+  .sv-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 0 3rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .sv-page h1 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 0.2rem;
+  }
+  .sv-page .page-sub {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 2rem;
+  }
+
+  /* ── Section card ────────────────────────────────────────────────────── */
+  .sv-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.25rem;
+  }
+  .sv-card h2 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #72f7d4;
+    margin-bottom: 1rem;
+  }
+
+  /* ── Fleet manifest header row ───────────────────────────────────────── */
+  .manifest-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1.4rem;
+    margin-bottom: 0.5rem;
+  }
+  .meta-field .meta-label {
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+  .meta-field .meta-value {
+    font-size: 0.9rem;
+    color: var(--fg);
+  }
+  .meta-field .meta-value.accent { color: #72f7d4; }
+  .sig-pill {
+    display: inline-block;
+    background: rgba(114,247,212,0.07);
+    border: 1px solid rgba(114,247,212,0.22);
+    border-radius: 20px;
+    padding: 0.25rem 0.9rem;
+    font-size: 0.8rem;
+    color: #72f7d4;
+    letter-spacing: 0.03em;
+    user-select: all;
+  }
+
+  /* ── Data tables ─────────────────────────────────────────────────────── */
+  .sv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .sv-table thead th {
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .sv-table tbody td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+    color: var(--fg);
+  }
+  .sv-table tbody tr:last-child td { border-bottom: none; }
+  .sv-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ── Trust-level badges ──────────────────────────────────────────────── */
+  .tl-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .tl-1 { background: rgba(77,204,128,0.12); color: #4dcc80; border: 1px solid rgba(77,204,128,0.3); }
+  .tl-2 { background: rgba(95,168,255,0.12); color: #5fa8ff; border: 1px solid rgba(95,168,255,0.3); }
+  .tl-3 { background: rgba(224,176,64,0.12); color: #e0b040; border: 1px solid rgba(224,176,64,0.3); }
+  .tl-4 { background: rgba(255,107,107,0.12); color: #ff6b6b; border: 1px solid rgba(255,107,107,0.3); }
+
+  /* ── Status badges ───────────────────────────────────────────────────── */
+  .status-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .status-active    { background: #0f2d1a; color: #4dcc80; border: 1px solid #1a5c35; }
+  .status-suspended { background: #2d2200; color: #e0b040; border: 1px solid #5c4500; }
+  .status-terminated { background: #3d0f0f; color: #ff6b6b; border: 1px solid #6b1f1f; }
+  .status-default   { background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid var(--border); }
+
+  /* ── Delivered ✓ / ✗ ────────────────────────────────────────────────── */
+  .del-ok  { color: #4dcc80; font-weight: 700; }
+  .del-fail { color: #ff6b6b; font-weight: 700; }
+
+  /* ── Verified ✓ / ✗ ─────────────────────────────────────────────────── */
+  .ver-ok   { color: #4dcc80; font-weight: 700; }
+  .ver-fail { color: #ff6b6b; font-weight: 700; }
+
+  /* ── Empty state ─────────────────────────────────────────────────────── */
+  .empty-state {
+    font-size: 0.83rem;
+    color: var(--muted);
+    font-style: italic;
+    padding: 0.4rem 0;
+  }
+</style>
+
+<div class="sv-page">
+  <h1>Sovereign Fleet</h1>
+  <p class="page-sub">Agent registry · CMAA routing · MKB sovereign knowledge blocks</p>
+
+  {# ── 1. Fleet Manifest Card ─────────────────────────────────────────── #}
+  <div class="sv-card">
+    <h2>Fleet Manifest</h2>
+    {% if fleet %}
+      <div class="manifest-meta">
+        <div class="meta-field">
+          <div class="meta-label">Version</div>
+          <div class="meta-value accent">{{ fleet.version if fleet.version else "—" }}</div>
+        </div>
+        <div class="meta-field">
+          <div class="meta-label">Agent Count</div>
+          <div class="meta-value accent">{{ fleet.agents | length if fleet.agents else 0 }}</div>
+        </div>
+        <div class="meta-field">
+          <div class="meta-label">Manifest Signature</div>
+          {% if fleet.manifest_signature %}
+            <code class="sig-pill">{{ fleet.manifest_signature[:16] }}&hellip;</code>
+          {% else %}
+            <span style="color:var(--muted); font-style:italic; font-size:0.82rem;">No signature</span>
+          {% endif %}
+        </div>
+      </div>
+    {% else %}
+      <p class="empty-state">No fleet data available.</p>
+    {% endif %}
+  </div>
+
+  {# ── 2. Agent Registry Table ────────────────────────────────────────── #}
+  <div class="sv-card">
+    <h2>Agent Registry</h2>
+    {% if fleet and fleet.agents %}
+      <table class="sv-table">
+        <thead>
+          <tr>
+            <th>Agent ID</th>
+            <th>Name</th>
+            <th>Trust Level</th>
+            <th>Status</th>
+            <th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for agent in fleet.agents %}
+          <tr>
+            <td><code style="font-size:0.8rem; color:#72f7d4;">{{ agent.agent_id }}</code></td>
+            <td>{{ agent.name }}</td>
+            <td>
+              {% set tl = agent.trust_level | string | upper %}
+              {% if tl in ["TL1", "1"] %}<span class="tl-badge tl-1">TL1</span>
+              {% elif tl in ["TL2", "2"] %}<span class="tl-badge tl-2">TL2</span>
+              {% elif tl in ["TL3", "3"] %}<span class="tl-badge tl-3">TL3</span>
+              {% elif tl in ["TL4", "4"] %}<span class="tl-badge tl-4">TL4</span>
+              {% else %}<span class="tl-badge tl-1">{{ tl }}</span>{% endif %}
+            </td>
+            <td>
+              {% set st = (agent.status | lower) if agent.status else "" %}
+              {% if st == "active" %}<span class="status-badge status-active">Active</span>
+              {% elif st == "suspended" %}<span class="status-badge status-suspended">Suspended</span>
+              {% elif st == "terminated" %}<span class="status-badge status-terminated">Terminated</span>
+              {% else %}<span class="status-badge status-default">{{ agent.status or "Unknown" }}</span>{% endif %}
+            </td>
+            <td style="color:var(--muted); font-size:0.78rem; white-space:nowrap;">{{ agent.last_seen }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No agents registered.</p>
+    {% endif %}
+  </div>
+
+  {# ── 3. CMAA Routing Log ────────────────────────────────────────────── #}
+  <div class="sv-card">
+    <h2>CMAA Routing Log</h2>
+    {% if cmaa_routes %}
+      <table class="sv-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Destination</th>
+            <th>Intent Class</th>
+            <th>Delivered</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for route in cmaa_routes %}
+          <tr>
+            <td><code style="font-size:0.8rem;">{{ route.source }}</code></td>
+            <td><code style="font-size:0.8rem;">{{ route.destination }}</code></td>
+            <td style="color:var(--muted);">{{ route.intent_class }}</td>
+            <td>
+              {% if route.delivered %}
+                <span class="del-ok">&#x2713;</span>
+              {% else %}
+                <span class="del-fail">&#x2717;</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--muted); font-size:0.78rem; white-space:nowrap;">{{ route.timestamp }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No routing events.</p>
+    {% endif %}
+  </div>
+
+  {# ── 4. MKB Sovereign Blocks ────────────────────────────────────────── #}
+  <div class="sv-card">
+    <h2>MKB Sovereign Blocks</h2>
+    {% if mkb_sovereign %}
+      <table class="sv-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Block Type</th>
+            <th>Version</th>
+            <th>Verified</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for block in mkb_sovereign %}
+          <tr>
+            <td style="color:#72f7d4;">{{ block.name }}</td>
+            <td style="color:var(--muted);">{{ block.block_type }}</td>
+            <td style="color:var(--muted);">{{ block.version }}</td>
+            <td>
+              {% if block.verified %}
+                <span class="ver-ok">&#x2713;</span>
+              {% else %}
+                <span class="ver-fail">&#x2717;</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No SOVEREIGN knowledge blocks.</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

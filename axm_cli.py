@@ -259,7 +259,82 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--stats-json", default=None)
     pp.set_defaults(func=cmd_pack)
 
+    # ── index-pack / index-verify / index-unpack ─────────────────────────────
+    pip = sub.add_parser(
+        "index-pack",
+        help="pack FTS5 shards + caches into a signed .rag.axm bundle",
+    )
+    pip.add_argument(
+        "--shard", action="append", required=True, metavar="DOMAIN:PATH",
+        help="e.g. --shard cve:/data/cve.db  (repeatable for multiple shards)",
+    )
+    pip.add_argument("--output", "-o", required=True,
+                     help="output .rag.axm path")
+    pip.add_argument("--compresslevel", type=int, default=6,
+                     choices=range(0, 10), metavar="[0-9]")
+    pip.set_defaults(func=cmd_index_pack)
+
+    piv = sub.add_parser(
+        "index-verify",
+        help="verify HMAC + per-shard SHA-256 of a .rag.axm bundle",
+    )
+    piv.add_argument("bundle")
+    piv.set_defaults(func=cmd_index_verify)
+
+    piu = sub.add_parser(
+        "index-unpack",
+        help="verify and extract a .rag.axm bundle to a directory",
+    )
+    piu.add_argument("bundle")
+    piu.add_argument("--dest", "-d", required=True, help="output directory")
+    piu.add_argument("--no-verify", action="store_true",
+                     help="skip HMAC verification (not recommended)")
+    piu.set_defaults(func=cmd_index_unpack)
+
     return p
+
+
+def cmd_index_pack(args: argparse.Namespace) -> int:
+    from axiom_shard_router import RAGBundle
+    shards = []
+    for spec in args.shard:
+        if ":" not in spec:
+            print(f"error: --shard must be domain:path (got {spec!r})", file=sys.stderr)
+            return 1
+        domain, db_path = spec.split(":", 1)
+        cache_key  = f"{domain.upper()}_CACHE"
+        cache_path = getattr(args, "cache", {}).get(domain)
+        shards.append((domain, Path(db_path), Path(cache_path) if cache_path else None))
+
+    try:
+        result = RAGBundle.pack(shards, Path(args.output))
+    except Exception as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
+    print(json.dumps(result, indent=2, ensure_ascii=True))
+    return 0
+
+
+def cmd_index_verify(args: argparse.Namespace) -> int:
+    from axiom_shard_router import RAGBundle
+    ok, info = RAGBundle.verify(Path(args.bundle))
+    print(json.dumps({**info, "verified": ok}, indent=2, ensure_ascii=True))
+    return 0 if ok else 1
+
+
+def cmd_index_unpack(args: argparse.Namespace) -> int:
+    from axiom_shard_router import RAGBundle
+    try:
+        dest = RAGBundle.unpack(
+            Path(args.bundle),
+            Path(args.dest),
+            verify=not args.no_verify,
+        )
+        print(json.dumps({"unpacked_to": str(dest)}, indent=2, ensure_ascii=True))
+        return 0
+    except RuntimeError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 1
 
 
 def main(argv=None) -> int:

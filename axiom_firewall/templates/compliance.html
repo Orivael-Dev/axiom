@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block title %}Compliance — Orivael Governance Console{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page shell ──────────────────────────────────────────────────────── */
+  .cpl-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 0 3rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  /* ── Page header with badge ──────────────────────────────────────────── */
+  .cpl-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .cpl-header h1 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin: 0 0 0.2rem;
+  }
+  .cpl-header .page-sub {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 0;
+  }
+  .cpl-model-badge {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    text-align: right;
+    min-width: 180px;
+  }
+  .cpl-model-badge .b-model {
+    font-size: 0.88rem;
+    color: #72f7d4;
+    font-weight: 600;
+  }
+  .cpl-model-badge .b-domain {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 0.15rem;
+  }
+
+  /* ── Section card ────────────────────────────────────────────────────── */
+  .cpl-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.25rem;
+  }
+  .cpl-card h2 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #72f7d4;
+    margin-bottom: 1rem;
+  }
+
+  /* ── Coverage progress bar ───────────────────────────────────────────── */
+  .cov-bar-wrap {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 10px;
+    width: 100%;
+    overflow: hidden;
+    margin: 0.5rem 0 0.4rem;
+  }
+  .cov-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: #72f7d4;
+    transition: width 0.4s;
+  }
+  .cov-summary {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 0.25rem;
+  }
+
+  /* ── Data tables ─────────────────────────────────────────────────────── */
+  .cpl-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .cpl-table thead th {
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .cpl-table tbody td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: top;
+    color: var(--fg);
+  }
+  .cpl-table tbody tr:last-child td { border-bottom: none; }
+  .cpl-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+  .cpl-table tbody tr.row-alert td { background: rgba(255,60,60,0.05); }
+  .cpl-table tbody tr.row-warn td { background: rgba(255,156,64,0.05); }
+
+  /* ── Status chip ─────────────────────────────────────────────────────── */
+  .status-chip {
+    display: inline-block;
+    font-size: 0.66rem;
+    font-weight: 700;
+    padding: 0.13rem 0.48rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .chip-covered  { background: #0f2d1a; color: #4dcc80; border: 1px solid #1a5c35; }
+  .chip-partial  { background: #2d2200; color: #e0b040; border: 1px solid #5c4500; }
+  .chip-planned  { background: #0f1f3d; color: #5fa8ff; border: 1px solid #1a3a6b; }
+  .chip-not      { background: #3d0f0f; color: #ff6b6b; border: 1px solid #6b1f1f; }
+  .chip-ok       { background: #0f2d1a; color: #4dcc80; border: 1px solid #1a5c35; }
+  .chip-pending  { background: #2d2200; color: #e0b040; border: 1px solid #5c4500; }
+  .chip-default  { background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid var(--border); }
+
+  /* ── HMAC status pill ────────────────────────────────────────────────── */
+  .hmac-pill {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    letter-spacing: 0.04em;
+  }
+  .hmac-valid   { background: rgba(77,204,128,0.12); color: #4dcc80; border: 1px solid rgba(77,204,128,0.3); }
+  .hmac-invalid { background: rgba(255,107,107,0.12); color: #ff6b6b; border: 1px solid rgba(255,107,107,0.3); }
+  .hmac-unknown { background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid var(--border); }
+
+  /* ── Alert boxes ─────────────────────────────────────────────────────── */
+  .alert-box {
+    border-radius: 7px;
+    padding: 0.85rem 1.1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.83rem;
+    line-height: 1.55;
+  }
+  .alert-box.alert-red  { background: rgba(255,60,60,0.08); border: 1px solid rgba(255,60,60,0.25); }
+  .alert-box.alert-amber { background: rgba(255,156,64,0.08); border: 1px solid rgba(255,156,64,0.25); }
+  .alert-box .alert-title {
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3rem;
+  }
+  .alert-box.alert-red  .alert-title { color: #ff6b6b; }
+  .alert-box.alert-amber .alert-title { color: #ff9c40; }
+  .alert-box .alert-detail { color: var(--fg); }
+  .alert-box .alert-pack-link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: 0.78rem;
+    color: #72f7d4;
+    text-decoration: underline;
+  }
+
+  /* ── EU AI Act section ───────────────────────────────────────────────── */
+  .eu-summary-card {
+    background: rgba(95,168,255,0.05);
+    border: 1px solid rgba(95,168,255,0.2);
+    border-radius: 7px;
+    padding: 0.8rem 1rem;
+    margin-top: 1rem;
+    font-size: 0.83rem;
+  }
+  .eu-summary-card .eu-label {
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+  .eu-summary-card .eu-value { color: #5fa8ff; font-weight: 600; }
+
+  /* ── Re-check button ─────────────────────────────────────────────────── */
+  .recheck-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 0.75rem;
+    padding: 0.22rem 0.6rem;
+    cursor: pointer;
+    transition: background 0.15s;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .recheck-btn:hover { background: rgba(114,247,212,0.1); border-color: rgba(114,247,212,0.3); color: #72f7d4; }
+
+  /* ── Empty / success state ───────────────────────────────────────────── */
+  .empty-state {
+    font-size: 0.83rem;
+    color: var(--muted);
+    font-style: italic;
+    padding: 0.4rem 0;
+  }
+  .all-ok {
+    font-size: 0.85rem;
+    color: #4dcc80;
+    padding: 0.5rem 0;
+  }
+</style>
+
+<div class="cpl-page">
+
+  {# ── 1. Header with model/domain badge ────────────────────────────── #}
+  <div class="cpl-header">
+    <div>
+      <h1>Compliance</h1>
+      <p class="page-sub">OWASP Agentic Top 10 · Domain regulations · EU AI Act · MKB block registry</p>
+    </div>
+    <div class="cpl-model-badge">
+      {% if current_model %}
+        <div class="b-model">{{ current_model.model }}</div>
+      {% else %}
+        <div class="b-model" style="color:var(--muted);">No model</div>
+      {% endif %}
+      <div class="b-domain">
+        {% if active_domains %}{{ active_domains[0] }}{% else %}No active domain{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── 2. OWASP Agentic Top 10 Scorecard ────────────────────────────── #}
+  <div class="cpl-card">
+    <h2>OWASP Agentic Top 10</h2>
+
+    {% if owasp_result and owasp_result.summary %}
+      {% set s = owasp_result.summary %}
+      {% set total     = (s.covered | default(0)) + (s.partial | default(0)) + (s.not_covered | default(0)) %}
+      {% set covered_n = s.covered | default(0) %}
+      {% set cov_pct   = ((covered_n / total) * 100) | round(1) if total > 0 else 0 %}
+      <div style="font-size:0.78rem; color:var(--muted); margin-bottom:0.3rem;">Coverage: <span style="color:#72f7d4;">{{ cov_pct }}%</span></div>
+      <div class="cov-bar-wrap">
+        <div class="cov-bar-fill" style="width:{{ cov_pct }}%"></div>
+      </div>
+      <div class="cov-summary">
+        <span style="color:#4dcc80;">{{ s.covered | default(0) }} covered</span> ·
+        <span style="color:#e0b040;">{{ s.partial | default(0) }} partial</span> ·
+        <span style="color:#ff6b6b;">{{ s.not_covered | default(0) }} not covered</span>
+        of {{ total }} total
+      </div>
+    {% endif %}
+
+    {% if owasp_result and owasp_result.controls %}
+      <table class="cpl-table" style="margin-top:1rem;">
+        <thead>
+          <tr>
+            <th>Control ID</th>
+            <th>Control</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ctrl in owasp_result.controls %}
+          <tr>
+            <td style="white-space:nowrap; color:#72f7d4;">{{ ctrl.control_id }}</td>
+            <td style="color:var(--fg); max-width:420px;">
+              {{ ctrl.control_text[:80] }}{% if ctrl.control_text | length > 80 %}&hellip;{% endif %}
+            </td>
+            <td>
+              {% set st = (ctrl.status | upper) if ctrl.status else "" %}
+              {% if st == "COVERED" %}<span class="status-chip chip-covered">Covered</span>
+              {% elif st == "PARTIAL" %}<span class="status-chip chip-partial">Partial</span>
+              {% elif st == "PLANNED" %}<span class="status-chip chip-planned">Planned</span>
+              {% elif st in ["NOT_COVERED", "NOT COVERED"] %}<span class="status-chip chip-not">Not Covered</span>
+              {% else %}<span class="status-chip chip-default">{{ ctrl.status or "—" }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state" style="margin-top:0.75rem;">No OWASP control data available.</p>
+    {% endif %}
+  </div>
+
+  {# ── 3. Domain Compliance Table ───────────────────────────────────── #}
+  <div class="cpl-card">
+    <h2>Domain Compliance</h2>
+    {% if alerts %}
+      {# Group by domain #}
+      {% set seen_domains = namespace(list=[]) %}
+      {% for alert in alerts %}
+        {% if alert.domain not in seen_domains.list %}
+          {% set seen_domains.list = seen_domains.list + [alert.domain] %}
+        {% endif %}
+      {% endfor %}
+
+      <table class="cpl-table">
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Regulation</th>
+            <th>Status</th>
+            <th>Detail</th>
+            <th>Missing Pack</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for domain in seen_domains.list %}
+            {% for alert in alerts if alert.domain == domain %}
+            <tr class="{% if alert.status | lower in ['fail', 'failed', 'error'] %}row-alert{% elif alert.status | lower in ['warn', 'warning', 'partial'] %}row-warn{% endif %}">
+              <td style="color:#72f7d4; white-space:nowrap;">{{ alert.domain }}</td>
+              <td style="white-space:nowrap; color:var(--muted);">{{ alert.regulation }}</td>
+              <td>
+                {% set st = (alert.status | upper) if alert.status else "" %}
+                {% if st in ["OK", "PASS", "COVERED"] %}<span class="status-chip chip-ok">OK</span>
+                {% elif st in ["PARTIAL", "WARN", "WARNING"] %}<span class="status-chip chip-partial">Partial</span>
+                {% elif st in ["PENDING", "PLANNED"] %}<span class="status-chip chip-pending">Pending</span>
+                {% elif st in ["FAIL", "FAILED", "ERROR", "NOT_COVERED"] %}<span class="status-chip chip-not">Fail</span>
+                {% else %}<span class="status-chip chip-default">{{ alert.status or "—" }}</span>{% endif %}
+              </td>
+              <td style="font-size:0.8rem; color:var(--fg);">{{ alert.detail }}</td>
+              <td style="font-size:0.78rem; color:var(--muted);">{{ alert.missing_pack if alert.missing_pack else "—" }}</td>
+            </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="all-ok">All domain compliance requirements met.</p>
+    {% endif %}
+  </div>
+
+  {# ── 4. AI Framework Compliance — EU AI Act ───────────────────────── #}
+  <div class="cpl-card">
+    <h2>AI Framework Compliance</h2>
+
+    {% if ai_frameworks and ai_frameworks.eu_ai_act %}
+      {% set eu = ai_frameworks.eu_ai_act %}
+      <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-bottom:0.65rem;">EU AI Act</div>
+      <table class="cpl-table">
+        <thead>
+          <tr>
+            <th>Article</th>
+            <th>Title</th>
+            <th>Status</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in eu %}
+          <tr>
+            <td style="white-space:nowrap; color:#5fa8ff;">{{ item.article }}</td>
+            <td>{{ item.title }}</td>
+            <td>
+              {% set st = (item.status | upper) if item.status else "" %}
+              {% if st in ["COVERED", "COMPLIANT"] %}<span class="status-chip chip-covered">Covered</span>
+              {% elif st == "PARTIAL" %}<span class="status-chip chip-partial">Partial</span>
+              {% elif st == "PLANNED" %}<span class="status-chip chip-planned">Planned</span>
+              {% elif st in ["NOT_COVERED", "NOT COVERED", "NON_COMPLIANT"] %}<span class="status-chip chip-not">Not Covered</span>
+              {% else %}<span class="status-chip chip-default">{{ item.status or "—" }}</span>{% endif %}
+            </td>
+            <td style="font-size:0.78rem; color:var(--muted);">{{ item.note if item.note else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if ai_frameworks.eu_ai_act | length > 0 %}
+        {% set eu_covered = namespace(n=0) %}
+        {% for item in ai_frameworks.eu_ai_act %}
+          {% if (item.status | upper) in ["COVERED", "COMPLIANT"] %}
+            {% set eu_covered.n = eu_covered.n + 1 %}
+          {% endif %}
+        {% endfor %}
+        <div class="eu-summary-card">
+          <div class="eu-label">EU AI Act Summary</div>
+          <div class="eu-value">{{ eu_covered.n }} / {{ ai_frameworks.eu_ai_act | length }} articles addressed</div>
+        </div>
+      {% endif %}
+
+    {% else %}
+      <p class="empty-state">No AI framework data available.</p>
+    {% endif %}
+  </div>
+
+  {# ── 5. Compliance Alerts Panel ───────────────────────────────────── #}
+  {% if alerts %}
+  <div class="cpl-card">
+    <h2>Compliance Alerts</h2>
+    {% for alert in alerts %}
+      {% set severity = (alert.status | lower) if alert.status else "" %}
+      <div class="alert-box {% if severity in ['fail', 'failed', 'error', 'not_covered'] %}alert-red{% else %}alert-amber{% endif %}">
+        <div class="alert-title">{{ alert.domain }} — {{ alert.regulation }}</div>
+        <div class="alert-detail">{{ alert.detail }}</div>
+        {% if alert.missing_pack %}
+          <a class="alert-pack-link"
+             href="/dashboard/packs?install={{ alert.missing_pack | urlencode }}">
+            Install pack: {{ alert.missing_pack }}
+          </a>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── 6. MKB Block Registry ────────────────────────────────────────── #}
+  <div class="cpl-card">
+    <h2>
+      MKB Block Registry
+      <a href="/dashboard/compliance/check" class="recheck-btn" style="margin-left:0.75rem; vertical-align:middle;">Re-check</a>
+    </h2>
+    {% if mkb_blocks %}
+      <table class="cpl-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Block Type</th>
+            <th>Version</th>
+            <th>HMAC Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for block in mkb_blocks %}
+          <tr>
+            <td style="color:#72f7d4;">{{ block.name }}</td>
+            <td style="color:var(--muted);">{{ block.block_type }}</td>
+            <td style="color:var(--muted);">{{ block.version }}</td>
+            <td>
+              {% set hs = (block.hmac_status | upper) if block.hmac_status else "" %}
+              {% if hs in ["VALID", "OK"] %}<span class="hmac-pill hmac-valid">Valid</span>
+              {% elif hs in ["INVALID", "FAIL", "FAILED"] %}<span class="hmac-pill hmac-invalid">Invalid</span>
+              {% else %}<span class="hmac-pill hmac-unknown">{{ block.hmac_status or "Unknown" }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No knowledge blocks registered.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  // Silent background compliance check on page load
+  window.addEventListener('load', function () {
+    fetch('/dashboard/compliance/check')
+      .then(function (r) { return r.json(); })
+      .then(function (d) { console.log('compliance checked', d); })
+      .catch(function (e) { console.warn('compliance check failed', e); });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,466 @@
+{% extends "base.html" %}
+{% block title %}CMR Agent — Orivael Governance Console{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page shell ──────────────────────────────────────────────────────── */
+  .cmr-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 0 3rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  /* ── Page header row with model/domain badge ─────────────────────────── */
+  .cmr-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .cmr-header h1 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin: 0 0 0.2rem;
+  }
+  .cmr-header .page-sub {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 0;
+  }
+  .model-domain-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1.1rem;
+    text-align: right;
+    min-width: 200px;
+  }
+  .model-domain-card .md-model {
+    font-size: 0.88rem;
+    color: #72f7d4;
+    font-weight: 600;
+  }
+  .model-domain-card .md-domain {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 0.15rem;
+  }
+
+  /* ── Section card ────────────────────────────────────────────────────── */
+  .cmr-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.25rem;
+  }
+  .cmr-card h2 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #72f7d4;
+    margin-bottom: 1rem;
+  }
+
+  /* ── Form elements ───────────────────────────────────────────────────── */
+  .cmr-form .field-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 1rem;
+  }
+  .cmr-form label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .cmr-form select,
+  .cmr-form input[type="text"],
+  .cmr-form input[type="number"],
+  .cmr-form input[type="range"],
+  .cmr-form textarea {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .cmr-form select:focus,
+  .cmr-form input:focus,
+  .cmr-form textarea:focus {
+    border-color: rgba(114,247,212,0.4);
+  }
+  .cmr-form input[type="range"] {
+    padding: 0.2rem 0;
+    accent-color: #72f7d4;
+  }
+  .cmr-form textarea {
+    resize: vertical;
+    min-height: 80px;
+  }
+  .cmr-form .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .cmr-form .slider-row input[type="range"] { flex: 1; padding: 0; width: auto; }
+  .cmr-form .slider-val {
+    font-size: 0.85rem;
+    color: #72f7d4;
+    min-width: 3rem;
+    text-align: right;
+  }
+  .cmr-form button[type="submit"] {
+    background: rgba(114,247,212,0.1);
+    border: 1px solid rgba(114,247,212,0.35);
+    color: #72f7d4;
+    font-family: inherit;
+    font-size: 0.83rem;
+    font-weight: 600;
+    padding: 0.5rem 1.2rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .cmr-form button[type="submit"]:hover { background: rgba(114,247,212,0.18); }
+
+  /* ── Routing rules read-only table ──────────────────────────────────── */
+  .rules-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-top: 0.5rem;
+  }
+  .rules-table thead th {
+    text-align: left;
+    padding: 0.4rem 0.65rem;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .rules-table tbody td {
+    padding: 0.45rem 0.65rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--fg);
+  }
+  .rules-table tbody tr:last-child td { border-bottom: none; }
+
+  /* ── Data tables (interaction log) ──────────────────────────────────── */
+  .cmr-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .cmr-table thead th {
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .cmr-table tbody td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+    color: var(--fg);
+  }
+  .cmr-table tbody tr:last-child td { border-bottom: none; }
+  .cmr-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ── Intent class badge ──────────────────────────────────────────────── */
+  .ic-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ic-harm     { background: #3d0f0f; color: #ff6b6b; border: 1px solid #6b1f1f; }
+  .ic-deceive  { background: #3d2200; color: #ff9c40; border: 1px solid #6b3d00; }
+  .ic-inform   { background: #0f2d1a; color: #4dcc80; border: 1px solid #1a5c35; }
+  .ic-clarify  { background: #0f1f3d; color: #5fa8ff; border: 1px solid #1a3a6b; }
+  .ic-refuse   { background: #2d2200; color: #e0b040; border: 1px solid #5c4500; }
+  .ic-uncertain{ background: #1f1f1f; color: #8a8a8a; border: 1px solid #333; }
+  .ic-default  { background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid var(--border); }
+
+  /* ── Confidence bar ──────────────────────────────────────────────────── */
+  .conf-bar-wrap {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 7px;
+    width: 100%;
+    max-width: 220px;
+    overflow: hidden;
+    margin-top: 0.3rem;
+  }
+  .conf-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: #72f7d4;
+  }
+
+  /* ── Escalated / blocked flags ───────────────────────────────────────── */
+  .flag-yes  { display: inline-block; background: #3d0f0f; color: #ff6b6b; border: 1px solid #6b1f1f; border-radius: 3px; font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.45rem; }
+  .flag-no   { display: inline-block; background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid var(--border); border-radius: 3px; font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.45rem; }
+
+  /* ── Test result block ───────────────────────────────────────────────── */
+  .test-result-block {
+    background: rgba(114,247,212,0.04);
+    border: 1px solid rgba(114,247,212,0.18);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    margin-top: 1rem;
+  }
+  .test-result-block .tr-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+  .test-result-block .tr-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────────────── */
+  .empty-state {
+    font-size: 0.83rem;
+    color: var(--muted);
+    font-style: italic;
+    padding: 0.4rem 0;
+  }
+</style>
+
+<div class="cmr-page">
+
+  {# ── 1. Page header + model/domain badge ──────────────────────────── #}
+  <div class="cmr-header">
+    <div>
+      <h1>CMR Agent</h1>
+      <p class="page-sub">Customer-message routing · Business-rule configuration · Interaction log</p>
+    </div>
+    <div class="model-domain-card">
+      {% if current_model %}
+        <div class="md-model">{{ current_model.model }}</div>
+      {% else %}
+        <div class="md-model" style="color:var(--muted);">No model</div>
+      {% endif %}
+      <div class="md-domain">
+        {% if config and config.domain %}{{ config.domain }}{% else %}No domain configured{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── 2. Business Profile Form ─────────────────────────────────────── #}
+  <div class="cmr-card">
+    <h2>Business Profile</h2>
+    <form method="post" action="/dashboard/cmr/configure" class="cmr-form">
+
+      <div class="field-row">
+        <label for="cmr-domain">Domain</label>
+        <select id="cmr-domain" name="domain">
+          {% if domains %}
+            {% for d in domains %}
+              <option value="{{ d }}" {% if config and config.domain == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          {% else %}
+            <option value="">No domains available</option>
+          {% endif %}
+        </select>
+      </div>
+
+      <div class="field-row">
+        <label for="cmr-threshold">
+          Escalation Threshold
+          {% if config and config.escalation_threshold is defined %}
+            — current: <span style="color:#72f7d4;" id="thresholdDisplay">{{ config.escalation_threshold }}</span>
+          {% endif %}
+        </label>
+        <div class="slider-row">
+          <input type="range"
+                 id="cmr-threshold"
+                 name="escalation_threshold"
+                 min="0.30" max="0.90" step="0.05"
+                 value="{{ config.escalation_threshold if config and config.escalation_threshold is defined else 0.60 }}"
+                 oninput="document.getElementById('thresholdDisplay').textContent = this.value">
+          <span class="slider-val" id="thresholdVal">{{ config.escalation_threshold if config and config.escalation_threshold is defined else 0.60 }}</span>
+        </div>
+      </div>
+
+      {% if config and config.routing_rules %}
+      <div class="field-row">
+        <label>Routing Rules (read-only)</label>
+        <table class="rules-table">
+          <thead>
+            <tr>
+              <th>Intent Class</th>
+              <th>Handler</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rule in config.routing_rules %}
+            {% set intent = rule.intent %}
+            {% set handler = rule.handler %}
+            <tr>
+              <td>
+                {% set ic = intent | upper %}
+                {% if ic == "HARM" %}<span class="ic-badge ic-harm">{{ ic }}</span>
+                {% elif ic == "DECEIVE" %}<span class="ic-badge ic-deceive">{{ ic }}</span>
+                {% elif ic == "INFORM" %}<span class="ic-badge ic-inform">{{ ic }}</span>
+                {% elif ic == "CLARIFY" %}<span class="ic-badge ic-clarify">{{ ic }}</span>
+                {% elif ic == "REFUSE" %}<span class="ic-badge ic-refuse">{{ ic }}</span>
+                {% elif ic == "UNCERTAIN" %}<span class="ic-badge ic-uncertain">{{ ic }}</span>
+                {% else %}<span class="ic-badge ic-default">{{ intent }}</span>{% endif %}
+              </td>
+              <td style="color:var(--muted);">{{ handler }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      <button type="submit">Save Config</button>
+    </form>
+  </div>
+
+  {# ── 3. Test Panel ────────────────────────────────────────────────── #}
+  <div class="cmr-card">
+    <h2>Test CMR Decision</h2>
+    <form method="post" action="/dashboard/cmr/test" class="cmr-form">
+      <div class="field-row">
+        <label for="cmr-query">Customer Query</label>
+        <textarea id="cmr-query"
+                  name="query"
+                  placeholder="Enter a customer message to route through CMR…"
+                  rows="3">{% if test_result and test_result.query_excerpt %}{{ test_result.query_excerpt }}{% endif %}</textarea>
+      </div>
+      <button type="submit">Run Test</button>
+    </form>
+
+    {% if test_result %}
+    <div class="test-result-block">
+      <div class="tr-label">CMR Decision Result</div>
+      <div class="tr-row">
+        {% set ic = (test_result.intent_class | upper) if test_result.intent_class else "" %}
+        {% if ic == "HARM" %}<span class="ic-badge ic-harm">{{ ic }}</span>
+        {% elif ic == "DECEIVE" %}<span class="ic-badge ic-deceive">{{ ic }}</span>
+        {% elif ic == "INFORM" %}<span class="ic-badge ic-inform">{{ ic }}</span>
+        {% elif ic == "CLARIFY" %}<span class="ic-badge ic-clarify">{{ ic }}</span>
+        {% elif ic == "REFUSE" %}<span class="ic-badge ic-refuse">{{ ic }}</span>
+        {% elif ic == "UNCERTAIN" %}<span class="ic-badge ic-uncertain">{{ ic }}</span>
+        {% else %}<span class="ic-badge ic-default">{{ test_result.intent_class or "UNKNOWN" }}</span>{% endif %}
+
+        {% if test_result.escalated %}
+          <span class="flag-yes">ESCALATED</span>
+        {% else %}
+          <span class="flag-no">NOT ESCALATED</span>
+        {% endif %}
+
+        {% if test_result.blocked %}
+          <span class="flag-yes">BLOCKED</span>
+        {% else %}
+          <span class="flag-no">NOT BLOCKED</span>
+        {% endif %}
+      </div>
+
+      {% if test_result.confidence is defined %}
+      <div class="tr-label">Confidence</div>
+      <div style="display:flex; align-items:center; gap:0.65rem; margin-bottom:0.75rem;">
+        <div class="conf-bar-wrap">
+          <div class="conf-bar-fill" style="width:{{ (test_result.confidence * 100) | round(1) }}%"></div>
+        </div>
+        <span style="font-size:0.82rem; color:#72f7d4;">{{ (test_result.confidence * 100) | round(1) }}%</span>
+      </div>
+      {% endif %}
+
+      {% if test_result.handler %}
+      <div class="tr-label">Handler</div>
+      <div style="font-size:0.85rem; color:var(--fg); margin-bottom:0.5rem;">{{ test_result.handler }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── 4. Interaction Log ───────────────────────────────────────────── #}
+  <div class="cmr-card">
+    <h2>Interaction Log</h2>
+    {% if recent_decisions %}
+      <table class="cmr-table">
+        <thead>
+          <tr>
+            <th>Query Excerpt</th>
+            <th>Intent Class</th>
+            <th>Handler</th>
+            <th>Escalated</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dec in recent_decisions %}
+          <tr>
+            <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted);" title="{{ dec.query_excerpt }}">{{ dec.query_excerpt }}</td>
+            <td>
+              {% set dic = (dec.intent_class | upper) if dec.intent_class else "" %}
+              {% if dic == "HARM" %}<span class="ic-badge ic-harm">{{ dic }}</span>
+              {% elif dic == "DECEIVE" %}<span class="ic-badge ic-deceive">{{ dic }}</span>
+              {% elif dic == "INFORM" %}<span class="ic-badge ic-inform">{{ dic }}</span>
+              {% elif dic == "CLARIFY" %}<span class="ic-badge ic-clarify">{{ dic }}</span>
+              {% elif dic == "REFUSE" %}<span class="ic-badge ic-refuse">{{ dic }}</span>
+              {% elif dic == "UNCERTAIN" %}<span class="ic-badge ic-uncertain">{{ dic }}</span>
+              {% else %}<span class="ic-badge ic-default">{{ dec.intent_class or "—" }}</span>{% endif %}
+            </td>
+            <td style="color:var(--muted); font-size:0.8rem;">{{ dec.handler or "—" }}</td>
+            <td>
+              {% if dec.escalated %}
+                <span class="flag-yes">Yes</span>
+              {% else %}
+                <span class="flag-no">No</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--muted); font-size:0.78rem; white-space:nowrap;">{{ dec.timestamp }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No interactions yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  // Keep slider label in sync
+  var slider = document.getElementById('cmr-threshold');
+  var sliderVal = document.getElementById('thresholdVal');
+  if (slider && sliderVal) {
+    slider.addEventListener('input', function () {
+      sliderVal.textContent = parseFloat(this.value).toFixed(2);
+    });
+  }
+</script>
+{% endblock %}

@@ -16,6 +16,7 @@ Run:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -50,10 +51,14 @@ from .auth import (
 )
 from .db import (
     count_studio_containers, delete_tenant, find_tenant_by_email, find_tenant_by_id,
+    get_decision_with_trace,
     init_registry, insert_api_key, insert_studio_container, insert_tenant,
-    list_api_keys, list_studio_containers, revoke_api_key,
+    list_api_keys, list_studio_containers, query_decisions, revoke_api_key,
     update_tenant_password, update_tenant_recovery_hash, usage_summary,
 )
+from .erv_router import ERVRouter
+from .cmr_agent import CMRAgent, CMRConfig, get_default_agent as _get_cmr_agent
+from .compliance_checker import ComplianceChecker
 from .limits import (
     SIGNUP_MAX_PER_WINDOW, SIGNUP_WINDOW_SECONDS,
     check_monthly_quota, check_signup_rate,
@@ -320,6 +325,7 @@ def _ctx(request: Request, **extra) -> dict:
         "beta_feedback_url": BETA_FEEDBACK_URL,
         "beta_mode":         BETA_MODE,
         "sales_email":       SALES_EMAIL,
+        "current_model":     _current_model(),
         **extra,
     }
 
@@ -327,6 +333,23 @@ def _ctx(request: Request, **extra) -> dict:
 def _current_tenant(request: Request) -> Tenant | None:
     tid = request.session.get("tenant_id")
     return find_tenant_by_id(tid) if tid else None
+
+
+def _current_model() -> dict:
+    """Return the last backend/model entry from the exoskeleton ledger."""
+    try:
+        from axiom_exoskeleton_ledger import read_ledger
+        entries = read_ledger()
+        if entries:
+            e = entries[-1]
+            return {"backend": e.backend, "model": e.model, "latency_ms": e.latency_ms}
+    except Exception:
+        pass
+    return {"backend": "—", "model": "none", "latency_ms": 0}
+
+
+_ERV_ROUTER: ERVRouter = ERVRouter.default()
+_COMPLIANCE_CHECKER = ComplianceChecker()
 
 
 # ─── Public pages ────────────────────────────────────────────────────────
@@ -1291,6 +1314,94 @@ async def _guard_classify(request: Request, *, endpoint_label: str) -> JSONRespo
     })
 
 
+# ─── Inference OS pipeline endpoint ──────────────────────────────────────────
+
+
+@app.post("/v1/inference")
+async def inference_os_route(request: Request):
+    """Full 8-step Inference OS pipeline — classify → route → retrieve → generate → govern → audit.
+
+    Body (JSON):
+      query         str   — the user's request
+      session_id    str   — caller-assigned session identifier
+      domain        str?  — hint: "healthcare" | "legal" | "finance" | …
+      use_retrieval bool  — default true; set false to skip context retrieval
+
+    Response (JSON):
+      request_id, intent_class, intent_confidence, route, model_used,
+      context_hits, output, output_verdict, input_tokens, output_tokens,
+      tokens_saved, total_latency_ms, fallback_used, risk_class,
+      audit_id, stages[], signature
+    """
+    from time import perf_counter as _pc
+    started_at = _pc()
+
+    auth_header = request.headers.get("Authorization", "")
+    secret = auth_header.removeprefix("Bearer ").strip()
+    auth = authenticate(secret)
+    if not auth:
+        raise HTTPException(401, "Invalid or missing API key")
+    tenant, key = auth
+
+    quota_ok, used, cap = check_monthly_quota(tenant)
+    if not quota_ok:
+        retry = seconds_until_next_month()
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers={"Retry-After": str(retry)},
+            content={"detail": f"Quota exhausted ({used}/{cap}). Retry in {retry}s.",
+                     "used": used, "limit": cap, "retry_after_seconds": retry},
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Body must be valid JSON")
+
+    query = body.get("query") or body.get("text")
+    if not isinstance(query, str) or not query.strip():
+        raise HTTPException(400, "Field 'query' must be a non-empty string")
+
+    from axiom_inference_os import InferenceRequest, get_inference_os
+    ios = get_inference_os()
+    ios_req = InferenceRequest(
+        query=query,
+        session_id=str(body.get("session_id", "")),
+        tenant_id=tenant.tenant_id,
+        domain=body.get("domain") or None,
+        use_retrieval=bool(body.get("use_retrieval", True)),
+    )
+    result = ios.run(ios_req)
+
+    record_call(
+        tenant_id=tenant.tenant_id, key_id=key.key_id,
+        endpoint="/v1/inference",
+        verdict=result.output_verdict,
+        intent_class=result.intent_class,
+        confidence=result.intent_confidence,
+        started_at=started_at,
+    )
+
+    return JSONResponse(result.to_dict())
+
+
+@app.get("/v1/inference/stages")
+async def inference_os_stages():
+    """Return the schema of stage names emitted by the Inference OS pipeline."""
+    return JSONResponse({
+        "stages": [
+            {"name": "intent",     "layer": 0, "description": "Intent Kernel — classify query risk and domain"},
+            {"name": "route",      "layer": 1, "description": "Inference Router — select backend and model"},
+            {"name": "retrieval",  "layer": 2, "description": "Memory + EventToken Cache — retrieve signed context"},
+            {"name": "generation", "layer": 3, "description": "AXM Runtime — generate with retrieved context"},
+            {"name": "governance", "layer": 4, "description": "Governance Guard — verify generated output"},
+            {"name": "audit",      "layer": 6, "description": "Observability Console — sign and log decision"},
+        ],
+        "blocking_classes": ["HARM", "DECEIVE"],
+        "version": "1.0",
+    })
+
+
 # ─── Billing ─────────────────────────────────────────────────────────────
 
 
@@ -1540,3 +1651,478 @@ async def studio_containers_save(request: Request):
     insert_studio_container(t.tenant_id, name, config_dict)
     new_count = count_studio_containers(t.tenant_id)
     return JSONResponse({"name": name, "count": new_count, "cap": cap})
+
+
+# ─── Enterprise — BLT Benchmark + Budget Forecasting ────────────────────────
+
+_blt_report_cache: dict | None = None
+
+
+@app.get("/dashboard/enterprise", response_class=HTMLResponse)
+def enterprise_get(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request, "enterprise.html",
+        _ctx(request, tenant=t, blt_report=_blt_report_cache),
+    )
+
+
+@app.post("/dashboard/enterprise/blt-run")
+async def enterprise_blt_run(request: Request):
+    global _blt_report_cache
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401)
+    import asyncio
+    try:
+        from axiom_blt_bench import BLTConfig, BLTBench
+        cfg   = BLTConfig()
+        bench = BLTBench(cfg)
+        report = await asyncio.to_thread(bench.run)
+        _blt_report_cache = {
+            "rows": [
+                {
+                    "fragment_count": r.fragment_count,
+                    "bloat_kb":       round(r.bloat_bytes / 1024, 2),
+                    "latency_ms":     round(r.latency_ms, 1),
+                    "tokens_added":   r.tokens_added,
+                }
+                for r in report.rows
+            ],
+            "avg_tokens": round(
+                sum(r.tokens_added for r in report.rows) / max(len(report.rows), 1), 1
+            ),
+        }
+        return JSONResponse({"ok": True, "report": _blt_report_cache})
+    except Exception as e:
+        log.exception("BLT bench failed")
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/dashboard/enterprise/blt-report.json")
+def enterprise_blt_json(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401)
+    if _blt_report_cache is None:
+        raise HTTPException(status_code=404, detail="No BLT report available yet — run the benchmark first.")
+    return JSONResponse(_blt_report_cache)
+
+
+# ─── Audit — decision list + per-decision latent trace ──────────────────────
+
+
+@app.get("/dashboard/audit", response_class=HTMLResponse)
+def audit_list(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    decisions = query_decisions(t.tenant_id, limit=50)
+    return templates.TemplateResponse(
+        request, "audit.html",
+        _ctx(request, tenant=t, decisions=decisions),
+    )
+
+
+@app.get("/dashboard/audit/{decision_id}/trace", response_class=HTMLResponse)
+def audit_trace(request: Request, decision_id: str):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    result = get_decision_with_trace(t.tenant_id, decision_id)
+    return templates.TemplateResponse(
+        request, "audit_trace.html",
+        _ctx(
+            request, tenant=t,
+            decision=result["decision"],
+            trace=result["trace"],
+        ),
+    )
+
+
+# ─── OS Shield + ERV ────────────────────────────────────────────────────────
+
+
+def _os_shield_data() -> dict:
+    """Collect OS Shield log data for the dashboard panel.
+
+    Reads the shield's JSONL event log; returns a summary with the most
+    recent events. Falls back to an empty baseline if the log isn't present
+    (shield daemon not running) — the page is still useful as a config view.
+    """
+    import json as _json
+
+    log_path = Path(os.environ.get("AXIOM_SHIELD_LOG", "axiom_os_shield_log.jsonl"))
+    anomalies: list[dict] = []
+    max_dist = 0.0
+
+    if log_path.is_file():
+        try:
+            with log_path.open("r", encoding="utf-8") as fh:
+                lines = fh.readlines()[-100:]   # last 100 entries
+            for line in reversed(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = _json.loads(line)
+                except _json.JSONDecodeError:
+                    continue
+                dist = float(ev.get("constitutional_distance", 0.0))
+                max_dist = max(max_dist, dist)
+                anomalies.append({
+                    "pid":                    ev.get("pid", 0),
+                    "process_name":           ev.get("process_name", "unknown"),
+                    "constitutional_distance": round(dist, 4),
+                    "level":                  ev.get("level", 1),
+                    "timestamp":              ev.get("timestamp", ""),
+                })
+                if len(anomalies) >= 50:
+                    break
+        except OSError:
+            pass
+
+    # Derive threat level from the highest distance seen in the log window
+    if max_dist > 0.06:
+        threat_level = "L1"
+    elif max_dist > 0.04:
+        threat_level = "L2"
+    elif max_dist > 0.02:
+        threat_level = "L3"
+    elif max_dist > 0.005:
+        threat_level = "L4"
+    else:
+        threat_level = "L1"
+
+    return {
+        "threat_level": threat_level,
+        "constitutional_distance": round(max_dist, 4),
+        "anomalies": anomalies,
+    }
+
+
+def _erv_recent_activity(n: int = 20) -> list[dict]:
+    """Serialise recent ERV routing decisions for the OS Shield page."""
+    return [
+        {
+            "timestamp":      d.timestamp,
+            "query_excerpt":  d.token_meaning[:120],
+            "agents_woken":   d.active_agents,
+            "agents_idle":    d.idle_agents,
+            "resonance_score": round(d.token_amplitude, 4),
+            "frequency":      d.token_frequency,
+        }
+        for d in _ERV_ROUTER.recent_decisions(n)
+    ]
+
+
+@app.get("/dashboard/os-shield", response_class=HTMLResponse)
+def os_shield_page(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    erv_bands = [
+        {"agent_id": b.agent_id, "frequency_band": b.frequency_band,
+         "resonance_threshold": b.resonance_threshold}
+        for b in _ERV_ROUTER._bands
+    ]
+    zero_days = [
+        {"token_a_meaning": z.token_a_meaning, "token_b_meaning": z.token_b_meaning,
+         "phase_conflict": z.phase_conflict, "amplitude": z.amplitude,
+         "is_zero_day": z.is_zero_day, "description": z.description,
+         "timestamp": z.timestamp}
+        for z in _ERV_ROUTER.recent_zero_days(20)
+    ]
+    return templates.TemplateResponse(
+        request, "os_shield.html",
+        _ctx(
+            request, tenant=t,
+            shield_data=_os_shield_data(),
+            erv_bands=erv_bands,
+            recent_activity=_erv_recent_activity(20),
+            zero_days=zero_days,
+        ),
+    )
+
+
+@app.get("/dashboard/os-shield/data")
+def os_shield_data_api(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401)
+    return JSONResponse(_os_shield_data())
+
+
+# ─── Sovereign fleet ─────────────────────────────────────────────────────────
+
+
+def _sovereign_fleet_data() -> dict:
+    """Try to load sovereign fleet manifest from sovereign_fleet.json."""
+    candidates = [
+        Path(__file__).parent.parent / "sovereign_fleet.json",
+        Path("sovereign_fleet.json"),
+    ]
+    for p in candidates:
+        if p.is_file():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+    return {"version": "0.0.0", "manifest_signature": "", "agents": []}
+
+
+@app.get("/dashboard/sovereign", response_class=HTMLResponse)
+def sovereign_page(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    fleet = _sovereign_fleet_data()
+    mkb_sovereign: list[dict] = []
+    try:
+        from axiom_mkb import BlockRegistry
+        reg = BlockRegistry()
+        mkb_sovereign = [
+            {"name": b.name, "block_type": b.block_type,
+             "version": b.version, "verified": not getattr(b, "_quarantined", False)}
+            for b in reg.list_blocks("SOVEREIGN")
+        ]
+    except Exception:
+        pass
+    cmaa_routes: list[dict] = []
+    # CMAA routing history not yet exposed as a queryable API.
+    return templates.TemplateResponse(
+        request, "sovereign.html",
+        _ctx(
+            request, tenant=t,
+            fleet=fleet,
+            cmaa_routes=cmaa_routes,
+            mkb_sovereign=mkb_sovereign,
+        ),
+    )
+
+
+# ─── CMR Agent — Customer Manager Agent ─────────────────────────────────────
+
+_CMR_DOMAINS = ["general", "healthcare", "finance", "retail", "legal", "education", "government"]
+
+
+@app.get("/dashboard/cmr", response_class=HTMLResponse)
+def cmr_page(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    agent = _get_cmr_agent()
+    return templates.TemplateResponse(
+        request, "cmr.html",
+        _ctx(
+            request, tenant=t,
+            config=agent.config.to_dict(),
+            test_result=None,
+            recent_decisions=[d.to_dict() for d in agent.recent_decisions()],
+            domains=_CMR_DOMAINS,
+        ),
+    )
+
+
+@app.post("/dashboard/cmr/configure")
+async def cmr_configure(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    form = await request.form()
+    domain = str(form.get("domain", "general"))
+    try:
+        threshold = float(str(form.get("escalation_threshold", "0.5")))
+    except ValueError:
+        threshold = 0.5
+    threshold = max(0.1, min(0.95, threshold))
+    new_cfg = CMRConfig.default(domain)
+    new_cfg = CMRConfig(
+        domain=domain,
+        escalation_threshold=threshold,
+        routing_rules=new_cfg.routing_rules,
+        business_constraints=new_cfg.business_constraints,
+    )
+    _get_cmr_agent(new_cfg)
+    return RedirectResponse("/dashboard/cmr", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/dashboard/cmr/test")
+async def cmr_test(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    form = await request.form()
+    query = str(form.get("query", "")).strip()
+    agent = _get_cmr_agent()
+    result = agent.route(query) if query else None
+    return templates.TemplateResponse(
+        request, "cmr.html",
+        _ctx(
+            request, tenant=t,
+            config=agent.config.to_dict(),
+            test_result=result.to_dict() if result else None,
+            recent_decisions=[d.to_dict() for d in agent.recent_decisions()],
+            domains=_CMR_DOMAINS,
+        ),
+    )
+
+
+# ─── Local LLM / RAG Console ────────────────────────────────────────────────
+
+
+def _ollama_models() -> list[dict] | None:
+    """Fetch available Ollama models from localhost:11434. Returns None if unreachable."""
+    import urllib.request
+    import urllib.error
+    try:
+        req = urllib.request.urlopen(
+            "http://localhost:11434/api/tags", timeout=2
+        )
+        data = json.loads(req.read().decode("utf-8"))
+        return data.get("models", [])
+    except Exception:
+        return None
+
+
+@app.get("/dashboard/local-llm", response_class=HTMLResponse)
+def local_llm_page(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        request, "local_llm.html",
+        _ctx(
+            request, tenant=t,
+            ollama_models=_ollama_models(),
+            rag_results=None,
+            ingest_result=None,
+        ),
+    )
+
+
+@app.post("/dashboard/local-llm/run-rag")
+async def local_llm_run_rag(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401)
+    import asyncio
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent.parent / "research" / "legal"))
+        from legal_rag_bench import LegalRagBench  # type: ignore
+        bench = LegalRagBench()
+        results = await asyncio.to_thread(bench.run)
+        return JSONResponse({"ok": True, "results": results})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/dashboard/local-llm/ingest")
+async def local_llm_ingest(request: Request, file: UploadFile = File(...)):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401)
+    data = await file.read()
+    filename = file.filename or "upload"
+    try:
+        text = data.decode("utf-8", errors="replace")
+    except Exception:
+        text = ""
+    chunks = [text[i:i+1600] for i in range(0, len(text), 1600)]
+    return JSONResponse({
+        "ok": True,
+        "filename": filename,
+        "chunk_count": len(chunks),
+        "corpus_size": len(data),
+        "indexed_docs": 1,
+    })
+
+
+@app.post("/dashboard/local-llm/ingest-cuad")
+async def local_llm_ingest_cuad(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401)
+    import asyncio
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON body required")
+    dataset_path = body.get("dataset_path", "")
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent.parent / "research" / "legal"))
+        from cuad_loader import load_cuad  # type: ignore
+        corpus = await asyncio.to_thread(load_cuad, dataset_path)
+        return JSONResponse({
+            "ok": True, "docs": len(corpus),
+            "dataset_path": dataset_path,
+        })
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# ─── Compliance — MKB + OWASP + domain packs ────────────────────────────────
+
+
+@app.get("/dashboard/compliance", response_class=HTMLResponse)
+def compliance_page(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    installed_packs = [p.name for p in skill_pack.list_installed_packs(t.tenant_id)]
+    active_domains: list[str] = []
+    try:
+        domains_dir = Path(__file__).parent.parent / "axiom_files" / "domains"
+        if domains_dir.is_dir():
+            active_domains = [
+                p.stem for p in sorted(domains_dir.glob("*.axiom"))
+            ]
+    except Exception:
+        pass
+    report = _COMPLIANCE_CHECKER.full_report(
+        active_domains=active_domains,
+        installed_packs=installed_packs,
+    )
+    mkb_blocks: list[dict] = []
+    try:
+        from axiom_mkb import BlockRegistry
+        reg = BlockRegistry()
+        for btype in ("GUARD", "AGENT", "SPEC", "REWARD", "SOVEREIGN", "VALIDATOR"):
+            for b in reg.list_blocks(btype):
+                mkb_blocks.append({
+                    "name":       b.name,
+                    "block_type": b.block_type,
+                    "version":    b.version,
+                    "verified":   not getattr(b, "_quarantined", False),
+                })
+    except Exception:
+        pass
+    return templates.TemplateResponse(
+        request, "compliance.html",
+        _ctx(
+            request, tenant=t,
+            owasp_result=report["owasp"],
+            alerts=report["alerts"],
+            ai_frameworks=report["ai_frameworks"],
+            mkb_blocks=mkb_blocks,
+            active_domains=active_domains,
+        ),
+    )
+
+
+@app.get("/dashboard/compliance/check")
+def compliance_check_api(request: Request):
+    t = _current_tenant(request)
+    if not t:
+        raise HTTPException(status_code=401)
+    installed_packs = [p.name for p in skill_pack.list_installed_packs(t.tenant_id)]
+    report = _COMPLIANCE_CHECKER.check_owasp()
+    return JSONResponse({
+        "coverage_pct": report["summary"].get("coverage_pct", 0),
+        "total": report["summary"].get("total", 0),
+        "covered": report["summary"].get("covered", 0),
+    })

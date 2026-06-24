@@ -46,6 +46,8 @@ MLP style flags:
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import math
 import sys
@@ -322,6 +324,138 @@ def build_sidecar(
     }
 
 
+# ── Measured update helpers ───────────────────────────────────────────────────
+
+def measure_gguf(gguf_path: Path) -> dict:
+    """Read actual GGUF measurements: file size, SHA-256, quant method.
+
+    Returns:
+      gguf_mb        : float — actual file size in MB
+      gguf_sha256    : str   — hex SHA-256 digest (streaming, large-file safe)
+      quant_method   : str   — "SRD_Q4_K_M" if axiom.quant_method KV found,
+                               "Q4_K_M" otherwise
+      srd_confirmed  : bool  — True when axiom.quant_method indicates SRD
+
+    SRD detection order:
+      1. GGUF KV key ``axiom.quant_method`` (written by add_axiom_gguf_meta.py
+         after an ``--annotate --quant-method srd_q4km`` run).
+      2. Presence of a ``.srd4`` sidecar beside the GGUF whose first 8 bytes
+         match the AXMSRD4 magic — covers unmodified community GGUFs that were
+         quantised with SRD outside the annotate pipeline.
+    """
+    p = Path(gguf_path)
+    if not p.exists():
+        raise FileNotFoundError(f"GGUF not found: {p}")
+
+    gguf_mb = round(p.stat().st_size / (1024 ** 2), 1)
+
+    sha = hashlib.sha256()
+    with open(p, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            sha.update(block)
+    gguf_sha256 = sha.hexdigest()
+
+    quant_method  = "Q4_K_M"
+    srd_confirmed = False
+
+    # Check GGUF KV for axiom.quant_method (requires gguf library)
+    try:
+        from gguf import GGUFReader
+        reader = GGUFReader(str(p))
+        for name, field in reader.fields.items():
+            if name == "axiom.quant_method":
+                try:
+                    raw = bytes(field.parts[field.data[0]].tolist()).decode(
+                        "utf-8", errors="replace"
+                    )
+                    if "srd" in raw.lower():
+                        quant_method  = "SRD_Q4_K_M"
+                        srd_confirmed = True
+                except Exception:
+                    pass
+                break
+    except Exception:
+        pass  # non-GGUF file or library not installed — skip KV check
+
+    # Fallback: check for a .srd4 sidecar with AXMSRD4 magic
+    if not srd_confirmed:
+        _SRD4_MAGIC = b"AXMSRD4\x00"
+        for ext in (".srd4", p.stem + ".srd4"):
+            candidate = p.with_suffix(".srd4") if ext == ".srd4" else p.parent / ext
+            if candidate.exists():
+                try:
+                    with open(candidate, "rb") as fh:
+                        if fh.read(8) == _SRD4_MAGIC:
+                            quant_method  = "SRD_Q4_K_M"
+                            srd_confirmed = True
+                except Exception:
+                    pass
+                break
+
+    return {
+        "gguf_mb":       gguf_mb,
+        "gguf_sha256":   gguf_sha256,
+        "quant_method":  quant_method,
+        "srd_confirmed": srd_confirmed,
+    }
+
+
+def update_sidecar(
+    sidecar: dict,
+    gguf_path: Path,
+    quant_method: str = "auto",
+) -> dict:
+    """Update an _estimated sidecar with actual GGUF measurements.
+
+    Flips ``_estimated`` → False, replaces ``gguf_mb_est`` with the real file
+    size, adds ``gguf_sha256``, and updates every transformer chunk's
+    ``precision`` to ``"SRD_Q4_K_M"`` when SRD is confirmed.
+
+    When SRD is confirmed a ``quant_map`` structured dict is added so that
+    ``AXMHeader`` (axiom_axm.py) can consume it via the existing
+    ``_canonicalize_quant_map()`` path.
+
+    quant_method:
+      "auto"     — detect from GGUF KV / .srd4 sidecar (default)
+      "srd_q4km" — force SRD_Q4_K_M regardless of detection
+      "q4km"     — force Q4_K_M  regardless of detection
+
+    Returns a new dict; the original is not modified.
+    """
+    measured = measure_gguf(Path(gguf_path))
+
+    if quant_method.lower() in ("srd_q4km", "srd"):
+        precision     = "SRD_Q4_K_M"
+        srd_confirmed = True
+    elif quant_method.lower() == "q4km":
+        precision     = "Q4_K_M"
+        srd_confirmed = False
+    else:
+        precision     = measured["quant_method"]
+        srd_confirmed = measured["srd_confirmed"]
+
+    out = copy.deepcopy(sidecar)
+    out["_estimated"] = False
+    out.pop("gguf_mb_est", None)
+    out["gguf_mb"]     = measured["gguf_mb"]
+    out["gguf_sha256"] = measured["gguf_sha256"]
+
+    for chunk_data in out.get("transformer_chunks", {}).values():
+        if chunk_data.get("precision", "").startswith("Q4_K_M") or \
+                chunk_data.get("precision", "") == "SRD_Q4_K_M":
+            chunk_data["precision"] = precision
+
+    if srd_confirmed:
+        out["quant_map"] = {
+            "scheme":    "srd_q4km",
+            "bpw":       out.get("bpw", 4.85),
+            "srd_magic": "AXMSRD4",
+            "confirmed": True,
+        }
+
+    return out
+
+
 # ── Pretty printer ────────────────────────────────────────────────────────────
 
 _W = 70
@@ -398,11 +532,54 @@ def _parse_args(argv=None):
     ap.add_argument("--output", type=Path,
                     help="Write sidecar JSON to this path (same format as .axiom_meta.json)")
     ap.add_argument("--quiet", action="store_true", help="Suppress table output")
+    ap.add_argument(
+        "--update-from-gguf", type=Path, metavar="GGUF_PATH",
+        help=(
+            "Read an existing sidecar JSON (--output must point at it), "
+            "measure the GGUF, flip _estimated → false, fill real file size / "
+            "SHA-256, update precision to SRD_Q4_K_M when detected."
+        ),
+    )
+    ap.add_argument(
+        "--quant-method",
+        choices=["auto", "srd_q4km", "q4km"],
+        default="auto",
+        help=(
+            "Override quant-method detection: 'auto' reads axiom.quant_method "
+            "KV or .srd4 magic; 'srd_q4km' forces SRD; 'q4km' forces plain. "
+            "(Only used with --update-from-gguf)"
+        ),
+    )
     return ap.parse_args(argv)
 
 
 def main(argv=None) -> int:
     args = _parse_args(argv)
+
+    # --update-from-gguf: read existing sidecar, measure GGUF, write back
+    if args.update_from_gguf:
+        gguf_p = args.update_from_gguf
+        if not gguf_p.exists():
+            print(f"error: GGUF not found: {gguf_p}", file=sys.stderr)
+            return 1
+        sidecar_p = args.output
+        if sidecar_p is None or not sidecar_p.exists():
+            print(
+                "error: --update-from-gguf requires --output pointing at the "
+                "existing estimated sidecar JSON",
+                file=sys.stderr,
+            )
+            return 1
+        existing = json.loads(sidecar_p.read_text(encoding="utf-8"))
+        print(f"  Measuring {gguf_p.name} ...")
+        updated = update_sidecar(existing, gguf_p, quant_method=args.quant_method)
+        m = {k: updated[k] for k in ("gguf_mb", "gguf_sha256") if k in updated}
+        print(f"  gguf_mb    : {m.get('gguf_mb')} MB")
+        print(f"  gguf_sha256: {m.get('gguf_sha256', '')[:16]}…")
+        print(f"  srd        : {updated.get('quant_map', {}).get('confirmed', False)}")
+        sidecar_p.write_text(json.dumps(updated, indent=2), encoding="utf-8")
+        print(f"  Updated    → {sidecar_p}")
+        return 0
 
     if args.config:
         arch = arch_from_config(args.config, bpw=args.bpw, mlp_style=args.mlp_style)

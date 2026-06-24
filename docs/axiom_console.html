@@ -417,6 +417,19 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   #screen-agents .card-body { padding: 8px; }
 }
 
+/* ── TASK POLICY ── */
+.tp-action-btn { transition: all 0.15s; }
+.tp-action-btn.tp-on { border-color:var(--green) !important; color:var(--green) !important; background:var(--bgreen); }
+.active-agent  { border-color:var(--purple) !important; color:var(--purple) !important; background:rgba(167,139,250,0.08); }
+.policy-rule-card {
+  background:var(--surf); border:1px solid var(--edge); border-radius:8px;
+  padding:10px 12px; margin-bottom:8px; position:relative;
+}
+.policy-rule-card::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%; border-radius:8px 0 0 8px; }
+.policy-rule-card.cc::before  { background:var(--purple); }
+.policy-rule-card.cur::before { background:var(--teal); }
+.policy-rule-card.oth::before { background:var(--blue); }
+
 /* ── TOUCH IMPROVEMENTS (all mobile) ── */
 @media (hover: none) and (pointer: coarse) {
   .nav-btn    { min-height: 36px; }
@@ -457,12 +470,13 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
   <button class="nav-btn" onclick="showScreen('sovereign', this)">◈ Sovereign</button>
   <button class="nav-btn" onclick="showScreen('agentlab', this)">⬡ Agent Lab</button>
   <button class="nav-btn" onclick="showScreen('qcr', this)">⬡ QCR View</button>
+  <button class="nav-btn" onclick="showScreen('taskpolicy', this)">◎ Task Policy</button>
 
   <div class="nav-spacer"></div>
   <div class="nav-divider"></div>
 
   <div class="conn-group">
-    <input class="endpoint-in" id="endpoint" value="http://localhost:8001">
+    <input class="endpoint-in" id="endpoint" value="https://firewall.orivael.dev">
     <button class="btn-connect" id="btn-connect" onclick="connect()"
       style="background:var(--bred);border-color:var(--red);color:var(--red)">CONNECT</button>
   </div>
@@ -1301,7 +1315,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
             <button class="btn-run" onclick="runQCR()" style="white-space:nowrap">▶ Trace</button>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn-sm" onclick="loadQCRDemo()">Load Demo Run</button>
+            <button class="btn-sm" onclick="loadQCRDemo()" title="Load offline example data (no API needed)">Load Offline Example</button>
             <button class="btn-sm" onclick="qcrTab('tree')">Root Tree</button>
             <button class="btn-sm" onclick="qcrTab('manifold')">Manifold</button>
             <button class="btn-sm" onclick="qcrTab('signals')">Two Signals</button>
@@ -1384,6 +1398,140 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
     </div>
 
 
+
+    <!-- ══ TASK POLICY ══ -->
+    <div class="screen" id="screen-taskpolicy" style="display:none">
+
+      <!-- Quick focus presets -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-hdr">
+          <span class="card-title">Quick Focus Presets</span>
+          <span style="font-size:10px;color:var(--mgray);font-family:'IBM Plex Mono',monospace">one-click task lock</span>
+        </div>
+        <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)"
+            onclick="applyPreset('payments')">💳 Payments module</button>
+          <button class="btn-sm" style="border-color:var(--purple);color:var(--purple)"
+            onclick="applyPreset('frontend')">🖼 Frontend only</button>
+          <button class="btn-sm" style="border-color:var(--teal);color:var(--teal)"
+            onclick="applyPreset('tests')">🧪 Tests only</button>
+          <button class="btn-sm" style="border-color:var(--gold);color:var(--gold)"
+            onclick="applyPreset('readonly')">🔍 Read-only audit</button>
+          <button class="btn-sm" style="border-color:var(--green);color:var(--green)"
+            onclick="applyPreset('api')">⚡ API layer</button>
+          <button class="btn-sm" style="border-color:var(--orange);color:var(--orange)"
+            onclick="applyPreset('infra')">🏗 Infra / deploy</button>
+        </div>
+      </div>
+
+      <div class="grid-2" style="align-items:start">
+
+        <!-- Set Policy form -->
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Set Task Policy</span>
+            <span id="tp-status-badge" class="badge badge-blue" style="display:none">SAVED</span>
+          </div>
+          <div class="card-body">
+
+            <!-- Agent -->
+            <div style="margin-bottom:12px">
+              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:6px;text-transform:uppercase">Agent</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn-sm tp-agent-btn active-agent" id="tp-agent-cc"
+                  onclick="selectAgent('claude-code')"
+                  style="border-color:var(--purple);color:var(--purple)">Claude Code</button>
+                <button class="btn-sm tp-agent-btn" id="tp-agent-cu"
+                  onclick="selectAgent('cursor')">Cursor</button>
+                <button class="btn-sm tp-agent-btn" id="tp-agent-custom"
+                  onclick="selectAgent('__custom__')">Custom…</button>
+              </div>
+              <input id="tp-agent-id" value="claude-code"
+                style="display:none;margin-top:8px;width:100%;background:var(--surf);border:1px solid var(--edge);
+                       color:var(--teal);padding:6px 10px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px"
+                placeholder="agent-id">
+            </div>
+
+            <!-- Objective label -->
+            <div style="margin-bottom:12px">
+              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:6px;text-transform:uppercase">Task Objective <span style="color:var(--mgray);font-size:9px">(label only)</span></div>
+              <input id="tp-objective"
+                style="width:100%;background:var(--surf);border:1px solid var(--edge);
+                       color:var(--white);padding:6px 10px;border-radius:6px;font-size:12px"
+                placeholder="e.g. Implement Stripe webhook handler">
+            </div>
+
+            <!-- Allowed actions -->
+            <div style="margin-bottom:12px">
+              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase">Allowed Actions</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap" id="tp-action-toggles">
+                <button class="tp-action-btn btn-sm tp-on" data-action="read"    onclick="toggleAction(this)">read</button>
+                <button class="tp-action-btn btn-sm tp-on" data-action="write"   onclick="toggleAction(this)">write</button>
+                <button class="tp-action-btn btn-sm tp-on" data-action="test"    onclick="toggleAction(this)">test</button>
+                <button class="tp-action-btn btn-sm"       data-action="deploy"  onclick="toggleAction(this)">deploy</button>
+                <button class="tp-action-btn btn-sm"       data-action="git-push" onclick="toggleAction(this)">git-push</button>
+                <button class="tp-action-btn btn-sm"       data-action="git-pull" onclick="toggleAction(this)">git-pull</button>
+                <button class="tp-action-btn btn-sm"       data-action="execute" onclick="toggleAction(this)">execute</button>
+              </div>
+            </div>
+
+            <!-- Allowed paths -->
+            <div style="margin-bottom:12px">
+              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:6px;text-transform:uppercase">Allowed Paths <span style="color:var(--mgray);font-size:9px">comma-separated globs</span></div>
+              <input id="tp-allowed-paths"
+                style="width:100%;background:var(--surf);border:1px solid var(--edge);
+                       color:var(--green);padding:6px 10px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px"
+                placeholder="src/payments/**, tests/payments/**">
+            </div>
+
+            <!-- Blocked paths -->
+            <div style="margin-bottom:16px">
+              <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:6px;text-transform:uppercase">Blocked Paths</div>
+              <input id="tp-blocked-paths"
+                style="width:100%;background:var(--surf);border:1px solid var(--edge);
+                       color:var(--red);padding:6px 10px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px"
+                placeholder="src/auth/**, src/billing/**">
+            </div>
+
+            <div style="display:flex;gap:10px;align-items:center">
+              <button class="btn-run" onclick="setTaskPolicy()" style="flex:1">◎ SET POLICY</button>
+              <button class="btn-sm" onclick="clearPolicyForm()">Reset</button>
+            </div>
+
+            <!-- Result -->
+            <div id="tp-result" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;
+              font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.7;border-left:3px solid"></div>
+          </div>
+        </div>
+
+        <!-- Active policies -->
+        <div class="card">
+          <div class="card-hdr">
+            <span class="card-title">Active Policies</span>
+            <button class="btn-sm" onclick="loadPolicies()">↻ Refresh</button>
+          </div>
+          <div class="card-body" id="tp-policies-list" style="min-height:200px">
+            <div style="color:var(--mgray);font-size:12px;text-align:center;padding:30px 0">
+              Connect and set a policy to see active rules
+            </div>
+          </div>
+
+          <!-- How it works -->
+          <div style="padding:12px 14px;border-top:1px solid var(--edge)">
+            <div style="font-size:10px;color:var(--mgray);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase">How it works</div>
+            <div style="font-size:11px;color:var(--dgray);line-height:1.8;font-family:'IBM Plex Mono',monospace">
+              1. Set policy → writes to <span style="color:var(--teal)">/data_policy/rule</span><br>
+              2. Guard API checks every agent action via <span style="color:var(--teal)">/data_policy/check</span><br>
+              3. Blocked actions return <span style="color:var(--red)">403 DENIED</span> + manifest<br>
+              4. Claude Code / Cursor stay in bounds — no re-prompting<br>
+              <span style="color:var(--purple)">Delete policy to restore full access.</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
 <script>
 
 const API = () => document.getElementById('endpoint').value.trim();
@@ -1418,6 +1566,7 @@ async function connect() {
     var sa = document.getElementById('s-agents');
     if (sa) sa.textContent = Object.keys(agents).length;
     loadDashAgents();
+    loadPolicies();
 
     // Load manifest count
     try {
@@ -1501,6 +1650,7 @@ function showScreen(id, btn) {
     btn.style.color = '#00FF88';
     btn.style.borderColor = 'rgba(0,255,136,0.25)';
   }
+  if (id === 'taskpolicy') loadPolicies();
 }
 
 // ── LOAD AGENTS ──
@@ -1535,7 +1685,7 @@ async function loadAgentsPage() {
       table.innerHTML += `
         <div class="agent-row">
           <div class="agent-name" style="color:${on ? 'var(--white)' : 'var(--mgray)'}">${name}</div>
-          <div class="agent-trust" style="color:var(--teal)">T${Math.floor(Math.random()*2+2)}</div>
+          <div class="agent-trust" style="color:var(--teal)">T${info.trust_level || '—'}</div>
           <div><span class="badge ${on ? 'badge-green' : ''}"
             style="${on ? '' : 'color:var(--mgray);border-color:var(--mgray)'}">
             ${on ? 'ACTIVE' : 'OFF'}
@@ -2171,7 +2321,7 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
     if (!hypothesis) return;
     var module = prompt('ACB module to test (A-F):', 'C_pressure');
     var output = document.getElementById('alab-output');
-    var expNum = String(Math.floor(Math.random()*900)+100);
+    var expNum = String(Date.now()).slice(-6);
     output.innerHTML =
       '<span style="color:var(--green)">EXPERIMENT PROPOSED: EXP-' + expNum + '</span>\n\n' +
       'AGENT LatentExperiment_' + expNum + '\n' +
@@ -2266,14 +2416,42 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function loadQCRDemo() {
+  async function loadQCRDemo() {
+    // Try the live API first; fall back to static offline example only if unreachable
+    if (connected) {
+      const prompt = document.getElementById('latent-prompt').value.trim()
+        || QCR_DEMO.prompt;
+      try {
+        const r = await fetch(`${API()}/latent/run`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ prompt })
+        });
+        if (r.ok) {
+          const data = await r.json();
+          // Normalise to QCR_DATA shape if the live endpoint returns branch data
+          if (data.branches && data.branches.length) {
+            QCR_DATA = data;
+            QCR_SELECTED = null;
+            drawQCRTree();
+            renderQCRManifold();
+            renderQCRKills();
+            var wb = document.getElementById('qcr-winner-badge');
+            var winner = (data.branches.find(b => b.winner) || data.branches[0]);
+            if (wb && winner) wb.textContent = winner.id + ' wins (live)';
+            return;
+          }
+        }
+      } catch(e) { /* fall through to offline */ }
+    }
+    // Offline fallback — clearly marked
     QCR_DATA = QCR_DEMO;
     QCR_SELECTED = null;
     drawQCRTree();
     renderQCRManifold();
     renderQCRKills();
     var wb = document.getElementById('qcr-winner-badge');
-    if (wb) wb.textContent = 'SafetyBranch wins';
+    if (wb) wb.textContent = 'SafetyBranch wins (offline example)';
   }
 
   function qcrDistColor(d, thr) {
@@ -2494,6 +2672,252 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
     } catch(e) {
       loadQCRDemo();
     }
+  }
+
+
+  // ══════════════════════════════════════════════
+  // TASK POLICY
+  // ══════════════════════════════════════════════
+
+  const PRESETS = {
+    payments: {
+      objective:    'Implement / modify the payments module',
+      allowed:      ['read','write','test'],
+      blocked:      [],
+      allowedPaths: 'src/payments/**,tests/payments/**',
+      blockedPaths: 'src/auth/**,src/billing/**,src/admin/**',
+    },
+    frontend: {
+      objective:    'Frontend UI work only',
+      allowed:      ['read','write','test'],
+      blocked:      ['deploy','git-push'],
+      allowedPaths: 'src/components/**,src/pages/**,public/**,styles/**',
+      blockedPaths: 'src/api/**,src/db/**,migrations/**',
+    },
+    tests: {
+      objective:    'Write / fix tests — no production code changes',
+      allowed:      ['read','write','test'],
+      blocked:      ['deploy','git-push','execute'],
+      allowedPaths: 'tests/**,__tests__/**,*.test.*,*.spec.*',
+      blockedPaths: 'src/**,migrations/**,infra/**',
+    },
+    readonly: {
+      objective:    'Read-only audit — no writes',
+      allowed:      ['read'],
+      blocked:      ['write','deploy','git-push','execute'],
+      allowedPaths: '',
+      blockedPaths: '',
+    },
+    api: {
+      objective:    'API layer — routes, handlers, middleware',
+      allowed:      ['read','write','test'],
+      blocked:      ['deploy'],
+      allowedPaths: 'src/api/**,src/routes/**,src/middleware/**,tests/api/**',
+      blockedPaths: 'src/admin/**,infra/**',
+    },
+    infra: {
+      objective:    'Infrastructure and deployment config',
+      allowed:      ['read','write','deploy','git-push'],
+      blocked:      [],
+      allowedPaths: 'infra/**,deploy/**,.github/**,docker/**,*.yml,*.yaml',
+      blockedPaths: 'src/**',
+    },
+  };
+
+  function applyPreset(key) {
+    const p = PRESETS[key];
+    if (!p) return;
+    document.getElementById('tp-objective').value       = p.objective;
+    document.getElementById('tp-allowed-paths').value   = p.allowedPaths;
+    document.getElementById('tp-blocked-paths').value   = p.blockedPaths;
+    document.querySelectorAll('.tp-action-btn').forEach(function(btn) {
+      const act = btn.dataset.action;
+      if (p.allowed.includes(act)) {
+        btn.classList.add('tp-on');
+      } else {
+        btn.classList.remove('tp-on');
+      }
+    });
+  }
+
+  function toggleAction(btn) {
+    btn.classList.toggle('tp-on');
+  }
+
+  function selectAgent(id) {
+    document.querySelectorAll('.tp-agent-btn').forEach(function(b) {
+      b.classList.remove('active-agent');
+      b.style.borderColor = '';
+      b.style.color = '';
+    });
+    const customInput = document.getElementById('tp-agent-id');
+    if (id === '__custom__') {
+      customInput.style.display = 'block';
+      customInput.value = '';
+      customInput.focus();
+      document.getElementById('tp-agent-custom').classList.add('active-agent');
+    } else {
+      customInput.style.display = 'none';
+      customInput.value = id;
+      const btnId = id === 'claude-code' ? 'tp-agent-cc' : 'tp-agent-cu';
+      document.getElementById(btnId).classList.add('active-agent');
+    }
+  }
+
+  function clearPolicyForm() {
+    document.getElementById('tp-objective').value     = '';
+    document.getElementById('tp-allowed-paths').value = '';
+    document.getElementById('tp-blocked-paths').value = '';
+    document.querySelectorAll('.tp-action-btn').forEach(function(btn) {
+      btn.classList.remove('tp-on');
+      if (['read','write','test'].includes(btn.dataset.action)) btn.classList.add('tp-on');
+    });
+    document.getElementById('tp-result').style.display = 'none';
+  }
+
+  async function setTaskPolicy() {
+    if (!connected) { alert('Connect to Guard API first'); return; }
+    const agentId = document.getElementById('tp-agent-id').value.trim();
+    if (!agentId) { alert('Select or enter an agent ID'); return; }
+
+    const allowedActions = Array.from(document.querySelectorAll('.tp-action-btn.tp-on'))
+      .map(function(b) { return b.dataset.action; });
+
+    const blockedActions = Array.from(document.querySelectorAll('.tp-action-btn:not(.tp-on)'))
+      .map(function(b) { return b.dataset.action; });
+
+    const parseList = function(raw) {
+      return raw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    };
+
+    const allowedPaths = parseList(document.getElementById('tp-allowed-paths').value);
+    const blockedPaths = parseList(document.getElementById('tp-blocked-paths').value);
+
+    const payload = {
+      agent_id:              agentId,
+      allowed_actions:       allowedActions,
+      blocked_actions:       blockedActions,
+      allowed_data_classes:  allowedPaths,
+      blocked_data_classes:  blockedPaths,
+    };
+
+    const res  = document.getElementById('tp-result');
+    const badge = document.getElementById('tp-status-badge');
+    res.style.display = 'none';
+    badge.style.display = 'none';
+
+    try {
+      const r = await fetch(API() + '/data_policy/rule', {
+        method:  'PUT',
+        headers: {'Content-Type':'application/json'},
+        body:    JSON.stringify(payload),
+        signal:  AbortSignal.timeout(8000),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || r.status);
+
+      const objective = document.getElementById('tp-objective').value.trim();
+      const allowed   = allowedActions.join(', ') || '—';
+      const blocked   = blockedPaths.join(', ')   || 'none';
+
+      res.style.display     = 'block';
+      res.style.background  = 'var(--bgreen)';
+      res.style.borderColor = 'var(--green)';
+      res.style.color       = 'var(--green)';
+      res.innerHTML =
+        '<span style="font-size:13px;font-weight:700">◎ POLICY SET</span><br>' +
+        'agent: <span style="color:var(--white)">' + agentId + '</span><br>' +
+        (objective ? 'task: <span style="color:var(--white)">' + objective + '</span><br>' : '') +
+        'allowed: <span style="color:var(--white)">' + allowed + '</span><br>' +
+        (blockedPaths.length ? 'blocked paths: <span style="color:var(--red)">' + blocked + '</span><br>' : '') +
+        'rule_id: <span style="color:var(--teal)">' + (d.rule_id || '—') + '</span>';
+
+      badge.style.display = 'inline';
+      badge.textContent   = 'SAVED';
+      badge.className     = 'badge badge-green';
+
+      loadPolicies();
+      addFeedItem('POLICY SET — ' + agentId + (objective ? ': ' + objective : ''), 'verified');
+
+    } catch(e) {
+      res.style.display     = 'block';
+      res.style.background  = 'var(--bred)';
+      res.style.borderColor = 'var(--red)';
+      res.style.color       = 'var(--red)';
+      res.innerHTML =
+        '<span style="font-weight:700">ERROR</span><br>' + e.message +
+        '<br><span style="color:var(--mgray)">Is /data_policy/ enabled on this server?</span>';
+    }
+  }
+
+  async function loadPolicies() {
+    if (!connected) return;
+    const list = document.getElementById('tp-policies-list');
+    try {
+      const r = await fetch(API() + '/data_policy/rules', { signal: AbortSignal.timeout(6000) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const rules = d.rules || [];
+      if (!rules.length) {
+        list.innerHTML = '<div style="color:var(--mgray);font-size:12px;text-align:center;padding:30px 0">No active policies</div>';
+        return;
+      }
+      list.innerHTML = rules.map(function(rule) {
+        const cls     = rule.agent_id === 'claude-code' ? 'cc' : rule.agent_id === 'cursor' ? 'cur' : 'oth';
+        const allowed = (rule.allowed_actions || []).join(', ')       || '—';
+        const blocked = (rule.blocked_actions || []).join(', ')       || '—';
+        const aPaths  = (rule.allowed_data_classes || []).join(', ')  || 'all';
+        const bPaths  = (rule.blocked_data_classes || []).join(', ')  || 'none';
+        return '<div class="policy-rule-card ' + cls + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+            '<span style="font-size:12px;font-weight:700;color:var(--white)">' + rule.agent_id + '</span>' +
+            '<button class="btn-sm" style="border-color:var(--red);color:var(--red);padding:3px 9px;font-size:10px" ' +
+              'onclick="deletePolicy(\'' + rule.agent_id + '\')">✕ Remove</button>' +
+          '</div>' +
+          '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;line-height:1.9;color:var(--dgray)">' +
+            'actions: <span style="color:var(--green)">' + allowed + '</span>  ' +
+            'blocked: <span style="color:var(--red)">'   + blocked + '</span><br>' +
+            (aPaths !== 'all' ? 'paths: <span style="color:var(--teal)">' + aPaths + '</span><br>' : '') +
+            (bPaths !== 'none' ? 'deny: <span style="color:var(--orange)">' + bPaths + '</span><br>' : '') +
+            '<span style="color:var(--mgray)">rule_id: ' + (rule.rule_id || '—') + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    } catch(e) {
+      list.innerHTML = '<div style="color:var(--red);font-size:11px;font-family:\'IBM Plex Mono\',monospace;padding:12px">' +
+        'Could not load policies<br><span style="color:var(--mgray)">' + e.message + '</span></div>';
+    }
+  }
+
+  async function deletePolicy(agentId) {
+    if (!connected) return;
+    if (!confirm('Remove policy for ' + agentId + '?')) return;
+    try {
+      const r = await fetch(API() + '/data_policy/rule/' + encodeURIComponent(agentId), {
+        method: 'DELETE', signal: AbortSignal.timeout(6000)
+      });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.detail || r.status); }
+      loadPolicies();
+      addFeedItem('POLICY REMOVED — ' + agentId, 'suspicious');
+    } catch(e) {
+      alert('Delete failed: ' + e.message);
+    }
+  }
+
+  function addFeedItem(text, verdict) {
+    const feed = document.getElementById('live-feed');
+    if (!feed) return;
+    const old = feed.querySelector('[data-placeholder]');
+    if (old) old.remove();
+    const item = document.createElement('div');
+    item.className = 'feed-item ' + verdict;
+    const vcolor = { verified:'var(--green)', blocked:'var(--red)', suspicious:'var(--gold)' };
+    item.innerHTML =
+      '<div class="feed-verdict" style="color:' + (vcolor[verdict]||'var(--green)') + '">' +
+        verdict.toUpperCase() + '</div>' +
+      '<div class="feed-text">' + text + '</div>' +
+      '<div class="feed-meta">' + new Date().toLocaleTimeString('en-US',{hour12:false}) + '</div>';
+    feed.prepend(item);
   }
 
 </script>

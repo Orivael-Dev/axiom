@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block title %}Local LLM / RAG — Orivael Governance Console{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page shell ──────────────────────────────────────────────────────── */
+  .llm-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 0 3rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .llm-page h1 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 0.2rem;
+  }
+  .llm-page .page-sub {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 2rem;
+  }
+
+  /* ── Section card ────────────────────────────────────────────────────── */
+  .llm-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.25rem;
+  }
+  .llm-card h2 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #72f7d4;
+    margin-bottom: 1rem;
+  }
+
+  /* ── Model status row ────────────────────────────────────────────────── */
+  .model-status-row {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .ms-field .ms-label {
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 0.2rem;
+  }
+  .ms-field .ms-value {
+    font-size: 0.9rem;
+    color: var(--fg);
+  }
+  .ms-field .ms-value.accent { color: #72f7d4; }
+
+  /* ── No-model alert ──────────────────────────────────────────────────── */
+  .no-model-alert {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  /* ── Data tables ─────────────────────────────────────────────────────── */
+  .llm-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .llm-table thead th {
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .llm-table tbody td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+    color: var(--fg);
+  }
+  .llm-table tbody tr:last-child td { border-bottom: none; }
+  .llm-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ── Form elements ───────────────────────────────────────────────────── */
+  .llm-form .field-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 1rem;
+  }
+  .llm-form label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .llm-form input[type="text"],
+  .llm-form input[type="file"] {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 0.85rem;
+    padding: 0.5rem 0.75rem;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .llm-form input:focus { border-color: rgba(114,247,212,0.4); }
+  .llm-form button[type="submit"],
+  .action-btn {
+    background: rgba(114,247,212,0.1);
+    border: 1px solid rgba(114,247,212,0.35);
+    color: #72f7d4;
+    font-family: inherit;
+    font-size: 0.83rem;
+    font-weight: 600;
+    padding: 0.45rem 1.1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: inline-block;
+    text-decoration: none;
+  }
+  .llm-form button[type="submit"]:hover,
+  .action-btn:hover { background: rgba(114,247,212,0.18); }
+
+  /* ── Set-active form in table ────────────────────────────────────────── */
+  .set-active-form { display: inline; }
+  .set-active-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .set-active-btn:hover { background: rgba(114,247,212,0.12); border-color: rgba(114,247,212,0.3); color: #72f7d4; }
+
+  /* ── Result block ────────────────────────────────────────────────────── */
+  .result-block {
+    background: rgba(114,247,212,0.04);
+    border: 1px solid rgba(114,247,212,0.18);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    margin-top: 1rem;
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+  .rb-field .rb-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 0.2rem;
+  }
+  .rb-field .rb-value {
+    font-size: 0.9rem;
+    color: #72f7d4;
+  }
+
+  /* ── Unreachable notice ──────────────────────────────────────────────── */
+  .unreachable-notice {
+    background: rgba(255,107,107,0.06);
+    border: 1px solid rgba(255,107,107,0.22);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-size: 0.83rem;
+    color: #ff6b6b;
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────────────── */
+  .empty-state {
+    font-size: 0.83rem;
+    color: var(--muted);
+    font-style: italic;
+    padding: 0.4rem 0;
+  }
+</style>
+
+<div class="llm-page">
+  <h1>Local LLM / RAG</h1>
+  <p class="page-sub">Ollama model management · RAG benchmarking · Document ingestion</p>
+
+  {# ── 1. Model Status Card ──────────────────────────────────────────── #}
+  <div class="llm-card">
+    <h2>Model Status</h2>
+    {% if current_model and current_model.model != "none" %}
+      <div class="model-status-row">
+        <div class="ms-field">
+          <div class="ms-label">Backend</div>
+          <div class="ms-value accent">{{ current_model.backend }}</div>
+        </div>
+        <div class="ms-field">
+          <div class="ms-label">Model</div>
+          <div class="ms-value accent">{{ current_model.model }}</div>
+        </div>
+        {% if current_model.latency_ms is defined %}
+        <div class="ms-field">
+          <div class="ms-label">Last Latency</div>
+          <div class="ms-value">{{ current_model.latency_ms }} <span style="color:var(--muted); font-size:0.75rem;">ms</span></div>
+        </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="no-model-alert">
+        No model active — start Ollama or configure a backend in Account settings.
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── 2. Ollama Model List ──────────────────────────────────────────── #}
+  <div class="llm-card">
+    <h2>Ollama Models</h2>
+    {% if ollama_models is none %}
+      <div class="unreachable-notice">
+        Ollama not reachable at <code>localhost:11434</code>. Start Ollama and reload this page.
+      </div>
+    {% elif ollama_models %}
+      <table class="llm-table">
+        <thead>
+          <tr>
+            <th>Model Name</th>
+            <th>Size</th>
+            <th>Modified</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in ollama_models %}
+          <tr>
+            <td><code style="font-size:0.82rem; color:#72f7d4;">{{ m.name }}</code></td>
+            <td style="color:var(--muted);">
+              {% if m.size is defined %}
+                {% set sz = m.size | int %}
+                {% if sz >= 1073741824 %}
+                  {{ (sz / 1073741824) | round(2) }} GB
+                {% elif sz >= 1048576 %}
+                  {{ (sz / 1048576) | round(1) }} MB
+                {% else %}
+                  {{ sz }} B
+                {% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td style="color:var(--muted); font-size:0.78rem;">{{ m.modified_at if m.modified_at else "—" }}</td>
+            <td>
+              <form method="post" action="/dashboard/local-llm/set-model" class="set-active-form">
+                <input type="hidden" name="model" value="{{ m.name }}">
+                <button type="submit" class="set-active-btn">Set Active</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No Ollama models found. Pull a model with <code>ollama pull &lt;model&gt;</code>.</p>
+    {% endif %}
+  </div>
+
+  {# ── 3. RAG Benchmark ─────────────────────────────────────────────── #}
+  <div class="llm-card">
+    <h2>RAG Benchmark</h2>
+    <form method="post" action="/dashboard/local-llm/run-rag" class="llm-form">
+      <button type="submit">Run Legal RAG Bench</button>
+    </form>
+
+    {% if rag_results %}
+      <table class="llm-table" style="margin-top:1rem;">
+        <thead>
+          <tr>
+            <th>Track</th>
+            <th>Hit@10</th>
+            <th>MRR</th>
+            <th>Misses</th>
+            <th>Latency (ms)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rag_results %}
+          <tr>
+            <td style="color:#72f7d4;">{{ r.track }}</td>
+            <td>{{ r.hit_at_10 }}</td>
+            <td>{{ r.mrr }}</td>
+            <td style="color:{% if r.misses > 0 %}#ff9c40{% else %}var(--muted){% endif %};">{{ r.misses }}</td>
+            <td style="color:var(--muted);">{{ r.latency_ms }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+
+  {# ── 4. Document Ingestion ─────────────────────────────────────────── #}
+  <div class="llm-card">
+    <h2>Document Ingestion</h2>
+    <form method="post" action="/dashboard/local-llm/ingest"
+          enctype="multipart/form-data"
+          class="llm-form">
+      <div class="field-row">
+        <label for="ingest-file">Upload Documents</label>
+        <input type="file"
+               id="ingest-file"
+               name="file"
+               accept=".pdf,.txt,.md,.jsonl"
+               multiple>
+      </div>
+      <button type="submit">Ingest Documents</button>
+    </form>
+
+    {% if ingest_result %}
+      <div class="result-block">
+        <div class="rb-field">
+          <div class="rb-label">Chunks Indexed</div>
+          <div class="rb-value">{{ ingest_result.chunk_count }}</div>
+        </div>
+        <div class="rb-field">
+          <div class="rb-label">Corpus Size</div>
+          <div class="rb-value">{{ ingest_result.corpus_size }}</div>
+        </div>
+        <div class="rb-field">
+          <div class="rb-label">Indexed Documents</div>
+          <div class="rb-value">{{ ingest_result.indexed_docs }}</div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── 5. CUAD Dataset Loader ────────────────────────────────────────── #}
+  <div class="llm-card">
+    <h2>CUAD Dataset Loader</h2>
+    <form method="post" action="/dashboard/local-llm/ingest-cuad" class="llm-form">
+      <div class="field-row">
+        <label for="cuad-path">Dataset Path or HuggingFace ID</label>
+        <input type="text"
+               id="cuad-path"
+               name="dataset_path"
+               placeholder="e.g. /data/cuad or HF dataset ID">
+      </div>
+      <button type="submit">Load CUAD Dataset</button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}
