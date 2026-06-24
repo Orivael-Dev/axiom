@@ -15,7 +15,7 @@ Three modes:
   BIDIRECTIONAL — both (maximum protection)
 
 Usage:
-  pip install fastapi uvicorn anthropic axiom-constitutional
+  pip install fastapi uvicorn anthropic openai axiom-constitutional
 
   # Start the Guard API
   uvicorn axiom_guard_api:app --host 0.0.0.0 --port 8001
@@ -69,6 +69,13 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
+
+# ── Try to import OpenAI SDK for NIM / OpenAI-compatible backends
+try:
+    from openai import OpenAI as OpenAIClient
+    OPENAI_SDK_AVAILABLE = True
+except ImportError:
+    OPENAI_SDK_AVAILABLE = False
 
 # ── Latent reasoning engine ────────────────────────────────────
 try:
@@ -351,6 +358,86 @@ def check_constitutional(text: str, agents: list) -> dict:
     }
 
 
+def _llm_backend() -> Optional[str]:
+    """Detect which LLM backend is configured via environment.
+
+    Priority: NIM (NVIDIA NIM / OpenAI-compatible) > Anthropic.
+    Returns "nim", "anthropic", or None.
+    """
+    nim_key = os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+    if nim_key and OPENAI_SDK_AVAILABLE:
+        return "nim"
+    if os.environ.get("ANTHROPIC_API_KEY") and ANTHROPIC_AVAILABLE:
+        return "anthropic"
+    return None
+
+
+def _default_model(backend: Optional[str]) -> str:
+    if backend == "nim":
+        return os.environ.get("NIM_MODEL", "deepseek-ai/deepseek-r1")
+    return guard_config.get("anthropic_model", "claude-sonnet-4-6")
+
+
+def _call_llm(
+    *,
+    prompt: Optional[str] = None,
+    system: Optional[str] = None,
+    model: Optional[str] = None,
+    max_tokens: int = 1000,
+    messages: Optional[list] = None,
+) -> str:
+    """Call the configured LLM backend. Returns the response text.
+
+    Supports NIM (OpenAI-compatible, e.g. DeepSeek V4 Pro) and Anthropic.
+    Backend is selected by environment variables:
+      NIM_API_KEY / NVIDIA_API_KEY  → NIM via NIM_BASE_URL
+      ANTHROPIC_API_KEY             → Anthropic SDK
+    """
+    backend = _llm_backend()
+    if backend is None:
+        raise HTTPException(
+            503,
+            "No LLM backend configured. Set NIM_API_KEY (for NIM/DeepSeek) "
+            "or ANTHROPIC_API_KEY (for Anthropic).",
+        )
+
+    resolved_model = model or _default_model(backend)
+
+    if backend == "nim":
+        nim_key  = os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+        base_url = os.environ.get("NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+        client   = OpenAIClient(base_url=base_url, api_key=nim_key)
+        if messages is None:
+            msgs: list = []
+            if system:
+                msgs.append({"role": "system", "content": system})
+            msgs.append({"role": "user", "content": prompt or ""})
+        else:
+            msgs = messages
+        resp = client.chat.completions.create(
+            model=resolved_model, max_tokens=max_tokens, messages=msgs
+        )
+        return resp.choices[0].message.content or ""
+
+    # Anthropic path
+    client_a = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    kwargs: dict = {"model": resolved_model, "max_tokens": max_tokens}
+    if messages is not None:
+        anthropic_msgs   = [m for m in messages if m.get("role") != "system"]
+        system_from_msgs = next(
+            (m["content"] for m in messages if m.get("role") == "system"), None
+        )
+        kwargs["messages"] = anthropic_msgs
+        if system_from_msgs:
+            kwargs["system"] = system_from_msgs
+    else:
+        kwargs["messages"] = [{"role": "user", "content": prompt or ""}]
+        if system:
+            kwargs["system"] = system
+    resp_a = client_a.messages.create(**kwargs)
+    return resp_a.content[0].text
+
+
 def sign_manifest(manifest: dict) -> str:
     """Generate HMAC-SHA256 signature for a manifest."""
     sig_data = {k: v for k, v in manifest.items() if k != "signature"}
@@ -461,6 +548,7 @@ class CCGSeedRequest(BaseModel):
 @app.get("/guard/status")
 async def status():
     """Health check and configuration summary."""
+    _backend = _llm_backend()
     return {
         "status":          "operational",
         "version":         VERSION,
@@ -468,7 +556,12 @@ async def status():
         "mode":            guard_config["mode"],
         "active_agents":   guard_config["active_agents"],
         "manifests_stored": len(MANIFEST_STORE),
+        "llm_backend":     _backend or "none",
+        "llm_model":       _default_model(_backend),
         "anthropic_ready": ANTHROPIC_AVAILABLE and bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "nim_ready":       OPENAI_SDK_AVAILABLE and bool(
+            os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+        ),
         "timestamp":       datetime.utcnow().isoformat() + "Z",
         "patent":          "ORVL-001-PROV · ORVL-002-PROV",
         "install":         "pip install axiom-constitutional",
@@ -562,23 +655,23 @@ async def proxy(req: ProxyRequest):
 
     Flow:
       1. Check prompt (input filter)
-      2. If safe: send to LLM (Anthropic)
+      2. If safe: send to configured LLM backend
       3. Check response (output filter)
       4. Return verified response + manifests
 
-    Requires: ANTHROPIC_API_KEY environment variable
+    Requires: NIM_API_KEY (for NIM/DeepSeek) or ANTHROPIC_API_KEY
     """
-    if not ANTHROPIC_AVAILABLE:
-        raise HTTPException(503, "Anthropic package not installed. pip install anthropic")
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set")
+    if _llm_backend() is None:
+        raise HTTPException(
+            503,
+            "No LLM backend configured. Set NIM_API_KEY (for NIM/DeepSeek) "
+            "or ANTHROPIC_API_KEY (for Anthropic).",
+        )
 
     t0         = time.time()
     request_id = str(uuid.uuid4())[:8]
     agents     = req.agents or guard_config["active_agents"]
-    model      = req.model or guard_config["anthropic_model"]
+    model      = req.model or _default_model(_llm_backend())
 
     result = {
         "request_id":    request_id,
@@ -613,17 +706,14 @@ async def proxy(req: ProxyRequest):
 
     # Step 2 — Call LLM
     try:
-        t2     = time.time()
-        client = Anthropic(api_key=api_key)
-        msgs   = [{"role": "user", "content": req.prompt}]
-        kwargs = {"model": model, "max_tokens": 1000, "messages": msgs}
-        if req.system:
-            kwargs["system"] = req.system
-
-        resp        = client.messages.create(**kwargs)
-        llm_text    = resp.content[0].text
-        llm_ms      = int((time.time() - t2) * 1000)
-        result["llm_latency_ms"] = llm_ms
+        t2       = time.time()
+        llm_text = _call_llm(
+            prompt=req.prompt, system=req.system,
+            model=model, max_tokens=1000,
+        )
+        result["llm_latency_ms"] = int((time.time() - t2) * 1000)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(502, f"LLM call failed: {e}")
 
@@ -710,6 +800,7 @@ async def list_agents():
             "callguard": {
                 "description": "Scam call protection — 7 constitutional blocks",
                 "certified":   "21/21 tests",
+                "trust_level": 4,
                 "blocks": ["IRS_PAYMENT_DEMAND", "GIFT_CARD_PAYMENT", "WARRANT_THREAT",
                            "SSA_NUMBER_SUSPENDED", "MEDICARE_CARD_REQUEST",
                            "BANK_SPOOFING", "TECH_SUPPORT_UNSOLICITED"],
@@ -717,23 +808,27 @@ async def list_agents():
             "medical": {
                 "description": "Medical information safety — dangerous advice blocks",
                 "certified":   "26/26 tests",
+                "trust_level": 4,
                 "blocks": ["DANGEROUS_MEDICAL_ADVICE", "STOP_PRESCRIBED_MEDICATION",
                            "REPLACE_CHEMOTHERAPY", "VACCINE_MISINFORMATION"],
             },
             "electionguard": {
                 "description": "Election integrity — AP-only race calls",
                 "certified":   "26/26 tests",
+                "trust_level": 4,
                 "blocks": ["EXIT_POLL_AS_RESULT", "SOCIAL_MEDIA_VOTE_COUNT",
                            "SYNTHETIC_ELECTION_CONTENT"],
             },
             "truthwatcher": {
                 "description": "News verification — 5-tier source registry",
                 "certified":   "21/21 tests",
+                "trust_level": 3,
                 "blocks": ["TIER5_SOURCE", "FABRICATED_STATISTIC"],
             },
             "retailwatcher": {
                 "description": "E-commerce fraud — fake reviews + price fraud",
                 "certified":   "26/26 tests",
+                "trust_level": 3,
                 "blocks": ["FAKE_REVIEWS", "GHOST_PRICE", "COUNTERFEIT_SIGNAL"],
             },
         },
@@ -1029,13 +1124,13 @@ async def openai_chat_proxy(request: Request):
     """OpenAI-compatible endpoint — proxies through constitutional guard.
 
     iFixAi and other OpenAI-speaking tools can hit this endpoint.
-    Flow: input guard → Anthropic LLM → output guard → OpenAI-format response.
+    Flow: input guard → configured LLM backend → output guard → OpenAI-format response.
     """
     body = await request.json()
     messages = body.get("messages", [])
     last_msg = messages[-1]["content"] if messages else ""
     system_msg = next((m["content"] for m in messages if m["role"] == "system"), None)
-    model = body.get("model", guard_config["anthropic_model"])
+    model = body.get("model") or _default_model(_llm_backend())
 
     # Input guard
     agents = guard_config["active_agents"]
@@ -1050,20 +1145,17 @@ async def openai_chat_proxy(request: Request):
                 "message": {"role": "assistant",
                 "content": f"BLOCKED: {block_reason}{_CITE}"}}]}
 
-    # Proxy to Anthropic
-    if not ANTHROPIC_AVAILABLE:
-        raise HTTPException(503, "anthropic package not installed")
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set")
-    client = Anthropic(api_key=api_key)
-    kwargs = {"model": model, "max_tokens": int(body.get("max_tokens", 1024)),
-              "messages": [{"role": m["role"], "content": m["content"]}
-                           for m in messages if m["role"] != "system"]}
-    if system_msg:
-        kwargs["system"] = system_msg
-    resp = client.messages.create(**kwargs)
-    llm_text = resp.content[0].text
+    # Proxy to configured LLM backend
+    try:
+        llm_text = _call_llm(
+            messages=[{"role": m["role"], "content": m["content"]} for m in messages],
+            model=model,
+            max_tokens=int(body.get("max_tokens", 1024)),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"LLM call failed: {e}")
 
     # Output guard
     output_check = check_constitutional(llm_text, agents)
@@ -1451,6 +1543,133 @@ async def data_gate_erasure(
     tenant_id = x_axiom_tenant or "default"
     cert = erase_subject_data(tenant_id, subject_id)
     return cert
+
+
+
+# ════════════════════════════════════════════════════════════
+# PHONE GATE / BYOD  (ORVL-019)
+# ════════════════════════════════════════════════════════════
+#
+# Exposes the AXIOM Sovereign Phone Architecture (ASPA) pipeline as REST
+# endpoints so BYOD clients (Android app, Nano test client) can call the
+# constitutional coprocessor without bundling the full Python stack.
+#
+# BYOD Nano env vars:
+#   NANO_BASE_URL   OpenAI-compatible local endpoint (default: http://localhost:11434/v1)
+#   NANO_MODEL      model name (default: qwen2.5:0.5b)
+#
+# If NANO_BASE_URL / NANO_MODEL are set on the Hetzner server they wire the
+# cloud-side Nano stub; for real BYOD the client runs NanoSLM locally and
+# only calls /phone/outbound + /phone/inbound for the coprocessor gates.
+
+_phone_singleton = None
+
+
+def _get_phone():
+    global _phone_singleton
+    if _phone_singleton is None:
+        try:
+            from axiom_sovereign_phone import SovereignPhone
+            _phone_singleton = SovereignPhone()
+        except Exception as exc:
+            raise HTTPException(503, f"SovereignPhone not available: {exc}")
+    return _phone_singleton
+
+
+class PhoneOutboundRequest(BaseModel):
+    text:       str
+    session_id: Optional[str]  = None
+    trajectory: Optional[list] = None
+
+
+class PhoneInboundRequest(BaseModel):
+    text:                str
+    session_id:          Optional[str]  = None
+    trajectory:          Optional[list] = None
+    redacted_categories: Optional[list] = None
+
+
+@app.post("/phone/outbound")
+async def phone_outbound(req: PhoneOutboundRequest):
+    """Outbound constitutional gate.
+
+    Classifies intent, redacts PII, and either blocks (HARM/DECEIVE) or
+    returns a signed OutboundDecision with the redacted text ready for
+    cloud transmission.  If the server has NANO_BASE_URL configured and
+    the query is a simple INFORM, also returns a local nano_answer so
+    the BYOD client can respond without a cloud round-trip.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.outbound_gate(
+        req.text, trajectory=req.trajectory, session_id=req.session_id
+    )
+    d = asdict(result)
+    d["blocked"] = "level" in d and d.get("level") is not None
+
+    # Local Nano answer for benign INFORM queries
+    if not d["blocked"] and d.get("intent_class") in ("INFORM", "CLARIFY"):
+        nano_answer = phone.neural.answer_locally(req.text)
+        if nano_answer:
+            d["nano_answer"]      = nano_answer
+            d["answered_locally"] = True
+    return d
+
+
+@app.post("/phone/inbound")
+async def phone_inbound(req: PhoneInboundRequest):
+    """Inbound constitutional gate.
+
+    Checks every cloud response for MANIPULATE/DECEIVE intent, monotonic
+    trajectory violations, and PII injection before the BYOD client displays
+    it to the user.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.inbound_gate(
+        req.text,
+        trajectory=req.trajectory,
+        redacted_categories=req.redacted_categories or [],
+        session_id=req.session_id,
+    )
+    d = asdict(result)
+    d["blocked"] = "level" in d and d.get("level") is not None
+    return d
+
+
+@app.get("/phone/status")
+async def phone_status():
+    """ASPA pipeline status — device fingerprint, ANF call count, Nano readiness."""
+    phone = _get_phone()
+    s = phone.status()
+    # Prefer env over SovereignPhone defaults for display
+    s["nano_base_url"] = os.environ.get("NANO_BASE_URL", s.get("nano_base_url", ""))
+    s["nano_model"]    = os.environ.get("NANO_MODEL",    s.get("nano_model", ""))
+    return s
+
+
+@app.post("/phone/call_trajectory")
+async def phone_call_trajectory(
+    session_id: str,
+    utterance:  str,
+    timestamp_s: float = 0.0,
+):
+    """Hello Operator — feed one call utterance and get a trajectory verdict.
+
+    Call repeatedly as the call develops. The coprocessor accumulates
+    session blocks and escalates L1 → L2 → L3 per ORVL-019 §4.
+    Returns the OutboundDecision or SovereignAlert for this utterance.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.outbound_gate(
+        utterance, session_id=session_id
+    )
+    d = asdict(result)
+    d["blocked"]      = "level" in d and d.get("level") is not None
+    d["timestamp_s"]  = timestamp_s
+    d["session_id"]   = session_id
+    return d
 
 
 # ── Entry point ───────────────────────────────────────────────

@@ -78,8 +78,10 @@ class LedgerEntry:
     latency_ms:     int
     verified:       bool
     signature:      str = ""
+    domain:         str = ""   # routing metadata — not included in HMAC payload
 
     def _payload(self) -> dict:
+        # domain is intentionally excluded so old signatures remain valid
         return {
             "timestamp_utc":  self.timestamp_utc,
             "use_case":       self.use_case,
@@ -97,6 +99,7 @@ class LedgerEntry:
     def to_dict(self) -> dict:
         d = self._payload()
         d["signature"] = self.signature
+        d["domain"]    = self.domain
         return d
 
     def verify(self) -> bool:
@@ -176,6 +179,7 @@ def read_ledger(path: Optional[Path] = None) -> List[LedgerEntry]:
             latency_ms=int(d["latency_ms"]),
             verified=bool(d["verified"]),
             signature=d.get("signature", ""),
+            domain=d.get("domain", ""),
         ))
     return out
 
