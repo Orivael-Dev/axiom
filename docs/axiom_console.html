@@ -1301,7 +1301,7 @@ body { background:var(--bg); color:var(--white); font-family:'IBM Plex Sans',san
             <button class="btn-run" onclick="runQCR()" style="white-space:nowrap">▶ Trace</button>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn-sm" onclick="loadQCRDemo()">Load Demo Run</button>
+            <button class="btn-sm" onclick="loadQCRDemo()" title="Load offline example data (no API needed)">Load Offline Example</button>
             <button class="btn-sm" onclick="qcrTab('tree')">Root Tree</button>
             <button class="btn-sm" onclick="qcrTab('manifold')">Manifold</button>
             <button class="btn-sm" onclick="qcrTab('signals')">Two Signals</button>
@@ -1535,7 +1535,7 @@ async function loadAgentsPage() {
       table.innerHTML += `
         <div class="agent-row">
           <div class="agent-name" style="color:${on ? 'var(--white)' : 'var(--mgray)'}">${name}</div>
-          <div class="agent-trust" style="color:var(--teal)">T${Math.floor(Math.random()*2+2)}</div>
+          <div class="agent-trust" style="color:var(--teal)">T${info.trust_level || '—'}</div>
           <div><span class="badge ${on ? 'badge-green' : ''}"
             style="${on ? '' : 'color:var(--mgray);border-color:var(--mgray)'}">
             ${on ? 'ACTIVE' : 'OFF'}
@@ -2171,7 +2171,7 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
     if (!hypothesis) return;
     var module = prompt('ACB module to test (A-F):', 'C_pressure');
     var output = document.getElementById('alab-output');
-    var expNum = String(Math.floor(Math.random()*900)+100);
+    var expNum = String(Date.now()).slice(-6);
     output.innerHTML =
       '<span style="color:var(--green)">EXPERIMENT PROPOSED: EXP-' + expNum + '</span>\n\n' +
       'AGENT LatentExperiment_' + expNum + '\n' +
@@ -2266,14 +2266,42 @@ window.onload = function() { goScreen('dashboard'); setTimeout(connect, 600); };
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function loadQCRDemo() {
+  async function loadQCRDemo() {
+    // Try the live API first; fall back to static offline example only if unreachable
+    if (connected) {
+      const prompt = document.getElementById('latent-prompt').value.trim()
+        || QCR_DEMO.prompt;
+      try {
+        const r = await fetch(`${API()}/latent/run`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ prompt })
+        });
+        if (r.ok) {
+          const data = await r.json();
+          // Normalise to QCR_DATA shape if the live endpoint returns branch data
+          if (data.branches && data.branches.length) {
+            QCR_DATA = data;
+            QCR_SELECTED = null;
+            drawQCRTree();
+            renderQCRManifold();
+            renderQCRKills();
+            var wb = document.getElementById('qcr-winner-badge');
+            var winner = (data.branches.find(b => b.winner) || data.branches[0]);
+            if (wb && winner) wb.textContent = winner.id + ' wins (live)';
+            return;
+          }
+        }
+      } catch(e) { /* fall through to offline */ }
+    }
+    // Offline fallback — clearly marked
     QCR_DATA = QCR_DEMO;
     QCR_SELECTED = null;
     drawQCRTree();
     renderQCRManifold();
     renderQCRKills();
     var wb = document.getElementById('qcr-winner-badge');
-    if (wb) wb.textContent = 'SafetyBranch wins';
+    if (wb) wb.textContent = 'SafetyBranch wins (offline example)';
   }
 
   function qcrDistColor(d, thr) {

@@ -710,6 +710,7 @@ async def list_agents():
             "callguard": {
                 "description": "Scam call protection — 7 constitutional blocks",
                 "certified":   "21/21 tests",
+                "trust_level": 4,
                 "blocks": ["IRS_PAYMENT_DEMAND", "GIFT_CARD_PAYMENT", "WARRANT_THREAT",
                            "SSA_NUMBER_SUSPENDED", "MEDICARE_CARD_REQUEST",
                            "BANK_SPOOFING", "TECH_SUPPORT_UNSOLICITED"],
@@ -717,23 +718,27 @@ async def list_agents():
             "medical": {
                 "description": "Medical information safety — dangerous advice blocks",
                 "certified":   "26/26 tests",
+                "trust_level": 4,
                 "blocks": ["DANGEROUS_MEDICAL_ADVICE", "STOP_PRESCRIBED_MEDICATION",
                            "REPLACE_CHEMOTHERAPY", "VACCINE_MISINFORMATION"],
             },
             "electionguard": {
                 "description": "Election integrity — AP-only race calls",
                 "certified":   "26/26 tests",
+                "trust_level": 4,
                 "blocks": ["EXIT_POLL_AS_RESULT", "SOCIAL_MEDIA_VOTE_COUNT",
                            "SYNTHETIC_ELECTION_CONTENT"],
             },
             "truthwatcher": {
                 "description": "News verification — 5-tier source registry",
                 "certified":   "21/21 tests",
+                "trust_level": 3,
                 "blocks": ["TIER5_SOURCE", "FABRICATED_STATISTIC"],
             },
             "retailwatcher": {
                 "description": "E-commerce fraud — fake reviews + price fraud",
                 "certified":   "26/26 tests",
+                "trust_level": 3,
                 "blocks": ["FAKE_REVIEWS", "GHOST_PRICE", "COUNTERFEIT_SIGNAL"],
             },
         },
