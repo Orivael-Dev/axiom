@@ -86,54 +86,104 @@ def _load_axiom_system(axiom_file):
     return "You are a research assistant. Respond with valid JSON only."
 
 
+# ── LLM backend detection (mirrors axiom_guard_api._llm_backend) ─────────────
+
+try:
+    from openai import OpenAI as _OpenAIClient
+    _OPENAI_SDK = True
+except ImportError:
+    _OPENAI_SDK = False
+
+try:
+    import anthropic as _anthropic_mod
+    _ANTHROPIC_SDK = True
+except ImportError:
+    _ANTHROPIC_SDK = False
+
+
+def _llm_backend():
+    """NIM > Anthropic priority — matches axiom_guard_api.py."""
+    nim_key = os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+    if nim_key and _OPENAI_SDK:
+        return "nim"
+    if os.environ.get("ANTHROPIC_API_KEY") and _ANTHROPIC_SDK:
+        return "anthropic"
+    return None
+
+
+# ── Model ladder ─────────────────────────────────────────────────────────────
+# Anthropic names used when ANTHROPIC_API_KEY is the backend.
+# NIM path uses NIM_MODEL env var (e.g. deepseek-ai/deepseek-r1).
+MODEL_LADDER = {
+    "simple":   "claude-haiku-4-5-20251001",
+    "medium":   "claude-sonnet-4-6",
+    "hard":     "claude-sonnet-4-6",
+    "critical": "claude-opus-4-8",
+}
+
+
+def _resolve_model(task_class, override=None):
+    """Return the model to use for this task class given the active backend."""
+    if override:
+        return override
+    backend = _llm_backend()
+    if backend == "nim":
+        return os.environ.get("NIM_MODEL", "deepseek-ai/deepseek-r1")
+    return MODEL_LADDER.get(task_class, "claude-sonnet-4-6")
+
+
+TOKEN_BUDGETS = {
+    "simple":   300,
+    "medium":   1500,
+    "hard":     4000,
+    "critical": 8000,
+}
+
+
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
 def _call_llm(system_prompt, user_message, model, max_tokens, temperature=0.3):
-    """Call LLM. Prefers Anthropic API; falls back to NIM/OpenAI-compatible client.
+    """Call the active LLM backend. NIM > Anthropic (matches axiom_guard_api.py).
     Returns (response_text, latency_ms).
     """
     t0 = time.time()
+    backend = _llm_backend()
 
-    # ── Path A: Anthropic API ─────────────────────────────────────────────────
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if backend is None:
+        return '{"error": "No LLM backend configured. Set NIM_API_KEY or ANTHROPIC_API_KEY."}', 0
+
+    if backend == "nim":
         try:
-            import anthropic
-            client = anthropic.Anthropic()
-            msg = client.messages.create(
+            nim_key  = os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+            base_url = os.environ.get("NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+            client   = _OpenAIClient(base_url=base_url, api_key=nim_key)
+            resp = client.chat.completions.create(
                 model=model,
                 max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_message},
+                ],
             )
-            text = msg.content[0].text.strip()
-            latency = int((time.time() - t0) * 1000)
-            return text, latency
+            text = resp.choices[0].message.content or ""
+            return text, int((time.time() - t0) * 1000)
         except Exception as exc:
-            latency = int((time.time() - t0) * 1000)
-            return '{"error": "%s"}' % str(exc).replace('"', "'"), latency
+            return '{"error": "%s"}' % str(exc).replace('"', "'"), int((time.time() - t0) * 1000)
 
-    # ── Path B: NIM / OpenAI-compatible (axiom_constitutional client) ─────────
+    # Anthropic path
     try:
-        from axiom_constitutional.client import chat as _axchat
-        # Use AXIOM_MODEL if set; claude model IDs don't resolve on NIM
-        nim_model = os.environ.get("AXIOM_MODEL", "meta/llama-3.3-70b-instruct")
-        text = _axchat(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            model=nim_model,
+        client = _anthropic_mod.Anthropic()
+        msg = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
             temperature=temperature,
-            _skip_validation=True,
-            caller="research_pipeline",
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
         )
-        latency = int((time.time() - t0) * 1000)
-        return text, latency
+        text = msg.content[0].text.strip()
+        return text, int((time.time() - t0) * 1000)
     except Exception as exc:
-        latency = int((time.time() - t0) * 1000)
-        return '{"error": "%s"}' % str(exc).replace('"', "'"), latency
-
-
-# ── Parse JSON from LLM response ────────────────────────────────────────────
+        return '{"error": "%s"}' % str(exc).replace('"', "'"), int((time.time() - t0) * 1000)
 
 def _parse_json(raw):
     """Extract JSON from model response, handling markdown fences and truncation."""
@@ -207,23 +257,6 @@ def _parse_json(raw):
 
     # 4. Final fallback
     return {"raw_response": raw[:500], "parse_error": True}
-
-
-# ── Model routing ────────────────────────────────────────────────────────────
-
-MODEL_LADDER = {
-    "simple":   "claude-haiku-4-5-20251001",
-    "medium":   "claude-sonnet-4-6",
-    "hard":     "claude-sonnet-4-6",
-    "critical": "claude-opus-4-6",
-}
-
-TOKEN_BUDGETS = {
-    "simple":   300,
-    "medium":   1500,
-    "hard":     4000,
-    "critical": 8000,
-}
 
 
 # ── Terminal output ──────────────────────────────────────────────────────────
@@ -404,9 +437,7 @@ class ResearchPipeline:
         self.halt_step = None
 
     def _get_model(self, task_class):
-        if self.model_override:
-            return self.model_override
-        return MODEL_LADDER.get(task_class, "claude-sonnet-4-6")
+        return _resolve_model(task_class, self.model_override)
 
     def _get_budget(self, task_class):
         return TOKEN_BUDGETS.get(task_class, 1500)

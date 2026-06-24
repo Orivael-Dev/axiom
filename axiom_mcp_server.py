@@ -5,11 +5,11 @@ Trust     : TRUST_LEVEL = 3   CANNOT_MUTATE
 Transport : stdio (standard MCP)
 Encoding  : UTF-8  BUG-003 compliant
 
-22 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
+23 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
 axiom_status. Plus ORVL patent-emulator + AX OS building-block tools
 (intent gate, CMAA, CPI, AXM, OS shield, phone gate, validate, memory,
 workspace, ledger, marketplace, MKB, adversarial sandbox, CRL reward,
-immune system, multimodal fusion). VERSION is bumped whenever the tool
+immune system, multimodal fusion, research pipeline). VERSION is bumped whenever the tool
 surface changes, so `tools/list` and VERSION stay in sync — a client
 seeing an older VERSION is talking to a stale build.
 
@@ -38,7 +38,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from axiom_signing import derive_key
 
 SIGNING_KEY = derive_key(b"axiom-mcp-v1")
-VERSION: str = "1.11.0"
+VERSION: str = "1.12.0"
 TRUST_LEVEL: int = 3
 
 _FROZEN = frozenset({"VERSION", "TRUST_LEVEL"})
@@ -387,6 +387,23 @@ TOOLS = [
              "vector":  {"type": "string", "description": "optional label for the probe"},
          },
          "required": ["payload"]}},
+    # ── Constitutional Research Pipeline ─────────────────────────
+    {"name": "axiom_research",
+     "description": "Run the 9-agent constitutional research pipeline on a question. "
+                    "Agents: hypothesis → literature → simulation → critic → safety → "
+                    "ethics → data → experiment → report. Safety and Ethics agents can "
+                    "HALT the pipeline early if critical risks are detected. Uses the "
+                    "active NIM or Anthropic backend. Returns the full signed pipeline "
+                    "result including per-step manifests.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "question": {"type": "string", "description": "The research question to investigate"},
+             "steps":    {"type": "integer", "minimum": 1, "maximum": 9,
+                          "description": "Number of pipeline steps to run (1-9, default 9)"},
+             "model":    {"type": "string",
+                          "description": "Optional model override for all agents"},
+         },
+         "required": ["question"]}},
     # ── axiom-fusion-v1 — multimodal intent fusion over an EventToken ─────
     {"name": "axiom_fusion",
      "description": "Fuse an EventToken's present modality layers (text / audio / "
@@ -1490,6 +1507,35 @@ def _handle_fusion(args: dict) -> dict:
     return out
 
 
+def _handle_research(args: dict) -> dict:
+    """Run the 9-agent constitutional research pipeline."""
+    question = args.get("question", "").strip()
+    if not question:
+        out = {"error": "question is required"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    steps = max(1, min(9, int(args.get("steps", 9))))
+    model = args.get("model") or None
+    try:
+        from axiom_research_pipeline import ResearchPipeline
+        pipeline = ResearchPipeline(model_override=model)
+        result = pipeline.run(question, max_steps=steps)
+    except (ImportError, RuntimeError) as exc:
+        out = {"error": f"ResearchPipeline unavailable: {exc}"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    except Exception as exc:
+        out = {"error": f"{type(exc).__name__}: {exc}"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    result["hmac_signature"] = _sign({
+        "question": result.get("question", ""),
+        "steps_completed": result.get("steps_completed", 0),
+        "halted": result.get("halted", False),
+    })
+    return result
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -1509,7 +1555,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_cas": _handle_cas,
              "axiom_crl": _handle_crl,
              "axiom_immune": _handle_immune,
-             "axiom_fusion": _handle_fusion}
+             "axiom_fusion": _handle_fusion,
+             "axiom_research": _handle_research}
 
 
 class AxiomMCPServer:
