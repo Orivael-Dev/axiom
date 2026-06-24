@@ -62,6 +62,230 @@ AGENTS = [
 ]
 
 
+# ── Domain classification + step planning ────────────────────────────────────
+
+DOMAIN_KEYWORDS = {
+    "medical":      ["health", "disease", "treatment", "therapy", "clinical", "patient",
+                     "drug", "medicine", "biological", "vaccine", "cancer", "pain", "symptom"],
+    "financial":    ["economic", "market", "investment", "financial", "monetary", "stock",
+                     "revenue", "profit", "cost", "gdp", "inflation", "price", "trade"],
+    "legal":        ["law", "legal", "regulation", "policy", "compliance", "liability",
+                     "contract", "statute", "court", "rights", "legislation", "jurisdiction"],
+    "code":         ["software", "algorithm", "code", "programming", "performance",
+                     "benchmark", "neural", "llm", "model", "architecture", "training"],
+    "quantization": ["quant", "quantization", "srd", "bpw", "perplexity", "gguf", "axm",
+                     "weight", "bits", "precision", "compression", "distillation"],
+    "privacy":      ["privacy", "pii", "gdpr", "data protection", "consent", "biometric",
+                     "personal data", "redaction", "surveillance", "anonymization"],
+}
+
+# Steps each domain actually needs (subset of 1–9)
+DOMAIN_STEP_PLANS = {
+    "medical":      [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "financial":    [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "legal":        [1, 2, 4, 5, 6, 8, 9],        # skip simulation (3) and data (7)
+    "code":         [1, 3, 4, 5, 7, 8, 9],         # skip literature (2) and ethics (6)
+    "quantization": [1, 3, 4, 5, 7, 8, 9],         # like code; sweep agent used for simulation
+    "privacy":      [1, 2, 4, 5, 6, 7, 9],         # skip simulation (3) and experiment (8)
+    "general":      [1, 2, 3, 4, 5, 6, 7, 8, 9],
+}
+
+APPROACH_LABELS = {
+    "medical":      "clinical_safety_first",
+    "financial":    "economic_risk_weighted",
+    "legal":        "regulatory_compliance",
+    "code":         "technical_empirical",
+    "quantization": "quantization_sweep",
+    "privacy":      "privacy_constitutional",
+    "general":      "full_pipeline",
+}
+
+
+def _classify_domain(question):
+    """Deterministic keyword-weighted domain classification (GeneralAutonomousAgent spec)."""
+    q = question.lower()
+    scores = {domain: sum(1 for kw in kws if kw in q)
+              for domain, kws in DOMAIN_KEYWORDS.items()}
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "general"
+
+
+def _task_fingerprint(question):
+    """SHA256[:16] of sorted lowercased keywords (GeneralAutonomousAgent spec)."""
+    words = sorted(set(question.lower().split()))
+    return hashlib.sha256(" ".join(words).encode()).hexdigest()[:16]
+
+
+# ── Pattern Library ───────────────────────────────────────────────────────────
+
+class PatternLibrary:
+    """HMAC-signed JSONL retrospect store (GeneralAutonomousAgent spec).
+
+    Tracks domain × approach efficiency via EWMA (decay=0.85) so the
+    orchestrator can bias toward historically successful approaches.
+    Tampered entries are silently dropped on every read.
+    """
+
+    DEFAULT_PATH = Path.home() / ".axiom" / "research_patterns.jsonl"
+    EWMA_DECAY = 0.85
+
+    def __init__(self, path=None):
+        self.path = Path(path or os.environ.get("AXIOM_PATTERN_LIBRARY", self.DEFAULT_PATH))
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _sign(self, entry):
+        payload = {k: v for k, v in entry.items() if k != "signature"}
+        sig_str = json.dumps(payload, sort_keys=True)
+        return "hmac-sha256:" + hmac.new(SIGNING_KEY, sig_str.encode(), hashlib.sha256).hexdigest()[:32]
+
+    def _verify(self, entry):
+        return entry.get("signature") == self._sign(entry)
+
+    def _load_all(self):
+        if not self.path.exists():
+            return []
+        entries = []
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        e = json.loads(line)
+                        if self._verify(e):
+                            entries.append(e)
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        except OSError:
+            pass
+        return entries
+
+    def _save_all(self, entries):
+        try:
+            with open(self.path, "w", encoding="utf-8") as f:
+                for e in entries:
+                    f.write(json.dumps(e) + "\n")
+        except OSError:
+            pass
+
+    def query(self, domain, top_k=3):
+        """Return top-K patterns for this domain, sorted by efficiency descending."""
+        matches = [e for e in self._load_all() if e.get("domain") == domain]
+        matches.sort(key=lambda e: e.get("efficiency", 0.0), reverse=True)
+        return matches[:top_k]
+
+    def upsert(self, domain, approach, fingerprint, success):
+        """EWMA-update or insert a pattern entry after a pipeline run."""
+        entries = self._load_all()
+        new_signal = 1.0 if success else 0.0
+        updated = False
+        for e in entries:
+            if e.get("domain") == domain and e.get("fingerprint") == fingerprint:
+                old = e.get("efficiency", 0.5)
+                e["efficiency"] = round(self.EWMA_DECAY * old + (1 - self.EWMA_DECAY) * new_signal, 4)
+                e["uses"] = e.get("uses", 0) + 1
+                e["last_used"] = datetime.utcnow().isoformat() + "Z"
+                e["signature"] = self._sign(e)
+                updated = True
+                break
+        if not updated:
+            first_efficiency = round(self.EWMA_DECAY * 0.5 + (1 - self.EWMA_DECAY) * new_signal, 4)
+            new_entry = {
+                "domain": domain, "approach": approach, "fingerprint": fingerprint,
+                "efficiency": first_efficiency, "uses": 1,
+                "last_used": datetime.utcnow().isoformat() + "Z",
+            }
+            new_entry["signature"] = self._sign(new_entry)
+            entries.append(new_entry)
+        self._save_all(entries)
+
+
+# ── Orchestrator plan ─────────────────────────────────────────────────────────
+
+class OrchestratorPlan:
+    """Result of ResearchOrchestrator.plan() — immutable after construction."""
+
+    def __init__(self, domain, approach, steps, fingerprint,
+                 retrospect_bias, rationale, latent_log):
+        self.domain = domain
+        self.approach = approach
+        self.steps = steps                # list[int] — steps to run
+        self.fingerprint = fingerprint    # SHA256[:16] task key
+        self.retrospect_bias = retrospect_bias  # float|None — prior efficiency
+        self.rationale = rationale
+        self.latent_log = latent_log      # list[dict] from orchestrator LLM
+
+
+# ── Orchestrator agent ────────────────────────────────────────────────────────
+
+class ResearchOrchestrator:
+    """Front-door orchestrator implementing GeneralAutonomousAgent spec.
+
+    1. Classifies domain deterministically from question keywords.
+    2. Queries PatternLibrary for retrospect efficiency bias.
+    3. Makes one LLM call (research_orchestrator.axiom) to score
+       approach candidates through the constitutional manifold filter.
+    4. Returns OrchestratorPlan with steps to run.
+
+    Latent rejection threshold: 0.10 (CANNOT_MUTATE per spec).
+    """
+
+    LATENT_REJECTION_THRESHOLD = 0.10
+
+    def __init__(self, library=None):
+        self.library = library or PatternLibrary()
+
+    def plan(self, question, model_override=None):
+        domain = _classify_domain(question)
+        fingerprint = _task_fingerprint(question)
+
+        patterns = self.library.query(domain)
+        retrospect_bias = patterns[0]["efficiency"] if patterns else None
+
+        base_steps = DOMAIN_STEP_PLANS.get(domain, DOMAIN_STEP_PLANS["general"])
+        approach = APPROACH_LABELS.get(domain, "full_pipeline")
+
+        rationale, latent_log = self._orchestrate(
+            question, domain, approach, base_steps, model_override
+        )
+
+        return OrchestratorPlan(
+            domain=domain, approach=approach, steps=base_steps,
+            fingerprint=fingerprint, retrospect_bias=retrospect_bias,
+            rationale=rationale, latent_log=latent_log,
+        )
+
+    def _orchestrate(self, question, domain, approach, steps, model_override):
+        system_prompt = _load_axiom_system("research/research_orchestrator.axiom")
+        user_message = (
+            "Research question: %s\n"
+            "Classified domain: %s\n"
+            "Proposed approach: %s\n"
+            "Steps selected: %s\n\n"
+            "Evaluate this routing plan constitutionally. Score each step on "
+            "constitutional value (0-1). Generate 2-3 alternative approach "
+            "candidates and score each on manifold distance (higher=safer). "
+            "Return JSON: {rationale, step_scores, "
+            "approach_candidates: [{approach, distance, rejected}], confidence}"
+        ) % (question, domain, approach, json.dumps(steps))
+
+        model = _resolve_model("medium", model_override)
+        response, _ = _call_llm(system_prompt, user_message, model, max_tokens=1000)
+        parsed = _parse_json(response)
+
+        rationale = parsed.get("rationale", "Domain-classified routing.")
+        latent_log = parsed.get("approach_candidates", [])
+
+        for candidate in latent_log:
+            if "rejected" not in candidate:
+                candidate["rejected"] = (
+                    candidate.get("distance", 1.0) < self.LATENT_REJECTION_THRESHOLD
+                )
+
+        return rationale, latent_log
+
+
 # ── Signing ──────────────────────────────────────────────────────────────────
 
 def _sign(manifest):
@@ -427,14 +651,23 @@ def _build_manifest(agent_name, step, result, model, task_class, latency_ms, hal
 # ── Pipeline ─────────────────────────────────────────────────────────────────
 
 class ResearchPipeline:
-    """Orchestrates the 9-agent constitutional research pipeline."""
+    """Orchestrates the 9-agent constitutional research pipeline.
 
-    def __init__(self, model_override=None):
+    With use_orchestrator=True (default), a front-door ResearchOrchestrator
+    classifies the domain, queries the PatternLibrary for retrospect bias,
+    and selects only the steps this domain and question actually need.
+    Results feed back to the PatternLibrary as EWMA-updated efficiency scores.
+    """
+
+    def __init__(self, model_override=None, use_orchestrator=True):
         self.model_override = model_override
+        self.use_orchestrator = use_orchestrator
         self.manifests = []
         self.halted = False
         self.halt_reason = None
         self.halt_step = None
+        self.plan = None
+        self._orchestrator = ResearchOrchestrator() if use_orchestrator else None
 
     def _get_model(self, task_class):
         return _resolve_model(task_class, self.model_override)
@@ -473,239 +706,216 @@ class ResearchPipeline:
 
         return result, manifest
 
+    def _build_prompt(self, agent_name, question, context):
+        """Build the per-agent prompt with graceful fallbacks for skipped steps."""
+        hyp  = context.get("hypothesis", {})
+        lit  = context.get("literature", {})
+        sim  = context.get("simulation", {})
+        crit = context.get("critique", {})
+        safe = context.get("safety", {})
+        eth  = context.get("ethics", {})
+        data = context.get("data", {})
+        exp  = context.get("experiment", {})
+
+        if agent_name == "hypothesis":
+            return (
+                "Research question: %s\n\n"
+                "Generate a testable hypothesis with null hypothesis. "
+                "Return JSON with: hypothesis, null_hypothesis, falsifiable, "
+                "falsification_criteria, variables, assumptions, confidence"
+            ) % question
+
+        if agent_name == "literature":
+            return (
+                "Research question: %s\n"
+                "Hypothesis: %s\n\n"
+                "Search existing literature for evidence supporting or "
+                "contradicting this hypothesis. Return JSON with: sources[], "
+                "supporting_evidence, contradicting_evidence, gaps[], "
+                "consensus_level, confidence"
+            ) % (question, hyp.get("hypothesis", question))
+
+        if agent_name == "simulation":
+            lit_summary = lit.get("supporting_evidence", "no literature data")
+            if not isinstance(lit_summary, str):
+                lit_summary = json.dumps(lit_summary)
+            return (
+                "Research question: %s\n"
+                "Hypothesis: %s\n"
+                "Literature summary: %s\n\n"
+                "Model this hypothesis. Predict outcomes, list assumptions, "
+                "identify key parameters. Return JSON with: model_description, "
+                "assumptions[], predicted_outcomes[], sensitivity_parameters[], "
+                "limitations[], confidence"
+            ) % (question, hyp.get("hypothesis", question), lit_summary[:300])
+
+        if agent_name == "critic":
+            lit_ev = lit.get("supporting_evidence", "no literature available")
+            if not isinstance(lit_ev, str):
+                lit_ev = json.dumps(lit_ev)
+            return (
+                "CLAIM: %s\n\n"
+                "EVIDENCE:\n"
+                "- Simulation predicted: %s\n"
+                "- Literature says: %s\n\n"
+                "NOTE: You have NOT been shown the reasoning behind this claim. "
+                "Evaluate the claim against the evidence only. "
+                "Find flaws. Provide a rival hypothesis. "
+                "Return JSON with: flaws[], rival_hypothesis, severity, "
+                "recommendation, question_blindness_enforced, confidence"
+            ) % (
+                hyp.get("hypothesis", question),
+                json.dumps(sim.get("predicted_outcomes", []))[:200],
+                lit_ev[:200],
+            )
+
+        if agent_name == "safety":
+            return (
+                "Research question: %s\n"
+                "Hypothesis: %s\n"
+                "Critic severity: %s\n"
+                "Critic flaws: %s\n\n"
+                "Assess safety risks. Can this research proceed safely? "
+                "Return JSON with: verdict (PROCEED or CRITICAL_RISK), "
+                "risk_level, risks[], mitigations[], halt_reason, confidence"
+            ) % (
+                question,
+                hyp.get("hypothesis", question),
+                crit.get("severity", "UNKNOWN"),
+                json.dumps(crit.get("flaws", []))[:300],
+            )
+
+        if agent_name == "ethics":
+            return (
+                "Research question: %s\n"
+                "Hypothesis: %s\n"
+                "Safety verdict: %s\n\n"
+                "Evaluate ethical implications. Are there concerns about "
+                "participants, consent, equity, or societal impact? "
+                "Return JSON with: verdict (PROCEED or ETHICS_VIOLATION), "
+                "classification, concerns[], mitigations_required[], "
+                "informed_consent_needed, halt_reason, confidence"
+            ) % (question, hyp.get("hypothesis", question), safe.get("verdict", "PROCEED"))
+
+        if agent_name == "data":
+            sim_params = json.dumps(sim.get("sensitivity_parameters", []))[:200]
+            return (
+                "Research question: %s\n"
+                "Hypothesis: %s\n"
+                "Simulation parameters: %s\n\n"
+                "Define data collection requirements. "
+                "Return JSON with: data_requirements[], methodology, "
+                "sample_size, validation_criteria[], provenance, "
+                "integrity_hash, confidence"
+            ) % (question, hyp.get("hypothesis", question), sim_params)
+
+        if agent_name == "experiment":
+            data_reqs = json.dumps(data.get("data_requirements", []))[:200]
+            return (
+                "Research question: %s\n"
+                "Hypothesis: %s\n"
+                "Data requirements: %s\n"
+                "Critic recommendation: %s\n\n"
+                "Design the experimental protocol. Include controls, "
+                "endpoints, analysis plan. "
+                "Return JSON with: protocol, control_groups[], endpoints[], "
+                "analysis_plan, success_criteria, failure_criteria, "
+                "reproducibility_notes, confidence"
+            ) % (question, hyp.get("hypothesis", question), data_reqs, crit.get("recommendation", ""))
+
+        if agent_name == "report":
+            exp_protocol = exp.get("protocol", "")
+            if not isinstance(exp_protocol, str):
+                exp_protocol = json.dumps(exp_protocol)
+            return (
+                "Research question: %s\n\n"
+                "PIPELINE RESULTS:\n"
+                "Hypothesis: %s\n"
+                "Null hypothesis: %s\n"
+                "Literature consensus: %s\n"
+                "Simulation prediction: %s\n"
+                "Critic rival hypothesis: %s\n"
+                "Critic severity: %s\n"
+                "Safety verdict: %s\n"
+                "Ethics verdict: %s\n"
+                "Experiment protocol summary: %s\n\n"
+                "Write the constitutional research report. "
+                "Include what was found AND what was NOT found. "
+                "Use 'shows promise' not 'cures'. "
+                "Return JSON with: title, summary, findings[], "
+                "negative_results[], rival_hypothesis, limitations[], "
+                "conclusions, pipeline_provenance, confidence"
+            ) % (
+                question,
+                hyp.get("hypothesis", ""),
+                hyp.get("null_hypothesis", ""),
+                lit.get("consensus_level", "unknown"),
+                json.dumps(sim.get("predicted_outcomes", []))[:150],
+                crit.get("rival_hypothesis", ""),
+                crit.get("severity", ""),
+                safe.get("verdict", ""),
+                eth.get("verdict", ""),
+                exp_protocol[:150],
+            )
+
+        return "Research question: %s\n\nRespond with valid JSON." % question
+
     def run(self, research_question, max_steps=9):
-        """Run the full pipeline. Returns final report dict."""
-        total_steps = min(max_steps, 9)
+        """Run the pipeline — orchestrator selects steps, then agents execute."""
+        # ── Orchestrate ───────────────────────────────────────────────
+        if self.use_orchestrator:
+            self.plan = self._orchestrator.plan(research_question, self.model_override)
+            active_steps = set(s for s in self.plan.steps if s <= max_steps)
+        else:
+            active_steps = set(range(1, min(max_steps, 9) + 1))
+
         context = {"question": research_question}
+        total_active = len(active_steps)
 
         print()
-        print("  AXIOM Scientific Research Pipeline v1.0")
+        print("  AXIOM Research Pipeline v2.0")
         print("  " + BOX_DOUBLE)
-        print("  Question: %s" % research_question)
-        print("  Steps   : %d" % total_steps)
+        print("  Question : %s" % research_question)
+        if self.plan:
+            print("  Domain   : %s" % self.plan.domain)
+            print("  Approach : %s" % self.plan.approach)
+            if self.plan.retrospect_bias is not None:
+                print("  Retrospect bias: %.2f efficiency" % self.plan.retrospect_bias)
+        print("  Steps    : %s" % ", ".join(str(s) for s in sorted(active_steps)))
         print("  " + BOX_DOUBLE)
 
-        # ── Step 1: Hypothesis ────────────────────────────────────────
-        agent = AGENTS[0]
-        prompt = (
-            "Research question: %s\n\n"
-            "Generate a testable hypothesis with null hypothesis. "
-            "Return JSON with: hypothesis, null_hypothesis, falsifiable, "
-            "falsification_criteria, variables, assumptions, confidence"
-        ) % research_question
+        # ── Dynamic agent loop ────────────────────────────────────────
+        for agent_def in AGENTS:
+            step = agent_def["step"]
+            name = agent_def["name"]
 
-        result, _ = self._run_agent(agent, prompt, total_steps)
-        context["hypothesis"] = result
-        if total_steps <= 1:
-            return self._final_report(context)
+            if step not in active_steps:
+                continue
 
-        # ── Step 2: Literature ────────────────────────────────────────
-        agent = AGENTS[1]
-        hypothesis_text = result.get("hypothesis", research_question)
-        prompt = (
-            "Research question: %s\n"
-            "Hypothesis: %s\n\n"
-            "Search existing literature for evidence supporting or "
-            "contradicting this hypothesis. Return JSON with: sources[], "
-            "supporting_evidence, contradicting_evidence, gaps[], "
-            "consensus_level, confidence"
-        ) % (research_question, hypothesis_text)
+            prompt = self._build_prompt(name, research_question, context)
+            result, _ = self._run_agent(agent_def, prompt, total_active)
+            context[name] = result
 
-        result, _ = self._run_agent(agent, prompt, total_steps)
-        context["literature"] = result
-        if total_steps <= 2:
-            return self._final_report(context)
+            # Safety halt
+            if name == "safety" and result.get("verdict") == "CRITICAL_RISK":
+                self.halted = True
+                self.halt_reason = result.get("halt_reason", "Critical safety risk detected")
+                self.halt_step = step
+                _print_halt(step, total_active, "SAFETY AGENT", self.halt_reason)
+                return self._final_report(context, halted=True)
 
-        # ── Step 3: Simulation ────────────────────────────────────────
-        agent = AGENTS[2]
-        prompt = (
-            "Research question: %s\n"
-            "Hypothesis: %s\n"
-            "Literature summary: %s\n\n"
-            "Model this hypothesis. Predict outcomes, list assumptions, "
-            "identify key parameters. Return JSON with: model_description, "
-            "assumptions[], predicted_outcomes[], sensitivity_parameters[], "
-            "limitations[], confidence"
-        ) % (
-            research_question,
-            context["hypothesis"].get("hypothesis", ""),
-            json.dumps(context["literature"].get("supporting_evidence", ""))[:300],
-        )
-
-        result, _ = self._run_agent(agent, prompt, total_steps)
-        context["simulation"] = result
-        if total_steps <= 3:
-            return self._final_report(context)
-
-        # ── Step 4: Critic (QUESTION BLINDNESS) ──────────────────────
-        # Critic gets claim + evidence only, NOT hypothesis reasoning
-        agent = AGENTS[3]
-        prompt = (
-            "CLAIM: %s\n\n"
-            "EVIDENCE:\n"
-            "- Simulation predicted: %s\n"
-            "- Literature says: %s\n\n"
-            "NOTE: You have NOT been shown the reasoning behind this claim. "
-            "Evaluate the claim against the evidence only. "
-            "Find flaws. Provide a rival hypothesis. "
-            "Return JSON with: flaws[], rival_hypothesis, severity, "
-            "recommendation, question_blindness_enforced, confidence"
-        ) % (
-            context["hypothesis"].get("hypothesis", ""),
-            json.dumps(context["simulation"].get("predicted_outcomes", []))[:200],
-            context["literature"].get("supporting_evidence", "")[:200] if isinstance(context["literature"].get("supporting_evidence"), str) else json.dumps(context["literature"].get("supporting_evidence", ""))[:200],
-        )
-
-        result, _ = self._run_agent(agent, prompt, total_steps)
-        context["critique"] = result
-        if total_steps <= 4:
-            return self._final_report(context)
-
-        # ── Step 5: Safety (CAN HALT) ────────────────────────────────
-        agent = AGENTS[4]
-        prompt = (
-            "Research question: %s\n"
-            "Hypothesis: %s\n"
-            "Critic severity: %s\n"
-            "Critic flaws: %s\n\n"
-            "Assess safety risks. Can this research proceed safely? "
-            "Return JSON with: verdict (PROCEED or CRITICAL_RISK), "
-            "risk_level, risks[], mitigations[], halt_reason, confidence"
-        ) % (
-            research_question,
-            context["hypothesis"].get("hypothesis", ""),
-            context["critique"].get("severity", "UNKNOWN"),
-            json.dumps(context["critique"].get("flaws", []))[:300],
-        )
-
-        result, manifest = self._run_agent(agent, prompt, total_steps)
-        context["safety"] = result
-
-        if result.get("verdict") == "CRITICAL_RISK":
-            self.halted = True
-            self.halt_reason = result.get("halt_reason", "Critical safety risk detected")
-            self.halt_step = 5
-            _print_halt(5, total_steps, "SAFETY AGENT", self.halt_reason)
-            return self._final_report(context, halted=True)
-
-        if total_steps <= 5:
-            return self._final_report(context)
-
-        # ── Step 6: Ethics (CAN HALT) ────────────────────────────────
-        agent = AGENTS[5]
-        prompt = (
-            "Research question: %s\n"
-            "Hypothesis: %s\n"
-            "Safety verdict: %s\n\n"
-            "Evaluate ethical implications. Are there concerns about "
-            "participants, consent, equity, or societal impact? "
-            "Return JSON with: verdict (PROCEED or ETHICS_VIOLATION), "
-            "classification, concerns[], mitigations_required[], "
-            "informed_consent_needed, halt_reason, confidence"
-        ) % (
-            research_question,
-            context["hypothesis"].get("hypothesis", ""),
-            context["safety"].get("verdict", "PROCEED"),
-        )
-
-        result, manifest = self._run_agent(agent, prompt, total_steps)
-        context["ethics"] = result
-
-        if result.get("verdict") == "ETHICS_VIOLATION":
-            self.halted = True
-            self.halt_reason = result.get("halt_reason", "Ethics violation detected")
-            self.halt_step = 6
-            _print_halt(6, total_steps, "ETHICS AGENT", self.halt_reason)
-            return self._final_report(context, halted=True)
-
-        if total_steps <= 6:
-            return self._final_report(context)
-
-        # ── Step 7: Data ──────────────────────────────────────────────
-        agent = AGENTS[6]
-        prompt = (
-            "Research question: %s\n"
-            "Hypothesis: %s\n"
-            "Simulation parameters: %s\n\n"
-            "Define data collection requirements. "
-            "Return JSON with: data_requirements[], methodology, "
-            "sample_size, validation_criteria[], provenance, "
-            "integrity_hash, confidence"
-        ) % (
-            research_question,
-            context["hypothesis"].get("hypothesis", ""),
-            json.dumps(context["simulation"].get("sensitivity_parameters", []))[:200],
-        )
-
-        result, _ = self._run_agent(agent, prompt, total_steps)
-        context["data"] = result
-        if total_steps <= 7:
-            return self._final_report(context)
-
-        # ── Step 8: Experiment ────────────────────────────────────────
-        agent = AGENTS[7]
-        prompt = (
-            "Research question: %s\n"
-            "Hypothesis: %s\n"
-            "Data requirements: %s\n"
-            "Critic recommendation: %s\n\n"
-            "Design the experimental protocol. Include controls, "
-            "endpoints, analysis plan. "
-            "Return JSON with: protocol, control_groups[], endpoints[], "
-            "analysis_plan, success_criteria, failure_criteria, "
-            "reproducibility_notes, confidence"
-        ) % (
-            research_question,
-            context["hypothesis"].get("hypothesis", ""),
-            json.dumps(context["data"].get("data_requirements", []))[:200],
-            context["critique"].get("recommendation", ""),
-        )
-
-        result, _ = self._run_agent(agent, prompt, total_steps)
-        context["experiment"] = result
-        if total_steps <= 8:
-            return self._final_report(context)
-
-        # ── Step 9: Report ────────────────────────────────────────────
-        agent = AGENTS[8]
-        prompt = (
-            "Research question: %s\n\n"
-            "PIPELINE RESULTS:\n"
-            "Hypothesis: %s\n"
-            "Null hypothesis: %s\n"
-            "Literature consensus: %s\n"
-            "Simulation prediction: %s\n"
-            "Critic rival hypothesis: %s\n"
-            "Critic severity: %s\n"
-            "Safety verdict: %s\n"
-            "Ethics verdict: %s\n"
-            "Experiment protocol summary: %s\n\n"
-            "Write the constitutional research report. "
-            "Include what was found AND what was NOT found. "
-            "Use 'shows promise' not 'cures'. "
-            "Return JSON with: title, summary, findings[], "
-            "negative_results[], rival_hypothesis, limitations[], "
-            "conclusions, pipeline_provenance, confidence"
-        ) % (
-            research_question,
-            context["hypothesis"].get("hypothesis", ""),
-            context["hypothesis"].get("null_hypothesis", ""),
-            context["literature"].get("consensus_level", "unknown"),
-            json.dumps(context["simulation"].get("predicted_outcomes", []))[:150],
-            context["critique"].get("rival_hypothesis", ""),
-            context["critique"].get("severity", ""),
-            context["safety"].get("verdict", ""),
-            context["ethics"].get("verdict", ""),
-            context["experiment"].get("protocol", "")[:150] if isinstance(context["experiment"].get("protocol"), str) else json.dumps(context["experiment"].get("protocol", ""))[:150],
-        )
-
-        result, _ = self._run_agent(agent, prompt, total_steps)
-        context["report"] = result
+            # Ethics halt
+            if name == "ethics" and result.get("verdict") == "ETHICS_VIOLATION":
+                self.halted = True
+                self.halt_reason = result.get("halt_reason", "Ethics violation detected")
+                self.halt_step = step
+                _print_halt(step, total_active, "ETHICS AGENT", self.halt_reason)
+                return self._final_report(context, halted=True)
 
         return self._final_report(context)
 
     def _final_report(self, context, halted=False):
-        """Print summary and save manifests."""
+        """Print summary, update pattern library, save manifests."""
         print()
         print("  " + BOX_DOUBLE)
         if halted:
@@ -715,6 +925,14 @@ class ResearchPipeline:
             print("  PIPELINE COMPLETE — %d steps executed" % len(self.manifests))
         print("  Manifests: %d signed" % len(self.manifests))
         print("  " + BOX_DOUBLE)
+
+        # Update pattern library with EWMA efficiency for this run
+        if self.plan and self._orchestrator:
+            success = not halted
+            self._orchestrator.library.upsert(
+                self.plan.domain, self.plan.approach,
+                self.plan.fingerprint, success,
+            )
 
         # Save manifests
         try:
@@ -729,6 +947,11 @@ class ResearchPipeline:
             "steps_completed": len(self.manifests),
             "halted": halted,
             "halt_reason": self.halt_reason,
+            "plan": {
+                "domain":    self.plan.domain    if self.plan else "general",
+                "approach":  self.plan.approach  if self.plan else "full_pipeline",
+                "steps_run": sorted(context.keys() - {"question"}),
+            },
             "manifests": self.manifests,
             "context": context,
         }
@@ -767,6 +990,11 @@ def main():
         default=None,
         help="Manifest output path (default: research_manifests.json)",
     )
+    parser.add_argument(
+        "--no-orchestrator",
+        action="store_true",
+        help="Disable domain orchestration — run all steps in order (v1 behaviour)",
+    )
     args = parser.parse_args()
 
     global MANIFEST_FILE
@@ -794,7 +1022,8 @@ def main():
             print("  pip install anthropic")
             sys.exit(1)
 
-    pipeline = ResearchPipeline(model_override=args.model)
+    use_orch = not args.no_orchestrator
+    pipeline = ResearchPipeline(model_override=args.model, use_orchestrator=use_orch)
     pipeline.run(args.question, max_steps=args.steps)
 
 
