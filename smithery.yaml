@@ -1,0 +1,20 @@
+# smithery.yaml — Axiom MCP server registry entry
+# Submitted at https://smithery.ai/new → points at this repo
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      axiomMasterKey:
+        type: string
+        description: >-
+          64-hex signing key for HMAC-signed tool results. Generate one with:
+          python3 -c 'import secrets; print(secrets.token_hex(32))'
+    required:
+      - axiomMasterKey
+  commandFunction: |-
+    (config) => ({
+      command: "python3",
+      args: ["axiom_mcp_server.py"],
+      env: { AXIOM_MASTER_KEY: config.axiomMasterKey }
+    })
