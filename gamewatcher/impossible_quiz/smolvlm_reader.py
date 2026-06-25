@@ -53,7 +53,7 @@ CONFIDENCE: <0.0–1.0>
 """
 
 # QRF branch prompts — different reasoning angles
-_QRF_BRANCHES = [
+_QRF_BRANCHES_BASE = [
     # Branch 0: lateral / trick angle
     "The Impossible Quiz always has a trick. The obvious answer is wrong. "
     "Look for wordplay, puns, or a non-sequitur that only makes sense laterally. "
@@ -71,10 +71,13 @@ _QRF_BRANCHES = [
     "The remaining one is probably correct. "
     "Question: {question}\nAnswers: A){a} B){b} C){c} D){d}\n"
     "Which answer is left after eliminating the obvious ones? End with: ANSWER: <A/B/C/D>",
+]
 
-    # Branch 3: option-aware pun scan
-    # Each option is inspected individually for hidden pun/wordplay/homophone meanings.
-    # This is the branch that resolved Q2 (lexical pun — over-literalization failure mode).
+# Branch 3: option-aware pun scan.
+# Only fires when branches 0-2 all disagree (1-1-1 tie) — prevents it from
+# manufacturing spurious "hidden meanings" on count/meta questions where the
+# base branches already agree.
+_QRF_PUN_SCAN = (
     "Question: {question}\n\n"
     "Check each answer option for a hidden pun, homophone, or double meaning:\n"
     "A) \"{a}\" — does this sound like something else? Any wordplay or alternate meaning?\n"
@@ -82,8 +85,8 @@ _QRF_BRANCHES = [
     "C) \"{c}\" — does this sound like something else? Any wordplay or alternate meaning?\n"
     "D) \"{d}\" — does this sound like something else? Any wordplay or alternate meaning?\n\n"
     "Which option's hidden meaning best answers the question?\n"
-    "End with: ANSWER: <A/B/C/D>",
-]
+    "End with: ANSWER: <A/B/C/D>"
+)
 
 
 class SmolVLMReader:
@@ -186,10 +189,18 @@ class SmolVLMReader:
             return {"choice": "A", "reasoning": f"inference error: {exc}", "confidence": 0.0}
 
     def qrf_branches(self, question: str, answers: list[str], pil_image=None) -> list[dict]:
-        """Run 3 independent reasoning branches, each with the screenshot if available."""
+        """Run QRF branches with gated pun-scan.
+
+        Phase 1: run the 3 base branches (lateral / meta / elimination).
+        If they reach a 2/3 majority, return immediately — pun-scan never fires.
+        Phase 2: only on a 1-1-1 tie do we run the pun-scan branch to break the
+        deadlock. This prevents pun-scan from manufacturing spurious hidden-meaning
+        votes on count or meta questions where the base branches already agree.
+        """
         a, b, c, d = (answers + ["", "", "", ""])[:4]
+
         results = []
-        for branch_prompt in _QRF_BRANCHES:
+        for branch_prompt in _QRF_BRANCHES_BASE:
             prompt = branch_prompt.format(question=question, a=a, b=b, c=c, d=d)
             try:
                 if pil_image is not None:
@@ -200,6 +211,27 @@ class SmolVLMReader:
                 results.append({"choice": choice, "reasoning": raw[:120]})
             except Exception:
                 results.append({"choice": "A", "reasoning": "branch error"})
+
+        # Check for early-exit majority (≥ 2 of 3)
+        votes: dict[str, int] = {}
+        for r in results:
+            c = r.get("choice", "A")
+            votes[c] = votes.get(c, 0) + 1
+        if max(votes.values()) >= 2:
+            return results  # majority found — pun-scan not needed
+
+        # 1-1-1 tie: run pun-scan as the deadlock-breaker
+        prompt = _QRF_PUN_SCAN.format(question=question, a=a, b=b, c=c, d=d)
+        try:
+            if pil_image is not None:
+                raw = self._generate([pil_image], prompt, max_new_tokens=120)
+            else:
+                raw = self._generate_text_only(prompt, max_new_tokens=120)
+            choice = _extract_choice(raw)
+            results.append({"choice": choice, "reasoning": "[pun-scan tiebreak] " + raw[:120]})
+        except Exception:
+            results.append({"choice": "A", "reasoning": "[pun-scan tiebreak] branch error"})
+
         return results
 
 
