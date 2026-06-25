@@ -610,9 +610,86 @@ DISPLAY_FIELDS = {
 }
 
 
+# ── Output validation agent ───────────────────────────────────────────────────
+# Independent agent — receives ONLY the step's output JSON, never the research
+# question or upstream context. Enforces bias-free factual validation so
+# compound reliability degradation (0.85^N) is detected step-by-step rather
+# than silently propagating to the final report.
+
+_VALIDATOR_SYSTEM = (
+    "You are an Output Validation Agent.\n\n"
+    "CONSTITUTIONAL CONSTRAINTS (CANNOT_MUTATE):\n"
+    "- You receive ONLY the structured JSON output from one prior pipeline step.\n"
+    "- You do NOT know the original research question, the reasoning that produced\n"
+    "  this output, or any other agent's results. This is enforced to prevent\n"
+    "  confirmation bias — you validate facts in the output, not intent.\n"
+    "- Evaluate on structure and internal coherence ONLY.\n\n"
+    "Check:\n"
+    "  1. Required fields are present and non-empty.\n"
+    "  2. Values are internally consistent (no self-contradictions).\n"
+    "  3. Confidence values are in [0.0, 1.0] if present.\n"
+    "  4. No error keys ('error', 'parse_error') in top-level fields.\n"
+    "  5. Lists have at least one item where the schema requires them.\n\n"
+    "Return JSON only — no prose:\n"
+    "{\"validation_confidence\": <float 0-1>, "
+    "\"issues\": [<string>, ...], "
+    "\"verdict\": \"PASS\"|\"DEGRADE\"|\"FAIL\"}\n\n"
+    "Scoring:\n"
+    "  PASS    0.75-1.0  all required fields present, no contradictions\n"
+    "  DEGRADE 0.40-0.74 minor gaps — optional fields missing, weak values\n"
+    "  FAIL    0.00-0.39 required fields absent, contradictions, error keys present"
+)
+
+# Fields the validator checks for each agent (it sees the output; it knows the schema)
+_REQUIRED_OUTPUT_FIELDS = {
+    "hypothesis":  ["hypothesis", "null_hypothesis", "falsifiable", "confidence"],
+    "literature":  ["sources", "supporting_evidence", "contradicting_evidence", "consensus_level"],
+    "simulation":  ["model_description", "predicted_outcomes", "assumptions", "confidence"],
+    "critic":      ["flaws", "rival_hypothesis", "severity", "recommendation"],
+    "safety":      ["verdict", "risk_level", "risks", "mitigations"],
+    "ethics":      ["verdict", "classification", "concerns"],
+    "data":        ["data_requirements", "methodology", "sample_size", "validation_criteria"],
+    "experiment":  ["protocol", "control_groups", "endpoints", "analysis_plan"],
+    "report":      ["title", "summary", "findings", "conclusions"],
+}
+
+
+def _validate_step_output(agent_name, result, model):
+    """Bias-free output validation — sees only the output JSON, never the question.
+
+    Returns (validation_confidence: float, issues: list[str], verdict: str).
+    Uses the lightest model: this is structural/factual checking, not reasoning.
+    """
+    required = _REQUIRED_OUTPUT_FIELDS.get(agent_name, [])
+    user_msg = (
+        "Agent: %s\n"
+        "Required fields: %s\n\n"
+        "Output to validate:\n%s"
+    ) % (agent_name, json.dumps(required), json.dumps(result, indent=2)[:1500])
+
+    # Always use the lightest model — validator must not out-reason the producing agent
+    validator_model = _resolve_model("simple")
+    response, _ = _call_llm(_VALIDATOR_SYSTEM, user_msg, validator_model, max_tokens=300)
+    parsed = _parse_json(response)
+
+    vc = parsed.get("validation_confidence", 0.5)
+    if isinstance(vc, (int, float)):
+        vc = max(0.0, min(1.0, float(vc)))
+    else:
+        vc = 0.5
+
+    return (
+        vc,
+        parsed.get("issues", []),
+        parsed.get("verdict", "DEGRADE"),
+    )
+
+
 # ── Build manifest ───────────────────────────────────────────────────────────
 
-def _build_manifest(agent_name, step, result, model, task_class, latency_ms, halted=False):
+def _build_manifest(agent_name, step, result, model, task_class, latency_ms,
+                    halted=False, validation_confidence=None, validation_issues=None,
+                    validation_verdict=None):
     prefix_map = {
         "hypothesis": "HYP", "literature": "LIT", "simulation": "SIM",
         "critic": "CRT", "safety": "SAF", "ethics": "ETH",
@@ -653,6 +730,9 @@ def _build_manifest(agent_name, step, result, model, task_class, latency_ms, hal
         "can_halt_pipeline":     agent_name in ("safety", "ethics"),
         "rival_required":        agent_name in ("critic", "report"),
         "agent_response":        result,
+        "validation_confidence": validation_confidence,
+        "validation_issues":     validation_issues or [],
+        "validation_verdict":    validation_verdict,
     }
 
     manifest["signature"] = _sign(manifest)
@@ -738,7 +818,15 @@ class ResearchPipeline:
         response, latency_ms = _call_llm(system_prompt, user_prompt, model, max_tokens)
         result = _parse_json(response)
 
-        manifest = _build_manifest(name, step, result, model, task_class, latency_ms)
+        # Independent output validation — sees only the result JSON, never the question
+        val_confidence, val_issues, val_verdict = _validate_step_output(name, result, model)
+
+        manifest = _build_manifest(
+            name, step, result, model, task_class, latency_ms,
+            validation_confidence=val_confidence,
+            validation_issues=val_issues,
+            validation_verdict=val_verdict,
+        )
         self.manifests.append(manifest)
 
         _print_step(step, total_steps, label, model, task_class, result, manifest["manifest_id"], latency_ms, agent_name=name)
@@ -964,7 +1052,27 @@ class ResearchPipeline:
         return self._final_report(context)
 
     def _final_report(self, context, halted=False):
-        """Print summary, update pattern library, save manifests."""
+        """Print summary, compute pipeline reliability, update pattern library, save manifests."""
+        # Compound reliability = product of per-step validation scores.
+        # Mirrors the 0.85^N degradation problem: each DEGRADE step multiplies
+        # the cumulative score down, making silent failures visible before they
+        # reach the final report.
+        val_scores = [
+            m["validation_confidence"]
+            for m in self.manifests
+            if m.get("validation_confidence") is not None
+        ]
+        pipeline_reliability = 1.0
+        for s in val_scores:
+            pipeline_reliability *= s
+        pipeline_reliability = round(pipeline_reliability, 4)
+
+        degraded_steps = [
+            (m["agent"], m["validation_confidence"], m["validation_verdict"])
+            for m in self.manifests
+            if m.get("validation_verdict") in ("DEGRADE", "FAIL")
+        ]
+
         print()
         print("  " + BOX_DOUBLE)
         if halted:
@@ -972,7 +1080,13 @@ class ResearchPipeline:
             print("  Reason: %s" % self.halt_reason)
         else:
             print("  PIPELINE COMPLETE — %d steps executed" % len(self.manifests))
-        print("  Manifests: %d signed" % len(self.manifests))
+        print("  Manifests  : %d signed" % len(self.manifests))
+        print("  Reliability: %.4f  (product of %d validation scores)" % (
+            pipeline_reliability, len(val_scores)))
+        if degraded_steps:
+            print("  DEGRADED   : " + ", ".join(
+                "%s(%.2f %s)" % (a, c, v) for a, c, v in degraded_steps
+            ))
         print("  " + BOX_DOUBLE)
 
         # Update pattern library with EWMA efficiency for this run
@@ -996,6 +1110,11 @@ class ResearchPipeline:
             "steps_completed": len(self.manifests),
             "halted": halted,
             "halt_reason": self.halt_reason,
+            "pipeline_reliability": pipeline_reliability,
+            "degraded_steps": [
+                {"agent": a, "validation_confidence": c, "verdict": v}
+                for a, c, v in degraded_steps
+            ],
             "plan": {
                 "domain":    self.plan.domain    if self.plan else "general",
                 "approach":  self.plan.approach  if self.plan else "full_pipeline",
