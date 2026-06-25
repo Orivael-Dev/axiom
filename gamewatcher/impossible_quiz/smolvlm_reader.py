@@ -155,8 +155,8 @@ class SmolVLMReader:
             pass
         return {"question": "", "answers": ["", "", "", ""]}
 
-    def pick_answer(self, question: str, answers: list[str]) -> dict:
-        """Reason about the best answer. Returns choice, reasoning, confidence."""
+    def pick_answer(self, question: str, answers: list[str], pil_image=None) -> dict:
+        """Reason about the best answer using the screenshot if available."""
         if not question:
             return {"choice": "A", "reasoning": "no question extracted", "confidence": 0.0}
 
@@ -165,19 +165,25 @@ class SmolVLMReader:
             hints=_QRF_HINTS, question=question, a=a, b=b, c=c, d=d
         )
         try:
-            raw  = self._generate_text_only(prompt, max_new_tokens=180)
+            if pil_image is not None:
+                raw = self._generate([pil_image], prompt, max_new_tokens=180)
+            else:
+                raw = self._generate_text_only(prompt, max_new_tokens=180)
             return _parse_answer_response(raw, question)
         except Exception as exc:
             return {"choice": "A", "reasoning": f"inference error: {exc}", "confidence": 0.0}
 
-    def qrf_branches(self, question: str, answers: list[str]) -> list[dict]:
-        """Run 3 independent reasoning branches. Returns list of {choice, reasoning}."""
+    def qrf_branches(self, question: str, answers: list[str], pil_image=None) -> list[dict]:
+        """Run 3 independent reasoning branches, each with the screenshot if available."""
         a, b, c, d = (answers + ["", "", "", ""])[:4]
         results = []
         for branch_prompt in _QRF_BRANCHES:
             prompt = branch_prompt.format(question=question, a=a, b=b, c=c, d=d)
             try:
-                raw    = self._generate_text_only(prompt, max_new_tokens=100)
+                if pil_image is not None:
+                    raw = self._generate([pil_image], prompt, max_new_tokens=100)
+                else:
+                    raw = self._generate_text_only(prompt, max_new_tokens=100)
                 choice = _extract_choice(raw)
                 results.append({"choice": choice, "reasoning": raw[:120]})
             except Exception:

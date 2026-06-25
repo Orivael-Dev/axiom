@@ -138,8 +138,8 @@ class QuizPlayer:
 
     CHOICE_TO_INDEX = {"A": 0, "B": 1, "C": 2, "D": 3}
 
-    def decide(self, state: QuizState, reader) -> QuizDecision:
-        result = reader.pick_answer(state.question, state.answers)
+    def decide(self, state: QuizState, reader, pil_frame=None) -> QuizDecision:
+        result = reader.pick_answer(state.question, state.answers, pil_image=pil_frame)
         choice     = result.get("choice", "A")
         reasoning  = result.get("reasoning", "")
         confidence = float(result.get("confidence", 0.5))
@@ -149,7 +149,7 @@ class QuizPlayer:
 
         # QRF: low confidence → run 3 independent reasoning branches
         if confidence < QRF_CONFIDENCE_THRESHOLD:
-            branches  = reader.qrf_branches(state.question, state.answers)
+            branches  = reader.qrf_branches(state.question, state.answers, pil_image=pil_frame)
             qrf_votes = _majority_vote(branches)
             top       = max(qrf_votes, key=qrf_votes.get)  # type: ignore[arg-type]
 

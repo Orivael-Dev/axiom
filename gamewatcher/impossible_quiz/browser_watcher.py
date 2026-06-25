@@ -214,8 +214,8 @@ def run(args: argparse.Namespace) -> None:
                 label = "ABCD"[i]
                 print(f"  {label}) {ans}")
 
-            # Layer 2: decide (+ QRF if confidence is low)
-            decision = player.decide(state, reader)
+            # Layer 2: decide — pass frame so model sees the screenshot during reasoning
+            decision = player.decide(state, reader, pil_frame=frame)
             print(f"\n  → Choice: {decision.choice}  confidence={decision.confidence:.2f}"
                   f"  qrf={'yes' if decision.qrf_used else 'no'}")
             print(f"  Reasoning: {decision.reasoning[:120]}")
