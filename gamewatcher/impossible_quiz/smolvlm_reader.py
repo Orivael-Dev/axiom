@@ -71,6 +71,18 @@ _QRF_BRANCHES = [
     "The remaining one is probably correct. "
     "Question: {question}\nAnswers: A){a} B){b} C){c} D){d}\n"
     "Which answer is left after eliminating the obvious ones? End with: ANSWER: <A/B/C/D>",
+
+    # Branch 3: option-aware pun scan
+    # Each option is inspected individually for hidden pun/wordplay/homophone meanings.
+    # This is the branch that resolved Q2 (lexical pun — over-literalization failure mode).
+    "Question: {question}\n\n"
+    "Check each answer option for a hidden pun, homophone, or double meaning:\n"
+    "A) \"{a}\" — does this sound like something else? Any wordplay or alternate meaning?\n"
+    "B) \"{b}\" — does this sound like something else? Any wordplay or alternate meaning?\n"
+    "C) \"{c}\" — does this sound like something else? Any wordplay or alternate meaning?\n"
+    "D) \"{d}\" — does this sound like something else? Any wordplay or alternate meaning?\n\n"
+    "Which option's hidden meaning best answers the question?\n"
+    "End with: ANSWER: <A/B/C/D>",
 ]
 
 
