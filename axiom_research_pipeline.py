@@ -706,6 +706,172 @@ def _print_preflight_check(agent_name, verdict, confidence, issues, attempt):
         print("              \033[33m!\033[0m %s" % issue[:80])
 
 
+# ── Human-in-the-loop threshold ───────────────────────────────────────────────
+
+PREFLIGHT_THRESHOLD_DEFAULT = 0.75   # ships with a conservative default
+_THRESHOLD_FILE = Path.home() / ".axiom" / "preflight_threshold.json"
+
+_C_BOLD  = lambda s: "\033[1m"  + s + "\033[0m"
+_C_GREEN = lambda s: "\033[32m" + s + "\033[0m"
+_C_WARN  = lambda s: "\033[33m" + s + "\033[0m"
+_C_RED   = lambda s: "\033[31m" + s + "\033[0m"
+_C_DIM   = lambda s: "\033[90m" + s + "\033[0m"
+
+
+def _load_threshold():
+    """Load threshold: env var > persisted file > default."""
+    env = os.environ.get("AXIOM_PREFLIGHT_THRESHOLD", "")
+    if env:
+        try:
+            return max(0.0, min(1.0, float(env)))
+        except ValueError:
+            pass
+    if _THRESHOLD_FILE.exists():
+        try:
+            data = json.loads(_THRESHOLD_FILE.read_text(encoding="utf-8"))
+            return max(0.0, min(1.0, float(data.get("threshold", PREFLIGHT_THRESHOLD_DEFAULT))))
+        except (json.JSONDecodeError, ValueError, OSError):
+            pass
+    return PREFLIGHT_THRESHOLD_DEFAULT
+
+
+def _save_threshold(threshold):
+    try:
+        _THRESHOLD_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _THRESHOLD_FILE.write_text(
+            json.dumps({"threshold": round(threshold, 4),
+                        "set_at": datetime.utcnow().isoformat() + "Z"}),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _quality_warning(old, new, n_steps=9):
+    """Print compound reliability math when user changes threshold.
+
+    Shows the concrete 0.85^N degradation the user is accepting so the
+    decision is made on facts, not intuition.
+    """
+    sep = "  " + "-" * 54
+    print(sep)
+    print("  %s" % _C_BOLD("QUALITY WARNING — threshold change"))
+    print("  Old threshold : %.2f" % old)
+    print("  New threshold : %.2f  %s" % (
+        new,
+        _C_RED("(lower)") if new < old else _C_GREEN("(higher)"),
+    ))
+    print()
+    min_rel_old = old ** n_steps
+    min_rel_new = new ** n_steps
+    print("  Compound reliability with %d steps:" % n_steps)
+    print("    old  %.2f ^ %d = %.4f  (%.1f%%)" % (old, n_steps, min_rel_old, min_rel_old * 100))
+    print("    new  %.2f ^ %d = %.4f  (%.1f%%)" % (new, n_steps, min_rel_new, min_rel_new * 100))
+
+    if new < 0.40:
+        print()
+        print("  %s" % _C_RED("!! CRITICAL: below 0.40 — FAIL-grade outputs will pass the gate"))
+        print("  %s" % _C_RED("   Active preflight is effectively disabled at this threshold."))
+    elif new < old:
+        print()
+        print("  %s" % _C_WARN("!! WARNING: DEGRADE-grade outputs may pass without human review"))
+        print("  %s" % _C_WARN("   Downstream agents will receive lower-quality inputs."))
+    else:
+        print()
+        print("  %s" % _C_GREEN("More steps will trigger human review (stricter gate)."))
+    print(sep)
+
+
+def _interactive_set_threshold(current):
+    """Prompt the user for a new threshold, show quality warning, persist on confirm."""
+    while True:
+        try:
+            raw = input("  New threshold [0.00–1.00, enter=cancel]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return current
+        if not raw:
+            print("  Cancelled.")
+            return current
+        try:
+            new = round(float(raw), 4)
+        except ValueError:
+            print("  Invalid — enter a number between 0.00 and 1.00.")
+            continue
+        if not (0.0 <= new <= 1.0):
+            print("  Out of range.")
+            continue
+        print()
+        _quality_warning(current, new)
+        try:
+            confirm = input("  Apply new threshold %.2f? [y/N]: " % new).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return current
+        if confirm in ("y", "yes"):
+            _save_threshold(new)
+            print("  %s  Threshold saved to %s" % (_C_GREEN("Saved."), _THRESHOLD_FILE))
+            return new
+        print("  Cancelled — threshold unchanged.")
+        return current
+
+
+def _human_intervention(agent_name, val_confidence, val_issues, val_verdict,
+                        threshold, retries_exhausted=False):
+    """Pause the pipeline and prompt the human for a decision.
+
+    Returns one of: 'continue' | 'retry' | 'halt'
+    ('retry' is not offered when retries_exhausted=True.)
+    """
+    _V = {"PASS": _C_GREEN("PASS"), "DEGRADE": _C_WARN("DEGRADE"), "FAIL": _C_RED("FAIL")}
+    sep = "  " + "=" * 54
+    print()
+    print(sep)
+    print("  %s" % _C_BOLD("ACTIVE PREFLIGHT — HUMAN REVIEW REQUIRED"))
+    print("  %-14s %s  conf=%.2f  threshold=%.2f" % (
+        agent_name, _V.get(val_verdict, val_verdict), val_confidence, threshold,
+    ))
+    if val_issues:
+        for issue in val_issues[:5]:
+            print("  %s %s" % (_C_WARN("!"), issue[:76]))
+    print()
+    print("  [c] Accept this output and continue")
+    if not retries_exhausted:
+        print("  [r] Retry this step")
+    print("  [h] Halt pipeline here")
+    print("  [t] Change threshold  (current: %.2f)" % threshold)
+    print(sep)
+
+    while True:
+        try:
+            choice = input("  Choice: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return "halt"
+
+        if choice in ("c", "continue"):
+            return "continue"
+        if choice in ("r", "retry") and not retries_exhausted:
+            return "retry"
+        if choice in ("h", "halt"):
+            return "halt"
+        if choice in ("t", "threshold"):
+            new_t = _interactive_set_threshold(threshold)
+            # If user raised threshold past this output, auto-accept
+            if val_confidence >= new_t:
+                print("  %s Output now meets threshold (%.2f ≥ %.2f) — continuing." % (
+                    _C_GREEN("OK."), val_confidence, new_t,
+                ))
+                return "continue"
+            # Re-show prompt with updated threshold
+            print()
+            print("  Output still below new threshold (%.2f < %.2f)" % (val_confidence, new_t))
+            threshold = new_t
+            continue
+        opts = "c/r/h/t" if not retries_exhausted else "c/h/t"
+        print("  Enter %s." % opts)
+
+
 # ── Build manifest ───────────────────────────────────────────────────────────
 
 def _build_manifest(agent_name, step, result, model, task_class, latency_ms,
@@ -799,7 +965,8 @@ class ResearchPipeline:
     Results feed back to the PatternLibrary as EWMA-updated efficiency scores.
     """
 
-    def __init__(self, model_override=None, use_orchestrator=True):
+    def __init__(self, model_override=None, use_orchestrator=True,
+                 preflight_threshold=None, hitl_enabled=None):
         self.model_override = model_override
         self.use_orchestrator = use_orchestrator
         self.manifests = []
@@ -808,6 +975,14 @@ class ResearchPipeline:
         self.halt_step = None
         self.plan = None
         self._orchestrator = ResearchOrchestrator() if use_orchestrator else None
+        # Threshold: explicit arg > env/file > default
+        self.preflight_threshold = (
+            preflight_threshold if preflight_threshold is not None else _load_threshold()
+        )
+        # HITL: explicit arg; default to True only when stdin is an interactive TTY
+        self.hitl_enabled = (
+            hitl_enabled if hitl_enabled is not None else sys.stdin.isatty()
+        )
 
     def _get_model(self, task_class):
         return _resolve_model(task_class, self.model_override)
@@ -850,25 +1025,51 @@ class ResearchPipeline:
         val_confidence, val_issues, val_verdict = _validate_step_output(name, result)
         _print_preflight_check(name, val_verdict, val_confidence, val_issues, attempt=0)
 
-        if val_verdict in ("FAIL", "DEGRADE"):
-            # Retry: append issues to prompt so the agent knows what to fix
-            retry_hint = (
-                "\n\n[ACTIVE PREFLIGHT RETRY %d/%d]\n"
-                "Your previous output failed validation. Issues found:\n%s\n"
-                "Return complete JSON fixing all issues above."
-            ) % (1, PREFLIGHT_MAX_RETRIES, "\n".join("- %s" % i for i in val_issues))
-            retry_response, retry_ms = _call_llm(
-                system_prompt, user_prompt + retry_hint, model, max_tokens
-            )
-            latency_ms += retry_ms
-            result = _parse_json(retry_response)
+        # Reload threshold — user may have changed it during a previous HITL prompt
+        self.preflight_threshold = _load_threshold()
 
-            val_confidence, val_issues, val_verdict = _validate_step_output(name, result)
-            _print_preflight_check(name, val_verdict, val_confidence, val_issues, attempt=1)
+        if val_confidence < self.preflight_threshold or val_verdict == "FAIL":
+            # Decide: human prompt (interactive) or automatic policy (API/pipe)
+            if self.hitl_enabled:
+                action = _human_intervention(
+                    name, val_confidence, val_issues, val_verdict, self.preflight_threshold
+                )
+                self.preflight_threshold = _load_threshold()  # user may have changed threshold
+            else:
+                # Non-interactive: retry on DEGRADE/FAIL, no human involvement
+                action = "retry"
 
-            if val_verdict == "FAIL":
-                # Hard block — same as preflight exit 1
+            if action == "halt":
                 raise StepPreflightFailed(name, val_issues)
+
+            if action == "retry":
+                retry_hint = (
+                    "\n\n[ACTIVE PREFLIGHT RETRY 1/%d]\n"
+                    "Output scored %.2f (threshold %.2f). Issues to fix:\n%s\n"
+                    "Return complete JSON addressing all issues above."
+                ) % (PREFLIGHT_MAX_RETRIES, val_confidence, self.preflight_threshold,
+                     "\n".join("- %s" % i for i in val_issues))
+                r2, ms2 = _call_llm(system_prompt, user_prompt + retry_hint, model, max_tokens)
+                latency_ms += ms2
+                result = _parse_json(r2)
+                val_confidence, val_issues, val_verdict = _validate_step_output(name, result)
+                _print_preflight_check(name, val_verdict, val_confidence, val_issues, attempt=1)
+
+                # Check again after retry — human gets one more look if still failing
+                if val_confidence < self.preflight_threshold or val_verdict == "FAIL":
+                    if self.hitl_enabled:
+                        action2 = _human_intervention(
+                            name, val_confidence, val_issues, val_verdict,
+                            self.preflight_threshold, retries_exhausted=True,
+                        )
+                        self.preflight_threshold = _load_threshold()
+                        if action2 == "halt":
+                            raise StepPreflightFailed(name, val_issues)
+                    else:
+                        # Non-interactive: hard block on FAIL, accept DEGRADE
+                        if val_verdict == "FAIL":
+                            raise StepPreflightFailed(name, val_issues)
+            # action == "continue": human accepted output as-is
         # ─────────────────────────────────────────────────────────────────────
 
         manifest = _build_manifest(
@@ -1070,6 +1271,9 @@ class ResearchPipeline:
             if self.plan.retrospect_bias is not None:
                 print("  Retrospect bias: %.2f efficiency" % self.plan.retrospect_bias)
         print("  Steps    : %s" % ", ".join(str(s) for s in sorted(active_steps)))
+        print("  Threshold: %.2f  HITL=%s" % (
+            self.preflight_threshold, "on" if self.hitl_enabled else "off (auto)"
+        ))
         print("  " + BOX_DOUBLE)
 
         # ── Dynamic agent loop ────────────────────────────────────────
@@ -1224,7 +1428,36 @@ def main():
         action="store_true",
         help="Disable domain orchestration — run all steps in order (v1 behaviour)",
     )
+    parser.add_argument(
+        "--preflight-threshold",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=(
+            "Validation confidence threshold for human review (0.0–1.0). "
+            "Steps scoring below this value trigger HITL. "
+            "Persisted to ~/.axiom/preflight_threshold.json. "
+            "Default: %.2f (or AXIOM_PREFLIGHT_THRESHOLD env var)." % PREFLIGHT_THRESHOLD_DEFAULT
+        ),
+    )
+    parser.add_argument(
+        "--no-hitl",
+        action="store_true",
+        help=(
+            "Disable human-in-the-loop prompts — auto-retry on DEGRADE, "
+            "halt on FAIL (same as API/pipe mode)."
+        ),
+    )
     args = parser.parse_args()
+
+    # Handle threshold: CLI arg → show quality warning vs current, then persist
+    if args.preflight_threshold is not None:
+        new_t = max(0.0, min(1.0, args.preflight_threshold))
+        current_t = _load_threshold()
+        if new_t != current_t:
+            _quality_warning(current_t, new_t)
+            _save_threshold(new_t)
+            print("  Threshold saved: %.2f\n" % new_t)
 
     global MANIFEST_FILE
     if args.output:
@@ -1252,7 +1485,12 @@ def main():
             sys.exit(1)
 
     use_orch = not args.no_orchestrator
-    pipeline = ResearchPipeline(model_override=args.model, use_orchestrator=use_orch)
+    pipeline = ResearchPipeline(
+        model_override=args.model,
+        use_orchestrator=use_orch,
+        preflight_threshold=args.preflight_threshold,
+        hitl_enabled=(False if args.no_hitl else None),  # None → auto-detect TTY
+    )
     pipeline.run(args.question, max_steps=args.steps)
 
 
