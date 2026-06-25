@@ -347,12 +347,23 @@ MODEL_LADDER = {
 
 
 def _resolve_model(task_class, override=None):
-    """Return the model to use for this task class given the active backend."""
+    """Return the model to use for this task class given the active backend.
+
+    NIM path: reads NIM_MODEL env var — NO hardcoded default. If NIM_MODEL
+    is unset the caller gets an empty string which _call_llm will reject with
+    a clear error rather than silently hitting a rate-capped model.
+    """
     if override:
         return override
     backend = _llm_backend()
     if backend == "nim":
-        return os.environ.get("NIM_MODEL", "deepseek-ai/deepseek-r1")
+        nim_model = os.environ.get("NIM_MODEL", "")
+        if not nim_model:
+            raise RuntimeError(
+                "NIM_MODEL env var is required when using NIM backend. "
+                "Example: export NIM_MODEL=meta/llama-3.1-8b-instruct"
+            )
+        return nim_model
     return MODEL_LADDER.get(task_class, "claude-sonnet-4-6")
 
 
@@ -648,6 +659,34 @@ def _build_manifest(agent_name, step, result, model, task_class, latency_ms, hal
     return manifest
 
 
+# ── Literature retrieval ──────────────────────────────────────────────────────
+
+try:
+    from axiom_research.retrieve import LocalFilesRetriever as _LocalFilesRetriever
+    _RETRIEVER_AVAILABLE = True
+except ImportError:
+    _RETRIEVER_AVAILABLE = False
+
+
+def _retrieve_literature(question, hypothesis):
+    """Ground the literature step with real local document retrieval.
+
+    Searches AXIOM_RETRIEVER_ROOT (default: docs/ alongside this file) using
+    axiom_research.retrieve.LocalFilesRetriever. Returns up to 5 RetrievedDoc
+    objects, or [] if the package is unavailable or the directory doesn't exist.
+    """
+    if not _RETRIEVER_AVAILABLE:
+        return []
+    root = os.environ.get("AXIOM_RETRIEVER_ROOT", "")
+    if not root:
+        root = str(Path(__file__).parent / "docs")
+    try:
+        retriever = _LocalFilesRetriever(root)
+        return retriever.retrieve("%s %s" % (question, hypothesis), top_k=5)
+    except Exception:
+        return []
+
+
 # ── Pipeline ─────────────────────────────────────────────────────────────────
 
 class ResearchPipeline:
@@ -726,14 +765,24 @@ class ResearchPipeline:
             ) % question
 
         if agent_name == "literature":
+            retrieved = _retrieve_literature(question, hyp.get("hypothesis", question))
+            retrieval_block = ""
+            if retrieved:
+                lines = []
+                for doc in retrieved[:5]:
+                    lines.append("  [%.2f] %s — %s" % (doc.score, doc.path, doc.snippet[:200]))
+                retrieval_block = "\n\nRETRIEVED SOURCES (real, use as evidence):\n" + "\n".join(lines)
             return (
                 "Research question: %s\n"
-                "Hypothesis: %s\n\n"
+                "Hypothesis: %s"
+                "%s\n\n"
                 "Search existing literature for evidence supporting or "
-                "contradicting this hypothesis. Return JSON with: sources[], "
+                "contradicting this hypothesis. Use the retrieved sources above "
+                "as your primary evidence where available. "
+                "Return JSON with: sources[], "
                 "supporting_evidence, contradicting_evidence, gaps[], "
                 "consensus_level, confidence"
-            ) % (question, hyp.get("hypothesis", question))
+            ) % (question, hyp.get("hypothesis", question), retrieval_block)
 
         if agent_name == "simulation":
             lit_summary = lit.get("supporting_evidence", "no literature data")
