@@ -610,11 +610,19 @@ DISPLAY_FIELDS = {
 }
 
 
-# ── Output validation agent ───────────────────────────────────────────────────
-# Independent agent — receives ONLY the step's output JSON, never the research
-# question or upstream context. Enforces bias-free factual validation so
-# compound reliability degradation (0.85^N) is detected step-by-step rather
-# than silently propagating to the final report.
+# ── Active preflight — per-step output validation ────────────────────────────
+#
+# Mirrors scripts/axiom_preflight.py but fires mid-pipeline, not pre-push.
+#
+# Gate logic (same shape as preflight PASS/WARN/FAIL + retry):
+#   PASS    → continue immediately
+#   DEGRADE → retry the step once with issues appended; continue either way
+#   FAIL    → retry the step once with issues appended;
+#              FAIL again → raise StepPreflightFailed → pipeline halted
+#
+# The validator sees ONLY the output JSON — never the research question,
+# upstream context, or producing agent's reasoning. This enforces the same
+# bias-freedom as the critic's question_blindness constraint.
 
 _VALIDATOR_SYSTEM = (
     "You are an Output Validation Agent.\n\n"
@@ -640,7 +648,7 @@ _VALIDATOR_SYSTEM = (
     "  FAIL    0.00-0.39 required fields absent, contradictions, error keys present"
 )
 
-# Fields the validator checks for each agent (it sees the output; it knows the schema)
+# Expected output fields per agent — what "complete" means without seeing the inputs
 _REQUIRED_OUTPUT_FIELDS = {
     "hypothesis":  ["hypothesis", "null_hypothesis", "falsifiable", "confidence"],
     "literature":  ["sources", "supporting_evidence", "contradicting_evidence", "consensus_level"],
@@ -653,12 +661,23 @@ _REQUIRED_OUTPUT_FIELDS = {
     "report":      ["title", "summary", "findings", "conclusions"],
 }
 
+PREFLIGHT_MAX_RETRIES = 1   # one retry, matching preflight's "fix and re-run" model
 
-def _validate_step_output(agent_name, result, model):
+
+class StepPreflightFailed(Exception):
+    """Raised when a step's output fails active preflight after all retries.
+    Caught in run() and converted to a pipeline halt."""
+    def __init__(self, agent_name, issues):
+        self.agent_name = agent_name
+        self.issues     = issues
+        super().__init__("Active preflight FAILED for %s: %s" % (agent_name, issues))
+
+
+def _validate_step_output(agent_name, result):
     """Bias-free output validation — sees only the output JSON, never the question.
 
     Returns (validation_confidence: float, issues: list[str], verdict: str).
-    Uses the lightest model: this is structural/factual checking, not reasoning.
+    Uses the lightest model — validator must not out-reason the producing agent.
     """
     required = _REQUIRED_OUTPUT_FIELDS.get(agent_name, [])
     user_msg = (
@@ -667,22 +686,24 @@ def _validate_step_output(agent_name, result, model):
         "Output to validate:\n%s"
     ) % (agent_name, json.dumps(required), json.dumps(result, indent=2)[:1500])
 
-    # Always use the lightest model — validator must not out-reason the producing agent
     validator_model = _resolve_model("simple")
     response, _ = _call_llm(_VALIDATOR_SYSTEM, user_msg, validator_model, max_tokens=300)
     parsed = _parse_json(response)
 
     vc = parsed.get("validation_confidence", 0.5)
-    if isinstance(vc, (int, float)):
-        vc = max(0.0, min(1.0, float(vc)))
-    else:
-        vc = 0.5
+    vc = max(0.0, min(1.0, float(vc))) if isinstance(vc, (int, float)) else 0.5
+    return vc, parsed.get("issues", []), parsed.get("verdict", "DEGRADE")
 
-    return (
-        vc,
-        parsed.get("issues", []),
-        parsed.get("verdict", "DEGRADE"),
-    )
+
+def _print_preflight_check(agent_name, verdict, confidence, issues, attempt):
+    """Print one preflight row — mirrors preflight.py's per-check output."""
+    _V = {"PASS": "\033[32mPASS\033[0m", "DEGRADE": "\033[33mDEGRADE\033[0m",
+          "FAIL": "\033[31mFAIL\033[0m"}
+    prefix = "  RETRY %d" % attempt if attempt else "  PREFLIGHT"
+    row = "%s  %-14s %s  conf=%.2f" % (prefix, agent_name, _V.get(verdict, verdict), confidence)
+    print(row)
+    for issue in (issues or [])[:3]:
+        print("              \033[33m!\033[0m %s" % issue[:80])
 
 
 # ── Build manifest ───────────────────────────────────────────────────────────
@@ -795,7 +816,15 @@ class ResearchPipeline:
         return TOKEN_BUDGETS.get(task_class, 1500)
 
     def _run_agent(self, agent_def, user_prompt, total_steps):
-        """Run one agent: load spec, call LLM, parse, sign manifest, print."""
+        """Run one agent with active preflight gate.
+
+        Mirrors scripts/axiom_preflight.py — named checks, PASS/DEGRADE/FAIL
+        verdicts, one retry with issues hint, hard halt on FAIL after retry.
+
+          PASS    → continue immediately
+          DEGRADE → retry once (issues appended to prompt); continue either way
+          FAIL    → retry once; FAIL again → raise StepPreflightFailed → halt
+        """
         name       = agent_def["name"]
         axiom_file = agent_def["axiom"]
         task_class = agent_def["task_class"]
@@ -812,14 +841,35 @@ class ResearchPipeline:
         )
 
         model      = self._get_model(task_class)
-        # Use per-agent token budget, fall back to task_class default
         max_tokens = agent_def.get("max_tokens") or self._get_budget(task_class)
 
         response, latency_ms = _call_llm(system_prompt, user_prompt, model, max_tokens)
         result = _parse_json(response)
 
-        # Independent output validation — sees only the result JSON, never the question
-        val_confidence, val_issues, val_verdict = _validate_step_output(name, result, model)
+        # ── Active preflight gate ─────────────────────────────────────────────
+        val_confidence, val_issues, val_verdict = _validate_step_output(name, result)
+        _print_preflight_check(name, val_verdict, val_confidence, val_issues, attempt=0)
+
+        if val_verdict in ("FAIL", "DEGRADE"):
+            # Retry: append issues to prompt so the agent knows what to fix
+            retry_hint = (
+                "\n\n[ACTIVE PREFLIGHT RETRY %d/%d]\n"
+                "Your previous output failed validation. Issues found:\n%s\n"
+                "Return complete JSON fixing all issues above."
+            ) % (1, PREFLIGHT_MAX_RETRIES, "\n".join("- %s" % i for i in val_issues))
+            retry_response, retry_ms = _call_llm(
+                system_prompt, user_prompt + retry_hint, model, max_tokens
+            )
+            latency_ms += retry_ms
+            result = _parse_json(retry_response)
+
+            val_confidence, val_issues, val_verdict = _validate_step_output(name, result)
+            _print_preflight_check(name, val_verdict, val_confidence, val_issues, attempt=1)
+
+            if val_verdict == "FAIL":
+                # Hard block — same as preflight exit 1
+                raise StepPreflightFailed(name, val_issues)
+        # ─────────────────────────────────────────────────────────────────────
 
         manifest = _build_manifest(
             name, step, result, model, task_class, latency_ms,
@@ -829,7 +879,8 @@ class ResearchPipeline:
         )
         self.manifests.append(manifest)
 
-        _print_step(step, total_steps, label, model, task_class, result, manifest["manifest_id"], latency_ms, agent_name=name)
+        _print_step(step, total_steps, label, model, task_class, result,
+                    manifest["manifest_id"], latency_ms, agent_name=name)
 
         return result, manifest
 
@@ -1030,7 +1081,17 @@ class ResearchPipeline:
                 continue
 
             prompt = self._build_prompt(name, research_question, context)
-            result, _ = self._run_agent(agent_def, prompt, total_active)
+            try:
+                result, _ = self._run_agent(agent_def, prompt, total_active)
+            except StepPreflightFailed as exc:
+                self.halted = True
+                self.halt_reason = "Active preflight FAILED: %s — %s" % (
+                    exc.agent_name, "; ".join(exc.issues[:3])
+                )
+                self.halt_step = step
+                _print_halt(step, total_active, name.upper() + " AGENT [PREFLIGHT]",
+                            self.halt_reason)
+                return self._final_report(context, halted=True)
             context[name] = result
 
             # Safety halt
