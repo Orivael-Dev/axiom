@@ -294,3 +294,99 @@ class TestAXMQuantMapWidening:
             _canonicalize_quant_map([("scheme", "srd")])
         with pytest.raises(TypeError, match="quant_map"):
             _canonicalize_quant_map(42)
+
+
+# ===========================================================================
+# SECTION 5 — FILE INTEGRITY (weight + module re-hashing on verify)
+# ===========================================================================
+
+class TestAXMFileIntegrity:
+    """verify_proofs() must re-hash on-disk files against the proof ledger
+    and weight tensors against weights/manifest.json — not merely check that
+    the signatures are internally consistent. A swapped weight or a mutated
+    (non-header-signed) core.json must fail verification."""
+
+    def _pack_with_weights(self, tmp_path):
+        wsrc = tmp_path / "wsrc"
+        wsrc.mkdir()
+        (wsrc / "model.bin").write_bytes(b"REAL_WEIGHTS_V1")
+        return AXMContainer.pack(STARTER_SPEC, str(tmp_path / "m.axm"),
+                                 weights_source_dir=wsrc)
+
+    def test_passed_clean_container_with_weights_verifies(self, tmp_path):
+        c = self._pack_with_weights(tmp_path)
+        assert c.verify_proofs() is True
+
+    def test_blocked_swapped_weight_fails_verify(self, tmp_path):
+        c = self._pack_with_weights(tmp_path)
+        (Path(c.path) / "weights" / "model.bin").write_bytes(b"SWAPPED_WEIGHTS")
+        reloaded = AXMContainer.from_path(str(c.path))
+        assert reloaded.verify_proofs() is False
+
+    def test_blocked_tampered_core_json_fails_verify(self, tmp_path):
+        # core.json is NOT individually HMAC-signed — only the proof ledger
+        # file_sha protects it. This passed before integrity re-hashing.
+        cpath = tmp_path / "m.axm"
+        AXMContainer.pack(STARTER_SPEC, str(cpath))
+        core_path = cpath / "core" / "core.json"
+        data = json.loads(core_path.read_text(encoding="utf-8"))
+        data["params"] = "tampered"
+        core_path.write_text(json.dumps(data), encoding="utf-8")
+        c = AXMContainer.from_path(str(cpath))
+        assert c.verify_proofs() is False
+
+    def test_blocked_extra_unlisted_weight_file_fails_verify(self, tmp_path):
+        c = self._pack_with_weights(tmp_path)
+        (Path(c.path) / "weights" / "planted.bin").write_bytes(b"PLANTED")
+        reloaded = AXMContainer.from_path(str(c.path))
+        assert reloaded.verify_proofs() is False
+
+    def test_blocked_missing_weight_file_fails_verify(self, tmp_path):
+        c = self._pack_with_weights(tmp_path)
+        (Path(c.path) / "weights" / "model.bin").unlink()
+        reloaded = AXMContainer.from_path(str(c.path))
+        assert reloaded.verify_proofs() is False
+
+
+# ===========================================================================
+# SECTION 6 — ATTESTATION (portable signed deployment record)
+# ===========================================================================
+
+class TestAXMAttestation:
+
+    def _pack_with_weights(self, tmp_path):
+        wsrc = tmp_path / "wsrc"
+        wsrc.mkdir()
+        (wsrc / "model.bin").write_bytes(b"REAL_WEIGHTS_V1")
+        return AXMContainer.pack(STARTER_SPEC, str(tmp_path / "m.axm"),
+                                 weights_source_dir=wsrc)
+
+    def test_passed_attest_roundtrips_against_same_container(self, tmp_path):
+        c = self._pack_with_weights(tmp_path)
+        att = c.attest()
+        assert att["fingerprint"] == c.fingerprint()
+        assert att["weights_manifest"]  # non-empty manifest
+        reloaded = AXMContainer.from_path(str(c.path))
+        assert reloaded.verify_attestation(att) is True
+
+    def test_blocked_attestation_rejects_swapped_weight(self, tmp_path):
+        c = self._pack_with_weights(tmp_path)
+        att = c.attest()
+        # Swap a weight AND rewrite the manifest to match (so verify_proofs
+        # is not the only guard). The attestation must still reject because
+        # its recorded manifest no longer matches the live one.
+        import hashlib as _h
+        wdir = Path(c.path) / "weights"
+        (wdir / "model.bin").write_bytes(b"SWAPPED")
+        (wdir / "manifest.json").write_text(
+            json.dumps({"model.bin": _h.sha256(b"SWAPPED").hexdigest()},
+                       indent=2, sort_keys=True),
+            encoding="utf-8")
+        reloaded = AXMContainer.from_path(str(c.path))
+        assert reloaded.verify_attestation(att) is False
+
+    def test_blocked_tampered_attestation_body_rejected(self, tmp_path):
+        c = self._pack_with_weights(tmp_path)
+        att = c.attest()
+        att["fingerprint"] = "deadbeef"   # mutate the body without re-signing
+        assert c.verify_attestation(att) is False

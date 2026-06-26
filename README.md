@@ -109,7 +109,7 @@ Typical use cases: internal knowledge base Q&A, HR policy assistant, legal docum
 
 **For teams running governed models on local or edge hardware.**
 
-Stochastic Residual Dithering (SRD-4) compresses models to ~4.5 bpw with lower perplexity than standard Q4_K_M at 4.85 bpw. Every compressed model is packed into a signed `.axm` governance container with a public fingerprint — so you can prove exactly what weights were deployed.
+Stochastic Residual Dithering (SRD-4) compresses models to ~4.5 bpw with lower perplexity than standard Q4_K_M at 4.85 bpw. Every compressed model is packed into a signed `.axm` governance container with a public fingerprint — so you can prove exactly what weights were deployed. `verify_proofs()` re-hashes every weight tensor against the signed manifest on load (a single swapped byte fails verification), and `axiom_axm.py attest` exports a signed deployment record you can file and re-check later.
 
 | Method | bpw | Perplexity |
 |---|---|---|
