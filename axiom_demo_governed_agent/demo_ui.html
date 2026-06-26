@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>AXIOM · Governed Agentic Claude</title>
+  <title>Orivael Governance Guard · Governed Agentic Claude</title>
   <style>
     :root{
       --bg:#070a12;--bg2:#0b1020;--panel:rgba(255,255,255,.055);--panel2:rgba(255,255,255,.09);
@@ -34,6 +34,8 @@
     .pol.active-enterprise{background:rgba(103,232,249,.12);border-color:rgba(103,232,249,.4);color:var(--cyan)}
     .pol.active-healthcare{background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.4);color:var(--violet)}
     .pol.active-startup   {background:rgba(134,239,172,.12);border-color:rgba(134,239,172,.4);color:var(--green)}
+    .pol.active-security  {background:rgba(252,165,165,.12);border-color:rgba(252,165,165,.4);color:var(--red)}
+    .pol.active-platform  {background:rgba(253,230,138,.12);border-color:rgba(253,230,138,.4);color:var(--yellow)}
 
     .run-btn{margin-left:auto;padding:9px 22px;border-radius:999px;border:0;background:linear-gradient(135deg,var(--cyan),var(--violet));color:#07111c;font-weight:900;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:opacity .15s,transform .15s;white-space:nowrap}
     .run-btn:hover:not(:disabled){transform:translateY(-1px)}
@@ -110,6 +112,17 @@
     body{display:flex;flex-direction:column;height:100vh}
     main{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
 
+    /* model dropdown */
+    .model-select{padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;transition:all .15s}
+    .model-select:hover{border-color:rgba(255,255,255,.22)}
+    .model-select:focus{outline:none;border-color:rgba(103,232,249,.4)}
+    .model-select:disabled{opacity:.45;cursor:not-allowed}
+    .model-select option{background:#0b0f17;color:var(--text)}
+
+    /* model badge */
+    .model-badge{margin-left:auto;font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:rgba(255,255,255,.03);white-space:nowrap}
+    .model-badge.ungoverned{color:#fca5a5;border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.10)}
+
     /* empty state */
     .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:12px;line-height:1.8}
     .empty strong{display:block;color:var(--soft);font-size:14px;margin-bottom:6px}
@@ -120,11 +133,13 @@
 <body>
 
 <header>
-  <div class="brand"><span class="mark"></span>AXIOM <span style="color:var(--line)">·</span> Governed Agentic Claude</div>
+  <div class="brand"><span class="mark"></span>Orivael Governance Guard <span style="color:var(--line)">·</span> Governed Agentic Claude</div>
   <span class="sep">|</span>
   <div class="tabs" id="tabs"></div>
   <span class="sep">|</span>
   <div class="policies" id="policies"></div>
+  <span class="sep">|</span>
+  <select class="model-select" id="model-select" title="Claude model"></select>
   <button class="run-btn" id="run-btn" onclick="startRun()">
     <span class="spin" id="spin"></span>
     <span id="run-label">▶ Run Demo</span>
@@ -136,7 +151,7 @@
   <div class="panels">
     <!-- Claude panel -->
     <div class="panel">
-      <div class="panel-head"><span class="sdot" id="claude-dot"></span>Claude Agent</div>
+      <div class="panel-head"><span class="sdot" id="claude-dot"></span>Claude Agent<span class="model-badge" id="model-badge"></span></div>
       <div class="panel-body" id="claude-panel">
         <div class="empty"><strong>Claude Agent</strong>Thinking and tool calls appear here in real-time.</div>
       </div>
@@ -144,7 +159,7 @@
 
     <!-- Guard panel -->
     <div class="panel">
-      <div class="panel-head"><span class="sdot" id="guard-dot"></span>AXIOM Governance Guard</div>
+      <div class="panel-head"><span class="sdot" id="guard-dot"></span>Orivael Governance Guard</div>
       <div class="panel-body" id="guard-panel">
         <div class="empty"><strong>Governance Guard</strong>Every tool call is intercepted here before execution.<br>PASS · WARN · BLOCK decisions are HMAC-signed.</div>
       </div>
@@ -165,7 +180,7 @@
 </main>
 
 <footer>
-  <span>AXIOM Governance Runtime · orivael.dev</span>
+  <span>Orivael Governance Guard · orivael.dev</span>
   <span class="footer-run-id" id="footer-run-id">—</span>
   <span class="footer-sig-count" id="footer-sig-count"></span>
   <span style="margin-left:auto" id="footer-policy"></span>
@@ -178,6 +193,7 @@
   let meta = null;
   let currentScenario = 'hr_salary';
   let currentPolicy = 'enterprise';
+  let currentModel = 'claude-sonnet-4-6';
   let currentRunId = null;
   let pendingApproval = null;
   let manifestCount = 0;
@@ -190,9 +206,11 @@
       meta = await r.json();
       buildTabs();
       buildPolicies();
+      buildModels();
       // Set default policy to match scenario default
       currentPolicy = meta.scenarios[currentScenario]?.policy_default || 'enterprise';
       refreshPolicyUI();
+      refreshModelBadge();
     } catch(e) {
       document.getElementById('status-chip').textContent = 'Server not reachable — is demo_server.py running?';
     }
@@ -224,10 +242,53 @@
     refreshPolicyUI();
   }
 
+  function buildModels() {
+    const sel = document.getElementById('model-select');
+    if (!sel) return;
+    currentModel = meta.default_model || currentModel;
+    sel.innerHTML = '';
+    for (const m of (meta.claude_models || [])) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      if (m.id === currentModel) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.onchange = () => { currentModel = sel.value; refreshModelBadge(); };
+  }
+
+  // A scenario pinned to a non-Claude model ignores the dropdown.
+  function scenarioIsPinned(id) {
+    const m = meta?.scenarios[id]?.model || '';
+    return !m.startsWith('claude');
+  }
+
+  // The model that will actually drive the current scenario.
+  function effectiveModel() {
+    const s = meta?.scenarios[currentScenario];
+    return scenarioIsPinned(currentScenario) ? (s?.model || '') : currentModel;
+  }
+
   function refreshTabUI() {
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
     const t = document.getElementById('tab-' + currentScenario);
     if (t) t.classList.add('active');
+    refreshModelBadge();
+  }
+
+  function refreshModelBadge() {
+    // Lock the dropdown for scenarios pinned to an ungoverned model.
+    const sel = document.getElementById('model-select');
+    if (sel) sel.disabled = scenarioIsPinned(currentScenario);
+
+    const badge = document.getElementById('model-badge');
+    if (!badge) return;
+    const s = meta?.scenarios[currentScenario];
+    const model = effectiveModel();
+    const ungoverned = !model.startsWith('claude');
+    badge.className = 'model-badge' + (ungoverned ? ' ungoverned' : '');
+    badge.textContent = (ungoverned ? '⚠ ungoverned · ' : '') + model;
+    badge.title = ungoverned ? (s?.model_note || model) : ('Running on ' + model);
   }
 
   function refreshPolicyUI() {
@@ -255,7 +316,7 @@
       const r = await fetch('/api/start', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({scenario: currentScenario, policy: currentPolicy}),
+        body: JSON.stringify({scenario: currentScenario, policy: currentPolicy, model: currentModel}),
       });
       const j = await r.json();
       currentRunId = j.run_id;
@@ -320,7 +381,7 @@
       .map(([k, v]) => `<span class="tkey">${esc(k)}</span>=<span class="tval">${esc(JSON.stringify(v))}</span>`)
       .join('  ');
     appendClaude('c-tool', `→ <span class="tname">${esc(ev.tool)}</span>  ${params}`);
-    setStatus('Calling ' + ev.tool + ' → waiting for AXIOM guard…');
+    setStatus('Calling ' + ev.tool + ' → waiting for Orivael Governance Guard…');
   }
 
   function onGuardCheck(ev) {
@@ -404,7 +465,7 @@
     granted.textContent = '✓ Approval granted — resuming with approved scope';
     g.appendChild(granted);
     dot('guard-dot', 'green');
-    setStatus('Approval granted — AXIOM re-checking with approved scope…');
+    setStatus('Approval granted — Orivael Governance Guard re-checking with approved scope…');
   }
 
   function onError(ev) {
