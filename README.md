@@ -72,38 +72,44 @@ Email: antonio@orivael.dev
 
 ## Three Products
 
-### AXIOM Governance Runtime
+---
 
-The core. A runtime layer that sits in front of your AI system and enforces rules on every request.
+### 1 · AXIOM Governance Runtime
 
-- **Intent classification** — every input is classified (INFORM / CLARIFY / REFUSE / HARM / DECEIVE) before any model sees it
-- **Bonded authority tokens** — mint a primary + mirror token pair; revoke the pair with a single register flip, no key rotation needed
-- **Immutable policy fields** — declare fields that cannot be changed after signing; any tamper attempt breaks the HMAC chain
-- **Signed audit receipts** — every verdict, every state change, every gate decision is HMAC-SHA256 signed and appended to a hash-chained ledger
-- **Constitutional language** — write what your agent may and may not do in a `.axiom` file; the runtime enforces it at request time
+**The front door. Everything else builds on this.**
+
+A runtime layer that sits between your users, your agents, and your tools — enforcing policy before anything acts.
+
+- **Signed audit trails** — every verdict, gate decision, and state change is HMAC-SHA256 signed and appended to a hash-chained ledger
+- **Policy enforcement** — write what your agent may and may not do in a `.axiom` file; the runtime enforces it at request time, not review time
+- **Authority tokens** — mint bonded primary + mirror token pairs with declared trust levels and execution scope
+- **Revocation** — revoke any authority token with a single register flip; no key rotation, no redeployment
+- **Human approval gates** — require sign-off before high-blast-radius actions execute; log the decision either way
+- **MCP / Claude agent safety** — governs tool calls, intent classification, and authority checks for Claude and any MCP-compatible agent
 
 ```bash
-# The constitutional language
-axiom lint myspec.axiom
-axiom guard "is this prompt safe?"
-axiom trace --run "what is constitutional distance?"
+axiom guard "is this prompt safe?"   # classify and gate
+axiom lint myspec.axiom              # validate constitutional spec
+axiom trace --run                    # audit recent decisions
 ```
 
-### Hello Operator
+---
 
-A governed internal chatbot you can deploy in a day.
+### 2 · Hello Operator
 
-Built on AXIOM Governance Runtime. Every answer is signed, every refusal is logged, every policy change is auditable. Designed for teams that need an AI assistant but can't afford a compliance incident.
+**A governed internal chatbot you can deploy in a day.**
+
+Built on AXIOM Governance Runtime. Every answer is signed, every refusal is logged, every policy change is auditable. For teams that need an AI assistant but can't afford a compliance incident.
 
 Typical use cases: internal knowledge base Q&A, HR policy assistant, legal document search, IT helpdesk.
 
-### Benchmark Pack
+---
 
-The SRD quantization toolkit for running governed models at the edge.
+### 3 · Benchmark Pack *(optional — edge deployment)*
+
+**For teams running governed models on local or edge hardware.**
 
 Stochastic Residual Dithering (SRD-4) compresses models to ~4.5 bpw with lower perplexity than standard Q4_K_M at 4.85 bpw. Every compressed model is packed into a signed `.axm` governance container with a public fingerprint — so you can prove exactly what weights were deployed.
-
-**Measured results (Mistral-7B, WikiText-2):**
 
 | Method | bpw | Perplexity |
 |---|---|---|
@@ -112,6 +118,8 @@ Stochastic Residual Dithering (SRD-4) compresses models to ~4.5 bpw with lower p
 | Q5_K_M | 5.70 | 5.45 |
 
 SRD-4 beats Q4_K_M at a lower bit rate. Results in [`docs/SRD_RESULTS.md`](docs/SRD_RESULTS.md).
+
+Not required to use the Governance Runtime or Hello Operator. Relevant if you need to run governed inference on-device without a cloud dependency.
 
 ---
 
@@ -291,6 +299,14 @@ AXIOM_STRICT_MODE=1 axiom validate worker
 Or per-file: add `STRICT MODE` as a header line in the spec. Or per-call: `validate_parsed(parsed, strict=True)`. Lenient is the default — backward-compat for every prior caller.
 
 Strict mode catches `var/let/const` declarations, arrow functions `=> x`, OO modifiers (`public static String …`), `new ClassName(`, `.prototype.`, brace-only lines, decorators, plus code-shaped control flow (`if (cond):`, `for (i=0;...)`). English prose containing programming nouns ("static analysis", "function for", "if context is missing") is **not** flagged — the patterns require syntactic context. All 76 / 76 core specs are strict-clean.
+
+---
+
+---
+
+## Technical Reference
+
+The sections below document the ORVL patent claims and research results behind the runtime. They are reference material — not required reading to deploy AXIOM.
 
 ---
 
