@@ -1,0 +1,16 @@
+DISCHARGE SUMMARY
+
+Patient: Maria Gonzalez
+MRN: A4471-9920
+DOB: 1971-03-14
+SSN: 412-55-8830
+Address: 88 Larch Ave, Dayton, OH
+
+Visit date: 2026-02-09
+Chief complaint: polyuria, fatigue.
+
+Diagnosis: Type 2 diabetes mellitus with poor glycemic control
+Procedure: point-of-care glucose testing
+Medications: Metformin 1000 mg BID, Lisinopril 10 mg daily
+
+Plan: initiate education on glucose monitoring; endocrinology follow-up in 3 weeks.

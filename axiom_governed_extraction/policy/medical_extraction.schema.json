@@ -1,0 +1,23 @@
+{
+  "domain": "medical_records",
+  "purpose": "clinical_research_deidentified",
+  "purpose_note": "Extract clinical facts for de-identified research. Direct identifiers are NOT authorized for this purpose and are redacted under HIPAA minimum-necessary / Safe-Harbor.",
+  "confidence_threshold": 0.70,
+  "egress": {
+    "allowed_domains": ["orivael.com", "orivael.dev"],
+    "note": "Extracted payloads may only be written to an internal, verified sink. Any other destination is blocked as a potential PHI egress."
+  },
+  "fields": {
+    "visit_date":   { "type": "date",   "sensitivity": "low",               "authorized": true  },
+    "diagnosis":    { "type": "string", "sensitivity": "phi",               "authorized": true  },
+    "medications":  { "type": "array",  "sensitivity": "phi",               "authorized": true  },
+    "procedure":    { "type": "string", "sensitivity": "phi",               "authorized": true  },
+    "lab_values":   { "type": "string", "sensitivity": "phi",               "authorized": true  },
+    "patient_name": { "type": "string", "sensitivity": "direct_identifier", "authorized": false },
+    "mrn":          { "type": "string", "sensitivity": "direct_identifier", "authorized": false },
+    "ssn":          { "type": "string", "sensitivity": "direct_identifier", "authorized": false },
+    "dob":          { "type": "date",   "sensitivity": "direct_identifier", "authorized": false },
+    "address":      { "type": "string", "sensitivity": "direct_identifier", "authorized": false },
+    "phone":        { "type": "string", "sensitivity": "direct_identifier", "authorized": false }
+  }
+}
