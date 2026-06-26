@@ -56,7 +56,16 @@ value, so the guards visibly fire on the sample records in `samples/`.
 - `samples/` — sample medical records (one carrying a prompt-injection payload)
 
 ## Roadmap
-1. Replace `NimBackend` with a fine-tuned SmolLM-135M (grammar-constrained decoding).
-2. Distill SFT data for the schema from a NIM teacher (llama-3.3-70b).
-3. Persist the manifest to the AXIOM exoskeleton ledger; wire the human-review queue.
-4. Swap the schema/policy to target finance or support verticals (architecture is unchanged).
+1. ~~Local SmolLM-135M backend with grammar-constrained decoding~~ — **done**
+   (`LlamaCppBackend`, `json_schema` on by default; fixes invented keys + repetition).
+2. ~~Distill SFT data for the schema from a NIM teacher~~ — **done**
+   (`finetune/gen_sft_data.py`, grounding-validated; see [`finetune/`](finetune/)).
+3. Run the SFT (TRL) to close the recall gap, re-quantize to GGUF, re-measure.
+4. Persist the manifest to the AXIOM exoskeleton ledger; wire the human-review queue.
+5. Swap the schema/policy to target finance or support verticals (architecture is unchanged).
+
+### Measured so far (SRD-quantized SmolLM2-135M, un-fine-tuned)
+- Grammar **off**: invented keys (`doctors`), repetition loops, mangled values.
+- Grammar **on**: 100% valid, schema-only JSON — but low recall (wrong fields). Recall is
+  the fine-tune's job (step 3); governance held in every case (zero identifier leaks,
+  zero fabrications released).

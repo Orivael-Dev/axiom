@@ -14,6 +14,30 @@ import re
 from typing import Any
 
 
+# ── Shared prompt + schema helpers (also reused by finetune/gen_sft_data.py) ──────
+
+def extract_system_prompt(field_names: list[str]) -> str:
+    """The extractor's instruction — identical at training and inference time."""
+    return (
+        "Extract medical fields from the document. Output ONLY a JSON object. "
+        "Keys must be from this list and nothing else: " + ", ".join(field_names) + ". "
+        "Each value is the exact text copied from the document, or omit the key if absent. "
+        "Do not add commentary, do not repeat keys."
+    )
+
+
+def schema_to_jsonschema(schema: dict) -> dict:
+    """Build a strict JSON Schema (object, allowed keys only, no extras) for
+    grammar-constrained decoding. Eliminates invented keys and repetition loops."""
+    props: dict[str, Any] = {}
+    for name, spec in schema.get("fields", {}).items():
+        if spec.get("type") == "array":
+            props[name] = {"type": "array", "items": {"type": "string"}}
+        else:
+            props[name] = {"type": "string"}
+    return {"type": "object", "properties": props, "additionalProperties": False}
+
+
 # ── Mock backend ────────────────────────────────────────────────────────────────
 # Heuristic regex extractor. Deliberately over-extracts (pulls identifiers) AND
 # emits one ungrounded value, so the governance layer visibly fires on real docs.
@@ -88,25 +112,31 @@ class NimBackend:
 # unchanged whether the fields come from llama-3.3-70b or a 119 MB local model.
 
 class LlamaCppBackend:
-    def __init__(self, base_url: str | None = None, model: str = "smollm2-135m-instruct-srd4"):
+    def __init__(self, base_url: str | None = None, model: str = "smollm2-135m-instruct-srd4",
+                 constrained: bool | None = None):
         from openai import OpenAI  # lazy import
         base_url = base_url or os.environ.get("LLAMACPP_BASE_URL", "http://127.0.0.1:8080/v1")
+        # Grammar-constrained decoding on by default; LLAMACPP_CONSTRAINED=0 to compare.
+        if constrained is None:
+            constrained = os.environ.get("LLAMACPP_CONSTRAINED", "1") != "0"
+        self.constrained = constrained
         self.model = model
-        self.name = f"llama.cpp/{model}"
+        self.name = f"llama.cpp/{model}" + ("+grammar" if constrained else "")
         self.client = OpenAI(api_key="sk-no-key", base_url=base_url)
 
     def extract(self, text: str, schema: dict) -> dict[str, Any]:
         field_names = list(schema.get("fields", {}).keys())
-        sys = (
-            "Extract medical fields from the document. Output ONLY a JSON object. "
-            "Keys must be from this list and nothing else: " + ", ".join(field_names) + ". "
-            "Each value is the exact text from the document, or omit the key if absent. "
-            "Do not add commentary. Example: {\"diagnosis\": \"...\", \"visit_date\": \"...\"}"
-        )
+        sys = extract_system_prompt(field_names)
         user = f"DOCUMENT:\n{text}\n\nJSON:"
+        extra: dict[str, Any] = {}
+        if self.constrained:
+            # llama-server constrains generation to this JSON Schema (invalid keys
+            # and repetition become impossible at the decoder level).
+            extra["json_schema"] = schema_to_jsonschema(schema)
         resp = self.client.chat.completions.create(
             model=self.model, max_tokens=400, temperature=0,
             messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+            extra_body=extra,
         )
         raw = resp.choices[0].message.content or "{}"
         return _parse_json_obj(raw)
