@@ -82,6 +82,36 @@ class NimBackend:
         return _parse_json_obj(raw)
 
 
+# ── llama.cpp backend (local GGUF, e.g. SmolLM2-135M-Instruct SRD-Q4_K_M) ────────
+# Talks to a running `llama-server` over its OpenAI-compatible /v1 endpoint, so the
+# same extract() contract holds. This is the on-device 135M slot: governance is
+# unchanged whether the fields come from llama-3.3-70b or a 119 MB local model.
+
+class LlamaCppBackend:
+    def __init__(self, base_url: str | None = None, model: str = "smollm2-135m-instruct-srd4"):
+        from openai import OpenAI  # lazy import
+        base_url = base_url or os.environ.get("LLAMACPP_BASE_URL", "http://127.0.0.1:8080/v1")
+        self.model = model
+        self.name = f"llama.cpp/{model}"
+        self.client = OpenAI(api_key="sk-no-key", base_url=base_url)
+
+    def extract(self, text: str, schema: dict) -> dict[str, Any]:
+        field_names = list(schema.get("fields", {}).keys())
+        sys = (
+            "Extract medical fields from the document. Output ONLY a JSON object. "
+            "Keys must be from this list and nothing else: " + ", ".join(field_names) + ". "
+            "Each value is the exact text from the document, or omit the key if absent. "
+            "Do not add commentary. Example: {\"diagnosis\": \"...\", \"visit_date\": \"...\"}"
+        )
+        user = f"DOCUMENT:\n{text}\n\nJSON:"
+        resp = self.client.chat.completions.create(
+            model=self.model, max_tokens=400, temperature=0,
+            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+        )
+        raw = resp.choices[0].message.content or "{}"
+        return _parse_json_obj(raw)
+
+
 def _parse_json_obj(s: str) -> dict[str, Any]:
     """Extract the first JSON object from a model response; tolerant of code fences."""
     s = s.strip()
@@ -110,4 +140,6 @@ def _parse_json_obj(s: str) -> dict[str, Any]:
 def get_backend(name: str):
     if name == "nim":
         return NimBackend()
+    if name in ("llamacpp", "local", "gguf"):
+        return LlamaCppBackend()
     return MockBackend()

@@ -27,13 +27,14 @@ HERE = Path(__file__).parent
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--nim", action="store_true", help="use NIM llama-3.3-70b backend")
+    ap.add_argument("--local", action="store_true", help="use local GGUF via llama.cpp (SmolLM2-135M)")
     ap.add_argument("--sink", default="ledger://orivael.dev", help="destination sink")
     args = ap.parse_args()
     if "//" not in args.sink:
         args.sink = "https://" + args.sink
 
     schema = load_schema(HERE / "policy" / "medical_extraction.schema.json")
-    backend = get_backend("nim" if args.nim else "mock")
+    backend = get_backend("nim" if args.nim else "local" if args.local else "mock")
     gx = GovernedExtractor(schema, backend)
 
     print("=" * 78)
