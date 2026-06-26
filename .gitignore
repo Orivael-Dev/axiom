@@ -130,3 +130,4 @@ research/legal/results.json
 # Auto-downloaded open-source demo frame (fetched on demand by
 # axiom_video_local_agent.py — not redistributed in-repo).
 demo_assets/
+hello_operator/config.json

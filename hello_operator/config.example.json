@@ -1,0 +1,17 @@
+{
+  "operator_name": "Hello Operator",
+  "model": "claude-sonnet-4-6",
+  "system_prompt": "You are Hello Operator, a governed internal assistant. Answer staff questions about company policy, documents, and processes clearly and concisely. You do not have authority to take actions — only to inform. If a request is outside your scope, say so plainly.",
+  "policy_agents": ["callguard", "medical", "truthwatcher", "retailwatcher"],
+  "flag_confidence_below": 0.45,
+  "notifications": {
+    "console": true,
+    "file": true,
+    "stream": true,
+    "min_severity": "FLAG",
+    "webhook": {
+      "url": "",
+      "kind": "slack"
+    }
+  }
+}
