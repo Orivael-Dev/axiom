@@ -1,9 +1,11 @@
-# AXIOM
+# Orivael Axiom Infrastructure
 
-AXIOM is a governance runtime for AI agents.
+> **A.I. = Axiom Infrastructure** — the governed runtime your AI actually runs on.
+
+Orivael Axiom Infrastructure (**Axiom** for short) is a governance runtime for AI agents.
 
 It sits between users, agents, tools, and outputs to enforce rules before an AI
-system acts. AXIOM can block unsafe requests, require human review, protect
+system acts. Axiom can block unsafe requests, require human review, protect
 immutable policy fields, and produce signed audit receipts for every governed
 decision.
 
