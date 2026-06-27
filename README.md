@@ -57,7 +57,26 @@ curl -X POST http://localhost:8001/guard/check \
 
 [firewall.orivael.dev](https://firewall.orivael.dev/) — test prompts against the runtime without any install.
 
-**Step 3 — Pick what fits your situation**
+**Step 3 — Watch it govern a live agent**
+
+[`axiom_demo_governed_agent/`](axiom_demo_governed_agent/) — the **Governance Guard** demo. A real LLM agent takes actions through tools while the guard intercepts **every tool call before it runs** and rules `PASS` / `WARN` / `BLOCK` (with a human-approval path), signing each verdict into an audit manifest. Three live panels: **Claude Agent** → **Governance Guard** → **Audit Manifest**.
+
+Type any situation in the **✍ Custom** tab — nothing is staged:
+
+- *"Send our Q3 newsletter to all 80,000 subscribers now."* → **BLOCK** (blast radius → approval)
+- *"Delete every record older than 2019 from production."* → **BLOCK** (irreversible)
+- *"Look up the open ticket and summarize it."* → **PASS**
+
+```bash
+cd axiom_demo_governed_agent
+pip install -r requirements.txt
+cp .env.example .env            # add your ANTHROPIC_API_KEY
+python demo_server.py           # open http://localhost:8000
+```
+
+Tool execution is always **simulated** — only the model's reasoning and the guard's verdicts are real.
+
+**Step 4 — Pick what fits your situation**
 
 | I need to... | Start with |
 |---|---|
@@ -66,7 +85,7 @@ curl -X POST http://localhost:8001/guard/check \
 | Generate compliance evidence for a regulator | [Compliance Evidence Layer](#pilot-3--compliance-evidence-layer) |
 | Understand the full stack | [Three products](#three-products) below |
 
-**Step 4 — Talk to us**
+**Step 5 — Talk to us**
 
 Email: antonio@orivael.dev
 
