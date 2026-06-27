@@ -304,8 +304,6 @@ Strict mode catches `var/let/const` declarations, arrow functions `=> x`, OO mod
 
 ---
 
----
-
 ## Technical Reference
 
 The sections below document the ORVL patent claims and research results behind the runtime. They are reference material — not required reading to deploy AXIOM.
