@@ -20,6 +20,7 @@ import json
 import os
 import random
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -55,12 +56,19 @@ def gen_one(client, model, fields, doc_type, theme, temperature):
         f"medications, and findings. Include most clinical fields and usually some identifiers; "
         f"occasionally leave a few fields out. Then extract the fields."
     )
-    resp = client.chat.completions.create(
-        model=model, max_tokens=900, temperature=temperature,
-        response_format={"type": "json_object"},
-        messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": user}],
-    )
-    return json.loads(resp.choices[0].message.content or "{}")
+    last = None
+    for attempt in range(5):
+        try:
+            resp = client.chat.completions.create(
+                model=model, max_tokens=900, temperature=temperature,
+                response_format={"type": "json_object"},
+                messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": user}],
+            )
+            return json.loads(resp.choices[0].message.content or "{}")
+        except Exception as exc:  # rate limits / transient 5xx / partial JSON
+            last = exc
+            time.sleep(min(2 ** attempt, 20))
+    raise last
 
 
 def main() -> None:
