@@ -24,6 +24,12 @@ committed sample lives at `data/medical_extraction_sft.sample.jsonl`.
 > The extractor is trained to pull **all** present fields (identifiers included).
 > De-identification / minimum-necessary is the governance layer's job, not the model's.
 
+### One-click training on a GPU (RunPod)
+`train_runpod.ipynb` runs the whole SFT on a cloud GPU pod: installs deps, loads the
+dataset (upload or clone), fine-tunes `SmolLM2-135M-Instruct`, evals a sample
+extraction, and exports GGUF (f16 + q8_0). Open it in a RunPod Jupyter pod, set the
+config cell, Run All. A 135M full fine-tune finishes in minutes on a 3090/4090/A40.
+
 ## 2. SFT with TRL (135M full fine-tune fits on one consumer GPU)
 ```python
 from datasets import load_dataset
