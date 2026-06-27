@@ -1,9 +1,18 @@
 # `.axm` Guest-Key Delegation — Spec
 
-Status: **planned** (not yet implemented)
+Status: **implemented** — `axiom_axm_authority.py` + `tests/test_axm_guest_key.py`
+(16 tests, real Ed25519 path). CLI: `mint-master` / `gen-guest` / `issue-guest` /
+`attest-guest` / `verify-guest` / `revoke-guest`.
 Owner: Orivael
-Depends on: `.axm` attestation (shipped), `asi07_message_auth` (Ed25519, shipped),
-bonded-pair ledger (shipped)
+Depends on: `.axm` attestation (shipped), Ed25519 via the `cryptography` lib (with
+HMAC fallback), bonded-pair ledger pattern (revocation register).
+
+> **Implementation note:** built as a dedicated sibling module + CLI
+> (`axiom_axm_authority.py`), not folded into `axiom_axm.py` — keeps the cert/PKI
+> logic separate. The crypto core is self-contained (Ed25519 + HMAC fallback,
+> modeled on `asi07_message_auth`) so the master keypair is true-random rather than
+> agent-id-derived. The revocation register is a compact hash-chained, HMAC-signed
+> `GuestCertLedger` (same pattern as `bonded_pair.py`, not an import of it).
 
 ## Context
 
