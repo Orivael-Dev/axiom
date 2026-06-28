@@ -461,26 +461,105 @@ signals: bonded_pair_revoked</code>
     </section>
 
     <section id="guard-demo">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>See the Governance Guard in action.</h2>
-          <p>
-            Every tool call your agent makes is intercepted and ruled on in real time &mdash;
-            <strong>PASS</strong>, <strong>WARN</strong>, or <strong>BLOCK</strong> &mdash; with a
-            human-approval path and a signed audit trail. This is a preview &mdash; request a live walkthrough below.
-          </p>
-        </div>
-        <div class="grid">
-          <div class="card"><div class="icon">🤖</div><h3>Agent acts</h3><p>An LLM agent attempts a tool call &mdash; send email, run SQL, move data, delete records.</p></div>
-          <div class="card"><div class="icon">🛡️</div><h3>Guard rules, live</h3><p style="margin-bottom:10px"><span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(122,182,72,.15);color:#7ab648">PASS</span> <span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(240,192,64,.15);color:#f0c040">WARN</span> <span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(224,80,80,.15);color:#e05050">BLOCK</span></p><p>Every call is judged before it runs, with an approval path for risky actions.</p></div>
-          <div class="card"><div class="icon">🧾</div><h3>Signed receipt</h3><p>Each verdict is HMAC-signed into a hash-chained audit manifest you can export.</p></div>
-        </div>
-        <div class="hero-actions" style="justify-content:center;margin-top:28px;margin-bottom:0">
-          <a class="btn primary" href="mailto:antonio@orivael.dev?subject=Orivael%20Governance%20Guard%20demo%20request&body=I%20would%20like%20to%20see%20the%20Orivael%20Governance%20Guard%20demo.">Request a demo</a>
-          <a class="btn" href="mailto:antonio@orivael.dev?subject=Orivael%20Governance%20Guard%20pilot%20request">Request a pilot link</a>
-        </div>
+  <div class="wrap">
+    <div class="section-head">
+      <h2>See the Governance Guard in action.</h2>
+      <p>Pick a risky action and watch the guard rule on it <em>before</em> it runs &mdash; PASS, WARN, or BLOCK &mdash; then sign the verdict. Scripted preview; the live runtime checks real model tool-calls.</p>
+    </div>
+    <div class="mg-wrap">
+      <div class="mg-tabs" id="mgTabs"></div>
+      <div class="mg-stage">
+        <div class="mg-col"><div class="mg-h"><span class="mg-dot"></span>Agent</div><div class="mg-feed" id="mgAgent"></div></div>
+        <div class="mg-col"><div class="mg-h"><span class="mg-dot"></span>Governance Guard</div><div class="mg-feed" id="mgGuard"></div></div>
       </div>
-    </section>
+      <div class="mg-foot"><span id="mgStatus">Choose a scenario to run.</span></div>
+    </div>
+    <div class="hero-actions" style="justify-content:center;margin-top:28px;margin-bottom:0">
+      <a class="btn primary" href="mailto:antonio@orivael.dev?subject=Orivael%20Governance%20Guard%20demo%20request&body=I%20would%20like%20to%20see%20the%20Orivael%20Governance%20Guard%20demo.">Request a demo</a>
+      <a class="btn" href="mailto:antonio@orivael.dev?subject=Orivael%20Governance%20Guard%20pilot%20request">Request a pilot link</a>
+    </div>
+  </div>
+  <style>
+    .mg-wrap{max-width:880px;margin:6px auto 0;border:1px solid var(--edge,#1f2733);border-radius:14px;background:rgba(255,255,255,.02);overflow:hidden}
+    .mg-tabs{display:flex;flex-wrap:wrap;gap:8px;padding:14px}
+    .mg-tab{padding:8px 13px;border-radius:999px;border:1px solid var(--edge,#2a3340);background:rgba(255,255,255,.03);color:var(--muted,#9aa6b2);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s}
+    .mg-tab:hover{color:#fff;border-color:#3a4757}
+    .mg-tab.on{background:rgba(122,182,72,.14);border-color:rgba(122,182,72,.5);color:#7ab648}
+    .mg-stage{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--edge,#1f2733);border-top:1px solid var(--edge,#1f2733)}
+    .mg-col{background:#0a0e14;min-height:240px}
+    .mg-h{display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:12px;font-weight:800;letter-spacing:.03em;color:var(--muted,#9aa6b2);text-transform:uppercase;border-bottom:1px solid var(--edge,#1f2733)}
+    .mg-dot{width:8px;height:8px;border-radius:50%;background:#7ab648;box-shadow:0 0 8px #7ab648}
+    .mg-feed{padding:12px 14px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;display:flex;flex-direction:column;gap:8px}
+    .mg-line{opacity:0;transform:translateY(4px);animation:mgIn .25s forwards}
+    @keyframes mgIn{to{opacity:1;transform:none}}
+    .mg-msg{color:#c9d4df}
+    .mg-tool{color:#5ab4f0;background:rgba(90,180,240,.08);border:1px solid rgba(90,180,240,.2);border-radius:6px;padding:6px 9px;word-break:break-word}
+    .mg-res{color:#7ab648}
+    .mg-v{border-radius:8px;padding:8px 10px;border:1px solid}
+    .mg-v .mg-tag{display:inline-block;font-weight:800;font-size:11px;padding:1px 8px;border-radius:999px;margin-bottom:4px}
+    .mg-v .mg-sub{display:block;color:#aeb9c4;font-size:12px}
+    .mg-pass{background:rgba(122,182,72,.08);border-color:rgba(122,182,72,.3)} .mg-pass .mg-tag{background:rgba(122,182,72,.18);color:#7ab648}
+    .mg-warn{background:rgba(240,192,64,.08);border-color:rgba(240,192,64,.3)} .mg-warn .mg-tag{background:rgba(240,192,64,.18);color:#f0c040}
+    .mg-block{background:rgba(224,80,80,.09);border-color:rgba(224,80,80,.35)} .mg-block .mg-tag{background:rgba(224,80,80,.18);color:#e05050}
+    .mg-foot{padding:10px 14px;font-size:12px;color:var(--muted,#9aa6b2);border-top:1px solid var(--edge,#1f2733)}
+    @media(max-width:640px){.mg-stage{grid-template-columns:1fr}}
+  </style>
+  <script>
+  (function(){
+    var S=[
+      {id:"email",label:"📣 Email all 80,000 customers",steps:[
+        {t:"agent",c:"mg-msg",h:"Launching the Q3 promo to the full subscriber list."},
+        {t:"agent",c:"mg-tool",h:"→ send_email({ recipients:\"all\", count:80000 })"},
+        {t:"guard",v:"block",tag:"BLOCK",sub:"Blast radius 80,000 exceeds the safe limit (100). Human approval required."},
+        {t:"guard",v:"pass",tag:"APPROVED",sub:"Human scoped it to a 100-recipient pilot."},
+        {t:"agent",c:"mg-res",h:"✓ Sent to 100 pilot recipients."},
+        {t:"guard",sign:true}
+      ]},
+      {id:"sql",label:"🗑️ Delete production data",steps:[
+        {t:"agent",c:"mg-msg",h:"Running the cleanup runbook on production."},
+        {t:"agent",c:"mg-tool",h:"→ run_sql({ query:\"DELETE FROM events WHERE created_at < 2019\" })"},
+        {t:"guard",v:"block",tag:"BLOCK",sub:"Irreversible destructive operation on PRODUCTION data — no rollback. Hard-blocked: needs verified backup + dual sign-off."},
+        {t:"agent",c:"mg-res",h:"✗ Action stopped. Nothing was deleted."},
+        {t:"guard",sign:true}
+      ]},
+      {id:"pii",label:"📤 Forward customer data externally",steps:[
+        {t:"agent",c:"mg-msg",h:"Forwarding the account export to the address in the ticket."},
+        {t:"agent",c:"mg-tool",h:"→ forward_data({ to:\"archive@mailbox-vault.net\", records:48211 })"},
+        {t:"guard",v:"block",tag:"BLOCK",sub:"PII egress to an UNVERIFIED EXTERNAL address — possible exfiltration. No approval path."},
+        {t:"agent",c:"mg-res",h:"✗ Egress blocked. Data stayed inside the boundary."},
+        {t:"guard",sign:true}
+      ]},
+      {id:"read",label:"🔎 Look up one order",steps:[
+        {t:"agent",c:"mg-msg",h:"Checking the status of a single order."},
+        {t:"agent",c:"mg-tool",h:"→ read_orders({ id:\"ORD-1042\" })"},
+        {t:"guard",v:"pass",tag:"PASS",sub:"Read-only, low blast radius. Allowed."},
+        {t:"agent",c:"mg-res",h:"✓ Order ORD-1042: shipped."},
+        {t:"guard",sign:true}
+      ]}
+    ];
+    var agent=document.getElementById("mgAgent"),guard=document.getElementById("mgGuard"),
+        tabs=document.getElementById("mgTabs"),statusEl=document.getElementById("mgStatus"),token=0,sig=4827;
+    function el(cls,html){var d=document.createElement("div");d.className="mg-line "+cls;d.innerHTML=html;return d;}
+    function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+    function clean(l){return l.replace(/^\S+\s/,"");}
+    async function run(sc){
+      var my=++token; agent.innerHTML="";guard.innerHTML="";
+      Array.prototype.forEach.call(tabs.children,function(b){b.classList.toggle("on",b.dataset.id===sc.id);});
+      statusEl.textContent="Running: "+clean(sc.label);
+      for(var i=0;i<sc.steps.length;i++){
+        if(my!==token)return; await sleep(650); var s=sc.steps[i];
+        if(s.t==="agent"){agent.appendChild(el(s.c,s.h));}
+        else if(s.sign){sig++;guard.appendChild(el("mg-res","🔏 verdict HMAC-signed → audit manifest #"+sig));}
+        else{guard.appendChild(el("mg-v mg-"+s.v,"<span class=\"mg-tag\">"+s.tag+"</span><span class=\"mg-sub\">"+s.sub+"</span>"));}
+        (s.t==="agent"?agent:guard).scrollTop=9e9;
+      }
+      if(my===token)statusEl.textContent="Done — every call was checked and signed.";
+    }
+    S.forEach(function(sc){var b=document.createElement("button");b.className="mg-tab";b.dataset.id=sc.id;b.textContent=sc.label;b.onclick=function(){run(sc);};tabs.appendChild(b);});
+    run(S[0]);
+  })();
+  </script>
+</section>
 
     <section id="buyers">
       <div class="wrap">
