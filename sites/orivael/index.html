@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orivael · AXIOM Runtime Authority for AI Agents</title>
+  <meta name="description" content="AXIOM gives agentic AI systems revocable runtime authority, signed manifests, append-only audit trails, and guard checks that block unsafe or unauthorized agent actions before execution." />
+  <style>
+    :root {
+      --bg: #070a12;
+      --panel: rgba(255,255,255,.06);
+      --panel-strong: rgba(255,255,255,.1);
+      --text: #eef4ff;
+      --muted: #9cabca;
+      --line: rgba(255,255,255,.12);
+      --accent: #67e8f9;
+      --accent-2: #a78bfa;
+      --good: #86efac;
+      --bad: #fca5a5;
+      --warn: #fde68a;
+      --shadow: 0 24px 80px rgba(0,0,0,.45);
+      --radius: 24px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(103,232,249,.18), transparent 36rem),
+        radial-gradient(circle at 80% 20%, rgba(167,139,250,.16), transparent 32rem),
+        linear-gradient(180deg, #070a12 0%, #0b1020 46%, #070a12 100%);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    .wrap { width: min(1160px, calc(100% - 32px)); margin: 0 auto; }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(18px);
+      background: rgba(7,10,18,.78);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 40px rgba(103,232,249,.35);
+      position: relative;
+    }
+    .mark:after {
+      content: "";
+      position: absolute;
+      inset: 9px;
+      border: 2px solid rgba(7,10,18,.75);
+      border-radius: 8px;
+    }
+    nav {
+      display: flex;
+      gap: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    nav a:hover { color: var(--text); }
+    .nav-actions { display: flex; gap: 10px; align-items: center; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: rgba(255,255,255,.04);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .btn.primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #07111c;
+      border: 0;
+      box-shadow: 0 14px 42px rgba(103,232,249,.22);
+    }
+
+    .hero {
+      padding: 92px 0 72px;
+      display: grid;
+      grid-template-columns: 1.03fr .97fr;
+      gap: 40px;
+      align-items: center;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--accent);
+      background: rgba(103,232,249,.08);
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 22px 0 18px;
+      font-size: clamp(44px, 7vw, 82px);
+      line-height: .94;
+      letter-spacing: -.06em;
+    }
+    .lead {
+      font-size: clamp(18px, 2vw, 22px);
+      color: var(--muted);
+      max-width: 680px;
+      margin: 0 0 28px;
+    }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 26px; }
+    .proof-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      max-width: 680px;
+    }
+    .metric {
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.05);
+    }
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      color: var(--text);
+    }
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .terminal {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(2,6,23,.74);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transform: rotate(.7deg);
+    }
+    .termbar {
+      height: 46px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--bad); }
+    .dot:nth-child(2) { background: var(--warn); }
+    .dot:nth-child(3) { background: var(--good); }
+    pre {
+      margin: 0;
+      padding: 22px;
+      white-space: pre-wrap;
+      color: #d8e6ff;
+      font: 13px/1.65 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .green { color: var(--good); }
+    .red { color: var(--bad); }
+    .cyan { color: var(--accent); }
+    .purple { color: var(--accent-2); }
+
+    section { padding: 72px 0; }
+    .section-head { max-width: 760px; margin-bottom: 28px; }
+    .section-head h2 {
+      margin: 0 0 12px;
+      font-size: clamp(32px, 4vw, 52px);
+      line-height: 1;
+      letter-spacing: -.04em;
+    }
+    .section-head p { color: var(--muted); font-size: 18px; margin: 0; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.16);
+    }
+    .card h3 { margin: 0 0 10px; font-size: 21px; }
+    .card p { color: var(--muted); margin: 0; }
+    .icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 18px;
+      background: linear-gradient(135deg, rgba(103,232,249,.18), rgba(167,139,250,.18));
+      border: 1px solid var(--line);
+      font-size: 22px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .state-card {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .state-card .tag {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .tag.good { color: #052e16; background: var(--good); }
+    .tag.bad { color: #450a0a; background: var(--bad); }
+    .state-card h3 { margin: 0 0 10px; }
+    .state-card code {
+      display: block;
+      padding: 14px;
+      background: rgba(0,0,0,.26);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: #d8e6ff;
+      white-space: pre-wrap;
+      margin-top: 14px;
+      font-size: 13px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: .9fr 1.1fr;
+      gap: 28px;
+      align-items: start;
+    }
+    .list {
+      display: grid;
+      gap: 12px;
+    }
+    .list-item {
+      display: flex;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,.04);
+    }
+    .check { color: var(--good); font-weight: 900; }
+
+    .cta {
+      text-align: center;
+      padding: 56px 24px;
+      border-radius: 32px;
+      border: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 50% 0, rgba(103,232,249,.18), transparent 28rem),
+        rgba(255,255,255,.06);
+      box-shadow: var(--shadow);
+    }
+    .cta h2 { margin: 0 0 12px; font-size: clamp(34px, 5vw, 58px); letter-spacing: -.04em; line-height: 1; }
+    .cta p { color: var(--muted); max-width: 700px; margin: 0 auto 24px; font-size: 18px; }
+
+    footer {
+      padding: 36px 0 52px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    @media (max-width: 880px) {
+      nav { display: none; }
+      .hero, .split, .flow { grid-template-columns: 1fr; }
+      .grid, .proof-strip { grid-template-columns: 1fr; }
+      .hero { padding-top: 54px; }
+      .terminal { transform: none; }
+      .nav-actions .btn:not(.primary) { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap nav">
+      <a class="brand" href="#top" aria-label="Orivael home">
+        <span class="mark"></span>
+        <span>ORIVAEL · AXIOM</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#problem">Problem</a>
+        <a href="#proof">Proof</a>
+        <a href="#platform">Platform</a>
+        <a href="#buyers">Use Cases</a>
+        <a href="#developers">Developers</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="btn" href="https://github.com/Orivael-Dev/axiom">GitHub</a>
+        <a class="btn primary" href="mailto:antonio@orivael.dev?subject=AXIOM%20technical%20demo">Request Demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <div class="wrap hero">
+      <div>
+        <div class="eyebrow">Runtime authority control for AI agents</div>
+        <h1>Revoke AI agent authority instantly.</h1>
+        <p class="lead">
+          AXIOM gives agentic AI systems a verifiable control layer: bonded tokens,
+          signed state registers, append-only audit trails, and runtime gates that
+          block unauthorized agent actions before execution.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#proof">See the revocation proof</a>
+          <a class="btn" href="#developers">Try the developer flow</a>
+        </div>
+        <div class="proof-strip" aria-label="Key proof points">
+          <div class="metric"><strong>No key rotation</strong><span>Revoke authority without reissuing signing keys.</span></div>
+          <div class="metric"><strong>Same token</strong><span>The primary token bytes remain unchanged.</span></div>
+          <div class="metric"><strong>Runtime block</strong><span>The next gated request is denied.</span></div>
+        </div>
+      </div>
+
+      <div class="terminal" aria-label="Revocation demo terminal">
+        <div class="termbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>axiom-bonded-pair demo</span></div>
+        <pre><span class="cyan">$ axiom pair mint --scope agent_runtime</span>
+pair_id: bp-ce9581c1a64043ba
+primary: AXIOM-BP-...-A
+mirror:  AXIOM-BP-...-B
+state:   <span class="green">ACTIVE_VALIDATED</span>
+
+<span class="cyan">$ axiom gate check pkt-demo-001</span>
+intent: INFORM
+blocked: <span class="green">no</span>
+reason: authority active
+
+<span class="cyan">$ axiom-bonded-pair revoke bp-ce9581c1a64043ba</span>
+transition: ACTIVE_VALIDATED → REVOKED
+ledger: append-only, hash-chained
+
+<span class="cyan">$ axiom gate check pkt-demo-001</span>
+intent: HARM
+blocked: <span class="red">yes</span>
+signal: bonded_pair_revoked</pre>
+      </div>
+    </div>
+
+    <section id="problem">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Agents need more than API keys.</h2>
+          <p>
+            AI agents can read files, call tools, trigger workflows, and touch live systems.
+            The hard question is not only who authorized them yesterday. It is what they are
+            still allowed to do right now.
+          </p>
+        </div>
+        <div class="grid">
+          <div class="card">
+            <div class="icon">⚡</div>
+            <h3>Trust changes mid-stream</h3>
+            <p>An agent may be valid at mint time, then later become unsafe, compromised, outdated, or out of scope.</p>
+          </div>
+          <div class="card">
+            <div class="icon">🔐</div>
+            <h3>Key rotation is heavy</h3>
+            <p>Rotating keys and rebuilding tokens can be slow, disruptive, and brittle across distributed systems.</p>
+          </div>
+          <div class="card">
+            <div class="icon">🧾</div>
+            <h3>Compliance needs receipts</h3>
+            <p>Teams need a signed, reproducible trail showing what was checked, when it changed, and why it was blocked.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="proof">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Same packet. Same token. Different authority state.</h2>
+          <p>
+            AXIOM’s bonded paired-token primitive separates signed token identity from live authority state.
+            Revocation becomes a signed register transition, not a full credential rebuild.
+          </p>
+        </div>
+        <div class="flow">
+          <div class="state-card">
+            <span class="tag good">Before revocation</span>
+            <h3>Pair is ACTIVE_VALIDATED</h3>
+            <p>The packet passes the intent classifier and the authority register confirms the pair is still valid.</p>
+            <code>packet: pkt-demo-001
+intent_class: INFORM
+blocked: no
+signals: none</code>
+          </div>
+          <div class="state-card">
+            <span class="tag bad">After revocation</span>
+            <h3>Pair is REVOKED</h3>
+            <p>The packet content is unchanged, but the runtime gate blocks it because authority has been revoked.</p>
+            <code>packet: pkt-demo-001
+intent_class: HARM
+blocked: yes
+signals: bonded_pair_revoked</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="platform">
+      <div class="wrap split">
+        <div class="section-head">
+          <h2>Governance that executes.</h2>
+          <p>
+            AXIOM is a control language and runtime layer for agents. It turns policy from a suggestion
+            into something parseable, enforceable, signed, and testable.
+          </p>
+        </div>
+        <div class="list">
+          <div class="list-item"><span class="check">✓</span><div><strong>Bonded paired-token authority</strong><br><span style="color:var(--muted)">Primary and mirror tokens create a revocable trust relationship for agent actions.</span></div></div>
+          <div class="list-item"><span class="check">✓</span><div><strong>Append-only state ledger</strong><br><span style="color:var(--muted)">Authority transitions are signed and hash-chained for tamper evidence.</span></div></div>
+          <div class="list-item"><span class="check">✓</span><div><strong>Runtime guard stack</strong><br><span style="color:var(--muted)">Gates check agent state before actions reach tools, APIs, or model runtime.</span></div></div>
+          <div class="list-item"><span class="check">✓</span><div><strong>Signed audit manifests</strong><br><span style="color:var(--muted)">Every decision can produce a reproducible receipt for security and compliance review.</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="guard-demo">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>See the Governance Guard in action.</h2>
+          <p>
+            Every tool call your agent makes is intercepted and ruled on in real time &mdash;
+            <strong>PASS</strong>, <strong>WARN</strong>, or <strong>BLOCK</strong> &mdash; with a
+            human-approval path and a signed audit trail. This is a preview &mdash; request a live walkthrough below.
+          </p>
+        </div>
+        <div class="grid">
+          <div class="card"><div class="icon">🤖</div><h3>Agent acts</h3><p>An LLM agent attempts a tool call &mdash; send email, run SQL, move data, delete records.</p></div>
+          <div class="card"><div class="icon">🛡️</div><h3>Guard rules, live</h3><p style="margin-bottom:10px"><span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(122,182,72,.15);color:#7ab648">PASS</span> <span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(240,192,64,.15);color:#f0c040">WARN</span> <span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;background:rgba(224,80,80,.15);color:#e05050">BLOCK</span></p><p>Every call is judged before it runs, with an approval path for risky actions.</p></div>
+          <div class="card"><div class="icon">🧾</div><h3>Signed receipt</h3><p>Each verdict is HMAC-signed into a hash-chained audit manifest you can export.</p></div>
+        </div>
+        <div class="hero-actions" style="justify-content:center;margin-top:28px;margin-bottom:0">
+          <a class="btn primary" href="mailto:antonio@orivael.dev?subject=Orivael%20Governance%20Guard%20demo%20request&body=I%20would%20like%20to%20see%20the%20Orivael%20Governance%20Guard%20demo.">Request a demo</a>
+          <a class="btn" href="mailto:antonio@orivael.dev?subject=Orivael%20Governance%20Guard%20pilot%20request">Request a pilot link</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="buyers">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Built for teams deploying real agents.</h2>
+          <p>
+            Start with one workflow. Add authority gating. Prove revocation. Then expand into broader
+            agent firewall, governance, audit, and compliance control.
+          </p>
+        </div>
+        <div class="grid">
+          <div class="card"><div class="icon">🧪</div><h3>AI SaaS startups</h3><p>Add enterprise-grade trust and revocation controls to agent products before procurement asks for them.</p></div>
+          <div class="card"><div class="icon">🛡️</div><h3>Security teams</h3><p>Wrap risky agent actions with verifiable runtime checks, signed state, and reproducible audit trails.</p></div>
+          <div class="card"><div class="icon">🏥</div><h3>Research & regulated AI</h3><p>Control which agents can access sensitive workflows, and prove when authority changed.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="developers">
+      <div class="wrap">
+        <div class="cta">
+          <h2>Test the kill switch layer.</h2>
+          <p>
+            Run a small proof-of-concept around one AI agent workflow: mint authority, gate actions,
+            revoke the pair, and generate a signed audit report.
+          </p>
+          <div class="hero-actions" style="justify-content:center;margin-bottom:0">
+            <a class="btn primary" href="mailto:antonio@orivael.dev?subject=AXIOM%20pilot%20request">Request a pilot</a>
+            <a class="btn" href="https://github.com/Orivael-Dev/axiom">View GitHub</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div>
+        © 2026 Orivael. AXIOM Language System. Patent Pending ORVL-001-PROV · Runtime Authority Control for Agentic AI.
+      </div>
+      <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <a href="https://firewall.orivael.dev/">AI Firewall Demo</a>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/Orivael-Dev/axiom">GitHub</a>
+        <span aria-hidden="true">·</span>
+        <a href="mailto:antonio@orivael.dev">Contact</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
