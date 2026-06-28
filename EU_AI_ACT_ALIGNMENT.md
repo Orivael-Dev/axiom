@@ -48,22 +48,23 @@ execution is the deployer's · **Out of scope** = obligation falls on another ac
 | 25 | Responsibilities along the value chain | **Supported** | Supply-chain hash registry + tamper detection (`axiom_certify.py` step 1) | Verify hashes; retain signed cert PDFs |
 | 26 | Deployer obligations | **Deployer** | Pre-deployment checklist + templates (`DEPLOYER_GUIDE.md`) | Execute all deployer steps |
 | 27 | Fundamental Rights Impact Assessment | **Supported** | **Auto-generated FRIA** on every cert run — 6 EU-Charter rights, Annex III mapping, technical mitigations, monitoring paths (`axiom_certify.py:generate_fria`) | Complete residual-risk, escalation, SLA, signed attestation fields |
-| 50 | Transparency to natural persons | **Partial** | `GET /disclosure` (AI-system notice, capabilities, limits, rights) + acknowledgement tracking (`axiom_server.py`) | Show disclosure before interaction; **synthetic-content marking** (not implemented — deployer/app layer) |
+| 50 | Transparency to natural persons | **Supported** | `GET /disclosure` (notice, capabilities, limits, rights) + acknowledgement tracking (`axiom_server.py`); **synthetic-content marking** — human-readable footer + signed machine-readable provenance tag, content- and tag-tamper-evident (`axiom_content_provenance.py`) | Show disclosure before interaction; apply the marker to generated output |
 | 53–55 | GPAI provider obligations | **Out of scope** | n/a — Axiom is not a model provider | Ensure the base-model provider complies |
 
 ## 3. The provider / deployer split (do not blur this)
 
 **Axiom provides out of the box:** signed, append-only audit logs (Art. 12); human-
 oversight gates with audit trail (Art. 14); auto-generated FRIA template (Art. 27); an
-AI-disclosure endpoint (Art. 50/13); a data-governance statement and bias testing
-(Art. 10); robustness/cybersecurity controls (Art. 15); a supply-chain integrity
-registry (Art. 25).
+AI-disclosure endpoint **and a signed synthetic-content marker** (Art. 50/13); a
+data-governance statement and bias testing (Art. 10); robustness/cybersecurity controls
+(Art. 15); a supply-chain integrity registry (Art. 25).
 
 **The deployer must still:** confirm the use case is permitted (Art. 5) and its risk
 class (Annex III); complete the FRIA placeholders and sign it (Art. 27); set a log-
 retention policy (Art. 12); implement data-subject rights (Art. 10 / GDPR); name the
-human overseer and SLA (Art. 14); show the disclosure to users and mark synthetic
-content (Art. 50); and, for high-risk systems, obtain the Annex VI/VII conformity
+human overseer and SLA (Art. 14); show the disclosure to users and **apply** the
+synthetic-content marker to outputs (Art. 50 — the marker ships in
+`axiom_content_provenance.py`); and, for high-risk systems, obtain the Annex VI/VII conformity
 assessment. None of these can be satisfied by Axiom alone.
 
 ## 4. Known gaps (honest remediation backlog)
@@ -73,7 +74,7 @@ Listing them is itself part of being "in line" — silent gaps are the liability
 
 | Gap | Article | Current state | Proposed close |
 |---|---|---|---|
-| Synthetic-content marking | 50(2) | `/disclosure` discloses the system but does not watermark/label outputs | Output-shaper footer/watermark + a machine-readable provenance tag (ties to the `.axm` signing work) |
+| ~~Synthetic-content marking~~ ✅ closed | 50(2) | **Done** — `axiom_content_provenance.py`: human-readable AI-disclosure footer + signed, machine-readable provenance tag; `verify()` detects content tampering and tag forgery | Wire `mark()` into the server response path (one call after `OutputShaper`) |
 | Formal risk taxonomy | 9 | Controls exist; no structured risk register | Ship a risk-register template + a `risk` section the certifier fills |
 | Annex IV doc generator | 11 | 6-step cert covers part of Annex IV | Generate an Annex IV-shaped technical-documentation pack from the cert |
 | Data-subject-rights hooks | 10 / GDPR | Deployer-layer only | Reference adapters for access/erasure/portability against the ledgers |
@@ -94,6 +95,10 @@ export AXIOM_DEPLOYER_NAME=... AXIOM_DEPLOYER_CONTACT=... AXIOM_DEPLOYER_JURISDI
 
 # 3. Art. 12 record-keeping is automatic — every decision is HMAC-signed and appended:
 #    axiom_files/.history/  .reviews/  .honesty/  .dos/   + the *_ledger.py ledgers
+
+# 4. Art. 50 synthetic-content marking — mark generated text, verify it later:
+echo "<ai output>" | python axiom_content_provenance.py mark --deployer "<you>" --model <id>
+python axiom_content_provenance.py verify --file marked.txt   # VALID / CONTENT_ALTERED / SIG_INVALID
 ```
 
 A deployer assembles a high-risk technical file from: the signed cert + completed FRIA,
