@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡ AXIOM</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root{--bg:#0d0d0d;--surf:#141414;--card:#1a1a1a;--edge:#2a2a2a;--green:#7ab648;--mid:#f0c040;--low:#e05050;--blue:#5ab4f0;--purple:#c084f0;--text:#e0e0e0;--muted:#888}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 'IBM Plex Sans',system-ui,sans-serif;display:flex;min-height:100vh}
+  h1,h2,h3{color:var(--green);margin:.3em 0}
+  code,pre,.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+  /* sidebar */
+  aside{width:300px;flex:0 0 300px;background:var(--surf);border-right:1px solid var(--edge);padding:16px;overflow-y:auto;height:100vh;position:sticky;top:0}
+  aside label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}
+  aside input[type=range]{width:100%}
+  aside input[type=text]{width:100%;background:#0b0b0b;border:1px solid var(--edge);color:var(--text);border-radius:6px;padding:7px}
+  .val{float:right;color:var(--green);font-weight:700}
+  .row{display:flex;align-items:center;gap:8px;margin:8px 0}
+  .ex-btn{display:block;width:100%;text-align:left;background:#0b0b0b;border:1px solid var(--edge);color:var(--muted);border-radius:6px;padding:6px 8px;margin:4px 0;font-size:12px;cursor:pointer}
+  .ex-btn:hover{border-color:var(--green);color:var(--text)}
+  /* main */
+  main{flex:1;padding:20px 28px;overflow-y:auto;height:100vh}
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--edge);margin-bottom:16px}
+  .tab{padding:9px 16px;border:none;background:none;color:var(--muted);font-weight:700;cursor:pointer;border-bottom:2px solid transparent}
+  .tab.active{color:var(--green);border-bottom-color:var(--green)}
+  textarea{width:100%;min-height:90px;background:#0b0b0b;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:11px;font:14px/1.5 inherit;resize:vertical}
+  .run{margin-top:10px;background:var(--green);color:#04140a;border:none;border-radius:8px;padding:10px 22px;font-weight:800;cursor:pointer}
+  .run:disabled{opacity:.5;cursor:default}
+  .panel{display:none}.panel.active{display:block}
+  .narrator{color:var(--muted);font-size:12.5px;margin:6px 0}
+  .iter{background:var(--card);border-left:3px solid var(--edge);border-radius:6px;padding:10px 14px;margin:10px 0}
+  .iter.conv{border-left-color:var(--green)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:800;margin-right:6px}
+  .tag-worker{background:#1a3a5c;color:var(--blue)} .tag-eval{background:#3a2a10;color:var(--mid)}
+  .tag-rew{background:#2a1a3a;color:var(--purple)} .tag-conv{background:#1a3a1a;color:var(--green)}
+  .out{background:#0b0b0b;border:1px solid var(--edge);border-radius:6px;padding:11px;white-space:pre-wrap;font-size:13px;margin:6px 0}
+  .score-high{color:var(--green);font-weight:800}.score-mid{color:var(--mid);font-weight:800}.score-low{color:var(--low);font-weight:800}
+  .dims{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0}
+  .dim{background:#0b0b0b;border:1px solid var(--edge);border-radius:6px;padding:6px 12px;font-size:12px}
+  .dim b{display:block;color:var(--green);font-size:16px}
+  details{margin:6px 0}summary{cursor:pointer;color:var(--muted);font-size:12px}
+  .metrics{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}
+  .metric{background:var(--card);border:1px solid var(--edge);border-radius:8px;padding:12px 18px;min-width:120px}
+  .metric .n{font-size:24px;color:var(--green);font-weight:800}.metric .l{font-size:12px;color:var(--muted)}
+  .chart{background:var(--card);border:1px solid var(--edge);border-radius:8px;margin:12px 0;padding:6px}
+  .err{color:var(--low)}.warn{color:var(--mid)}
+  .badge{display:inline-block;font-size:11px;font-weight:800;padding:2px 8px;border-radius:4px}
+</style>
+</head>
+<body>
+<aside>
+  <h1 style="font-size:22px">⚡ AXIOM</h1>
+  <div class="narrator">Self-evolving intelligence — no Streamlit.</div>
+  <div id="keywarn" class="err" style="display:none;font-size:12px;margin-top:8px">⚠ NVIDIA_API_KEY not set in .env</div>
+
+  <label>Max Iterations <span class="val" id="v-iter">5</span></label>
+  <input type="range" id="max_iterations" min="1" max="15" value="5">
+  <label>Quality Threshold <span class="val" id="v-thr">8.0</span></label>
+  <input type="range" id="threshold" min="1" max="10" step="0.1" value="8">
+  <label>Worker Temperature <span class="val" id="v-temp">0.7</span></label>
+  <input type="range" id="temperature" min="0.1" max="1" step="0.05" value="0.7">
+  <div class="row"><input type="checkbox" id="force_rewrite"><label style="margin:0">Force rewrite every iteration</label></div>
+  <div class="row"><input type="checkbox" id="enable_meta" checked><label style="margin:0">Meta-evolution</label></div>
+  <label>NVIDIA NIM Model</label>
+  <input type="text" id="model" value="meta/llama-3.3-70b-instruct">
+
+  <label style="margin-top:16px">💡 Example tasks</label>
+  <div id="examples"></div>
+</aside>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" data-tab="prompt">🔁 Prompt Evolution</button>
+    <button class="tab" data-tab="dsl">📄 AXIOM DSL</button>
+    <button class="tab" data-tab="growth" onclick="loadGrowth()">📈 Growth</button>
+    <button class="tab" data-tab="defs" onclick="loadDefs()">🧬 .axiom</button>
+  </div>
+
+  <!-- Prompt + DSL share the run UI -->
+  <div class="panel active" id="panel-prompt">
+    <textarea id="task-prompt" placeholder="Describe the task for the agent to master…"></textarea>
+    <button class="run" onclick="runMode('prompt')">▶ Run AXIOM</button>
+    <div id="stream-prompt"></div>
+  </div>
+
+  <div class="panel" id="panel-dsl">
+    <p class="narrator">Agents load behaviour from <code>.axiom</code> files. The Rewriter mutates
+       <code>worker.axiom</code> on disk after each iteration — the language rewriting itself.</p>
+    <textarea id="task-dsl" placeholder="Task for the Worker agent…"></textarea>
+    <button class="run" onclick="runMode('dsl')">▶ Run DSL Loop</button>
+    <div id="stream-dsl"></div>
+  </div>
+
+  <div class="panel" id="panel-growth"><div id="growth-body" class="narrator">Loading…</div></div>
+  <div class="panel" id="panel-defs"><div id="defs-body" class="narrator">Loading…</div></div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let running = false;
+
+// sidebar live values
+for (const [id,el] of [['max_iterations','v-iter'],['threshold','v-thr'],['temperature','v-temp']]) {
+  const inp = $('#'+id);
+  inp.oninput = () => $('#'+el).textContent = (id==='threshold'||id==='temperature') ? parseFloat(inp.value).toFixed(id==='temperature'?2:1) : inp.value;
+}
+
+// tabs
+document.querySelectorAll('.tab').forEach(t => t.onclick = (e) => {
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); $('#panel-'+t.dataset.tab).classList.add('active');
+});
+
+async function boot(){
+  const m = await (await fetch('/api/meta')).json();
+  $('#model').value = m.default_model || $('#model').value;
+  if (!m.key_set) $('#keywarn').style.display='block';
+  const ex = $('#examples'); ex.innerHTML='';
+  (m.examples||[]).forEach(t => {
+    const b=document.createElement('button'); b.className='ex-btn'; b.textContent=t;
+    b.onclick=()=>{ $('#task-prompt').value=t; $('#task-dsl').value=t; };
+    ex.appendChild(b);
+  });
+}
+boot();
+
+function cfg(){ return {
+  model: $('#model').value, max_iterations:+$('#max_iterations').value,
+  threshold:+$('#threshold').value, temperature:+$('#temperature').value,
+  force_rewrite:$('#force_rewrite').checked, enable_meta:$('#enable_meta').checked };
+}
+
+function scoreCls(s,thr){ return s>=thr?'score-high':(s>=5?'score-mid':'score-low'); }
+
+async function runMode(mode){
+  if (running) return;
+  const task = $('#task-'+mode).value.trim();
+  const box = $('#stream-'+mode);
+  if (!task){ box.innerHTML='<div class="warn">Enter a task first.</div>'; return; }
+  running = true; box.innerHTML='';
+  const add = html => { const d=document.createElement('div'); d.innerHTML=html; box.appendChild(d); return d; };
+  let curIter=null;
+
+  const r = await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode, task, ...cfg()})});
+  const j = await r.json();
+  if (j.error){ box.innerHTML='<div class="err">'+esc(j.error)+'</div>'; running=false; return; }
+
+  const es = new EventSource('/api/stream/'+j.run_id);
+  es.onmessage = (m) => {
+    const ev = JSON.parse(m.data);
+    switch(ev.type){
+      case 'heartbeat': break;
+      case 'status': add('<div class="narrator">▸ '+esc(ev.message)+'</div>'); break;
+      case 'rubric': {
+        const dims=(ev.rubric.dimensions||[]).map(d=>`<div class="dim"><b>${Math.round((d.weight||0)*100)}%</b>${esc(d.name)}</div>`).join('');
+        add(`<details open><summary>📋 Scoring rubric — ${esc(ev.rubric.task_summary||'')}</summary><div class="dims">${dims}</div></details>`);
+        break; }
+      case 'iter_start':
+        curIter = add(`<div class="iter"><h3>Iteration ${ev.i+1}/${ev.total}</h3></div>`).firstChild; break;
+      case 'worker':
+        curIter.insertAdjacentHTML('beforeend',`<div><span class="tag tag-worker">WORKER</span></div><div class="out">${esc(ev.output)}</div>`); break;
+      case 'evaluator': {
+        const cls=scoreCls(ev.score,ev.threshold);
+        let h=`<div><span class="tag tag-eval">EVALUATOR</span> Score: <span class="${cls}">${ev.score.toFixed(1)}/10</span></div>`;
+        if(ev.reasoning) h+=`<div class="narrator">${esc(ev.reasoning)}</div>`;
+        const ds=ev.dimension_scores||{}; const keys=Object.keys(ds);
+        if(keys.length) h+=`<div class="dims">${keys.map(k=>`<div class="dim"><b>${(+ds[k]).toFixed(1)}</b>${esc(k)}</div>`).join('')}</div>`;
+        if((ev.improvements||[]).length) h+=`<details><summary>Improvements</summary>${ev.improvements.map(i=>`<div class="narrator">• ${esc(i)}</div>`).join('')}</details>`;
+        curIter.insertAdjacentHTML('beforeend',h); break; }
+      case 'rewriter': {
+        let h=`<div><span class="tag tag-rew">REWRITER</span> ${esc(ev.version||'')}</div>`;
+        if((ev.mutations||[]).length) h+=`<details><summary>Mutations (${ev.mutations.length})</summary>${ev.mutations.map(m=>`<div class="narrator">• <b>${esc(m.field||'?')}</b> cut:<code>${esc(m.cut||'')}</code> → added:<code>${esc(m.added||'')}</code> — ${esc(m.why||'')}</div>`).join('')}</details>`;
+        h+=`<details><summary>New worker prompt</summary><div class="out">${esc(ev.new_prompt)}</div></details>`;
+        curIter.insertAdjacentHTML('beforeend',h); break; }
+      case 'converged':
+        curIter.classList.add('conv');
+        curIter.insertAdjacentHTML('beforeend',`<div><span class="tag tag-conv">CONVERGED ${ev.score.toFixed(1)}/10</span></div>`); break;
+      case 'meta': add('<div class="narrator">🧬 '+esc(ev.message)+'</div>'); break;
+      case 'warn': add('<div class="warn">⚠ '+esc(ev.message)+'</div>'); break;
+      case 'error': add('<div class="err">✗ '+esc(ev.message)+'</div>'); break;
+      case 'summary': {
+        const badge = ev.converged ? '<span class="badge tag-conv">CONVERGED</span>' : '<span class="badge tag-rew">MAX ITER</span>';
+        const d=add(`<div class="iter conv"><h2>Results</h2><div>${badge} Best: <span class="score-high">${ev.best_score.toFixed(1)}/10</span> (iter ${ev.best_iteration+1})</div><h3>Best output</h3><div class="out">${esc(ev.best_output)}</div><div class="chart" id="sum-chart"></div><div class="narrator">Run ID: ${esc(ev.run_id)} · logs/${esc(ev.run_id)}.jsonl</div></div>`);
+        if((ev.scores||[]).length>1) plotLine('sum-chart', ev.scores, ev.best_score);
+        break; }
+      case 'complete': es.close(); running=false; break;
+    }
+    box.scrollIntoView({block:'end'});
+  };
+  es.onerror = () => { es.close(); running=false; };
+}
+
+function plotLine(id, scores, thr){
+  Plotly.newPlot(id,[{x:scores.map((_,i)=>i+1),y:scores,mode:'lines+markers',line:{color:'#7ab648',width:2},marker:{size:8}}],
+    {plot_bgcolor:'#0d0d0d',paper_bgcolor:'#0d0d0d',font:{color:'#e0e0e0'},height:280,margin:{l:40,r:20,t:10,b:36},
+     xaxis:{title:'Iteration',gridcolor:'#222'},yaxis:{title:'Score',gridcolor:'#222',range:[0,10]},
+     shapes:[{type:'line',x0:1,x1:scores.length,y0:thr,y1:thr,line:{color:'#f0c040',dash:'dash'}}]},{displayModeBar:false});
+}
+
+async function loadGrowth(){
+  const b=$('#growth-body'); b.innerHTML='Loading…';
+  const g=await (await fetch('/api/growth')).json();
+  if(!g.total_iterations){ b.innerHTML='<div class="narrator">No evolution runs yet — run a task first.</div>'; return; }
+  b.innerHTML=`<h2>Growth Dashboard</h2>
+    <div class="metrics">
+      <div class="metric"><div class="n">${g.total_runs}</div><div class="l">Total Runs</div></div>
+      <div class="metric"><div class="n">${g.total_iterations}</div><div class="l">Iterations</div></div>
+      <div class="metric"><div class="n">${g.best_score.toFixed(1)}</div><div class="l">Best Score</div></div>
+      <div class="metric"><div class="n">${g.avg_score.toFixed(2)}</div><div class="l">Avg Score</div></div>
+    </div>
+    <h3>Score trajectory — all runs</h3><div class="chart" id="g-traj"></div>
+    <h3>Score distribution</h3><div class="chart" id="g-hist"></div>
+    <h3>worker.axiom</h3><div class="out">${esc(g.worker_axiom||'(none)')}</div>`;
+  const traces=g.series.map(s=>({x:s.scores.map((_,i)=>i+1),y:s.scores,mode:'lines+markers',name:s.run_id,line:{width:2}}));
+  Plotly.newPlot('g-traj',traces,{plot_bgcolor:'#0d0d0d',paper_bgcolor:'#0d0d0d',font:{color:'#e0e0e0'},height:380,margin:{l:40,r:20,t:10,b:36},xaxis:{title:'Iteration',gridcolor:'#222'},yaxis:{title:'Score',gridcolor:'#222',range:[0,10]},legend:{bgcolor:'#1a1a1a'}},{displayModeBar:false});
+  Plotly.newPlot('g-hist',[{x:g.all_scores,type:'histogram',marker:{color:'#7ab648'},opacity:.85}],{plot_bgcolor:'#0d0d0d',paper_bgcolor:'#0d0d0d',font:{color:'#e0e0e0'},height:280,margin:{l:40,r:20,t:10,b:36},xaxis:{title:'Score',gridcolor:'#222'},yaxis:{title:'Count',gridcolor:'#222'}},{displayModeBar:false});
+}
+
+async function loadDefs(){
+  const b=$('#defs-body'); b.innerHTML='Loading…';
+  const d=await (await fetch('/api/axiom')).json();
+  const icon={valid:'✅',warning:'⚠️',invalid:'❌',error:'❌'};
+  b.innerHTML='<h2>.axiom definitions</h2>'+Object.entries(d).map(([role,v])=>{
+    const issues=(v.issues||[]).map(i=>`<div class="narrator">[${esc(i.level)}] ${esc(i.phase)} · ${esc(i.field)} — ${esc(i.message)}</div>`).join('');
+    return `<h3>${icon[v.status]||'?'} ${role}.axiom — ${esc((v.status||'').toUpperCase())}</h3>${issues}<details><summary>prompt</summary><div class="out">${esc(v.prompt||v.error||'')}</div></details>`;
+  }).join('');
+}
+</script>
+</body>
+</html>
