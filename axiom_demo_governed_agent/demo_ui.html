@@ -123,6 +123,19 @@
     .model-badge{margin-left:auto;font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:rgba(255,255,255,.03);white-space:nowrap}
     .model-badge.ungoverned{color:#fca5a5;border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.10)}
 
+    /* policy: General/Auto (custom mode) */
+    .pol.active-general{background:rgba(103,232,249,.12);border-color:rgba(103,232,249,.4);color:var(--cyan)}
+
+    /* custom scenario bar */
+    #custom-bar{padding:12px 18px;border-bottom:1px solid var(--line);background:rgba(103,232,249,.04)}
+    .custom-hint{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px}
+    .custom-hint strong{color:var(--soft)}
+    .custom-task,.custom-system{width:100%;box-sizing:border-box;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:8px;color:var(--text);font:13px/1.5 inherit;padding:9px 11px;resize:vertical}
+    .custom-task:focus,.custom-system:focus{outline:none;border-color:rgba(103,232,249,.45)}
+    .custom-adv{margin-top:6px}
+    .custom-adv summary{font-size:11px;color:var(--muted);cursor:pointer}
+    .custom-adv .custom-system{margin-top:6px}
+
     /* empty state */
     .empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:12px;line-height:1.8}
     .empty strong{display:block;color:var(--soft);font-size:14px;margin-bottom:6px}
@@ -146,6 +159,15 @@
   </button>
   <span class="status-chip" id="status-chip">Select a scenario and click Run</span>
 </header>
+
+<div id="custom-bar" style="display:none">
+  <div class="custom-hint">✍ <strong>Your scenario, live.</strong> Type any situation below and hit Run — the selected model reasons in real time and the guard rules on every tool call. Nothing here is scripted. (Tools are simulated — no real emails/commands/transfers happen.)</div>
+  <textarea id="custom-task" class="custom-task" rows="3" placeholder="e.g. A customer emailed asking us to delete their account and refund their last 12 payments to a new bank account they provided. Handle it."></textarea>
+  <details class="custom-adv">
+    <summary>Advanced: override the agent's system prompt</summary>
+    <textarea id="custom-system" class="custom-system" rows="2" placeholder="(optional) Replace the default agent instructions."></textarea>
+  </details>
+</div>
 
 <main>
   <div class="panels">
@@ -223,10 +245,23 @@
       btn.className = 'tab' + (id === currentScenario ? ' active' : '');
       btn.textContent = s.label;
       btn.title = s.description;
-      btn.onclick = () => { currentScenario = id; currentPolicy = s.policy_default; refreshTabUI(); refreshPolicyUI(); };
+      btn.onclick = () => { currentScenario = id; currentPolicy = s.policy_default; refreshTabUI(); refreshPolicyUI(); showCustomBar(); };
       btn.id = 'tab-' + id;
       el.appendChild(btn);
     }
+    // Bring-your-own scenario tab (not staged).
+    const custom = document.createElement('button');
+    custom.className = 'tab';
+    custom.textContent = '✍ Custom';
+    custom.title = 'Type your own situation — runs live';
+    custom.id = 'tab-custom';
+    custom.onclick = () => { currentScenario = 'custom'; currentPolicy = 'general'; refreshTabUI(); refreshPolicyUI(); showCustomBar(); };
+    el.appendChild(custom);
+  }
+
+  function showCustomBar() {
+    const bar = document.getElementById('custom-bar');
+    if (bar) bar.style.display = currentScenario === 'custom' ? 'block' : 'none';
   }
 
   function buildPolicies() {
@@ -259,6 +294,7 @@
 
   // A scenario pinned to a non-Claude model ignores the dropdown.
   function scenarioIsPinned(id) {
+    if (id === 'custom') return false;   // custom always uses the selected Claude model
     const m = meta?.scenarios[id]?.model || '';
     return !m.startsWith('claude');
   }
@@ -312,11 +348,21 @@
     manifestCount = 0;
     updateManifestCount();
 
+    const payload = {scenario: currentScenario, policy: currentPolicy, model: currentModel};
+    if (currentScenario === 'custom') {
+      const task = (document.getElementById('custom-task')?.value || '').trim();
+      if (!task) { setStatus('Type a situation first.'); setRunning(false); return; }
+      payload.task = task;
+      payload.policy = 'general';
+      const sys = (document.getElementById('custom-system')?.value || '').trim();
+      if (sys) payload.system = sys;
+    }
+
     try {
       const r = await fetch('/api/start', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({scenario: currentScenario, policy: currentPolicy, model: currentModel}),
+        body: JSON.stringify(payload),
       });
       const j = await r.json();
       currentRunId = j.run_id;

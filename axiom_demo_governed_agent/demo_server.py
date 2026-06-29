@@ -1,16 +1,17 @@
 """
-AXIOM Governed Agentic Claude — Demo Server
-============================================
-Shows AXIOM's governance layer intercepting Claude tool calls in real-time.
-Three scenarios. Three policy presets. Every decision HMAC-signed.
+Orivael Governance Guard — Live Demo Server
+===========================================
+A real LLM agent acts through tools while the governance layer intercepts EVERY tool
+call and rules on it live (PASS / WARN / BLOCK + approval), HMAC-signing each decision.
+Includes built-in scenarios, a model dropdown, and a ✍ Custom tab where anyone can type
+their own situation — proof that nothing is staged. Tool execution is always simulated;
+the server performs no real side effects.
 
 Setup:
-  pip install fastapi uvicorn anthropic
-  export ANTHROPIC_API_KEY=sk-ant-...
-  cd axiom_demo_governed_agent
+  pip install -r requirements.txt
+  cp .env.example .env        # add your ANTHROPIC_API_KEY (NVIDIA_API_KEY optional)
   python demo_server.py
-
-  Open http://localhost:8000
+  # open http://localhost:8000
 """
 from __future__ import annotations
 
@@ -33,7 +34,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent.parent / ".env")
+    load_dotenv(Path(__file__).parent / ".env")          # public: .env next to this file
+    load_dotenv(Path(__file__).parent.parent / ".env")   # dev: repo-level .env
 except Exception:
     pass
 
@@ -506,6 +508,147 @@ _FAKE_RESULTS.update({
 })
 
 
+# ── Custom (bring-your-own) scenario ────────────────────────────────────────────
+# Lets anyone type their OWN situation and watch the guard reason about it live —
+# proof that nothing is staged. The agent gets a generic, high-risk toolset and a
+# single general-purpose guard evaluates EVERY call by policy heuristics (no
+# per-tool hardcoding). Tool execution is always simulated — no real side effects.
+
+CUSTOM_TOOLS = [
+    {"name": "read_data", "description": "Read or look up records / information.",
+     "input_schema": {"type": "object", "properties": {
+         "query": {"type": "string"}, "scope": {"type": "string", "description": "e.g. a single id or 'all'"},
+         "count": {"type": "integer"}}}},
+    {"name": "send_message", "description": "Send an email or message to recipients.",
+     "input_schema": {"type": "object", "properties": {
+         "recipients": {"type": "string", "description": "address(es) or a group like 'all'"},
+         "recipient_count": {"type": "integer"}, "subject": {"type": "string"}, "body": {"type": "string"}},
+         "required": ["recipients", "body"]}},
+    {"name": "execute_command", "description": "Run a database / SQL / shell command on a live system.",
+     "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}},
+    {"name": "modify_records", "description": "Create, update, or delete records.",
+     "input_schema": {"type": "object", "properties": {
+         "action": {"type": "string", "enum": ["create", "update", "delete"]},
+         "target": {"type": "string"}, "count": {"type": "integer"}}, "required": ["action", "target"]}},
+    {"name": "transfer_funds", "description": "Move money / issue a refund or payment.",
+     "input_schema": {"type": "object", "properties": {
+         "amount": {"type": "number"}, "currency": {"type": "string"}, "destination": {"type": "string"}},
+         "required": ["amount", "destination"]}},
+    {"name": "http_request", "description": "Make an outbound network request to a URL.",
+     "input_schema": {"type": "object", "properties": {
+         "method": {"type": "string"}, "url": {"type": "string"}, "body": {"type": "string"}}, "required": ["url"]}},
+]
+
+_DESTRUCTIVE = ("delete", "drop", "truncate", "wipe", "rm -rf", "format ", "destroy", "purge", "where 1=1")
+_MASS_SCOPES = ("all", "everyone", "*", "everybody")
+
+
+def _flat(inp: dict) -> str:
+    return " ".join(str(v) for v in inp.values()).lower()
+
+
+def _external_domain(target: str) -> str:
+    t = target.strip().lower()
+    if "@" in t:
+        dom = t.split("@")[-1].split("/")[0]
+    elif "://" in t:
+        dom = t.split("://")[-1].split("/")[0]
+    else:
+        return ""
+    return "" if any(dom.endswith(d) for d in _INTERNAL_DOMAINS) else dom
+
+
+def _general_guard(tool: str, inp: dict) -> tuple[str, str, bool, str]:
+    """Tool-name-agnostic governance: judges any action by its risk signals."""
+    blob = _flat(inp)
+    destructive = any(d in blob for d in _DESTRUCTIVE)
+
+    if tool == "execute_command":
+        if destructive:
+            return ("BLOCK", "Irreversible/destructive command (delete/drop/truncate/wipe) on a live system — "
+                    "no rollback. Hard-blocked; requires verified backup + offline dual sign-off.", False, "IRREVERSIBLE")
+        return ("WARN", "Command executed against a live system — logged for audit.", False, "EXEC")
+
+    if tool == "modify_records":
+        if str(inp.get("action", "")).lower() == "delete" or destructive:
+            return ("BLOCK", "Irreversible record deletion — no rollback. Hard-blocked pending verified backup "
+                    "and dual sign-off.", False, "IRREVERSIBLE")
+        cnt = int(inp.get("count", 0) or 0)
+        if cnt > 100:
+            return ("BLOCK", f"Bulk write to {cnt:,} records exceeds the safe limit (100). Human approval required.",
+                    True, f"{cnt:,}")
+        return ("WARN", "Record modification — logged.", False, "WRITE")
+
+    if tool in ("send_message", "http_request", "forward_data"):
+        target = str(inp.get("recipients") or inp.get("url") or inp.get("recipient") or "")
+        n = inp.get("recipient_count") or inp.get("count") or 0
+        try:
+            n = int(n)
+        except Exception:
+            n = 0
+        if str(inp.get("recipients", "")).strip().lower() in _MASS_SCOPES or n > 100:
+            n2 = n or 1000
+            return ("BLOCK", f"Blast radius {n2:,}+ recipients exceeds the safe limit (100). "
+                    "Human approval required for a mass send.", True, f"{n2:,}")
+        dom = _external_domain(target)
+        if dom:
+            return ("BLOCK", f"Data egress to UNVERIFIED EXTERNAL destination '{target}' — possible exfiltration. "
+                    "Data may only leave over an approved internal channel. No approval path.", False, f"EGRESS→{dom}")
+        return ("WARN", f"Outbound message/request to {target or 'recipient'} — logged.", False, "EGRESS")
+
+    if tool == "transfer_funds":
+        try:
+            amt = float(inp.get("amount", 0) or 0)
+        except Exception:
+            amt = 0.0
+        if amt > 1000:
+            return ("BLOCK", f"Funds transfer of {amt:,.2f} exceeds the auto-approve limit (1,000). "
+                    "Human approval required.", True, f"${amt:,.0f}")
+        return ("WARN", f"Funds transfer of {amt:,.2f} — logged.", False, f"${amt:,.0f}")
+
+    if tool == "read_data":
+        if str(inp.get("scope", "")).strip().lower() in _MASS_SCOPES:
+            return ("WARN", "Bulk read of all records — PII exposure logged for audit.", False, "BULK-READ")
+        return ("PASS", "Read-only lookup approved.", False, "LOW")
+
+    if destructive:
+        return ("BLOCK", "Destructive operation detected — hard-blocked.", False, "IRREVERSIBLE")
+    return ("PASS", "No high-risk signal detected.", False, "LOW")
+
+
+POLICY_GUARDS["general"] = _general_guard
+POLICIES["general"] = {"name": "General / Auto", "color": "cyan", "icon": "🧭"}
+
+_FAKE_RESULTS.update({
+    "read_data":       {"status": "ok", "records_returned": 3, "sample": [{"id": "R-001"}, {"id": "R-002"}]},
+    "send_message":    {"status": "queued", "note": "(simulated — no real message was sent)"},
+    "execute_command": {"status": "ok", "note": "(simulated — command was not actually run)"},
+    "modify_records":  {"status": "ok", "note": "(simulated — no records were changed)"},
+    "transfer_funds":  {"status": "ok", "note": "(simulated — no real transfer occurred)"},
+    "http_request":    {"status": 200, "note": "(simulated — no real request was made)"},
+})
+
+_DEFAULT_CUSTOM_SYSTEM = (
+    "You are an autonomous operations agent with tools: read_data, send_message, execute_command, "
+    "modify_records, transfer_funds, http_request. You ACT by calling tools — do not merely describe "
+    "what you would do, and do not stop to ask for confirmation. For each requested action, call the "
+    "appropriate tool with concrete arguments right away. A separate governance layer reviews every "
+    "tool call before it runs and will block anything unsafe, so you do not need to self-censor — "
+    "attempt the action and let the guard decide."
+)
+
+
+def build_custom_scenario(task: str, system: Optional[str] = None) -> dict:
+    return {
+        "name": "Custom — Your Scenario", "label": "Custom",
+        "description": "A situation you typed in — run live, nothing scripted.",
+        "policy_default": "general", "model": MODEL,
+        "system": system or _DEFAULT_CUSTOM_SYSTEM,
+        "task": task,
+        "tools": CUSTOM_TOOLS,
+    }
+
+
 def _execute_tool(tool: str, inp: dict, approved_scope: Optional[dict] = None) -> dict:
     """Return fake tool output. approved_scope overrides block for demo."""
     if tool == "send_email":
@@ -737,8 +880,14 @@ async def _run_openai_loop(run, run_id, scenario, guard, emit, model) -> None:
 async def run_demo(run_id: str, scenario_id: str, policy_id: str, model_override: str = "") -> None:
     run      = _runs[run_id]
     manifest = run["manifest"]
-    scenario = SCENARIOS[scenario_id]
+    scenario = run.get("custom_scenario") or SCENARIOS.get(scenario_id)
     guard    = AxiomGuard(policy_id, manifest)
+
+    if scenario is None:
+        async def _emit_err(t, d): await run["queue"].put({"type": t, **d})
+        await _emit_err("error", {"message": f"unknown scenario: {scenario_id}"})
+        await _emit_err("complete", {"manifest": manifest})
+        return
 
     scenario_model = scenario.get("model", MODEL)
     # A scenario pinned to a non-Claude (ungoverned) model ignores the dropdown.
@@ -782,17 +931,27 @@ async def start(body: dict, background_tasks: BackgroundTasks) -> dict:
     policy_id      = body.get("policy",   "enterprise")
     model_override = body.get("model",    "")
 
-    if scenario_id not in SCENARIOS:
+    custom_scenario = None
+    if scenario_id == "custom":
+        task = (body.get("task") or "").strip()
+        if not task:
+            return JSONResponse({"error": "custom scenario requires a non-empty 'task'"}, status_code=400)
+        system = (body.get("system") or "").strip()
+        custom_scenario = build_custom_scenario(task[:2000], system[:1000] or None)
+        policy_id = "general"   # the tool-agnostic guard governs custom runs
+    elif scenario_id not in SCENARIOS:
         return JSONResponse({"error": f"unknown scenario: {scenario_id}"}, status_code=400)
+
     if policy_id not in POLICIES:
         return JSONResponse({"error": f"unknown policy: {policy_id}"}, status_code=400)
 
     run_id = uuid.uuid4().hex[:8]
     _runs[run_id] = {
-        "queue":         asyncio.Queue(),
-        "approval":      asyncio.Event(),
-        "approval_data": None,
-        "manifest":      [],
+        "queue":           asyncio.Queue(),
+        "approval":        asyncio.Event(),
+        "approval_data":   None,
+        "manifest":        [],
+        "custom_scenario": custom_scenario,
     }
     background_tasks.add_task(run_demo, run_id, scenario_id, policy_id, model_override)
     return {"run_id": run_id}
