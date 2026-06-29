@@ -94,3 +94,7 @@ Namecheap A record `lab` → `178.156.205.89`.
 2. **Build with `--no-cache`** when changing the pip line, or the dep won't actually install.
 3. **Persistence volume must NOT mount `/data`** — it masks `/data/.local` site-packages.
 4. **`AXIOM_BACKEND=nim`** must be set, or Prompt Evolution tries a non-existent local Ollama.
+5. **`/persist` must be writable by uid 999 (`axiom`).** The container runs as non-root; a fresh
+   named volume mounts root-owned, so the app hits `PermissionError` on `LOGS_DIR.mkdir` /
+   prompt-memory writes. The Dockerfile `chown`s `/persist` to 999 so a fresh volume inherits it;
+   for an already-created root-owned volume: `docker exec -u 0 axiom-studio chown -R 999:999 /persist`.
