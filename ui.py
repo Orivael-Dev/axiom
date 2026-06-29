@@ -655,8 +655,17 @@ with tab_prompt:
     from axiom_constitutional.agents.evaluator import EvaluatorAgent
     from axiom_constitutional.agents.rewriter import RewriterAgent
     from axiom_constitutional.evolution import (
-        EvolutionResult, IterationResult, LOGS_DIR, detect_score_pegging,
+        EvolutionResult, IterationResult, LOGS_DIR,
     )
+    try:
+        from axiom_constitutional.evolution import detect_score_pegging
+    except ImportError:
+        # Older evolution.py without this helper — minimal inline fallback:
+        # flag when the last `window` scores are identical (evaluator pegging).
+        def detect_score_pegging(scores, window=3):
+            if len(scores) >= window and len(set(scores[-window:])) == 1:
+                return {"pegged_at": scores[-1], "window": window}
+            return None
     from axiom_constitutional import store as prompt_store
     from axiom_files.parser import get_prompt_with_overlays, detect_overlays
     import uuid, json
