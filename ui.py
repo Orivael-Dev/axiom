@@ -98,6 +98,12 @@ with st.sidebar:
                               help="Rewriter runs after every iteration regardless of score. Use this to force evolution even when scores are high.")
     enable_meta = st.toggle("Meta-Evolution", value=True,
                             help="Also evolve the Evaluator and Rewriter prompts")
+    use_memory = st.toggle("Prompt Memory (RAG)", value=True,
+                           help="Recall the best prompts from similar PAST runs to warm-start "
+                                "this one, and remember this run's results. Evolution learns "
+                                "across tasks and compounds over time.")
+    memory_floor = st.slider("Memory: min score to reuse", 1.0, 10.0, 8.0, 0.5,
+                             help="Only warm-start from past prompts that scored at least this high.")
     temperature = st.slider("Worker Temperature", 0.1, 1.0, 0.7, 0.05)
 
     st.divider()
@@ -669,6 +675,21 @@ with tab_prompt:
             f"({len(_override)} chars) from the Initial Prompts expander."
         )
 
+    # ── Experience RAG: warm-start from the best prompt of a similar past run ──
+    mem_hits = []
+    if use_memory and not _override:
+        try:
+            from axiom_constitutional import prompt_memory
+            mem_hits = prompt_memory.recall(task, k=3, min_score=memory_floor, role="worker")
+            if mem_hits:
+                worker.system_prompt = mem_hits[0]["prompt"]
+                st.caption(
+                    f"🧠 Prompt memory: warm-started from a similar past task "
+                    f"(scored {mem_hits[0]['score']:.1f}/10) · {prompt_memory.stats()} iterations remembered."
+                )
+        except Exception as _e:
+            st.caption(f"prompt memory unavailable: {_e}")
+
     # Apply UI temperature override
     def _execute_with_temp(t):
         from axiom_constitutional import client as nim
@@ -748,6 +769,15 @@ with tab_prompt:
                     result.best_iteration = len(result.iterations) - 1
 
                 prompt_store.save_iteration(task, "worker", worker.system_prompt, score)
+
+                # Experience RAG: remember this iteration for future runs
+                if use_memory:
+                    try:
+                        from axiom_constitutional import prompt_memory
+                        prompt_memory.index_iteration(
+                            task, worker.system_prompt, score, evaluation, role="worker")
+                    except Exception:
+                        pass
 
                 # Log
                 with log_file.open("a") as lf:
