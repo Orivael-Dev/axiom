@@ -1,9 +1,9 @@
 {
   "worker": {
-    "sha256": "7674190c401f486b634f1dd7f40f197653e6b8509f8cf3c7d66d8d3ff8889ecc",
-    "registered_at": "2026-04-28T16:33:00.753082+00:00",
+    "sha256": "013fa2bde29c7abf1651be73d161b938ab684ecb56befb54a7615ca5bdbec869",
+    "registered_at": "2026-06-29T17:07:53.704463+00:00",
     "version": "",
-    "size_bytes": 27112
+    "size_bytes": 27889
   },
   "evaluator": {
     "sha256": "a2e1fc52cf4f461f490a9c8ecd2d0a8099c3b7cc9acfa0b48f4eac1adb9cf295",
