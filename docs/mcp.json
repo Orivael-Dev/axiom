@@ -1,8 +1,8 @@
 {
   "name": "axiom",
   "title": "AXIOM — Constitutional & Runtime Authority Tools",
-  "description": "Constitutional AI governance + runtime authority control as MCP tools. Includes the bonded paired-token gate, intent classifier, constitutional reasoning trace, language validator, multi-agent orchestrator, OS shield, sovereign phone coprocessor, physical-intelligence agent, and AXM container runtime. Every tool result is HMAC-SHA256 signed under axiom-mcp-v1 so the client can re-verify with axiom_signing.verify and detect any tampering between server and client.",
-  "version": "1.11.0",
+  "description": "Constitutional AI governance + runtime authority control as MCP tools. 23 tools spanning the full Inference OS: constitutional guard, reasoning trace, QRF forecast, intent gate, multi-agent orchestrator, OS shield, sovereign phone coprocessor, physical-intelligence agent, AXM container runtime, memory, workspace, ledger, marketplace, adversarial sandbox, CRL reward, immune system, multimodal fusion, and the 9-agent constitutional research pipeline. Every tool result is HMAC-SHA256 signed under axiom-mcp-v1 so the client can re-verify with axiom_signing.verify and detect any tampering between server and client.",
+  "version": "1.12.0",
   "homepage": "https://github.com/Orivael-Dev/axiom",
   "documentation": "https://github.com/Orivael-Dev/axiom#mcp-server",
   "license": "Apache-2.0",
@@ -168,6 +168,20 @@
       "patent": "ORVL-025",
       "description": "Multimodal intent fusion (axiom-fusion-v1) over an EventToken. Each present modality layer (text/audio/tempo/vad/voice/video/physics/governance) votes its intent signals weighted by confidence; the top-6 form the intent_vector. risk_clusters is the union across modalities (a governance HARM/DECEIVE verdict propagates directly). fusion_confidence is the mean modal confidence capped at 0.85. Physical-event modalities (audio+video) dominate text when each fires multiple strong signals. Empty token yields ['ask_general']. Result is signed and self-verifies.",
       "input_schema": { "type": "object", "properties": { "token": { "type": "object" } }, "required": ["token"] }
+    },
+    {
+      "name": "axiom_research",
+      "category": "research_pipeline",
+      "description": "9-agent constitutional research pipeline: hypothesis → literature → simulation → critic → safety → ethics → data → experiment → report. Front-door ResearchOrchestrator classifies domain (medical/financial/legal/code/quantization/privacy/general) and selects only the steps that domain needs. Safety and Ethics agents can HALT the pipeline early if critical risks are detected. PatternLibrary tracks EWMA efficiency per domain for retrospect-biased routing. Returns per-step HMAC-signed manifests.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "question": { "type": "string", "description": "The research question to investigate" },
+          "steps": { "type": "integer", "minimum": 1, "maximum": 9, "description": "Max pipeline steps to run (default 9)" },
+          "model": { "type": "string", "description": "Optional model override for all agents" }
+        },
+        "required": ["question"]
+      }
     }
   ],
 
