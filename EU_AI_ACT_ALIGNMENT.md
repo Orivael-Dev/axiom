@@ -38,7 +38,7 @@ execution is the deployer's · **Out of scope** = obligation falls on another ac
 | Art. | Obligation | Status | Axiom control (file) | Deployer must add |
 |---|---|---|---|---|
 | 5 | Prohibited practices | Deployer | `DEPLOYER_GUIDE.md` lists prohibited uses; intent gate blocks `HARM`/`DECEIVE` classes (`axiom_intent_classifier.py`) | Confirm the use case is not prohibited |
-| 9 | Risk-management system | **Partial** | Constitutional constraints + 7 `HUMAN_REVIEW` triggers + honesty gate ≥0.85 (`axiom_certify.py` steps 2–6) | Formal risk taxonomy + residual-risk identification (in FRIA) |
+| 9 | Risk-management system | **Supported** | Constitutional constraints + 7 `HUMAN_REVIEW` triggers + honesty gate (`axiom_certify.py`) + **AI risk register** (`axiom_risk_register.py`) — 12-risk taxonomy (rights/safety/security/robustness), each mapped to a treatment control, signed | Residual ratings + risk acceptance (deployer/risk-owner) |
 | 10 | Data & data governance | **Supported** | `AXIOM_DATA_GOVERNANCE.md`; teacher–student fairness + demographic-variant testing (`axiom/integrity_check.py`); `fairness_ledger.jsonl`; hash-only logging (no raw PII) | Data-subject rights, retention, cross-border assessment (doc §§7–9) |
 | 11 + Annex IV | Technical documentation | **Supported** | 6-step certification (`axiom_certify.py`) + **Annex IV generator** (`axiom_annex_iv.py`) — assembles all 9 Annex IV sections, pre-fills every Axiom-substantiated item, signs the pack | Complete the `[DEPLOYER]` items (I/O specs, declaration of conformity, post-market plan) |
 | 12 | Record-keeping / logging | **Supported** | Four append-only HMAC-signed ledgers: `axiom_audit_ledger.py`, `axiom_exoskeleton_ledger.py`, `axiom_autonomous/ledger.py`, `axiom_medical_ledger.py`; per-interaction compliance manifest | Retention policy (≥ the Act's minimum; GDPR Art. 5(1)(e)) |
@@ -75,7 +75,7 @@ Listing them is itself part of being "in line" — silent gaps are the liability
 | Gap | Article | Current state | Proposed close |
 |---|---|---|---|
 | ~~Synthetic-content marking~~ ✅ closed | 50(2) | **Done** — `axiom_content_provenance.py`: human-readable AI-disclosure footer + signed, machine-readable provenance tag; `verify()` detects content tampering and tag forgery | Wire `mark()` into the server response path (one call after `OutputShaper`) |
-| Formal risk taxonomy | 9 | Controls exist; no structured risk register | Ship a risk-register template + a `risk` section the certifier fills |
+| ~~Formal risk taxonomy~~ ✅ closed | 9 | **Done** — `axiom_risk_register.py`: 12-risk seeded taxonomy (health/safety, fundamental rights, security, robustness), each mapped to an Axiom treatment control + inherent rating; signed; residual rating left to the risk owner. Doubles as ISO 42001 A.5 / Clause 6.1 | Complete residual ratings + acceptance |
 | ~~Annex IV doc generator~~ ✅ closed | 11 | **Done** — `axiom_annex_iv.py` assembles the 9-section Annex IV pack from system metadata + cert/FRIA, pre-fills Axiom-substantiated items, marks `[DEPLOYER]` placeholders, signs the output | Complete the deployer items + conformity assessment |
 | Data-subject-rights hooks | 10 / GDPR | Deployer-layer only | Reference adapters for access/erasure/portability against the ledgers |
 | Semantic fairness scoring | 10(3) | Length + disparagement signals only | Cosine-similarity fairness scoring (was tracked for a later release) |
@@ -103,6 +103,9 @@ python axiom_content_provenance.py verify --file marked.txt   # VALID / CONTENT_
 # 5. Art. 11 / Annex IV — assemble the technical-documentation pack (signed):
 python axiom_annex_iv.py generate --provider "<you>" --purpose "<purpose>" \
     --cert certs/<agent>_cert.json --fria certs/<agent>_fria.json --out annex_iv.md
+
+# 6. Art. 9 — seed the AI risk register (also ISO 42001 A.5 / Clause 6.1):
+python axiom_risk_register.py generate --name "<system>" --purpose "<purpose>" --out risk.md
 ```
 
 The Annex IV generator stitches the rest together: it pre-fills from the signed cert +
