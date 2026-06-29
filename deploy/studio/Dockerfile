@@ -20,11 +20,19 @@ COPY axiom_constitutional/prompt_memory.py axiom_constitutional/knowledge_rag.py
 # rich is a core dep of axiom_constitutional/evolution.py + meta_evolution.py.
 RUN pip install --no-cache-dir streamlit pandas plotly rich
 
+# Ship the patched worker.axiom (AXIOM-authoring whitelist) over the base image's
+# older copy, so Prompt Evolution can answer "how to build a .axiom agent" instead
+# of BLOCKing it and pegging the score at 0.
+COPY axiom_files/core/worker.axiom /app/axiom_files/core/worker.axiom
+
 # The base image runs as non-root user `axiom` (uid 999). The runtime persists
 # prompt memory + evolution logs under /persist, so /persist must be writable by
 # that user. A fresh named volume mounted here inherits this ownership on first
 # mount; without it the app hits PermissionError on LOGS_DIR.mkdir / prompt_memory.
+# mkdir + chown require root, so switch to root for that one step then back to axiom.
+USER root
 RUN mkdir -p /persist && chown -R 999:999 /persist
+USER axiom
 
 EXPOSE 8501
 ENTRYPOINT []

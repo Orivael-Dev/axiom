@@ -433,6 +433,24 @@ def _fallback_source_stubs(query: str, domain: str) -> list[dict]:
     ]
 
 
+def _to_medical_sources(dicts: list[dict]) -> list[dict]:
+    """Map retriever hits (RetrievedSource.to_dict) → the source shape the
+    MedicalResearchAgent consumes: {name, text, uri, evidence_tier, provider}.
+    Drops the synthetic no-hit stub so the agent doesn't analyse a placeholder."""
+    out: list[dict] = []
+    for s in dicts:
+        if str(s.get("kind", "")).startswith("stub"):
+            continue
+        out.append({
+            "name":          s.get("title") or s.get("uri") or "source",
+            "text":          s.get("snippet") or "",
+            "uri":           s.get("uri") or "",
+            "evidence_tier": s.get("evidence_tier"),
+            "provider":      s.get("provider", "local"),
+        })
+    return out
+
+
 def _qrf_branches(query: str, domain: str, *, workflow_label: str) -> tuple[dict, bool]:
     """Real QRF for supported domains; stub for unsupported ('general')."""
     engine = _state.qrf_for(domain)
@@ -649,6 +667,127 @@ async def research(req: ResearchRequest):
     return _run_research(req, delegate_name)
 
 
+_GENERAL_SYSTEM = (
+    "You are a rigorous research analyst. Answer the user's QUESTION directly, "
+    "accurately, and concretely, grounded in the SOURCES when they are relevant. "
+    "Lead with the answer itself. If the sources are thin or irrelevant, answer "
+    "from well-established general knowledge and note that. Never invent citations "
+    "or data. Respond with ONLY a valid JSON object, no prose outside it, in exactly "
+    'this shape:\n'
+    '{"answer": "<direct, self-contained answer, 3-8 sentences>", '
+    '"key_points": ["<concrete supporting point>", "..."], '
+    '"open_questions": ["<genuine follow-up question>", "..."]}'
+)
+
+
+def _parse_answer(raw: str) -> tuple[str, List[str], List[str]]:
+    """Parse the synthesis JSON {answer, key_points, open_questions}.
+
+    Falls back to treating `raw` as a prose answer if it isn't JSON."""
+    obj = None
+    if raw:
+        try:
+            obj = json.loads(raw)
+        except (ValueError, TypeError):
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                try:
+                    obj = json.loads(m.group(0))
+                except (ValueError, TypeError):
+                    obj = None
+    if isinstance(obj, dict):
+        answer = str(obj.get("answer") or obj.get("response") or "").strip()
+        kp = [str(x).strip() for x in (obj.get("key_points") or []) if str(x).strip()]
+        oq = [str(x).strip() for x in (obj.get("open_questions") or []) if str(x).strip()]
+        if answer:
+            return answer, kp, oq
+    prose = (raw or "").strip()
+    return prose, _split_into_findings(prose), []
+
+
+def _general_answer(req: "ResearchRequest", workflow_label: str,
+                    sources: list[dict], retrieval_real: bool,
+                    qrf: dict, qrf_real: bool) -> dict:
+    """Real question-answering for the General Research workflow.
+
+    Synthesises a direct answer from the retrieved sources via the backend,
+    instead of routing through the customer_discovery sales delegate (whose
+    pain/urgency/buyer_role JSON is not an answer to the user's question)."""
+    from axiom_event_token.backends import default_backend, domain_context
+
+    real_src = [s for s in sources
+                if not str(s.get("kind", "")).startswith("stub")]
+    src_block = "\n".join(
+        f"- [{s.get('provider', 'local')}] {s.get('title', '(untitled)')}: "
+        f"{(s.get('snippet') or '').strip()[:400]}"
+        for s in real_src[:6]
+    ) or "(no retrieved sources — answer from general knowledge)"
+    prompt = (f"QUESTION:\n{req.query}\n\nSOURCES:\n{src_block}\n\n"
+              "Return the JSON answer now.")
+
+    t0 = time.monotonic()
+    try:
+        bk = default_backend()
+        with domain_context(req.domain):
+            res = bk.generate(system=_GENERAL_SYSTEM, prompt=prompt,
+                              max_output_tokens=800)
+    except Exception as e:
+        LOG.exception("general synthesis failed")
+        raise HTTPException(status_code=502, detail=f"synthesis failed: {e}")
+    wall_ms = int((time.monotonic() - t0) * 1000)
+
+    raw = res.text or ""
+    answer, key_points, open_qs = _parse_answer(raw)
+
+    return {
+        "query":          req.query,
+        "workflow":       req.workflow,
+        "workflowLabel":  workflow_label,
+        "domain":         req.domain,
+        "domainLabel":    _DOMAIN_LABELS.get(req.domain, req.domain),
+        "report": {
+            "tldr":          answer or "(synthesis returned empty output)",
+            "keyFindings":   key_points or ["(no structured key points returned)"],
+            "openQuestions": open_qs or [
+                "What level of depth or specificity do you need next?",
+            ],
+            "raw_output":    raw,
+            "answer":        answer,
+        },
+        "probabilityBand":        qrf["probability_band"],
+        "constitutionalDistance": qrf["constitutional_distance"],
+        "branchHealth":           qrf["branch_health"],
+        "sources":  sources,
+        "branches": qrf["branches"],
+        "receipt": {
+            "token_id":  f"gen-{wall_ms}-{len(answer)}",
+            "workflow":  workflow_label,
+            "backend":   f"{res.backend} · {res.model}",
+            "signed_at": "",
+            "verified":  False,
+            "ledger":    "(direct synthesis — not delegate-ledgered)",
+            "qrf_signature": qrf.get("_qrf_signature", "")[:24] if qrf_real else "",
+        },
+        "cost": {
+            "input_tokens":  int(res.input_tokens),
+            "output_tokens": int(res.output_tokens),
+            "latency_ms":    int(res.latency_ms),
+        },
+        "_meta": {
+            "wall_clock_ms":           wall_ms,
+            "delegate_invoked":        "general_research_synthesis",
+            "sources_are_stubbed":     not retrieval_real,
+            "branches_are_stubbed":    not qrf_real,
+            "synthesis_is_real":       True,
+            "retriever_indexed_files": (_state.retriever.stats().get("indexed_files", 0)
+                                          if _state.retriever else 0),
+            "ledger_write":            "skipped (synthesis path)",
+            "cognitive_gating":        (_state.last_gating_telemetry
+                                          if _state.gating is not None else None),
+        },
+    }
+
+
 def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     """Shared research pipeline used by both /api/research and the
     SSE endpoint. Always synchronous; SSE just emits stage events
@@ -662,6 +801,13 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     workflow_label = _WORKFLOW_LABELS.get(req.workflow, req.workflow)
     qrf, qrf_real = _qrf_branches(req.query, req.domain,
                                    workflow_label=workflow_label)
+
+    # General Research answers the question directly via the backend, grounded in
+    # the retrieved sources — it is NOT a sales delegate. (Previously aliased to
+    # customer_discovery, which returned pain/urgency/buyer_role instead of an answer.)
+    if req.workflow == "general_research":
+        return _general_answer(req, workflow_label, sources, retrieval_real,
+                               qrf, qrf_real)
 
     # Stage 3: synthesize via the exoskeleton delegate. The
     # `domain_context` sets a request-scoped contextvar so any
@@ -1039,6 +1185,24 @@ async def medical_research(req: MedicalResearchRequest):
     _state.ensure()
     from axiom_event_token.backends import default_backend
     ledger = LedgerWriter(default_ledger_path())
+
+    # When the caller supplies no sources, retrieve real medical evidence from
+    # the configured providers (PubMed / ClinicalTrials / openFDA / Wikipedia via
+    # axiom_research_providers) instead of letting the agent stub the question
+    # itself as the only "source". Prefer the medical-specific providers, drop the
+    # generic repo-corpus noise, and cap at 3 — the agent runs LLM calls per source
+    # per layer, so latency scales with source count.
+    sources = req.sources
+    sources_origin = "caller"
+    if not sources:
+        raw_sources, retrieval_real = _retrieve_sources(req.question, "medical", k=6)
+        med = [s for s in _to_medical_sources(raw_sources)
+               if s.get("provider") != "local"]
+        _MED_PRIORITY = {"openfda": 0, "pubmed": 1, "clinicaltrials": 2,
+                         "wikipedia": 3}
+        med.sort(key=lambda s: _MED_PRIORITY.get(s.get("provider", ""), 9))
+        sources = med[:3]
+        sources_origin = "providers" if (retrieval_real and sources) else "none"
     try:
         agent = MedicalResearchAgent.from_default_pack(
             backend=default_backend(),
@@ -1047,7 +1211,7 @@ async def medical_research(req: MedicalResearchRequest):
         )
         result = agent.research(
             req.question,
-            sources=req.sources,
+            sources=sources or None,
             profile=req.profile,
         )
     except MedicalAgentError as e:
@@ -1069,6 +1233,8 @@ async def medical_research(req: MedicalResearchRequest):
         "manifest_root":         result.manifest_root,
         "requires_human_review": result.requires_human_review,
         "tier_distribution":     dict(result.tier_distribution),
+        "sources_origin":        sources_origin,
+        "sources_used":          sources or [],
     }
 
 
