@@ -104,6 +104,10 @@ with st.sidebar:
                                 "across tasks and compounds over time.")
     memory_floor = st.slider("Memory: min score to reuse", 1.0, 10.0, 8.0, 0.5,
                              help="Only warm-start from past prompts that scored at least this high.")
+    use_knowledge = st.toggle("Knowledge RAG (AXIOM docs)", value=True,
+                              help="Retrieve relevant AXIOM spec / docs / .axiom examples for the "
+                                   "task and ground the Worker in them — so it can answer what it "
+                                   "doesn't know (e.g. how to build an AXIOM agent) instead of guessing.")
     temperature = st.slider("Worker Temperature", 0.1, 1.0, 0.7, 0.05)
 
     st.divider()
@@ -690,10 +694,23 @@ with tab_prompt:
         except Exception as _e:
             st.caption(f"prompt memory unavailable: {_e}")
 
-    # Apply UI temperature override
+    # ── Knowledge RAG: ground the Worker in retrieved AXIOM docs/spec/examples ──
+    _kctx = ""
+    if use_knowledge:
+        try:
+            from axiom_constitutional import knowledge_rag
+            _kctx = knowledge_rag.context_for(task)
+            if _kctx:
+                st.caption(f"📚 Knowledge RAG: grounded with AXIOM reference "
+                           f"({knowledge_rag.stats()} chunks indexed).")
+        except Exception as _e:
+            st.caption(f"knowledge rag unavailable: {_e}")
+
+    # Apply UI temperature override (+ retrieved AXIOM reference, if any)
     def _execute_with_temp(t):
         from axiom_constitutional import client as nim
-        return nim.chat(worker.system_prompt, f"Task:\n{t}", temperature=temperature)
+        user = (_kctx + "\n\nTask:\n" + t) if _kctx else f"Task:\n{t}"
+        return nim.chat(worker.system_prompt, user, temperature=temperature)
     worker.execute = _execute_with_temp
 
     evaluator = EvaluatorAgent(task)
@@ -999,6 +1016,15 @@ with tab_dsl:
 
         prog = st.progress(0, text="Starting DSL loop…")
 
+        # Knowledge RAG: retrieve AXIOM reference for this DSL task
+        _dsl_kctx = ""
+        if use_knowledge:
+            try:
+                from axiom_constitutional import knowledge_rag
+                _dsl_kctx = knowledge_rag.context_for(dsl_task)
+            except Exception:
+                _dsl_kctx = ""
+
         for i in range(max_iterations):
             prog.progress(i / max_iterations, text=f"Iteration {i+1}/{max_iterations}")
 
@@ -1006,7 +1032,7 @@ with tab_dsl:
 
                 # Worker
                 st.markdown('<span class="tag tag-worker">WORKER</span>', unsafe_allow_html=True)
-                out = nim.chat(worker_p, f"Task:\n{dsl_task}", temperature=temperature)
+                out = nim.chat(worker_p, (_dsl_kctx + "\n\nTask:\n" + dsl_task) if _dsl_kctx else f"Task:\n{dsl_task}", temperature=temperature)
                 st.markdown(f'<div class="output-box">{out}</div>', unsafe_allow_html=True)
 
                 # Evaluator
