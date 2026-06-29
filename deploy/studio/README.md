@@ -3,7 +3,8 @@
 Runs the full Streamlit `ui.py` (8 playgrounds: Prompt Evolution, AXIOM DSL, Growth,
 Exoskeleton, Audio, Dev Agent, Medical, Twitter) as a container on the Hetzner box,
 reverse-proxied by Caddy on the `axiom-net` network. Prompt Evolution includes
-**Experience-RAG prompt memory** (`axiom_constitutional/prompt_memory.py`).
+**Experience-RAG prompt memory** (`axiom_constitutional/prompt_memory.py`) and
+**Knowledge-RAG** (`axiom_constitutional/knowledge_rag.py`).
 
 ## Prerequisites (on the box)
 - Base image `orivael/axiom-research:local`.
@@ -17,10 +18,10 @@ reverse-proxied by Caddy on the `axiom-net` network. Prompt Evolution includes
   ```
 
 ## Build
-From a checkout containing the full `ui.py` **and** `axiom_constitutional/prompt_memory.py`
-(this branch, or `main` after merge):
+From a checkout with the full `ui.py` + `axiom_constitutional/{prompt_memory,knowledge_rag}.py`
+(`main`). **Use `--no-cache`** so a changed pip line (e.g. adding `rich`) actually installs:
 ```bash
-docker build -f deploy/studio/Dockerfile -t axiom-studio:local .
+docker build --no-cache -f deploy/studio/Dockerfile -t axiom-studio:local .
 ```
 
 ## Run (with persistent prompt memory + logs)
@@ -29,19 +30,28 @@ docker rm -f axiom-studio 2>/dev/null
 docker run -d --name axiom-studio --restart unless-stopped --network axiom-net \
   --no-healthcheck --env-file /opt/web_ui_build/web.env \
   -e AXIOM_MODEL=meta/llama-3.3-70b-instruct \
-  -e AXIOM_PROMPTS_DIR=/data/prompts -e AXIOM_LOGS_DIR=/data/logs \
-  -v axiom-studio-data:/data \
+  -e AXIOM_BACKEND=nim \
+  -e AXIOM_PROMPTS_DIR=/persist/prompts -e AXIOM_LOGS_DIR=/persist/logs \
+  -v axiom-studio-persist:/persist \
   axiom-studio:local
 ```
 - `--no-healthcheck` disables the base image's research-app healthcheck (wrong port for Streamlit).
-- The **`axiom-studio-data` volume** + `AXIOM_PROMPTS_DIR`/`AXIOM_LOGS_DIR` keep prompt memory
-  (`/data/prompts/_memory/prompt_memory.db`) and Growth logs across restarts, so the RAG
-  memory **compounds** instead of resetting.
+- **`AXIOM_BACKEND=nim`** — without it the UI defaults to `local,nim` and tries Ollama on
+  `localhost:11434` (not in the container), so the rubric's first model call fails to connect.
+  (`AXIOM_BACKEND=nim` is also in `web.env` as a backstop.)
+- **Mount persistence at `/persist`, NOT `/data`.** The base image sets `HOME=/data` and pip
+  installs packages under `/data/.local/...`; a volume mounted at `/data` would mask those
+  packages with a stale copy (this is what caused `ModuleNotFoundError: rich`). Keep the
+  persistence volume off `/data`.
+- `AXIOM_PROMPTS_DIR`/`AXIOM_LOGS_DIR` put the RAG prompt-memory db
+  (`/persist/prompts/_memory/prompt_memory.db`) + Growth logs on the volume, so memory
+  **compounds** across restarts. The Knowledge-RAG index rebuilds from the in-image corpus
+  on first use (also cached under `/persist/prompts/_knowledge`).
 
 Verify:
 ```bash
 docker exec axiom-studio python3 -c "import urllib.request;print(urllib.request.urlopen('http://localhost:8501/_stcore/health',timeout=4).read())"
-docker exec axiom-studio python3 -c "from axiom_constitutional import prompt_memory;print('remembered:',prompt_memory.stats())"
+docker exec axiom-studio python3 -c "import rich, importlib.metadata as m; from axiom_constitutional import prompt_memory, knowledge_rag; print('rich', m.version('rich'), '| remembered:', prompt_memory.stats())"
 ```
 
 ## Caddy block (`deploy/firewall/Caddyfile`)
@@ -74,6 +84,13 @@ Namecheap A record `lab` → `178.156.205.89`.
 ## Notes
 - All 8 tabs import cleanly; some playgrounds need their runtime backends/keys to fully
   function (Twitter API, medical container, audio input).
-- **Prompt memory:** the Prompt Evolution sidebar has a "Prompt Memory (RAG)" toggle +
-  min-score floor. It warm-starts the Worker from the best prompt of a similar past task
-  and remembers every iteration — learning compounds across runs (persisted on the volume).
+- **Prompt memory (Experience RAG):** sidebar "Prompt Memory (RAG)" toggle + min-score floor.
+  Warm-starts the Worker from the best prompt of a similar past task; remembers every iteration.
+- **Knowledge RAG:** sidebar "Knowledge RAG (AXIOM docs)" toggle. Retrieves AXIOM spec/docs/
+  `.axiom` examples and grounds the Worker — so it can answer "how to build an AXIOM agent".
+
+## Gotchas (learned the hard way)
+1. **`rich` is required** (core dep of `evolution.py`/`meta_evolution.py`) — in the pip line.
+2. **Build with `--no-cache`** when changing the pip line, or the dep won't actually install.
+3. **Persistence volume must NOT mount `/data`** — it masks `/data/.local` site-packages.
+4. **`AXIOM_BACKEND=nim`** must be set, or Prompt Evolution tries a non-existent local Ollama.
