@@ -125,7 +125,7 @@
           <div class="connector-grid">
             <div class="connector"><h3>Ollama (local)</h3><p>Default endpoint: <code style="color:var(--cyan)">http://localhost:11434/v1</code>. No API key needed. Start with <code style="color:var(--cyan)">ollama serve</code>.</p></div>
             <div class="connector"><h3>vLLM / LM Studio</h3><p>Use <code style="color:var(--cyan)">http://localhost:8000/v1</code> or your custom port. Any OpenAI-compatible server works.</p></div>
-            <div class="connector"><h3>NVIDIA NIM</h3><p>Enter your NIM endpoint URL and your NGC API key. Evaluates enterprise inference endpoints with the same governance packs.</p></div>
+            <div class="connector"><h3>NVIDIA NIM</h3><p>Hosted API endpoint: <code style="color:var(--cyan)">https://integrate.api.nvidia.com/v1</code>. API key: your <code style="color:var(--cyan)">nvapi-...</code> NGC key. Model name must be namespaced, e.g. <code style="color:var(--cyan)">meta/llama-3.1-8b-instruct</code> or <code style="color:var(--cyan)">nvidia/llama-3.1-nemotron-70b-instruct</code>. Self-hosted NIM: use your container's host and port, e.g. <code style="color:var(--cyan)">http://&lt;host&gt;:8000/v1</code>.</p></div>
             <div class="connector"><h3>OpenAI / Hosted</h3><p>Use <code style="color:var(--cyan)">https://api.openai.com/v1</code> with your <code>sk-...</code> key. Costs a few cents per full run.</p></div>
           </div>
         </div>

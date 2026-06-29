@@ -334,6 +334,105 @@ class AXMContainer:
                             self._header.signature.encode("utf-8"),
                             hashlib.sha256).hexdigest()[:8]
 
+    def attest(self) -> dict:
+        """Produce a portable, signed attestation of exactly what this
+        container ships: fingerprint, header identity, the full weight
+        manifest (path -> sha256), and every proof subject + digest.
+
+        This is the deployment record — file it to prove later which weights
+        and modules were released, then re-check with verify_attestation()."""
+        manifest: Dict[str, str] = {}
+        manifest_path = self._path / "weights" / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                manifest = {}
+        body: dict = {
+            "axm_attestation_version": "1.0",
+            "fingerprint":      self.fingerprint(),
+            "format_version":   self._header.format_version,
+            "core_logic":       self._header.core_logic,
+            "quant_map":        _canonicalize_quant_map(self._header.quant_map),
+            "hardware_map":     self._header.hardware_map,
+            "delegates":        list(self._header.delegates),
+            "header_signature": self._header.signature,
+            "weights_manifest": manifest,
+            "proofs":           [{"subject": p.subject, "file_sha": p.file_sha}
+                                 for p in self._proofs],
+        }
+        body["signature"] = _sign(_container_key(), body)
+        return body
+
+    def verify_attestation(self, attestation: Mapping[str, Any]) -> bool:
+        """True iff this live container matches a prior attestation: the
+        attestation's own signature verifies AND its fingerprint, header
+        signature, and weight manifest equal the live container's. Pair with
+        verify_proofs() to also prove the on-disk bytes match the manifest."""
+        att = dict(attestation)
+        sig = att.pop("signature", None)
+        if not isinstance(sig, str) or not _verify(_container_key(), att, sig):
+            return False
+        if att.get("fingerprint") != self.fingerprint():
+            return False
+        if att.get("header_signature") != self._header.signature:
+            return False
+        if att.get("weights_manifest") != self.attest()["weights_manifest"]:
+            return False
+        return True
+
+    def _subject_to_path(self, subject: str) -> Optional[Path]:
+        """Map a proof-ledger subject back to its on-disk file. Mirror of the
+        `targets` map built in pack() — any subject the packer can write must
+        resolve here, or its integrity cannot be re-checked."""
+        if subject == "header":
+            return self._path / "header.json"
+        if subject == "core":
+            return self._path / "core" / "core.json"
+        if subject == "vertices":
+            return self._path / "vertices.json"
+        if subject == "weights_manifest":
+            return self._path / "weights" / "manifest.json"
+        if subject.startswith("delegate:"):
+            return self._path / "delegates" / subject.split(":", 1)[1] / "skill.json"
+        return None
+
+    def _verify_file_integrity(self) -> bool:
+        """Re-hash every proof-ledger target and every weight tensor against
+        its recorded digest. Returns False on any mismatch, missing file,
+        unrecognised proof subject, or extra unlisted weight file. Fail-closed.
+
+        Signature checks prove the ledger is authentic; this proves the bytes
+        on disk still match what was packed — without it a swapped weight file
+        or a mutated (non-header-signed) core.json passes verification."""
+        # 1. Every proof entry's claimed file must exist and still hash to file_sha.
+        for p in self._proofs:
+            target = self._subject_to_path(p.subject)
+            if target is None or not target.is_file():
+                return False
+            if _sha256_file(target) != p.file_sha:
+                return False
+
+        # 2. Every weight tensor must match weights/manifest.json exactly —
+        #    no swapped bytes, no missing file, no extra unlisted file.
+        manifest_path = self._path / "weights" / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return False
+            weights_dir = self._path / "weights"
+            for rel, sha in manifest.items():
+                wf = weights_dir / rel
+                if not wf.is_file() or _sha256_file(wf) != sha:
+                    return False
+            listed = set(manifest.keys())
+            for wf in weights_dir.rglob("*"):
+                if wf.is_file() and wf.name != "manifest.json":
+                    if str(wf.relative_to(weights_dir)) not in listed:
+                        return False
+        return True
+
     def __repr__(self) -> str:
         return (f"<AXMContainer fp={self.fingerprint()} "
                 f"delegates={len(self._delegates)} "
@@ -780,6 +879,12 @@ class AXMContainer:
             if not _verify(pkey, p._payload(), p.signature):
                 return False
 
+        # Re-hash on-disk modules + weight tensors against their recorded
+        # digests. The checks above prove the ledger is authentic; this proves
+        # the bytes on disk still match what was packed.
+        if not self._verify_file_integrity():
+            return False
+
         # Drive ANF for each proof — the brief §3 row "Verification: formal
         # logic proofs and runtime safety claims embedded in the format"
         # maps onto the ANF Governance Coprocessor's process() pipeline.
@@ -951,13 +1056,22 @@ def _main(argv=None) -> int:
     sub = parser.add_subparsers(dest="action", required=True)
     p_inspect = sub.add_parser("inspect", help="print header + module counts")
     p_inspect.add_argument("container")
-    p_verify = sub.add_parser("verify", help="verify every signature + drive ANF")
+    p_verify = sub.add_parser("verify", help="verify every signature + re-hash files + drive ANF")
     p_verify.add_argument("container")
+    p_verify.add_argument("--attest", metavar="FILE",
+                          help="also assert the container matches this attestation JSON")
+    p_attest = sub.add_parser("attest", help="emit a signed deployment attestation (JSON)")
+    p_attest.add_argument("container")
     p_route = sub.add_parser("route", help="classify a task and lazy-load delegates")
     p_route.add_argument("container")
     p_route.add_argument("task")
-    p_pack = sub.add_parser("pack", help="write the starter container")
+    p_pack = sub.add_parser("pack", help="write a container from a spec (or the starter)")
     p_pack.add_argument("output")
+    p_pack.add_argument("--spec", metavar="FILE",
+                         help="JSON spec file to pack (defaults to the bundled starter spec)")
+    p_pack.add_argument("--weights", metavar="DIR",
+                         help="directory of weight files to copy into weights/ "
+                              "(sha256 manifest written + proven)")
     p_pack.add_argument("--archive", action="store_true",
                          help="write a single-file .axm zip archive "
                               "instead of an exploded directory tree")
@@ -970,10 +1084,24 @@ def _main(argv=None) -> int:
     if args.action == "verify":
         c = AXMContainer.from_path(args.container)
         ok = c.verify_proofs()
-        print(json.dumps({"verified": ok, "proofs_checked": len(c.proofs),
-                            "fingerprint": c.fingerprint()},
-                          indent=2, ensure_ascii=True))
+        out = {"verified": ok, "proofs_checked": len(c.proofs),
+               "fingerprint": c.fingerprint()}
+        if args.attest:
+            attestation = json.loads(Path(args.attest).read_text(encoding="utf-8"))
+            att_ok = c.verify_attestation(attestation)
+            out["attestation_match"] = att_ok
+            ok = ok and att_ok
+        print(json.dumps(out, indent=2, ensure_ascii=True))
         return 0 if ok else 1
+    if args.action == "attest":
+        c = AXMContainer.from_path(args.container)
+        if not c.verify_proofs():
+            print(json.dumps({"error": "container failed verify_proofs() — "
+                              "refusing to attest a container that does not verify"},
+                             indent=2, ensure_ascii=True))
+            return 1
+        print(json.dumps(c.attest(), indent=2, ensure_ascii=True))
+        return 0
     if args.action == "route":
         c = AXMContainer.from_path(args.container)
         c.verify_proofs()
@@ -989,8 +1117,14 @@ def _main(argv=None) -> int:
         }, indent=2, ensure_ascii=True))
         return 0
     if args.action == "pack":
-        from examples.axm_pack_starter import STARTER_SPEC  # type: ignore
-        c = AXMContainer.pack(STARTER_SPEC, args.output, archive=args.archive)
+        if args.spec:
+            spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
+        else:
+            from examples.axm_pack_starter import STARTER_SPEC  # type: ignore
+            spec = STARTER_SPEC
+        weights_dir = Path(args.weights) if args.weights else None
+        c = AXMContainer.pack(spec, args.output, archive=args.archive,
+                              weights_source_dir=weights_dir)
         print(f"packed {args.output} — {len(c.delegates)} delegates, "
                 f"{len(c.proofs)} proofs, fingerprint {c.fingerprint()}")
         return 0
