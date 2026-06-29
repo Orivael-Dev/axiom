@@ -1,0 +1,38 @@
+# Azure ML command job — SRD benchmark sweep on one A100 80GB Spot node.
+#   az ml job create -f azure/srd_benchmark/job.yml \
+#       --resource-group <rg> --workspace-name <ws>
+#
+# Prereqs: an Azure ML workspace, a compute target on Standard_NC24ads_A100_v4 with
+# Spot/low-priority enabled (set its name in `compute:` below), and A100 Spot quota.
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+
+display_name: srd-benchmark-sweep
+experiment_name: srd-quant
+description: WikiText-2 perplexity sweep — SRD vs Q4_K_M at matched bpw.
+
+# Repo root is uploaded as the job's code.
+code: ../..
+
+command: >-
+  pip install -q torch transformers datasets accelerate sentencepiece &&
+  python azure/srd_benchmark/run_sweep.py
+  --models ${{inputs.models}}
+  --out ${{outputs.results}}
+
+inputs:
+  models: "smollm2-135m tinyllama-1.1b mistral-7b"
+
+outputs:
+  results:
+    type: uri_folder
+    mode: rw_mount
+
+environment:
+  # A curated PyTorch+CUDA image; swap for your registered environment if you have one.
+  image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1:latest
+
+# Point this at your A100 Spot compute target.
+compute: azureml:a100-spot
+
+resources:
+  instance_count: 1
