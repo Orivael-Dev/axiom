@@ -72,12 +72,22 @@ class TestGeneralization:
         r.observe(VIRUS, MetabolicCost(compute=90, entropy=40, instability=20), domain="ops", now="N")
         assert r.assess(NORMAL).health == "HEALTHY"
 
-    def test_heavy_paraphrase_is_an_honest_miss(self, tmp_path):
-        # Documents the limit: lexical embedding misses all-new vocabulary.
+    def test_heavy_paraphrase_now_caught_by_shared_embedder(self, tmp_path):
+        # The shared concept-normalizing embedder catches a heavy paraphrase that the
+        # old feature-hash missed (ignore≈disregard, re-derive≈rebuild, forever≈continuously).
         r = InteroceptiveReasoner(tmp_path / "m.jsonl")
         _seed_baseline(r)
         r.observe(VIRUS, MetabolicCost(compute=90, entropy=40, instability=20), domain="ops", now="N")
-        assert r.assess(HEAVY).health == "HEALTHY"           # missed — needs a real encoder
+        assert r.assess(HEAVY).health == "DEGRADED"          # was HEALTHY before the embedder
+
+    def test_out_of_vocab_paraphrase_is_the_honest_remaining_limit(self, tmp_path):
+        # Concepts outside the curated map are still missed by the lexical backend —
+        # the neural backend (sentence-transformers / Azure) is the open-domain upgrade.
+        r = InteroceptiveReasoner(tmp_path / "m.jsonl")
+        _seed_baseline(r)
+        r.observe(VIRUS, MetabolicCost(compute=90, entropy=40, instability=20), domain="ops", now="N")
+        oov = "go round and round unpacking each idea to the utmost without ever stopping"
+        assert r.assess(oov).health == "HEALTHY"             # documented limit
 
 
 class TestNoToolControl:

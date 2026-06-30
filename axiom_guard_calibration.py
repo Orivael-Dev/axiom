@@ -96,6 +96,9 @@ def _candidate_phrases(text: str) -> list:
 class CalibrationLoop:
     ledger_path: Optional[str] = None
     patterns: list = field(default_factory=list)        # committed phrases (the learned layer)
+    sources: list = field(default_factory=list)         # the source miss behind each pattern
+    semantic_enabled: bool = False                      # set by calibrate() iff bench-safe
+    sem_threshold: float = 1.0
 
     def __post_init__(self):
         self.ledger_path = Path(self.ledger_path) if self.ledger_path else None
@@ -107,8 +110,16 @@ class CalibrationLoop:
         t = text.lower()
         return any(p in t for p in self.patterns)
 
+    def semantic_matches(self, text: str) -> bool:
+        """Generalize past the literal phrase: block if `text` is semantically close to
+        any committed source miss. Only consulted when calibrate() proved it bench-safe."""
+        if not self.semantic_enabled:
+            return False
+        from axiom_semantic_embed import similarity
+        return any(similarity(text, s) >= self.sem_threshold for s in self.sources if s)
+
     def calibrated_blocks(self, text: str) -> bool:
-        return _intent_blocks(text) or self.matches(text)
+        return _intent_blocks(text) or self.matches(text) or self.semantic_matches(text)
 
     # ── signed, hash-chained ledger ─────────────────────────────────────────────
     def _sign(self, body: dict) -> str:
@@ -131,6 +142,7 @@ class CalibrationLoop:
             prev = e.get("entry_hash", prev)
             if e.get("action") == "commit_pattern":
                 self.patterns.append(e["pattern"])
+                self.sources.append(e.get("source", ""))
 
     def _commit(self, pattern: str, now: str, source: str, gain: int):
         prev = "GENESIS"
@@ -150,6 +162,25 @@ class CalibrationLoop:
             with open(self.ledger_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=True) + "\n")
         self.patterns.append(pattern)
+        self.sources.append(source)
+
+    # ── semantic generalization, gated by the bench (catch ↑, over-block flat) ──
+    def _tune_semantic(self) -> None:
+        """Enable semantic matching at the LOWEST threshold that adds catch without
+        raising over-block on the bench. More generalization, same guardrail."""
+        from axiom_semantic_embed import similarity, RECOMMENDED_THRESHOLD
+        benign = [t for t, l, _ in gbench.CORPUS if l == "pass"]
+        unsafe_missed = [t for t, l, _ in gbench.CORPUS
+                         if l == "block" and not _intent_blocks(t) and not self.matches(t)]
+        # Walk thresholds high→low; stop at the lowest that keeps benign over-block at 0.
+        best = None
+        for thr in (0.90, 0.80, 0.70, RECOMMENDED_THRESHOLD):
+            over = any(similarity(b, s) >= thr for b in benign for s in self.sources if s)
+            gain = any(similarity(m, s) >= thr for m in unsafe_missed for s in self.sources if s)
+            if not over and gain:
+                best = thr                                  # safe AND useful → keep going lower
+        if best is not None:
+            self.semantic_enabled, self.sem_threshold = True, best
 
     # ── validation against the bench (the guardrail) ────────────────────────────
     def _validate(self, phrase: str) -> tuple:
@@ -201,12 +232,19 @@ class CalibrationLoop:
                 proposals.append({"pattern": None, "accepted": False,
                                   "source": miss[:60], "reason": "no safe discriminative phrase"})
 
+        # Layer semantic generalization on top of the committed phrases — bench-gated,
+        # so it can only add catch, never over-block. Lifts BOTH this learner and the
+        # BodyOS metabolic one (shared axiom_semantic_embed) when the backend upgrades.
+        self._tune_semantic()
+
         after = self._score()
         report = {
             "calibration": "axiom-guard-calibration",
             "generated_at": now,
             "catch_before": before["catch_pct"], "catch_after": after["catch_pct"],
             "over_block_before": before["over_block_pct"], "over_block_after": after["over_block_pct"],
+            "semantic_enabled": self.semantic_enabled,
+            "sem_threshold": round(self.sem_threshold, 3) if self.semantic_enabled else None,
             "patterns_committed": sum(1 for p in proposals if p["accepted"]),
             "proposals_rejected": sum(1 for p in proposals if not p["accepted"]),
             "total_patterns": len(self.patterns),
