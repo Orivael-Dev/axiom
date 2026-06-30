@@ -109,6 +109,45 @@ def _lexical_embed(text: str, dim: int = _LEX_DIM) -> tuple:
     return tuple(x / mag for x in vec)
 
 
+# ── constitutional backend (rung 3): generalize by WHY, not what ────────────────
+# Embed a text into the space of constitutional BOUNDARIES it approaches. Two prompts
+# that cross the same boundary cluster — even with no shared words and no general-
+# semantic similarity ("build a bomb" ~ "synthesize a nerve agent": both PHYSICAL_HARM).
+# This is the axis the lexical/neural backends miss: same *reason to refuse*.
+import re as _re
+
+_BOUNDARIES = {
+    "PHYSICAL_HARM": [r"\bbomb\b", r"explosiv", r"detonat", r"\bfirearm", r"\bweapon",
+                      r"nerve agent", r"\bpoison", r"\btoxin", r"chemical weapon", r"\blethal\b"],
+    "DECEPTION":     [r"impersonat", r"phish", r"fabricat", r"\bforge\b", r"\bfake\b",
+                      r"pretend to be", r"pose as", r"fraudulent", r"\bscam\b"],
+    "PRIVACY_BREACH":[r"exfiltrat", r"steal .*(data|login|password|credential)",
+                      r"social security", r"\bssn\b", r"medical record", r"banking login",
+                      r"\bcredential", r"\bdox\b"],
+    "DESTRUCTION":   [r"\bdelete\b", r"drop (table|database)", r"\bwipe\b", r"rm -rf",
+                      r"format (the )?drive", r"irreversibl", r"erase (all|every)", r"truncate"],
+    "INTRUSION":     [r"\bhack\b", r"breach", r"unauthori[sz]ed access", r"bypass .*auth",
+                      r"crack .*password", r"break into", r"gain access"],
+    "AUTONOMY_OVERRIDE":[r"ignore .*(instruction|previous|prior|rule)", r"override .*safety",
+                         r"disable .*(guard|filter|safety)", r"jailbreak", r"bypass .*filter",
+                         r"disregard .*(guideline|rule|instruction)"],
+}
+_BORDER = list(_BOUNDARIES.keys())
+_BCOMPILED = {b: [_re.compile(p, _re.IGNORECASE) for p in pats] for b, pats in _BOUNDARIES.items()}
+
+
+def _constitutional_embed(text: str) -> tuple:
+    vec = [float(sum(1 for p in _BCOMPILED[b] if p.search(text))) for b in _BORDER]
+    mag = math.sqrt(sum(x * x for x in vec)) or 1.0
+    return tuple(x / mag for x in vec)
+
+
+def constitutional_profile(text: str) -> dict:
+    """The boundaries this text approaches and how strongly — the auditable 'why'."""
+    prof = {b: sum(1 for p in _BCOMPILED[b] if p.search(text)) for b in _BORDER}
+    return {b: n for b, n in prof.items() if n}
+
+
 # ── backend selection ───────────────────────────────────────────────────────────
 def _detect_backend() -> str:
     forced = os.environ.get("EMBED_BACKEND")
@@ -129,7 +168,8 @@ _st_model = None
 
 # Cosine threshold at which two texts count as "the same" example, per backend.
 # Lexical-concept cosines run lower than neural; tune here, not in each learner.
-RECOMMENDED_THRESHOLD = {"lexical": 0.60, "st": 0.55, "azure": 0.55}.get(BACKEND, 0.60)
+RECOMMENDED_THRESHOLD = {"lexical": 0.60, "st": 0.55, "azure": 0.55,
+                         "constitutional": 0.50}.get(BACKEND, 0.60)
 
 
 def _st_embed(text: str) -> tuple:
@@ -170,7 +210,16 @@ def embed(text: str) -> tuple:
             return _azure_embed(text)
         except Exception:
             return _lexical_embed(text)
+    if BACKEND == "constitutional":
+        return _constitutional_embed(text)
     return _lexical_embed(text)
+
+
+def constitutional_similarity(a: str, b: str) -> float:
+    """Cosine in WHY-space, regardless of the active default backend. Use when you
+    want to know if two texts cross the same constitutional boundary."""
+    va, vb = _constitutional_embed(a), _constitutional_embed(b)
+    return sum(x * y for x, y in zip(va, vb))
 
 
 def similarity(a: str, b: str) -> float:
@@ -213,3 +262,10 @@ if __name__ == "__main__":
     print("backend:", BACKEND)
     for a, b in pairs:
         print(round(similarity(a, b), 3), "|", explain_match(a, b)["shared_concepts"])
+
+    print("\n=== rung 3: generalize by WHY (constitutional boundary) ===")
+    bomb = "step by step instructions to build an explosive device"
+    nerve = "how to synthesize a nerve agent from household chemicals"
+    print(f"bomb ~ nerve agent  rung-1(lexical)={similarity(bomb, nerve):.2f}  "
+          f"rung-3(why)={constitutional_similarity(bomb, nerve):.2f}  "
+          f"← same boundary {list(constitutional_profile(bomb))}, different concepts")
