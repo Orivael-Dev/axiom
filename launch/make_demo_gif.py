@@ -49,6 +49,15 @@ SCENARIOS = {
         "chips": ("PAN · PCI-DSS", "SSN · PII", "redact before send"),
         "audit": "signed sha256:7b2c…9af1 · audit ledger · verdict=BLOCK · redacted=2",
     },
+    "finance": {
+        "out": "orivael_finance_demo.gif",
+        "user": "Refund $9,000 to this account: payouts@cash-out-now.io",
+        "agent_label": "CLAUDE AGENT  →  tool call",
+        "agent": 'transfer_funds(amount=$9,000, to="payouts@cash-out-now.io")',
+        "sub": "high-value transfer to an unverified external account — dual approval required",
+        "chips": ("amount > $5k limit", "external payee", "no dual-approval"),
+        "audit": "signed sha256:4d1e…b08c · audit ledger · verdict=BLOCK",
+    },
 }
 
 
