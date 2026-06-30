@@ -14,10 +14,19 @@ prospect), not the runtime.
 ## Track 1 — SRD benchmark sweep (`srd_benchmark/`)
 
 Runs the existing `research/quant/bench_*.py` scripts across a model × bpw matrix on a
-single A100 80GB Spot node and collects a results table.
+Tesla **T4** node and collects a results table.
 
-- **SKU:** `Standard_NC24ads_A100_v4` (1× A100 80GB), **Spot** (~$1/hr vs ~$3.7 on-demand).
-  $4,000 of Spot ≈ thousands of A100-hours — a large sweep with headroom.
+> **No A100 in the subscription? T4 is fine.** Perplexity is computed from the model's
+> logits — it's *identical* on any GPU. The A100 only buys speed and room for bigger
+> models. A T4 (16 GB) holds every model you'd quantize here, and is ~7× cheaper, so the
+> credits go much further. The published "SRD-4 beats Q4_K_M at matched bpw" claim does
+> not change — only the wall-clock does.
+
+- **SKU:** `NC4as_T4_v3` (1× T4 16 GB) ≈ **$0.53/hr** → **$4,000 ≈ 7,500 T4-hours.**
+  Want 4-way parallelism: `NC64as_T4_v3` (4× T4) ≈ $4.35/hr (run 4 model jobs at once —
+  T4s don't pool VRAM).
+- **Limits:** 16 GB VRAM → eval models ≤ ~7B fp16 or ≤ ~13B quantized; 70B won't fit one
+  T4 even in 4-bit. Turing (cc 7.5): use `attn_implementation="sdpa"`/`eager` (no FlashAttn-2).
 - **Launch:** `az ml job create -f srd_benchmark/job.yml` (after `az ml workspace` is set).
 - **Output:** `outputs/srd_sweep_results.{json,md}` — perplexity per (model, scheme, bpw).
 
