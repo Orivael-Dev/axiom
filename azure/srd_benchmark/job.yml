@@ -12,24 +12,30 @@
 # Prereqs: an Azure ML workspace + an NCasT4_v3 compute target + T4 quota (Spot if available).
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
 
-display_name: srd-benchmark-sweep
+display_name: srd-create-and-benchmark
 experiment_name: srd-quant
-description: WikiText-2 perplexity sweep — SRD vs Q4_K_M at matched bpw (T4).
+description: Create the SRD (.axm) per model, then WikiText-2 perplexity vs Q4_K_M (T4).
 
 # Repo root is uploaded as the job's code.
 code: ../..
 
+# One job does everything: --create packs the SRD .axm (axm_cli pack --srd4,
+# device_map=auto splits GPU+RAM so 7B fits a 16 GB T4) then benchmarks it. The ACPT
+# image already ships torch, so it's NOT reinstalled here.
 command: >-
-  pip install -q torch transformers datasets accelerate sentencepiece bitsandbytes &&
+  pip install -q transformers datasets accelerate sentencepiece bitsandbytes psutil &&
   python azure/srd_benchmark/run_sweep.py
+  --create
   --models ${{inputs.models}}
   --out ${{outputs.results}}
 
-# T4 = 16 GB VRAM, Turing (cc 7.5): fp16 OK, no bf16 tensor ops, no FlashAttention-2
-# (use attn_implementation="sdpa"/"eager"). Keep eval models ≤ ~7B fp16, or quantized
-# up to ~13B. 70B won't fit a single T4 even in 4-bit — shard or skip those.
+# IMPORTANT: with --create, `models` must be **full HF repo ids** (axm_cli pack fetches
+# them, and the bench script receives the same id — confirm yours resolves it). T4 = 16 GB
+# VRAM, Turing cc 7.5: fp16/sdpa, no FlashAttention-2; ≤7B fp16 (device_map=auto), ≤13B
+# quantized; 70B won't fit one T4. A wrong/oversized id just shows FAIL for that row —
+# the sweep continues (incremental, eviction-safe).
 inputs:
-  models: "smollm2-135m tinyllama-1.1b mistral-7b"
+  models: "TinyLlama/TinyLlama-1.1B-Chat-v1.0 mistralai/Mistral-7B-Instruct-v0.3"
 
 outputs:
   results:
