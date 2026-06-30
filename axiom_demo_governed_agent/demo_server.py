@@ -70,9 +70,10 @@ _CLAUDE_MODEL_IDS = {m["id"] for m in CLAUDE_MODELS}
 
 # Open-weight model used for scenarios that need an *ungoverned* agent — one that
 # does not self-refuse — so the Orivael Governance Guard is the only thing standing
-# between the request and the damage. Served via NVIDIA NIM (OpenAI-compatible API).
-NIM_MODEL    = "meta/llama-3.3-70b-instruct"
-NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
+# between the request and the damage. Served via NVIDIA NIM by default; overridable
+# at deploy time to any OpenAI-compatible endpoint (e.g. Azure OpenAI) via env.
+NIM_MODEL    = os.environ.get("AXIOM_OPEN_MODEL",    "meta/llama-3.3-70b-instruct")
+NIM_BASE_URL = os.environ.get("AXIOM_OPEN_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
 
 def _is_claude(model: str) -> bool:
@@ -826,9 +827,13 @@ async def _run_openai_loop(run, run_id, scenario, guard, emit, model) -> None:
         await emit("error", {"message": "openai package not installed — pip install openai"})
         return
 
-    api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NIM_API_KEY", "")
+    # NIM by default; any OpenAI-compatible key works when AXIOM_OPEN_BASE_URL is
+    # pointed elsewhere (e.g. AZURE_OPENAI_API_KEY against an Azure OpenAI endpoint).
+    api_key = (os.environ.get("NVIDIA_API_KEY") or os.environ.get("NIM_API_KEY")
+               or os.environ.get("AXIOM_OPEN_API_KEY") or os.environ.get("OPENAI_API_KEY", ""))
     if not api_key:
-        await emit("error", {"message": "NVIDIA_API_KEY not set (needed for the ungoverned-model scenario)"})
+        await emit("error", {"message": "no open-model API key set (NVIDIA_API_KEY or "
+                                        "AXIOM_OPEN_API_KEY) — needed for the ungoverned-model scenario"})
         return
 
     client   = AsyncOpenAI(api_key=api_key, base_url=NIM_BASE_URL)
