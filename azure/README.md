@@ -27,7 +27,15 @@ Tesla **T4** node and collects a results table.
   T4s don't pool VRAM).
 - **Limits:** 16 GB VRAM → eval models ≤ ~7B fp16 or ≤ ~13B quantized; 70B won't fit one
   T4 even in 4-bit. Turing (cc 7.5): use `attn_implementation="sdpa"`/`eager` (no FlashAttn-2).
-- **Launch:** `az ml job create -f srd_benchmark/job.yml` (after `az ml workspace` is set).
+- **Create the GPU target** (scale-to-zero, Spot), then **launch**:
+
+  ```bash
+  RG=my-rg WS=my-workspace ./srd_benchmark/setup_compute.sh   # makes azureml:t4-spot
+  az ml job create -f srd_benchmark/job.yml -g my-rg -w my-workspace
+  ```
+  First time, you may need to request **`Standard NCASv3_T4 Family vCPUs`** quota for your
+  region (Subscription → Usage + quotas; Spot quota is a separate line). No Spot quota?
+  set `TIER=dedicated` in the setup script.
 - **Output:** `outputs/srd_sweep_results.{json,md}` — perplexity per (model, scheme, bpw).
 
 ## Track 2 — Always-on demo host (`demo/`)
