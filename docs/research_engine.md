@@ -32,14 +32,20 @@ piece means.
 
 For every Run, the server does five things:
 
-1. **Retrieve** relevant sources from a local corpus
-   (`axiom_research_retriever.LocalRetriever`). If no corpus is
-   indexed, sources show as `No local matches`.
+1. **Retrieve** relevant sources. The local corpus
+   (`axiom_research_retriever.LocalRetriever`) is queried alongside
+   live external providers — PubMed, ClinicalTrials.gov, openFDA, and
+   Wikipedia — which fan in by domain (the medical providers run for
+   `medical` queries). If nothing matches, sources show as
+   `No local matches` and the model answers from training data.
 2. **Branch** the question across the configured QRF (Quantum
    Reasoning Field) trajectories — passed / rival / killed,
    each with a probability and a constitutional distance.
-3. **Synthesize** an answer via the chosen Exoskeleton delegate
-   running against your configured LLM backend.
+3. **Synthesize** the report. **General Research** answers your
+   question directly — a research-analyst synthesis grounded in the
+   retrieved sources, so the TL;DR holds the actual answer. The named
+   founder workflows instead run their chosen Exoskeleton delegate.
+   Either path runs against your configured LLM backend.
 4. **Sign** the resulting `EventToken` with three layered HMAC
    signatures (per-layer · coordinator · outer).
 5. **Append** a record to `~/.axiom/exoskeleton-ledger.jsonl`
@@ -112,7 +118,10 @@ anything in this card can be re-verified with
 dedicated medical research instrument (`/api/medical/research`),
 which produces a different shape of output: per-layer signed
 event tokens, a Coordinator Token, a bracketed Token Descriptor,
-and a Tier 1–5 distribution badge.
+and a Tier 1–5 distribution badge. When you don't supply your own
+sources, the medical instrument first retrieves live evidence from
+PubMed, ClinicalTrials.gov, and openFDA, then analyses those sources
+(the response's `sources_origin` / `sources_used` show what it used).
 
 **Workflow** maps to one of the Exoskeleton delegates
 (`outreach_personalization`, `competitive_analysis`,
