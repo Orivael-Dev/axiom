@@ -13,7 +13,7 @@
 FROM orivael/axiom-research:local
 
 COPY axiom_audio /app/axiom_audio
-COPY axiom_dev_loop.py axiom_twitter_agent.py axiom_twitter_agent_ledger.py ui.py /app/
+COPY axiom_dev_loop.py axiom_dev_agent_v2.py axiom_twitter_agent.py axiom_twitter_agent_ledger.py ui.py /app/
 # Experience-RAG prompt memory + Knowledge-RAG (new modules inside axiom_constitutional)
 COPY axiom_constitutional/prompt_memory.py axiom_constitutional/knowledge_rag.py /app/axiom_constitutional/
 

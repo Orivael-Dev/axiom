@@ -77,7 +77,7 @@ st.divider()
 # ── Mode tabs ─────────────────────────────────────────────────────────────────
 (tab_prompt, tab_dsl, tab_growth,
  tab_exo, tab_audio, tab_dev, tab_med,
- tab_twitter) = st.tabs([
+ tab_twitter, tab_codeagent) = st.tabs([
     "🔁 Prompt Evolution",
     "📄 AXIOM DSL (Language Test)",
     "📈 Growth Dashboard",
@@ -86,6 +86,7 @@ st.divider()
     "🛠️ Dev Agent",
     "🧬 Medical Research",
     "🐦 Twitter Reply",
+    "🤖 Code Agent",
 ])
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
@@ -2463,3 +2464,159 @@ with tab_twitter:
             f"namespace `axiom-twitter-ledger-v1`  ·  "
             f"no API posting — paste-for-send only."
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab: Code Agent (axiom_dev_agent_v2 — generate + constitutionally review code)
+# ─────────────────────────────────────────────────────────────────────────────
+with tab_codeagent:
+    st.markdown("### 🤖 Code Agent")
+    st.markdown(
+        "Describe a **new agent or feature**. The Code Agent generates the "
+        "implementation, then runs it through `axiom_dev_agent_v2`'s four-layer "
+        "constitutional pipeline — **Reflex** (static safety) → **Reviewer** "
+        "(competence forecast) → **Examiner** (sealed CI) — and returns a merge "
+        "verdict. Unlike the Dev Agent tab (which *records* signed dev cycles), "
+        "this one *writes and governs* the code."
+    )
+
+    ca_key_ok = _pg_key_panel("codeagent")
+    ca_imports = _pg_check_imports()
+    ca_dev_ok = ca_imports.get("axiom_dev_agent_v2", "ok") == "ok"
+
+    try:
+        import axiom_dev_agent_v2 as _ca_mod  # noqa: F401
+    except Exception as _ca_e:
+        ca_dev_ok = False
+        st.error(f"axiom_dev_agent_v2 import failed: {type(_ca_e).__name__}: {_ca_e}")
+
+    ca_desc = st.text_area(
+        "What should the agent build?",
+        value=st.session_state.get("ca_desc", ""),
+        height=140,
+        placeholder="e.g. A Python agent that watches a JSONL ledger and raises an "
+                    "alert when constitutional_distance exceeds a threshold.",
+        key="ca_desc",
+    )
+    ca_c1, ca_c2 = st.columns([2, 1])
+    with ca_c1:
+        ca_path = st.text_input("Target artifact path", value="axiom_new_feature.py",
+                                key="ca_path")
+    with ca_c2:
+        ca_class = st.selectbox(
+            "Task class",
+            ["FEATURE", "BUG_FIX", "SPEC_WRITING", "EFFICIENCY", "DOCUMENTATION"],
+            key="ca_class",
+        )
+
+    if st.button("⚙ Generate & Review", type="primary", width="stretch",
+                 disabled=not (ca_key_ok and ca_dev_ok)):
+        if not ca_desc.strip():
+            st.warning("Describe the agent or feature first.")
+        else:
+            import uuid as _ca_uuid
+            from axiom_constitutional import client as _ca_nim
+
+            ca_code = ""
+            with st.spinner("Generating implementation…"):
+                ca_sys = (
+                    "You are a senior Python engineer building components for the "
+                    "AXIOM constitutional AI framework. Given a feature or agent "
+                    "request, output ONLY the complete, runnable Python source for "
+                    "the target file — no markdown fences, no commentary, no prose. "
+                    "Use clear docstrings and type hints. Never include destructive "
+                    "shell calls, eval/exec on untrusted input, or hardcoded secrets."
+                )
+                ca_user = (f"Target file: {ca_path}\nTask class: {ca_class}\n\n"
+                           f"Request:\n{ca_desc}")
+                try:
+                    ca_code = _ca_nim.chat(ca_sys, ca_user, model=model,
+                                           temperature=temperature)
+                except Exception as e:
+                    st.error(f"Generation failed: {type(e).__name__}: {e}")
+
+            # Strip accidental markdown fences.
+            if ca_code.strip().startswith("```"):
+                _parts = ca_code.split("```")
+                ca_code = _parts[1] if len(_parts) > 1 else ca_code
+                if ca_code.lstrip().lower().startswith("python"):
+                    ca_code = ca_code.split("\n", 1)[1] if "\n" in ca_code else ca_code
+
+            if ca_code.strip():
+                st.markdown("#### Generated implementation")
+                st.code(ca_code, language="python")
+
+                ca_outcome = None
+                ca_agent = None
+                with st.spinner("Constitutional review (Reflex → Reviewer → Examiner)…"):
+                    try:
+                        from axiom_dev_agent_v2 import AxiomDevAgentV2, DevTask
+                        _ca_state = str(
+                            Path(os.environ.get("AXIOM_PROMPTS_DIR", ".")) / "dev_agent_v2.json"
+                        )
+                        ca_agent = AxiomDevAgentV2(persistence_path=_ca_state)
+                        ca_task = DevTask(
+                            id=_ca_uuid.uuid4().hex[:8],
+                            description=ca_desc,
+                            task_class=ca_class,
+                            artifact_path=ca_path,
+                            proposed_diff=ca_code,
+                            cited_patterns=(),
+                        )
+                        ca_outcome = ca_agent.handle_task(ca_task)
+                    except Exception as e:
+                        st.error(f"Review failed: {type(e).__name__}: {e}")
+
+                if ca_outcome is not None:
+                    _verdict = ca_outcome.final_verdict
+                    _colour = {
+                        "MERGED": "#7ab648",
+                        "SOFTEN_REQUESTED": "#f0c040",
+                        "VETO": "#e05050",
+                        "REFLEX_REFUSED": "#e05050",
+                    }.get(_verdict, "#e0e0e0")
+                    st.markdown(
+                        f"#### Verdict: <span style='color:{_colour};"
+                        f"font-weight:bold'>{_verdict}</span>",
+                        unsafe_allow_html=True,
+                    )
+
+                    _r = ca_outcome.reflex
+                    with st.expander(f"Layer 0 · Reflex — {'OK' if _r.ok else 'REFUSED'}",
+                                     expanded=not _r.ok):
+                        if _r.reasons:
+                            for _reason in _r.reasons:
+                                st.markdown(f"- {_reason}")
+                        else:
+                            st.markdown("- No static-safety issues "
+                                        "(AST + forbidden-pattern checks passed).")
+
+                    if ca_outcome.review is not None:
+                        _rv = ca_outcome.review
+                        with st.expander(f"Layer 1 · Reviewer — {_rv.verdict}", expanded=True):
+                            _m1, _m2, _m3 = st.columns(3)
+                            _m1.metric("Competence", f"{_rv.competence:.2f}")
+                            _m2.metric("Forecast passing", f"{_rv.forecast_passing:.2f}")
+                            _m3.metric("Min safe", f"{_rv.min_safe:.2f}")
+                            for _reason in _rv.reasons:
+                                st.markdown(f"- {_reason}")
+                            if _rv.softening_advice:
+                                st.markdown("**Softening advice:**")
+                                for _adv in _rv.softening_advice:
+                                    st.markdown(f"- {_adv}")
+
+                    if ca_outcome.ci is not None:
+                        _ci = ca_outcome.ci
+                        with st.expander(
+                            f"Layer 3 · Examiner — {_ci.checks_passed}/{_ci.checks_run} "
+                            f"checks passed",
+                            expanded=_ci.checks_failed > 0,
+                        ):
+                            for _fail in _ci.failure_summary:
+                                st.markdown(f"- ❌ {_fail}")
+                            if _ci.checks_failed == 0:
+                                st.markdown("- ✅ Sealed CI suite passed.")
+
+                    if ca_agent is not None:
+                        with st.expander("Agent status (curriculum / competence)"):
+                            st.json(ca_agent.status())
