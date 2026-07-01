@@ -65,6 +65,30 @@ def test_landing_links_every_manifest_tool():
     assert not missing, f"tools advertised but not deep-linked on the landing page: {missing}"
 
 
+def test_no_dead_links_in_any_help_doc():
+    """No customer-facing help doc may link to a slug/anchor that 404s — a dead link
+    in front of launch traffic is exactly what this guards. Cross-doc `*.md` links must
+    resolve to a real doc (or a known-internal denylisted slug), and same-page `#anchor`
+    links must resolve to a heading id in that doc."""
+    docs = list((REPO / "docs" / "firewall").glob("*.md"))
+    slugs = {p.stem for p in docs}
+    internal = {"launch", "billing", "operations-runbook"}
+    rel_link = re.compile(r'href="(?!https?:|mailto:|//|/|#)([A-Za-z0-9_-]+)\.md(#[^"]*)?"')
+    problems = []
+    for p in docs:
+        html = markdown.markdown(p.read_text(encoding="utf-8"),
+                                 extensions=["fenced_code", "tables", "toc", "sane_lists"],
+                                 output_format="html5")
+        ids = set(re.findall(r'id="([^"]+)"', html))
+        for slug, _frag in rel_link.findall(html):
+            if slug not in slugs and slug not in internal:
+                problems.append(f"{p.name}: dead cross-doc link -> {slug}.md")
+        for frag in re.findall(r'href="#([A-Za-z0-9_-]+)"', html):
+            if frag not in ids:
+                problems.append(f"{p.name}: in-page anchor #{frag} has no target")
+    assert not problems, "dead help-doc links:\n" + "\n".join(problems)
+
+
 def test_tools_page_has_a_jump_index():
     # the in-page nav (jump-to list) is what makes 23 tools navigable
     html = markdown.markdown(MCP_TOOLS_MD.read_text(encoding="utf-8"),

@@ -74,7 +74,7 @@ default classifier.
 
 | Field | Required | Description |
 |---|---|---|
-| `format_version` | yes | Always `"1.0"` for this release. [2-year backward-compat](PHASE_1_DECISIONS.md). |
+| `format_version` | yes | Always `"1.0"` for this release — carries a 2-year backward-compatibility guarantee. |
 | `name` | yes | Unique kebab-case slug. `^[a-z][a-z0-9-]{1,63}$`. |
 | `title` | yes | Human-readable name shown in the dashboard. |
 | `description` | yes | One paragraph — what this pack is for. |
