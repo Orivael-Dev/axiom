@@ -124,6 +124,29 @@ class AdaptiveRouter:
             backend_healthy=healthy, prefer_fallback=prefer_fallback, reason=reason,
         )
 
+    def rank(self, backend_names, domain: str = ""):
+        """Partition a chain's member backends into (healthy, degraded) by ledger
+        health, preserving configured order within each group. Used for proactive
+        failover: try healthy members first, keep degraded ones as last resort.
+
+        Returns ``(healthy, degraded)`` — both lists of names. Unknown backends
+        (no history) count as healthy, so a fresh install reorders nothing."""
+        if self._policy is not None:
+            try:
+                self._policy.refresh()
+            except Exception:
+                pass
+        healthy, degraded = [], []
+        for n in backend_names:
+            ok = True
+            if self._policy is not None:
+                try:
+                    ok = self._policy.score(n, domain or "") > 0.0
+                except Exception:
+                    ok = True
+            (healthy if ok else degraded).append(n)
+        return healthy, degraded
+
 
 # ── CLI — inspect the directive for a (backend, domain) ───────────────────────
 def _main(argv=None) -> int:

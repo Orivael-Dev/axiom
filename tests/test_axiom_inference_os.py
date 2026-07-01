@@ -229,6 +229,51 @@ def test_router_can_be_disabled() -> None:
     assert kwargs["max_output_tokens"] == 512
 
 
+class _FakeChain:
+    """Minimal ChainedBackend-shaped stub — records the deprioritize it receives."""
+    name = "chain"
+    model = "a+b"
+    def __init__(self, names=("a", "b")):
+        self._names = tuple(names)
+        self.last_deprioritize = None
+    @property
+    def backend_names(self):
+        return self._names
+    def generate(self, *, system, prompt, max_output_tokens, timeout_s=60.0, deprioritize=()):
+        from axiom_event_token.backends import BackendResult
+        self.last_deprioritize = tuple(deprioritize)
+        served = "b" if "a" in set(deprioritize) else "a"   # healthy-first
+        return BackendResult(text="ok", input_tokens=5, output_tokens=5,
+                             latency_ms=10, backend=served, model=f"stub-{served}")
+
+
+class _RankStubRouter:
+    """AdaptiveRouter-shaped stub that flags 'a' degraded so the chain reorders."""
+    def decide(self, backend_name, domain="", *, cognition=None, base_max_tokens=512):
+        from axiom_os_router import RouteDirective
+        return RouteDirective(route=backend_name, tier="standard",
+                              max_output_tokens=base_max_tokens, backend_healthy=True,
+                              prefer_fallback=False, reason="stub")
+    def rank(self, backend_names, domain=""):
+        healthy = [n for n in backend_names if n != "a"]
+        degraded = [n for n in backend_names if n == "a"]
+        return healthy, degraded
+
+
+def test_chain_proactive_failover_deprioritizes_degraded_member() -> None:
+    chain = _FakeChain(("a", "b"))
+    ios = InferenceOS(backend=chain, retriever=None, audit_ledger=None, policy=None,
+                      router=_RankStubRouter())
+    r = ios.run(_make_request("What is the capital of France?"))
+    # router flagged 'a' degraded → OS asked the chain to try 'a' last
+    assert chain.last_deprioritize == ("a",)
+    assert r.route == "b"                                # healthy member served
+    route_detail = [s.detail for s in r.stages if s.stage == "route"][0]
+    assert route_detail.get("deprioritized") == ["a"]
+    assert route_detail.get("chain_order") == ["b", "a"]
+    assert r.verify()
+
+
 # ── Degraded backend ──────────────────────────────────────────────────────────
 
 def test_backend_failure_degrades_gracefully() -> None:

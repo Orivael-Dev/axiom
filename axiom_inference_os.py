@@ -500,8 +500,9 @@ class InferenceOS:
             except Exception:
                 delta_state = None
         # Layer-1 routing levers the adaptive router may adjust below.
-        gen_max_tokens = 512
-        route_tier     = "standard"
+        gen_max_tokens   = 512
+        route_tier       = "standard"
+        gen_deprioritize: tuple = ()   # chain members to try last (proactive failover)
         t0 = time.perf_counter()
         try:
             if self._backend is not None:
@@ -529,6 +530,17 @@ class InferenceOS:
                     })
                     if directive.prefer_fallback:
                         route_status = "degraded"
+                    # Proactive failover for a backend chain: rank members by ledger
+                    # health and try healthy ones first — before any live failure.
+                    if hasattr(self._backend, "backend_names"):
+                        healthy, degraded = self._router.rank(
+                            self._backend.backend_names, request.domain or ""
+                        )
+                        if degraded and healthy:
+                            gen_deprioritize = tuple(degraded)
+                            route_detail["chain_order"]   = list(healthy) + list(degraded)
+                            route_detail["deprioritized"] = list(degraded)
+                            route_status = "degraded"
                 except Exception:
                     pass
             # LOD 0 token pointer — routing metadata only, not injected into LLM
@@ -705,10 +717,14 @@ class InferenceOS:
                     if hint:
                         system_prompt = system_prompt + hint
 
+                gen_kwargs = {}
+                if gen_deprioritize:                    # chain only — proactive failover
+                    gen_kwargs["deprioritize"] = gen_deprioritize
                 result = self._backend.generate(
                     system=system_prompt,
                     prompt=user_message,
                     max_output_tokens=gen_max_tokens,   # economy tier shrinks this
+                    **gen_kwargs,
                 )
                 output        = result.text
                 input_tokens  = result.input_tokens

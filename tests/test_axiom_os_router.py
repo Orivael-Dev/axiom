@@ -93,6 +93,30 @@ class TestHealthRouting:
         assert d.max_output_tokens == ECONOMY_MAX_TOKENS
 
 
+class TestRankForChains:
+
+    def test_rank_partitions_by_health(self, tmp_path):
+        # 'nim' degraded on general, 'local' healthy → healthy first, degraded last
+        policy = _seed_ledger(tmp_path, [_row("nim", "general", 9000, False)] * 8
+                              + [_row("local", "general", 200, True)] * 8)
+        healthy, degraded = AdaptiveRouter(policy=policy).rank(("nim", "local"), "general")
+        assert healthy == ["local"]
+        assert degraded == ["nim"]
+
+    def test_rank_all_healthy_reorders_nothing(self, tmp_path):
+        policy = _seed_ledger(tmp_path, [_row("local", "general", 200, True)] * 4)
+        healthy, degraded = AdaptiveRouter(policy=policy).rank(("local", "nim"), "general")
+        assert degraded == []
+        assert healthy == ["local", "nim"]        # unknown 'nim' assumed healthy
+
+    def test_rank_preserves_order_within_group(self, tmp_path):
+        policy = _seed_ledger(tmp_path, [_row("a", "general", 9000, False)] * 8
+                              + [_row("c", "general", 9000, False)] * 8)
+        healthy, degraded = AdaptiveRouter(policy=policy).rank(("a", "b", "c"), "general")
+        assert healthy == ["b"]                    # only healthy member
+        assert degraded == ["a", "c"]              # configured order kept
+
+
 class TestDefaults:
 
     def test_empty_ledger_is_healthy_standard(self):

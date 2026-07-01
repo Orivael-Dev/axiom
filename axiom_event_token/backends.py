@@ -496,6 +496,22 @@ class ChainedBackend:
         self._backends = list(backends)
         self.model = "+".join(b.model for b in backends)
 
+    @property
+    def backend_names(self) -> tuple:
+        """Member backend names, in configured order — lets a health-aware router
+        rank them and request a proactive try-order via ``deprioritize``."""
+        return tuple(b.name for b in self._backends)
+
+    def _ordered(self, deprioritize) -> List[SLMBackend]:
+        """Stable try-order: members named in ``deprioritize`` move to the back but
+        are never dropped, so a degraded backend is still a last-resort fallback."""
+        dep = set(deprioritize or ())
+        if not dep:
+            return self._backends
+        front = [b for b in self._backends if b.name not in dep]
+        back  = [b for b in self._backends if b.name in dep]
+        return front + back
+
     def generate(
         self,
         *,
@@ -503,9 +519,13 @@ class ChainedBackend:
         prompt: str,
         max_output_tokens: int,
         timeout_s: float = 60.0,
+        deprioritize: Sequence[str] = (),
     ) -> BackendResult:
+        # ``deprioritize`` (from the Layer-1 adaptive router) puts backends the
+        # exoskeleton ledger flagged as degraded at the back — proactive failover,
+        # before any live BackendError. Live fall-through on BackendError still applies.
         last_err: Optional[BackendError] = None
-        for b in self._backends:
+        for b in self._ordered(deprioritize):
             try:
                 return b.generate(
                     system=system, prompt=prompt,

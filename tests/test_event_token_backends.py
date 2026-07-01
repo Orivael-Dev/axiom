@@ -180,6 +180,46 @@ def test_chained_rejects_empty(isolated):
         ChainedBackend([])
 
 
+def test_chained_exposes_backend_names(isolated):
+    from axiom_event_token.backends import ChainedBackend
+    chain = ChainedBackend([_StubBackend("a"), _StubBackend("b")])
+    assert chain.backend_names == ("a", "b")
+
+
+def test_chained_deprioritize_tries_healthy_first(isolated):
+    # 'a' is degraded → deprioritized to the back; healthy 'b' serves without 'a'
+    # being touched at all (proactive failover, no live error needed).
+    from axiom_event_token.backends import ChainedBackend
+    a = _StubBackend("a", text="from-a")
+    b = _StubBackend("b", text="from-b")
+    chain = ChainedBackend([a, b])
+    r = chain.generate(system="s", prompt="p", max_output_tokens=1, deprioritize=("a",))
+    assert r.backend == "b"
+    assert a.calls == 0            # degraded primary never even attempted
+    assert b.calls == 1
+
+
+def test_chained_deprioritized_is_last_resort_not_dropped(isolated):
+    # deprioritized 'b' still serves if every non-deprioritized member fails —
+    # health reordering never drops a fallback.
+    from axiom_event_token.backends import ChainedBackend, BackendError
+    a = _StubBackend("a", raises=BackendError("a-down"))
+    b = _StubBackend("b", text="from-b")
+    chain = ChainedBackend([a, b])
+    r = chain.generate(system="s", prompt="p", max_output_tokens=1, deprioritize=("b",))
+    assert r.backend == "b"        # a tried first (front), failed; b still saved it
+    assert a.calls == 1 and b.calls == 1
+
+
+def test_chained_empty_deprioritize_is_unchanged_order(isolated):
+    from axiom_event_token.backends import ChainedBackend
+    a = _StubBackend("a", text="from-a")
+    b = _StubBackend("b", text="from-b")
+    chain = ChainedBackend([a, b])
+    r = chain.generate(system="s", prompt="p", max_output_tokens=1, deprioritize=())
+    assert r.backend == "a"        # default behaviour preserved
+
+
 # ─── default_backend() env resolution ───────────────────────────────────
 
 
