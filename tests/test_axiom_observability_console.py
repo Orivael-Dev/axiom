@@ -50,6 +50,25 @@ class TestAggregation:
         assert r["risk_distribution"]["high"] == 2
         assert r["verdict_distribution"]["BLOCK"] == 1
 
+    def test_tier_and_cognition_distributions(self):
+        r = _con().report()
+        # 2 of 7 demo rows routed economy (the metabolic loop's visible effect)
+        assert r["tier_distribution"]["economy"] == 2
+        assert r["tier_distribution"]["standard"] == 5
+        assert r["overall"]["economy_rate"] == pytest.approx(2 / 7, abs=1e-3)
+        # cognition actions from the fused verdict
+        cog = r["cognition_action_distribution"]
+        assert cog["PROCEED"] == 4 and cog["REASON_CHEAPLY"] == 1
+        assert cog["REFUSE_FOR_HEALTH"] == 1 and cog["BLOCK"] == 1
+
+    def test_missing_new_fields_default_safely(self):
+        # pre-thread-2 result dicts (no route_tier / cognition) must not crash
+        con = ObservabilityConsole().ingest([{"route": "local", "total_latency_ms": 100}])
+        r = con.report()
+        assert r["tier_distribution"] == {"standard": 1}
+        assert r["cognition_action_distribution"] == {"none": 1}
+        assert r["overall"]["economy_rate"] == 0.0
+
 
 class TestCost:
 
@@ -94,10 +113,12 @@ class TestIO:
     def test_render_markdown_has_sections(self):
         md = _con().render_markdown()
         assert "Observability Console" in md and "| route |" in md and "risk:" in md
+        assert "tier:" in md and "cognition:" in md and "economy" in md
 
     def test_render_html_is_signed_console(self):
         html = _con().render_html()
         assert "Observability Console" in html and "signed " in html
+        assert "economy tier" in html
 
 
 class TestRealInferenceOS:

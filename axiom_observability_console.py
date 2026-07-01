@@ -114,6 +114,9 @@ class ObservabilityConsole:
             "latency_mean_ms": round(sum(lat) / n) if n else 0,
             "fallback_rate":   _rate(sum(1 for r in rows if r.get("fallback_used")), n),
             "cache_hit_rate":  _rate(sum(1 for r in rows if (r.get("context_hits") or 0) > 0), n),
+            # economy_rate — the visible effect of the metabolic loop: fraction of
+            # requests the Layer-1 router dropped into the ECONOMY tier (fewer tokens).
+            "economy_rate":    _rate(sum(1 for r in rows if r.get("route_tier") == "economy"), n),
             "tokens_in":       sum(r.get("input_tokens", 0) for r in rows),
             "tokens_out":      sum(r.get("output_tokens", 0) for r in rows),
             "tokens_saved":    sum(r.get("tokens_saved", 0) for r in rows),
@@ -137,6 +140,13 @@ class ObservabilityConsole:
             "intent_distribution": dict(Counter(r.get("intent_class", "?") for r in rows)),
             "verdict_distribution": dict(Counter(
                 (r.get("output_verdict") or "none") for r in rows)),
+            # Layer-1 routing tier (standard / economy) — the router's cost decision.
+            "tier_distribution": dict(Counter(
+                (r.get("route_tier") or "standard") for r in rows)),
+            # cognition action (PROCEED / REASON_CHEAPLY / REFUSE_FOR_HEALTH / BLOCK) —
+            # what the fused learner verdict decided, per request.
+            "cognition_action_distribution": dict(Counter(
+                ((r.get("cognition") or {}).get("action") or "none") for r in rows)),
         }
         rep["signature"] = hmac_lib.new(
             _KEY, json.dumps(rep, sort_keys=True, ensure_ascii=True,
@@ -158,7 +168,8 @@ class ObservabilityConsole:
             "# Inference OS — Observability Console",
             f"\n**{o['requests']}** requests · p50 **{o['latency_p50_ms']}ms** / p95 "
             f"**{o['latency_p95_ms']}ms** · fallback **{o['fallback_rate']:.0%}** · "
-            f"cache-hit **{o['cache_hit_rate']:.0%}** · saved **{o['tokens_saved']}** tok{cost}\n",
+            f"cache-hit **{o['cache_hit_rate']:.0%}** · economy **{o.get('economy_rate', 0):.0%}** · "
+            f"saved **{o['tokens_saved']}** tok{cost}\n",
             "| route | reqs | p50 | p95 | fallback | cache-hit | tok in/out |",
             "|---|---|---|---|---|---|---|",
         ]
@@ -169,6 +180,9 @@ class ObservabilityConsole:
         out.append("\n**risk:** " + (", ".join(f"{k} {v}" for k, v in r["risk_distribution"].items()) or "—"))
         out.append("**intent:** " + (", ".join(f"{k} {v}" for k, v in r["intent_distribution"].items()) or "—"))
         out.append("**verdict:** " + (", ".join(f"{k} {v}" for k, v in r["verdict_distribution"].items()) or "—"))
+        out.append("**tier:** " + (", ".join(f"{k} {v}" for k, v in r.get("tier_distribution", {}).items()) or "—"))
+        out.append("**cognition:** " + (", ".join(
+            f"{k} {v}" for k, v in r.get("cognition_action_distribution", {}).items()) or "—"))
         out.append("\n*Signed operating summary — tamper-evident.*")
         return "\n".join(out)
 
@@ -179,6 +193,7 @@ class ObservabilityConsole:
             ("requests", o["requests"]), ("p50 latency", f"{o['latency_p50_ms']}ms"),
             ("p95 latency", f"{o['latency_p95_ms']}ms"),
             ("fallback", f"{o['fallback_rate']:.0%}"), ("cache-hit", f"{o['cache_hit_rate']:.0%}"),
+            ("economy tier", f"{o.get('economy_rate', 0):.0%}"),
             ("tokens saved", o["tokens_saved"]),
         ]
         card_html = "".join(
@@ -223,19 +238,24 @@ def _main(argv=None) -> int:
 
 def _demo_rows() -> list:
     """Deterministic sample stream (used when no --results given)."""
-    def row(route, model, lat, fb, ch, ti, to, ts, risk, intent, verdict):
+    def row(route, model, lat, fb, ch, ti, to, ts, risk, intent, verdict,
+            tier="standard", action="PROCEED"):
         return {"route": route, "model_used": model, "total_latency_ms": lat,
                 "fallback_used": fb, "context_hits": ch, "input_tokens": ti,
                 "output_tokens": to, "tokens_saved": ts, "risk_class": risk,
-                "intent_class": intent, "output_verdict": verdict}
+                "intent_class": intent, "output_verdict": verdict,
+                "route_tier": tier, "cognition": {"action": action}}
     return [
         row("local", "llama3.2:3b", 210, False, 2, 180, 90, 320, "low", "INFORM", "PASS"),
         row("local", "llama3.2:3b", 240, False, 1, 160, 110, 300, "low", "INFORM", "PASS"),
-        row("local", "llama3.2:3b", 2600, False, 0, 200, 40, 0, "low", "CLARIFY", "PASS"),
+        row("local", "llama3.2:3b", 2600, False, 0, 200, 40, 0, "low", "CLARIFY", "PASS",
+            tier="economy", action="REASON_CHEAPLY"),
         row("nim", "llama-3.3-70b", 1400, False, 3, 220, 260, 410, "medium", "INFORM", "PASS"),
-        row("nim", "llama-3.3-70b", 1900, True, 0, 210, 30, 0, "medium", "INFORM", "WARN"),
+        row("nim", "llama-3.3-70b", 1900, True, 0, 210, 30, 0, "medium", "INFORM", "WARN",
+            tier="economy", action="REFUSE_FOR_HEALTH"),
         row("specialist", "legal-pack", 700, False, 4, 300, 180, 520, "high", "INFORM", "PASS"),
-        row("fallback", "llama3.2:3b", 3100, True, 0, 190, 20, 0, "high", "REFUSE", "BLOCK"),
+        row("fallback", "llama3.2:3b", 3100, True, 0, 190, 20, 0, "high", "REFUSE", "BLOCK",
+            action="BLOCK"),
     ]
 
 
