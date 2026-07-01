@@ -680,6 +680,19 @@ _GENERAL_SYSTEM = (
 )
 
 
+_CODEGEN_SYSTEM = (
+    "You are an AXIOM language engineer. Given a REQUEST, write a complete, valid "
+    "AXIOM `.axiom` agent specification that fulfils it, grounded in the AXIOM "
+    "REFERENCE (the spec and real .axiom examples provided). Use the AXIOM DSL "
+    "blocks — AGENT, GOAL, TRUST_LEVEL, CONSTRAINT, RULES, PROCESS, CHECK, "
+    "FAILURE, OUTPUT, SUCCESS — following the reference's conventions and only "
+    "constructs that appear in the AXIOM spec. Output ONLY the .axiom "
+    "specification text: no markdown fences, no prose, no commentary, no file "
+    "paths. Do NOT create or write any file — only produce the specification text "
+    "for the user to review and place themselves."
+)
+
+
 def _parse_answer(raw: str) -> tuple[str, List[str], List[str]]:
     """Parse the synthesis JSON {answer, key_points, open_questions}.
 
@@ -788,6 +801,100 @@ def _general_answer(req: "ResearchRequest", workflow_label: str,
     }
 
 
+def _codegen_answer(req: "ResearchRequest", workflow_label: str,
+                    sources: list[dict], retrieval_real: bool,
+                    qrf: dict, qrf_real: bool) -> dict:
+    """Code Generation workflow — emit an AXIOM `.axiom` spec grounded in the
+    knowledge base. Returns the spec text inline; it never writes a file."""
+    from axiom_event_token.backends import default_backend, domain_context
+
+    real_src = [s for s in sources
+                if not str(s.get("kind", "")).startswith("stub")]
+    ref_block = "\n".join(
+        f"- [{s.get('provider', 'local')}] {s.get('title', '(untitled)')}: "
+        f"{(s.get('snippet') or '').strip()[:400]}"
+        for s in real_src[:6]
+    ) or "(no reference retrieved — rely on the AXIOM DSL conventions)"
+    prompt = (f"REQUEST:\n{req.query}\n\nAXIOM REFERENCE:\n{ref_block}\n\n"
+              "Write the .axiom specification now.")
+
+    t0 = time.monotonic()
+    try:
+        bk = default_backend()
+        with domain_context(req.domain):
+            res = bk.generate(system=_CODEGEN_SYSTEM, prompt=prompt,
+                              max_output_tokens=1200)
+    except Exception as e:
+        LOG.exception("codegen synthesis failed")
+        raise HTTPException(status_code=502, detail=f"codegen failed: {e}")
+    wall_ms = int((time.monotonic() - t0) * 1000)
+
+    code = (res.text or "").strip()
+    # Strip accidental markdown fences.
+    if code.startswith("```"):
+        parts = code.split("```")
+        code = parts[1] if len(parts) > 1 else code
+        if code.lstrip().lower().startswith("axiom"):
+            code = code.split("\n", 1)[1] if "\n" in code else code
+        code = code.strip()
+
+    findings = [
+        "Generated an AXIOM .axiom spec — no file was created; copy it into "
+        "axiom_files/ yourself.",
+        f"Grounded in {len(real_src)} AXIOM reference chunk(s) from the "
+        "knowledge base.",
+    ]
+    return {
+        "query":          req.query,
+        "workflow":       req.workflow,
+        "workflowLabel":  workflow_label,
+        "domain":         req.domain,
+        "domainLabel":    _DOMAIN_LABELS.get(req.domain, req.domain),
+        "report": {
+            "tldr":          "Generated an AXIOM .axiom specification "
+                             "(shown below — not written to disk).",
+            "keyFindings":   findings,
+            "openQuestions": [
+                "Does the spec's TRUST_LEVEL / CONSTRAINT set match your policy?",
+            ],
+            "raw_output":    code,
+            "answer":        code,
+            "axiom_code":    code,
+        },
+        "probabilityBand":        qrf["probability_band"],
+        "constitutionalDistance": qrf["constitutional_distance"],
+        "branchHealth":           qrf["branch_health"],
+        "sources":  sources,
+        "branches": qrf["branches"],
+        "receipt": {
+            "token_id":  f"axm-{wall_ms}-{len(code)}",
+            "workflow":  workflow_label,
+            "backend":   f"{res.backend} · {res.model}",
+            "signed_at": "",
+            "verified":  False,
+            "ledger":    "(direct .axiom synthesis — no file written)",
+            "qrf_signature": qrf.get("_qrf_signature", "")[:24] if qrf_real else "",
+        },
+        "cost": {
+            "input_tokens":  int(res.input_tokens),
+            "output_tokens": int(res.output_tokens),
+            "latency_ms":    int(res.latency_ms),
+        },
+        "_meta": {
+            "wall_clock_ms":           wall_ms,
+            "delegate_invoked":        "axiom_codegen_synthesis",
+            "sources_are_stubbed":     not retrieval_real,
+            "branches_are_stubbed":    not qrf_real,
+            "synthesis_is_real":       True,
+            "retriever_indexed_files": (_state.retriever.stats().get("indexed_files", 0)
+                                          if _state.retriever else 0),
+            "ledger_write":            "skipped (synthesis path, no file written)",
+            "cognitive_gating":        (_state.last_gating_telemetry
+                                          if _state.gating is not None else None),
+        },
+    }
+
+
 def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     """Shared research pipeline used by both /api/research and the
     SSE endpoint. Always synchronous; SSE just emits stage events
@@ -807,6 +914,12 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     # customer_discovery, which returned pain/urgency/buyer_role instead of an answer.)
     if req.workflow == "general_research":
         return _general_answer(req, workflow_label, sources, retrieval_real,
+                               qrf, qrf_real)
+
+    # Code Generation emits an AXIOM .axiom spec grounded in the knowledge base
+    # and returns it inline — it never writes a file to disk.
+    if req.workflow == "code_generation":
+        return _codegen_answer(req, workflow_label, sources, retrieval_real,
                                qrf, qrf_real)
 
     # Stage 3: synthesize via the exoskeleton delegate. The

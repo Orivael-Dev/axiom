@@ -1418,6 +1418,11 @@
           <h3>TL;DR</h3>
           <p>${escapeHtml(r.tldr)}</p>
         </div>
+        ${r.axiom_code ? `
+        <div class="report-section">
+          <h3>.axiom specification</h3>
+          <pre style="background:#0b0b0b;border:1px solid #333;border-radius:6px;padding:12px;overflow:auto;white-space:pre;font-size:0.85rem;line-height:1.4;"><code>${escapeHtml(r.axiom_code)}</code></pre>
+        </div>` : ""}
         <div class="report-section">
           <h3>Key Findings</h3>
           <ul>${r.keyFindings.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>

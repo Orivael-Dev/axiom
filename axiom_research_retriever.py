@@ -559,8 +559,10 @@ def default_retriever(repo_root: Optional[Path] = None) -> "LocalRetriever | Dom
     # Lazy import so axiom_research_retriever still works on its own
     # when the providers package isn't on the path (e.g. minimal builds).
     try:
-        from axiom_research_providers.local import LocalCorpusProvider
         from axiom_research_providers.multi import MultiProviderRetriever
+        from axiom_research_providers.axiom_knowledge import AxiomKnowledgeProvider
+        from axiom_research_providers.patents import PatentsProvider
+        from axiom_research_providers.websearch import SearxngProvider
         from axiom_research_providers.pubmed import PubMedProvider
         from axiom_research_providers.clinicaltrials import ClinicalTrialsProvider
         from axiom_research_providers.openfda import OpenFDAProvider
@@ -574,14 +576,22 @@ def default_retriever(repo_root: Optional[Path] = None) -> "LocalRetriever | Dom
         _DEFAULT = local_inner
         return _DEFAULT
 
-    # WikipediaProvider runs for general + medical domains. The
-    # MultiProviderRetriever's domain filter handles routing — Wikipedia
-    # doesn't intrude on finance/security/hr/supply_chain queries.
-    _DEFAULT = MultiProviderRetriever([
-        LocalCorpusProvider(local_inner),
+    # Local knowledge = the AXIOM knowledge base (spec / agent docs / .axiom
+    # examples via knowledge_rag), NOT the firewall's API docs. Patents fan in
+    # from their own corpus. SearXNG adds open-source general web search so
+    # results go beyond the single-source providers. WikipediaProvider still
+    # runs for general + medical; the specialised medical providers dominate
+    # medical queries via the MultiProviderRetriever domain filter.
+    patents_dir = Path(os.environ.get("AXIOM_PATENTS_DIR", str(root / "patents")))
+    providers = [
+        AxiomKnowledgeProvider(),
+        SearxngProvider(),
         WikipediaProvider(),
         PubMedProvider(),
         ClinicalTrialsProvider(),
         OpenFDAProvider(),
-    ])
+    ]
+    if patents_dir.exists():
+        providers.insert(1, PatentsProvider(roots=[patents_dir]))
+    _DEFAULT = MultiProviderRetriever(providers)
     return _DEFAULT
