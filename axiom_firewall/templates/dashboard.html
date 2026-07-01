@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Orivael Governance Console{% endblock %}
+{% block title %}Dashboard — Orivael Intent Firewall{% endblock %}
 
 {% block content %}
 <section class="dashboard">
@@ -14,7 +14,7 @@
   {% if free_tier and month_used == 0 and not keys %}
     {# Empty state — first thing a fresh beta tester sees after signup. #}
     <div class="alert success">
-      <strong>Welcome to the Axiom Intent Firewall beta.</strong>
+      <strong>Welcome to the Orivael Intent Firewall beta.</strong>
       You're on the Free tier — 1,000 calls/month, no card required.
       <ol style="margin: 0.5rem 0 0 1.25rem;">
         <li>Create an API key below (give it a name like <code>dev</code>).</li>
@@ -70,7 +70,7 @@
   </div>
 
   {# Governance Console surfaces (BLT/Enterprise, OS Shield, Compliance,
-     Local LLM / RAG) live in the separate Orivael Governance Console
+     Local LLM / RAG) live in the separate Orivael Intent Firewall
      (osconsole) — they are NOT part of the Intent Firewall dashboard. #}
 
   {% if request.session.get('new_recovery_code') %}
