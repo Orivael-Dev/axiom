@@ -30,6 +30,10 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY deploy/firewall/requirements.txt /build/requirements.txt
 RUN pip install --no-cache-dir --target=/install --require-hashes \
     -r /build/requirements.txt
+# markdown renders the /help docs (deep-linkable MCP tool anchors) as HTML
+# instead of the raw-text fallback. Not yet in the hash-locked requirements
+# .txt � fold into requirements.in + pip-compile on the next refresh.
+RUN pip install --no-cache-dir --target=/install markdown==3.7
 
 # ── Runtime stage ───────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime

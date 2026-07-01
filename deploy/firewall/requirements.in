@@ -22,3 +22,6 @@ python-multipart==0.0.32
 itsdangerous==2.2.0
 stripe==15.3.0
 python-dotenv==1.2.2
+
+# Renders /help docs (MCP tool deep-links). Re-run pip-compile to lock.
+markdown==3.7
