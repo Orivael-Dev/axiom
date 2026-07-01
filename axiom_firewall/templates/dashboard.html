@@ -69,12 +69,9 @@
     {% endif %}
   </div>
 
-  <div style="display:flex; gap:12px; flex-wrap:wrap; margin: 1rem 0;">
-    <a href="/dashboard/enterprise" style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">BLT Enterprise →</a>
-    <a href="/dashboard/os-shield"  style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">OS Shield →</a>
-    <a href="/dashboard/compliance" style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">Compliance →</a>
-    <a href="/dashboard/local-llm"  style="font-size:13px; padding: 6px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; text-decoration:none;">Local LLM / RAG →</a>
-  </div>
+  {# Governance Console surfaces (BLT/Enterprise, OS Shield, Compliance,
+     Local LLM / RAG) live in the separate Orivael Governance Console
+     (osconsole) — they are NOT part of the Intent Firewall dashboard. #}
 
   {% if request.session.get('new_recovery_code') %}
     <div class="alert success">
