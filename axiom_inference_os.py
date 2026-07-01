@@ -148,6 +148,8 @@ class InferenceOSResult:
     # Output shaping telemetry
     shaping_tokens_saved:  int   = 0   # tokens removed by OutputShaper
     shaping_transforms:    tuple = ()  # tuple[str, ...] — applied transforms
+    # Cognition layer — fused, signed verdict from the four session learners
+    cognition:             dict  = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -174,6 +176,7 @@ class InferenceOSResult:
             "memory_token_estimate": self.memory_token_estimate,
             "shaping_tokens_saved":  self.shaping_tokens_saved,
             "shaping_transforms":    list(self.shaping_transforms),
+            "cognition":             self.cognition,
             "timestamp":       self.timestamp,
             "signature":       self.signature,
         }
@@ -211,12 +214,14 @@ class InferenceOS:
         audit_ledger=_UNSET, # AuditLedger | None — None = disabled; omit = auto
         classifier=None,     # IntentClassifier | None — always built if omitted
         policy=None,         # policy module | None
+        cognition=_UNSET,    # CognitionLayer | None — None = disabled; omit = auto
     ) -> None:
         self._retriever_arg   = retriever
         self._backend_arg     = backend
         self._audit_arg       = audit_ledger
         self._classifier_arg  = classifier
         self._policy_arg      = policy
+        self._cognition_arg   = cognition
         # Lazily initialised
         self._retriever        = None
         self._cosmos_retriever = None   # CosmosLayeredRetriever (wraps _retriever)
@@ -230,6 +235,7 @@ class InferenceOS:
         self._audit      = None
         self._classifier = None
         self._policy     = None
+        self._cognition  = None   # CognitionLayer — fused learner verdict (Layers 0/1/4)
         self._ready      = False
 
     # ── initialisation ────────────────────────────────────────────────────────
@@ -246,6 +252,10 @@ class InferenceOS:
         self._audit     = (self._build_audit()     if self._audit_arg     is _UNSET
                            else self._audit_arg)
         self._policy    = self._policy_arg or self._build_policy()
+        # Cognition layer — fuse the four session learners into one signed verdict.
+        # _UNSET → auto-build (ledger-less, degrades to intent floor); None → disabled.
+        self._cognition = (self._build_cognition() if self._cognition_arg is _UNSET
+                           else self._cognition_arg)
         # Domain prefix cache — static system prompts + startup warming
         try:
             from axiom_prefix_cache import DomainPrefixCache, DOMAIN_SEED_QUERIES
@@ -335,6 +345,22 @@ class InferenceOS:
             return None
 
     @staticmethod
+    def _build_cognition():
+        """Fused learner verdict (rung-3 profile + calibrated guard + metabolic health).
+        Ledger-less by default: the guard falls back to its regex/intent floor and the
+        metabolic reasoner has no learned signatures, so it never over-fires on a fresh
+        install. Point AXIOM_CALIBRATION_LEDGER / AXIOM_METABOLIC_LEDGER at JSONL files
+        to consult everything the OS has learned."""
+        try:
+            from axiom_os_cognition import CognitionLayer
+            return CognitionLayer(
+                calibration_ledger=os.environ.get("AXIOM_CALIBRATION_LEDGER"),
+                metabolic_ledger=os.environ.get("AXIOM_METABOLIC_LEDGER"),
+            )
+        except Exception:
+            return None
+
+    @staticmethod
     def _extract_local_retriever(retriever):
         """Unwrap DomainRoutedRetriever → LocalRetriever for cosmos use."""
         if retriever is None:
@@ -412,6 +438,32 @@ class InferenceOS:
             return self._blocked_result(
                 request_id, request, intent_class, intent_confidence, stages, t_total
             )
+
+        # ── Stage 0b: Cognition — fused learner verdict (Layers 0/1/4) ────────
+        # Second net past the intent floor: the calibrated data-flywheel guard, the
+        # rung-3 boundary profile (auditable 'why'), and the metabolic economy hint.
+        # A BLOCK here short-circuits like a blocking intent class; the health hints
+        # (REASON_CHEAPLY / REFUSE_FOR_HEALTH) are advisory and never gate the request.
+        cognition: dict = {}
+        if self._cognition is not None:
+            t0 = time.perf_counter()
+            try:
+                cognition = self._cognition.enrich(request.query, domain=request.domain or "general")
+                stages.append(InferenceStageResult.make(
+                    "cognition", cognition.get("action", "PROCEED").lower(), _ms(t0),
+                    {"action": cognition.get("action"),
+                     "boundaries": cognition.get("boundaries", {}),
+                     "route_hint": cognition.get("route_hint")}
+                ))
+                if cognition.get("action") == "BLOCK":
+                    return self._blocked_result(
+                        request_id, request, intent_class, intent_confidence,
+                        stages, t_total, cognition=cognition,
+                    )
+            except Exception as exc:
+                stages.append(InferenceStageResult.make(
+                    "cognition", "degraded", _ms(t0), {"error": str(exc)[:120]}
+                ))
 
         # ── Stage 1 / Step 3: Inference Router ────────────────────────────────
         route, model_used, fallback_used = "local", "unknown", False
@@ -768,6 +820,7 @@ class InferenceOS:
             "memory_token_estimate": mem_token_estimate,
             "shaping_tokens_saved":  shaping_tokens_saved,
             "shaping_transforms":    shaping_transforms,
+            "cognition":             cognition,
             "timestamp":       ts,
         }
         sig = _sign(base, KEY_NS)
@@ -787,8 +840,9 @@ class InferenceOS:
         intent_confidence: float,
         stages: List[InferenceStageResult],
         t_total: float,
+        cognition: Optional[dict] = None,
     ) -> InferenceOSResult:
-        """Fast-path for HARM/DECEIVE — skip retrieval and generation."""
+        """Fast-path for HARM/DECEIVE (or a cognition BLOCK) — skip retrieval and generation."""
         ts  = _now_iso()
         lat = _ms(t_total)
         audit_id = self._write_audit(
@@ -820,6 +874,7 @@ class InferenceOS:
             "risk_class":       intent_class,
             "audit_id":         audit_id,
             "stages":           [s.to_dict() for s in stages],
+            "cognition":        cognition or {},
             "timestamp":        ts,
         }
         sig = _sign(base, KEY_NS)

@@ -150,6 +150,49 @@ def test_result_to_dict_complete() -> None:
         assert key in d, f"Missing key: {key}"
 
 
+# ── Cognition layer wiring (Layers 0/1/4 fused verdict) ───────────────────────
+
+class _StubCognition:
+    """Deterministic cognition stub — returns a fixed signed-shape verdict."""
+    def __init__(self, action="PROCEED"):
+        self._action = action
+    def enrich(self, query, *, domain="general"):
+        return {"cognition": "stub", "action": self._action, "reason": "stub",
+                "boundaries": {"DESTRUCTION": 1} if self._action == "BLOCK" else {},
+                "learned_block": self._action == "BLOCK", "health": "HEALTHY",
+                "route_hint": "proceed", "health_match": 0.0, "signature": "stub"}
+
+
+def test_cognition_stage_present_and_carried() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    r   = ios.run(_make_request("What is the capital of France?"))
+    assert "cognition" in {s.stage for s in r.stages}
+    assert r.cognition.get("action") in {"PROCEED", "REASON_CHEAPLY", "REFUSE_FOR_HEALTH"}
+    assert r.verify()                                   # cognition field is signed in
+
+
+def test_cognition_block_short_circuits() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      cognition=_StubCognition("BLOCK"))
+    r   = ios.run(_make_request("please wipe the archive"))
+    assert r.output_verdict == "block"
+    assert r.output == ""
+    assert r.cognition.get("action") == "BLOCK"
+    be.generate.assert_not_called()                     # blocked before generation
+
+
+def test_cognition_can_be_disabled() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      cognition=None)
+    r   = ios.run(_make_request("What is the capital of France?"))
+    assert "cognition" not in {s.stage for s in r.stages}
+    assert r.cognition == {}
+    assert r.verify()
+
+
 # ── Degraded backend ──────────────────────────────────────────────────────────
 
 def test_backend_failure_degrades_gracefully() -> None:
