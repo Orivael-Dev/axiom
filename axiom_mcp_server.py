@@ -5,11 +5,11 @@ Trust     : TRUST_LEVEL = 3   CANNOT_MUTATE
 Transport : stdio (standard MCP)
 Encoding  : UTF-8  BUG-003 compliant
 
-22 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
+23 tools. Core 5: axiom_guard_check, axiom_lint, axiom_trace, axiom_qrf,
 axiom_status. Plus ORVL patent-emulator + AX OS building-block tools
 (intent gate, CMAA, CPI, AXM, OS shield, phone gate, validate, memory,
 workspace, ledger, marketplace, MKB, adversarial sandbox, CRL reward,
-immune system, multimodal fusion). VERSION is bumped whenever the tool
+immune system, multimodal fusion, research pipeline). VERSION is bumped whenever the tool
 surface changes, so `tools/list` and VERSION stay in sync — a client
 seeing an older VERSION is talking to a stale build.
 
@@ -38,7 +38,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from axiom_signing import derive_key
 
 SIGNING_KEY = derive_key(b"axiom-mcp-v1")
-VERSION: str = "1.11.0"
+VERSION: str = "1.12.0"
 TRUST_LEVEL: int = 3
 
 _FROZEN = frozenset({"VERSION", "TRUST_LEVEL"})
@@ -387,6 +387,23 @@ TOOLS = [
              "vector":  {"type": "string", "description": "optional label for the probe"},
          },
          "required": ["payload"]}},
+    # ── Constitutional Research Pipeline ─────────────────────────
+    {"name": "axiom_research",
+     "description": "Run the 9-agent constitutional research pipeline on a question. "
+                    "Agents: hypothesis → literature → simulation → critic → safety → "
+                    "ethics → data → experiment → report. Safety and Ethics agents can "
+                    "HALT the pipeline early if critical risks are detected. Uses the "
+                    "active NIM or Anthropic backend. Returns the full signed pipeline "
+                    "result including per-step manifests.",
+     "inputSchema": {"type": "object",
+         "properties": {
+             "question": {"type": "string", "description": "The research question to investigate"},
+             "steps":    {"type": "integer", "minimum": 1, "maximum": 9,
+                          "description": "Number of pipeline steps to run (1-9, default 9)"},
+             "model":    {"type": "string",
+                          "description": "Optional model override for all agents"},
+         },
+         "required": ["question"]}},
     # ── axiom-fusion-v1 — multimodal intent fusion over an EventToken ─────
     {"name": "axiom_fusion",
      "description": "Fuse an EventToken's present modality layers (text / audio / "
@@ -521,6 +538,18 @@ def _handle_trace(args: dict) -> dict:
     mags = [sum(v**2 for v in out.get(f"{s}_vec", []))**0.5
             for s in ("preflight", "mid_chain", "final_synthesis")]
     out["monotonic"] = all(mags[i] <= mags[i+1] for i in range(len(mags)-1)) if len(mags) >= 2 else True
+
+    # Surface the winning branch response so the caller sees an actual answer,
+    # not just the constitutional path metadata.
+    multiplex = result.get("phases", {}).get("multiplex", {})
+    winner = multiplex.get("winner") or {}
+    if winner.get("response"):
+        out["answer"] = winner["response"]
+    elif multiplex.get("all_branches"):
+        # Fall back to the highest-scored branch
+        best = max(multiplex["all_branches"], key=lambda b: b.get("score", 0))
+        out["answer"] = best.get("response", "")
+
     out["hmac_signature"] = _sign({"question": question[:200], "verdict": out["verdict"]})
     return out
 
@@ -534,11 +563,24 @@ def _handle_qrf(args: dict) -> dict:
     if engine_domain not in DOMAIN_BRANCH_COUNTS:
         return {"error": f"Unknown domain: {domain}", "hmac_signature": _sign({"error": domain})}
     key = derive_key(b"axiom-qrf-v1")
-    r = QRFEngine(engine_domain, key, n_branches=n or None).forecast(prompt)
+    _api_key = os.environ.get("AXIOM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+    endpoint = ((os.environ.get("AXIOM_BASE_URL") or os.environ.get("NVIDIA_BASE_URL")
+                 or "https://integrate.api.nvidia.com/v1") if _api_key else None)
+    r = QRFEngine(engine_domain, key, n_branches=n or None, endpoint=endpoint).forecast(prompt)
+
+    # Include each branch's response text so the caller sees what each
+    # reasoning path actually concluded, not just its probability weight.
     branches = [{"id": b.get("branch", ""), "prob": round(b.get("probability_weight", 0), 4),
                   "dist": round(b.get("constitutional_distance", 0), 4),
-                  "outcome": b.get("outcome", "")} for b in r.branches[:8]]
+                  "outcome": b.get("outcome", ""),
+                  "answer": b.get("response", "")} for b in r.branches[:8]]
+
+    # Surface the winner's answer at the top level for quick access.
+    winner_branch = next((b for b in r.branches if b.get("branch") == r.top_branch), None)
+    winner_answer = winner_branch.get("response", "") if winner_branch else ""
+
     return {"branches": branches, "winner": r.top_branch,
+            "answer": winner_answer,
             "manifold_alert": bool(r.manifold), "band": r.probability_band,
             "hmac_signature": r.hmac_signature}
 
@@ -1162,7 +1204,12 @@ def _get_marketplace():
 
 def _handle_marketplace(args: dict) -> dict:
     """AX OS — signed-agent install + bonded authority lifecycle."""
-    from axiom_marketplace import MarketplaceError
+    try:
+        from axiom_marketplace import MarketplaceError
+    except (ImportError, ModuleNotFoundError):
+        _out = {"error": "axiom_marketplace is unavailable on this MCP server (requires the platform runtime: event_token/torch). Use the platform marketplace service.", "available": False}
+        _out["hmac_signature"] = _sign(_out)
+        return _out
     action = args.get("action")
     valid_actions = ("verify", "sandbox_install", "review", "approve",
                      "revoke", "authority")
@@ -1468,6 +1515,35 @@ def _handle_fusion(args: dict) -> dict:
     return out
 
 
+def _handle_research(args: dict) -> dict:
+    """Run the 9-agent constitutional research pipeline."""
+    question = args.get("question", "").strip()
+    if not question:
+        out = {"error": "question is required"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    steps = max(1, min(9, int(args.get("steps", 9))))
+    model = args.get("model") or None
+    try:
+        from axiom_research_pipeline import ResearchPipeline
+        pipeline = ResearchPipeline(model_override=model)
+        result = pipeline.run(question, max_steps=steps)
+    except (ImportError, RuntimeError) as exc:
+        out = {"error": f"ResearchPipeline unavailable: {exc}"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    except Exception as exc:
+        out = {"error": f"{type(exc).__name__}: {exc}"}
+        out["hmac_signature"] = _sign(out)
+        return out
+    result["hmac_signature"] = _sign({
+        "question": result.get("question", ""),
+        "steps_completed": result.get("steps_completed", 0),
+        "halted": result.get("halted", False),
+    })
+    return result
+
+
 _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lint,
              "axiom_trace": _handle_trace, "axiom_qrf": _handle_qrf,
              "axiom_status": _handle_status,
@@ -1487,7 +1563,8 @@ _HANDLERS = {"axiom_guard_check": _handle_guard_check, "axiom_lint": _handle_lin
              "axiom_cas": _handle_cas,
              "axiom_crl": _handle_crl,
              "axiom_immune": _handle_immune,
-             "axiom_fusion": _handle_fusion}
+             "axiom_fusion": _handle_fusion,
+             "axiom_research": _handle_research}
 
 
 class AxiomMCPServer:

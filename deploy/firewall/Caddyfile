@@ -1,33 +1,36 @@
 {$FIREWALL_HOST} {
     encode gzip
 
-    # Hard cap on request body size — defence in depth before the
-    # FastAPI _BodySizeLimitMiddleware. Caddy drops connections past
-    # this cap before any bytes reach the app, so a malicious large
-    # POST can't exhaust uvicorn worker memory.
     request_body {
         max_size 2MB
     }
 
-    # Reverse proxy to the Firewall app on port 8004.
-    reverse_proxy firewall:8004 {
-        header_up X-Forwarded-Proto https
-        header_up X-Forwarded-For {remote_host}
+    # Guard API surface (Orivael consoles backend) -> guard-api container.
+    # CORS (*) is set by the FastAPI app, so cross-origin calls from
+    # osconsole.orivael.dev pass through. No collision with the firewall's
+    # own /v1/guard/* or /dashboard/os-shield routes.
+    @guardapi path /guard/* /latent/* /sovereign/* /os/shield/* /vulnguard/* /agent/* /ccg/* /qrf/* /model/*
+    handle @guardapi {
+        reverse_proxy axiom-guard-api:8001
     }
 
-    # Security headers — match what AWS ALB + CloudFront would set.
+    # Everything else -> the Firewall app on 8004.
+    handle {
+        reverse_proxy firewall:8004 {
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-For {remote_host}
+        }
+    }
+
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
-        # CSP is intentionally lax for the dashboard (Jinja templates need
-        # inline styles). Tighten for the public API host if separated.
         Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
         -Server
     }
 
-    # Caddy logs to stdout in JSON for easy ingest.
     log {
         output stdout
         format json
@@ -131,7 +134,7 @@
 orivael.dev {
     encode gzip
 
-    root * /srv/orivael
+    root * /opt/sites/orivael
     try_files {path} {path}/index.html /index.html
     file_server
 
@@ -155,20 +158,91 @@ www.orivael.dev {
     redir https://orivael.dev{uri} permanent
 }
 
-# ── Studio console — own domain, reverse-proxied to the firewall app ──────────
-# Root shows the studio page; every other path (/static/*, /dashboard/studio/*,
-# /billing) proxies straight through to the firewall app, so the page's absolute
-# URLs + fetch() endpoints resolve. Functional after the firewall is redeployed
-# with the GET /dashboard/studio route.
+# ── srdstudio.orivael.dev — Orivael SRD Studio (static landing) ───────────────
 srdstudio.orivael.dev {
     encode gzip
+    root * /opt/sites/srdstudio
+    try_files {path} {path}/index.html /index.html
+    file_server
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.orivael.dev"
+        -Server
+    }
+    log {
+        output stdout
+        format json
+    }
+}
 
-    @root path /
-    rewrite @root /dashboard/studio
 
-    reverse_proxy firewall:8004 {
-        header_up X-Forwarded-Proto https
-        header_up X-Forwarded-For   {remote_host}
+# ── governance.orivael.dev — newsletter (static) ──────────────────────────────
+governance.orivael.dev {
+    encode gzip
+    root * /opt/sites/governance
+    try_files {path} {path}/index.html /index.html
+    file_server
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.orivael.dev"
+        -Server
+    }
+    log {
+        output stdout
+        format json
+    }
+}
+
+# ── checkmyllm.orivael.dev — AXIOM Benchmark Lab (static) ──────────────────────
+checkmyllm.orivael.dev {
+    encode gzip
+    root * /opt/sites/benchlab
+    try_files {path} {path}/index.html /index.html
+    file_server
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.orivael.dev"
+        -Server
+    }
+    log {
+        output stdout
+        format json
+    }
+}
+
+# ── researchengine.orivael.dev — Research Console (static) ─────────────────────
+researchengine.orivael.dev {
+    encode gzip
+
+    # API -> research backend (NIM llama-3.3-70b). SSE-friendly streaming.
+    @api path /api/* /help /docs /openapi.json /redoc
+    handle @api {
+        reverse_proxy axiom-research:8765 {
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-For   {remote_host}
+            header_up X-Accel-Buffering no
+            flush_interval -1
+            transport http {
+                response_header_timeout 300s
+                read_timeout            300s
+            }
+        }
+    }
+
+    # Static research console for everything else.
+    handle {
+        root * /opt/sites/researchengine
+        try_files {path} {path}/index.html /index.html
+        file_server
     }
 
     header {
@@ -176,10 +250,102 @@ srdstudio.orivael.dev {
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "SAMEORIGIN"
         Referrer-Policy           "strict-origin-when-cross-origin"
-        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.orivael.dev"
         -Server
     }
+    log {
+        output stdout
+        format json
+    }
+}
 
+# ── osconsole.orivael.dev — Orivael OS Console (shield root + /governance) ────
+osconsole.orivael.dev {
+    encode gzip
+    root * /opt/sites/osconsole
+    try_files {path} {path}/index.html /index.html
+    file_server
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https: http://localhost:8001"
+        -Server
+    }
+    log {
+        output stdout
+        format json
+    }
+}
+
+
+# ── hellooperator.online — Hello Operator (governed chatbot, reverse-proxied) ──
+hellooperator.online, www.hellooperator.online {
+    encode gzip
+    reverse_proxy hello-operator:8800 {
+        header_up X-Forwarded-Proto https
+        header_up X-Accel-Buffering no
+        flush_interval -1
+        transport http {
+            response_header_timeout 0s
+            read_timeout            0s
+        }
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+    log {
+        output stdout
+        format json
+    }
+}
+
+
+# ── lab.orivael.dev — AXIOM Web UI (evolution loop, reverse-proxied, SSE) ──────
+lab.orivael.dev {
+    encode gzip
+    reverse_proxy axiom-studio:8501 {
+        header_up X-Forwarded-Proto https
+        header_up X-Accel-Buffering no
+        flush_interval -1
+        transport http {
+            response_header_timeout 0s
+            read_timeout            0s
+        }
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+    log {
+        output stdout
+        format json
+    }
+}
+
+
+# ── projectx.orivael.dev — AXIOM/Orivael React dashboard (static SPA) ──────────
+projectx.orivael.dev {
+    encode gzip
+    root * /opt/sites/projectx
+    try_files {path} /index.html
+    file_server
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https:"
+        -Server
+    }
     log {
         output stdout
         format json

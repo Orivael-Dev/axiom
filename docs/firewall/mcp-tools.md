@@ -2,7 +2,7 @@
 
 Axiom ships an MCP (Model Context Protocol) server alongside the REST
 firewall. Drop it into Claude Desktop, Claude Code, Cursor, or any
-JSON-RPC stdio client and get 13 signed tools native to your editor —
+JSON-RPC stdio client and get 23 signed tools native to your editor —
 no separate service to host, no extra API key to mint.
 
 Every tool result body carries an `hmac_signature` field. Re-verify it
@@ -25,7 +25,7 @@ The MCP tools are for everything around that:
 You can call any tool from inside your editor without writing a curl,
 without spinning up a worker, without leaving the file you're editing.
 
-## The 13 tools
+## The 23 tools
 
 ### Core (5)
 
@@ -46,9 +46,29 @@ without spinning up a worker, without leaving the file you're editing.
 | `axiom_cmaa_route` | ORVL-017 | Route a constitutional packet through the multi-agent orchestrator. HARM / DECEIVE refused before reaching the orchestrator; bonded-pair revocations short-circuit authority without rotating keys. |
 | `axiom_cmaa_fleet` | ORVL-017 | Inspect fleet trust levels, suspended containers, review queue depth. |
 | `axiom_shield` | ORVL-013 | Drive the OS Shield daemon — constitutional ransomware defence that stops attackers at the enumeration stage. Actions: `status`, `tick`, `restore`. |
-| `axiom_phone_gate` | ORVL-019 | Run text through the Sovereign Phone constitutional coprocessor. `out` gates outbound queries; `in` gates inbound cloud responses. |
+| `axiom_phone_gate` | ORVL-019 | Run text through the Sovereign Phone constitutional coprocessor for BYOD and edge deployments. `out` gates outbound queries (PII redaction + intent pre-check); `in` gates inbound cloud responses (manipulation + privacy screening); `trajectory` scores a single utterance through the Hello Operator call-trajectory detector. |
 | `axiom_axm` | ORVL-023 | Operate an `.AXM` container — successor-to-GGUF format treating models as living execution graphs with signed skill delegates and proof ledgers. Actions: `inspect`, `verify`, `route`. |
 | `axiom_cpi` | ORVL-022 | Drive the Constitutional Physical Intelligence agent — toddler-reflex / supervisor / curriculum / examiner stack for robotics, prosthetics, vehicles. Actions: `stability`, `classify`, `simulate`, `pickup`, `status`. |
+
+### AX OS building blocks (9)
+
+| Tool | Description |
+|---|---|
+| `axiom_memory` | Constitutional memory (ORVL-015) — local-first recall over signed, compressed memory packets. Actions: `remember`, `recall`, `stats`. |
+| `axiom_workspace` | Assemble an adaptive workspace from a goal — intent-gated pre-flight check, closest memory recall, signed WorkspaceContext. |
+| `axiom_ledger` | Append-only signed audit log. Actions: `log` (record governance event), `list` (query with filters), `verify` (re-verify all rows). |
+| `axiom_marketplace` | Signed-agent marketplace with live-revocable bonded authority. Actions: `verify`, `sandbox_install`, `review`, `approve`, `revoke`, `authority`. |
+| `axiom_mkb` | Modular Constitutional Knowledge Blocks (ORVL-004) — parse `.axiom` specs into typed HMAC-signed blocks. Actions: `register`, `find`, `list`. |
+| `axiom_cas` | Constitutional Adversarial Sandbox (ORVL-008) — blue-team detectors over attack payloads; fix proposals for weak regions. Actions: `defend`, `report`. |
+| `axiom_crl` | Constitutional Reinforcement Learning reward (ORVL-011) — governance scores → signed scalar reward. Actions: `compute`, `score`. |
+| `axiom_immune` | Constitutional Immune System (ORVL-012) — antibody detectors over a payload: guard-pattern, manifold-distance, HMAC violation, CANNOT_MUTATE, semantic similarity. |
+| `axiom_fusion` | Fuse an EventToken's modality layers (text / audio / video / physics / governance) into a signed FusedIntent — each layer votes intent signals weighted by confidence. |
+
+### Research Pipeline (1)
+
+| Tool | Description |
+|---|---|
+| `axiom_research` | 9-agent constitutional research pipeline: hypothesis → literature → simulation → critic → safety → ethics → data → experiment → report. Safety and Ethics agents can HALT early if critical risks are detected. Returns per-step signed manifests. Uses the active NIM or Anthropic backend. |
 
 ## Install
 
@@ -80,7 +100,7 @@ on macOS, or `%APPDATA%\Claude\claude_desktop_config.json` on Windows:
 }
 ```
 
-Restart Claude Desktop. The 13 tools appear in the tool menu.
+Restart Claude Desktop. The 23 tools appear in the tool menu.
 
 ### Claude Code
 
@@ -139,7 +159,7 @@ AXIOM_MASTER_KEY=<hex> python3 axiom_mcp_server.py
 
 A machine-readable description of the server lives at
 [`orivael-dev.github.io/axiom/mcp.json`](https://orivael-dev.github.io/axiom/mcp.json) —
-13 tool entries with input schemas, four install snippets, signing
+23 tool entries with input schemas, four install snippets, signing
 metadata. Curl it, grep the right block, paste into your client:
 
 ```bash

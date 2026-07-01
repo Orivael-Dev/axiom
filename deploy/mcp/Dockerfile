@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir --target=/install \
     fastapi==0.115.0 \
     uvicorn[standard]==0.30.6 \
-    httpx==0.27.2
+    httpx==0.27.2 openai anthropic
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
@@ -38,6 +38,23 @@ COPY axiom_intent_classifier.py ./
 COPY axiom_latent_v2.py         ./
 COPY axiom_qrf.py               ./
 COPY axiom_spec_linter.py       ./
+COPY axiom_research_pipeline.py ./
+COPY axiom_constitutional/ ./axiom_constitutional/
+COPY axiom_certify.py ./
+COPY axiom_cbv.py ./
+COPY axiom_mkb.py ./
+COPY axiom_redact.py ./
+COPY axiom_latent.py ./
+COPY axiom_semantic_observable.py ./
+COPY axiom_conversation_graph.py ./
+COPY axiom_cmaa.py ./
+COPY axiom_memory_engine.py ./
+COPY axiom_language.py ./
+COPY axiom_marketplace.py ./
+COPY axiom_sovereign_phone.py ./
+COPY axiom_cpi.py ./
+COPY axiom_intent_gate.py ./
+COPY axiom_firewall/ ./axiom_firewall/
 COPY axiom_files/               ./axiom_files/
 COPY packs/                     ./packs/
 

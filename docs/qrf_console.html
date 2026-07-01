@@ -121,9 +121,9 @@ select{background:var(--bg);border:1px solid var(--edge);border-radius:5px;color
         <button class="btn-run" id="btn-forecast">&#9654; Forecast</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-sm" id="btn-demo">Load Demo</button>
-        <button class="btn-sm" id="btn-hanta-demo" style="border-color:var(--gold);color:var(--gold)">&#9888; Hantavirus Live Demo</button>
-        <button class="btn-sm" id="btn-business-demo" style="border-color:var(--green);color:var(--green)">&#9670; EU AI Act Demo</button>
+        <button class="btn-sm" id="btn-demo" title="Load offline example data — no API required">Load Example (offline)</button>
+        <button class="btn-sm" id="btn-hanta-demo" title="Load offline hantavirus scenario example" style="border-color:var(--gold);color:var(--gold)">&#9888; Hantavirus Example</button>
+        <button class="btn-sm" id="btn-business-demo" title="Load offline EU AI Act scenario example" style="border-color:var(--green);color:var(--green)">&#9670; EU AI Act Example</button>
         <button class="btn-sm" id="btn-go-branches">View Branches</button>
         <button class="btn-sm" id="btn-go-manifold">View Manifold</button>
       </div>
@@ -230,7 +230,7 @@ select{background:var(--bg);border:1px solid var(--edge);border-radius:5px;color
     <div class="card-body" style="font-family:'IBM Plex Mono',monospace;font-size:11px">
       <div style="margin-bottom:14px">
         <div style="color:var(--mgray);margin-bottom:5px">AXIOM Guard API Endpoint</div>
-        <input class="prompt-area" id="endpoint" value="http://localhost:8001" style="height:36px;font-size:11px">
+        <input class="prompt-area" id="endpoint" value="https://firewall.orivael.dev" style="height:36px;font-size:11px">
       </div>
       <div style="margin-bottom:14px">
         <div style="color:var(--mgray);margin-bottom:5px">Constitutional Distance Warning Threshold</div>
@@ -373,7 +373,7 @@ function updateDomain() {
   document.getElementById('branch-count-badge').textContent = 'N='+(nMap[dom]||4);
 }
 
-function loadDemo(){QRF_DATA=DEMO;renderAll();showScreen('forecast',document.getElementById('nb-forecast'));}
+function loadDemo(){QRF_DATA=DEMO;renderAll();showScreen('forecast',document.getElementById('nb-forecast'));document.getElementById('mode-badge').textContent='OFFLINE EXAMPLE';}
 function loadHantaDemo(){
   QRF_DATA=DEMO_HANTA;
   document.getElementById('domain-select').value='medical';
@@ -383,6 +383,7 @@ function loadHantaDemo(){
   showScreen('forecast',document.getElementById('nb-forecast'));
   var wb=document.getElementById('fan-winner-badge');
   if(wb) wb.textContent='RivalBranch wins';
+  document.getElementById('mode-badge').textContent='OFFLINE EXAMPLE';
 }
 function loadBusinessDemo(){
   QRF_DATA=DEMO_BUSINESS;
@@ -393,6 +394,7 @@ function loadBusinessDemo(){
   showScreen('forecast',document.getElementById('nb-forecast'));
   var wb=document.getElementById('fan-winner-badge');
   if(wb) wb.textContent='ComplianceBranch wins';
+  document.getElementById('mode-badge').textContent='OFFLINE EXAMPLE';
   // Remove hanta banner if present
   var hb=document.getElementById('hanta-context-card');
   if(hb) hb.remove();
@@ -413,18 +415,22 @@ async function runForecast() {
   var n      = document.getElementById('n-select').value;
   var ep     = document.getElementById('endpoint').value.trim();
 
-  if (!prompt) { loadDemo(); return; }
+  if (!prompt) {
+    document.getElementById('fan-winner-badge').textContent = 'Enter a prompt';
+    return;
+  }
 
   document.getElementById('fan-winner-badge').textContent = 'Running...';
   document.getElementById('stat-branches').textContent = '...';
   document.getElementById('mode-badge').textContent = 'THINKING';
 
+  var apiErr = null;
   try {
     var url = ep + '/qrf/run?prompt=' +
       encodeURIComponent(prompt) +
       '&domain=' + domain +
       '&n=' + n;
-    var r = await fetch(url);
+    var r = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (r.ok) {
       var data = await r.json();
       if (data.branches && data.branches.length) {
@@ -433,11 +439,36 @@ async function runForecast() {
         renderAll();
         return;
       }
+      apiErr = 'API returned no branches (HTTP ' + r.status + ')';
+    } else {
+      apiErr = 'API error HTTP ' + r.status;
     }
-  } catch(e) { console.log('QRF API:', e); }
+  } catch(e) {
+    apiErr = e.name === 'TimeoutError'
+      ? 'Request timed out (15s) — is the Guard API running at ' + ep + '?'
+      : 'Cannot reach ' + ep + ' — ' + e.message;
+  }
 
-  document.getElementById('mode-badge').textContent = 'DEMO';
-  loadDemo();
+  // Do NOT fall back to generated fake data — show a clear connection error
+  document.getElementById('mode-badge').textContent = 'OFFLINE';
+  document.getElementById('fan-winner-badge').textContent = 'API unreachable';
+  document.getElementById('stat-branches').textContent = '—';
+  document.getElementById('stat-killed').textContent  = '—';
+  document.getElementById('stat-top-prob').textContent = '—';
+  var fc = document.getElementById('screen-forecast');
+  var errCard = document.getElementById('qrf-api-error');
+  if (!errCard) {
+    errCard = document.createElement('div');
+    errCard.id = 'qrf-api-error';
+    errCard.style.cssText = 'background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:14px 16px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:11px;line-height:1.8';
+    if (fc) fc.insertBefore(errCard, fc.firstChild);
+  }
+  errCard.innerHTML = '<span style="color:#ef4444;font-weight:700">&#9888; API UNREACHABLE</span><br>' +
+    '<span style="color:#64748b">' + (apiErr || 'Unknown error') + '</span><br>' +
+    '<span style="color:#64748b">Start: <span style="color:#e2e8f0">uvicorn axiom_guard_api:app --host 0.0.0.0 --port 8001</span></span><br>' +
+    '<span style="color:#64748b">Or load an offline example: </span>' +
+    '<button onclick="document.getElementById(\'qrf-api-error\').remove();loadDemo()" ' +
+    'style="margin-left:4px;padding:2px 8px;background:transparent;border:1px solid #64748b;border-radius:4px;color:#e2e8f0;font-family:inherit;font-size:10px;cursor:pointer">Load Example</button>';
 }
 
 function generateOfflineForecast(prompt){
@@ -523,7 +554,9 @@ function renderAll(){
   document.getElementById('stat-top-prob').textContent=(winner.prob*100).toFixed(0)+'%';
   document.getElementById('fan-winner-badge').textContent=winner.id;
   document.getElementById('branch-count-badge').textContent='N='+(d.branches.length+d.killed.length);
-  document.getElementById('mode-badge').textContent='LIVE';
+  // Only promote to LIVE when caller hasn't already set OFFLINE EXAMPLE / SIMULATED
+  var mb=document.getElementById('mode-badge');
+  if(mb && mb.textContent!=='OFFLINE EXAMPLE' && mb.textContent!=='SIMULATED') mb.textContent='LIVE';
   drawFan(); renderWinner(winner); renderBranches(); renderManifold(); renderKills(); addHistory();
 }
 

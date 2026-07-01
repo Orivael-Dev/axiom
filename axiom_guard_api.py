@@ -15,7 +15,7 @@ Three modes:
   BIDIRECTIONAL — both (maximum protection)
 
 Usage:
-  pip install fastapi uvicorn anthropic axiom-constitutional
+  pip install fastapi uvicorn anthropic openai axiom-constitutional
 
   # Start the Guard API
   uvicorn axiom_guard_api:app --host 0.0.0.0 --port 8001
@@ -69,6 +69,13 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
+
+# ── Try to import OpenAI SDK for NIM / OpenAI-compatible backends
+try:
+    from openai import OpenAI as OpenAIClient
+    OPENAI_SDK_AVAILABLE = True
+except ImportError:
+    OPENAI_SDK_AVAILABLE = False
 
 # ── Latent reasoning engine ────────────────────────────────────
 try:
@@ -126,6 +133,43 @@ try:
     OS_SHIELD_AVAILABLE = True
 except ImportError:
     OS_SHIELD_AVAILABLE = False
+
+# ── Flight Recorder ──────────────────────────────────────────
+try:
+    from axiom_firewall.flight_recorder import (
+        record_decision,
+        search_decisions,
+        fetch_decision,
+        replay_decision,
+        export_decisions,
+        set_alert_config,
+        get_alert_config,
+        AlertConfig,
+    )
+    FLIGHT_RECORDER_AVAILABLE = True
+except ImportError:
+    FLIGHT_RECORDER_AVAILABLE = False
+
+# ── Data Policy ───────────────────────────────────────────────
+try:
+    from axiom_firewall.data_policy import (
+        is_allowed as _dp_is_allowed,
+        save_agent_rule,
+        get_agent_rule,
+        list_agent_rules,
+        delete_agent_rule,
+        AgentAccessRule,
+    )
+    DATA_POLICY_AVAILABLE = True
+except ImportError:
+    DATA_POLICY_AVAILABLE = False
+
+# ── Right-to-erasure ─────────────────────────────────────────
+try:
+    from axiom_firewall.db import erase_subject_data
+    ERASURE_AVAILABLE = True
+except ImportError:
+    ERASURE_AVAILABLE = False
 
 # ── Constants ─────────────────────────────────────────────────
 from axiom_signing import derive_key
@@ -314,6 +358,86 @@ def check_constitutional(text: str, agents: list) -> dict:
     }
 
 
+def _llm_backend() -> Optional[str]:
+    """Detect which LLM backend is configured via environment.
+
+    Priority: NIM (NVIDIA NIM / OpenAI-compatible) > Anthropic.
+    Returns "nim", "anthropic", or None.
+    """
+    nim_key = os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+    if nim_key and OPENAI_SDK_AVAILABLE:
+        return "nim"
+    if os.environ.get("ANTHROPIC_API_KEY") and ANTHROPIC_AVAILABLE:
+        return "anthropic"
+    return None
+
+
+def _default_model(backend: Optional[str]) -> str:
+    if backend == "nim":
+        return os.environ.get("NIM_MODEL", "deepseek-ai/deepseek-r1")
+    return guard_config.get("anthropic_model", "claude-sonnet-4-6")
+
+
+def _call_llm(
+    *,
+    prompt: Optional[str] = None,
+    system: Optional[str] = None,
+    model: Optional[str] = None,
+    max_tokens: int = 1000,
+    messages: Optional[list] = None,
+) -> str:
+    """Call the configured LLM backend. Returns the response text.
+
+    Supports NIM (OpenAI-compatible, e.g. DeepSeek V4 Pro) and Anthropic.
+    Backend is selected by environment variables:
+      NIM_API_KEY / NVIDIA_API_KEY  → NIM via NIM_BASE_URL
+      ANTHROPIC_API_KEY             → Anthropic SDK
+    """
+    backend = _llm_backend()
+    if backend is None:
+        raise HTTPException(
+            503,
+            "No LLM backend configured. Set NIM_API_KEY (for NIM/DeepSeek) "
+            "or ANTHROPIC_API_KEY (for Anthropic).",
+        )
+
+    resolved_model = model or _default_model(backend)
+
+    if backend == "nim":
+        nim_key  = os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+        base_url = os.environ.get("NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+        client   = OpenAIClient(base_url=base_url, api_key=nim_key)
+        if messages is None:
+            msgs: list = []
+            if system:
+                msgs.append({"role": "system", "content": system})
+            msgs.append({"role": "user", "content": prompt or ""})
+        else:
+            msgs = messages
+        resp = client.chat.completions.create(
+            model=resolved_model, max_tokens=max_tokens, messages=msgs
+        )
+        return resp.choices[0].message.content or ""
+
+    # Anthropic path
+    client_a = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    kwargs: dict = {"model": resolved_model, "max_tokens": max_tokens}
+    if messages is not None:
+        anthropic_msgs   = [m for m in messages if m.get("role") != "system"]
+        system_from_msgs = next(
+            (m["content"] for m in messages if m.get("role") == "system"), None
+        )
+        kwargs["messages"] = anthropic_msgs
+        if system_from_msgs:
+            kwargs["system"] = system_from_msgs
+    else:
+        kwargs["messages"] = [{"role": "user", "content": prompt or ""}]
+        if system:
+            kwargs["system"] = system
+    resp_a = client_a.messages.create(**kwargs)
+    return resp_a.content[0].text
+
+
 def sign_manifest(manifest: dict) -> str:
     """Generate HMAC-SHA256 signature for a manifest."""
     sig_data = {k: v for k, v in manifest.items() if k != "signature"}
@@ -424,6 +548,7 @@ class CCGSeedRequest(BaseModel):
 @app.get("/guard/status")
 async def status():
     """Health check and configuration summary."""
+    _backend = _llm_backend()
     return {
         "status":          "operational",
         "version":         VERSION,
@@ -431,7 +556,12 @@ async def status():
         "mode":            guard_config["mode"],
         "active_agents":   guard_config["active_agents"],
         "manifests_stored": len(MANIFEST_STORE),
+        "llm_backend":     _backend or "none",
+        "llm_model":       _default_model(_backend),
         "anthropic_ready": ANTHROPIC_AVAILABLE and bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "nim_ready":       OPENAI_SDK_AVAILABLE and bool(
+            os.environ.get("NIM_API_KEY") or os.environ.get("NVIDIA_API_KEY")
+        ),
         "timestamp":       datetime.utcnow().isoformat() + "Z",
         "patent":          "ORVL-001-PROV · ORVL-002-PROV",
         "install":         "pip install axiom-constitutional",
@@ -525,23 +655,23 @@ async def proxy(req: ProxyRequest):
 
     Flow:
       1. Check prompt (input filter)
-      2. If safe: send to LLM (Anthropic)
+      2. If safe: send to configured LLM backend
       3. Check response (output filter)
       4. Return verified response + manifests
 
-    Requires: ANTHROPIC_API_KEY environment variable
+    Requires: NIM_API_KEY (for NIM/DeepSeek) or ANTHROPIC_API_KEY
     """
-    if not ANTHROPIC_AVAILABLE:
-        raise HTTPException(503, "Anthropic package not installed. pip install anthropic")
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set")
+    if _llm_backend() is None:
+        raise HTTPException(
+            503,
+            "No LLM backend configured. Set NIM_API_KEY (for NIM/DeepSeek) "
+            "or ANTHROPIC_API_KEY (for Anthropic).",
+        )
 
     t0         = time.time()
     request_id = str(uuid.uuid4())[:8]
     agents     = req.agents or guard_config["active_agents"]
-    model      = req.model or guard_config["anthropic_model"]
+    model      = req.model or _default_model(_llm_backend())
 
     result = {
         "request_id":    request_id,
@@ -576,17 +706,14 @@ async def proxy(req: ProxyRequest):
 
     # Step 2 — Call LLM
     try:
-        t2     = time.time()
-        client = Anthropic(api_key=api_key)
-        msgs   = [{"role": "user", "content": req.prompt}]
-        kwargs = {"model": model, "max_tokens": 1000, "messages": msgs}
-        if req.system:
-            kwargs["system"] = req.system
-
-        resp        = client.messages.create(**kwargs)
-        llm_text    = resp.content[0].text
-        llm_ms      = int((time.time() - t2) * 1000)
-        result["llm_latency_ms"] = llm_ms
+        t2       = time.time()
+        llm_text = _call_llm(
+            prompt=req.prompt, system=req.system,
+            model=model, max_tokens=1000,
+        )
+        result["llm_latency_ms"] = int((time.time() - t2) * 1000)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(502, f"LLM call failed: {e}")
 
@@ -673,6 +800,7 @@ async def list_agents():
             "callguard": {
                 "description": "Scam call protection — 7 constitutional blocks",
                 "certified":   "21/21 tests",
+                "trust_level": 4,
                 "blocks": ["IRS_PAYMENT_DEMAND", "GIFT_CARD_PAYMENT", "WARRANT_THREAT",
                            "SSA_NUMBER_SUSPENDED", "MEDICARE_CARD_REQUEST",
                            "BANK_SPOOFING", "TECH_SUPPORT_UNSOLICITED"],
@@ -680,23 +808,27 @@ async def list_agents():
             "medical": {
                 "description": "Medical information safety — dangerous advice blocks",
                 "certified":   "26/26 tests",
+                "trust_level": 4,
                 "blocks": ["DANGEROUS_MEDICAL_ADVICE", "STOP_PRESCRIBED_MEDICATION",
                            "REPLACE_CHEMOTHERAPY", "VACCINE_MISINFORMATION"],
             },
             "electionguard": {
                 "description": "Election integrity — AP-only race calls",
                 "certified":   "26/26 tests",
+                "trust_level": 4,
                 "blocks": ["EXIT_POLL_AS_RESULT", "SOCIAL_MEDIA_VOTE_COUNT",
                            "SYNTHETIC_ELECTION_CONTENT"],
             },
             "truthwatcher": {
                 "description": "News verification — 5-tier source registry",
                 "certified":   "21/21 tests",
+                "trust_level": 3,
                 "blocks": ["TIER5_SOURCE", "FABRICATED_STATISTIC"],
             },
             "retailwatcher": {
                 "description": "E-commerce fraud — fake reviews + price fraud",
                 "certified":   "26/26 tests",
+                "trust_level": 3,
                 "blocks": ["FAKE_REVIEWS", "GHOST_PRICE", "COUNTERFEIT_SIGNAL"],
             },
         },
@@ -992,13 +1124,13 @@ async def openai_chat_proxy(request: Request):
     """OpenAI-compatible endpoint — proxies through constitutional guard.
 
     iFixAi and other OpenAI-speaking tools can hit this endpoint.
-    Flow: input guard → Anthropic LLM → output guard → OpenAI-format response.
+    Flow: input guard → configured LLM backend → output guard → OpenAI-format response.
     """
     body = await request.json()
     messages = body.get("messages", [])
     last_msg = messages[-1]["content"] if messages else ""
     system_msg = next((m["content"] for m in messages if m["role"] == "system"), None)
-    model = body.get("model", guard_config["anthropic_model"])
+    model = body.get("model") or _default_model(_llm_backend())
 
     # Input guard
     agents = guard_config["active_agents"]
@@ -1013,20 +1145,17 @@ async def openai_chat_proxy(request: Request):
                 "message": {"role": "assistant",
                 "content": f"BLOCKED: {block_reason}{_CITE}"}}]}
 
-    # Proxy to Anthropic
-    if not ANTHROPIC_AVAILABLE:
-        raise HTTPException(503, "anthropic package not installed")
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(503, "ANTHROPIC_API_KEY not set")
-    client = Anthropic(api_key=api_key)
-    kwargs = {"model": model, "max_tokens": int(body.get("max_tokens", 1024)),
-              "messages": [{"role": m["role"], "content": m["content"]}
-                           for m in messages if m["role"] != "system"]}
-    if system_msg:
-        kwargs["system"] = system_msg
-    resp = client.messages.create(**kwargs)
-    llm_text = resp.content[0].text
+    # Proxy to configured LLM backend
+    try:
+        llm_text = _call_llm(
+            messages=[{"role": m["role"], "content": m["content"]} for m in messages],
+            model=model,
+            max_tokens=int(body.get("max_tokens", 1024)),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"LLM call failed: {e}")
 
     # Output guard
     output_check = check_constitutional(llm_text, agents)
@@ -1195,6 +1324,352 @@ async def vulnguard_status():
         "top_vulnerabilities": _vulnguard_state["last_candidates"][:10],
         "scan_count":          _vulnguard_state["scan_count"],
     }
+
+
+# ════════════════════════════════════════════════════════════
+# FLIGHT RECORDER ENDPOINTS
+# ════════════════════════════════════════════════════════════
+
+class _FRSearchParams(BaseModel):
+    verdict: Optional[str] = None
+    intent_class: Optional[str] = None
+    since: Optional[str] = None
+    until: Optional[str] = None
+    limit: int = Field(default=100, ge=1, le=10000)
+    offset: int = Field(default=0, ge=0)
+
+
+@app.post("/flight_recorder/search")
+async def fr_search(params: _FRSearchParams,
+                    x_axiom_tenant: Optional[str] = Header(None)):
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    return search_decisions(
+        tenant_id,
+        verdict=params.verdict,
+        intent_class=params.intent_class,
+        since=params.since,
+        until=params.until,
+        limit=params.limit,
+        offset=params.offset,
+    )
+
+
+@app.get("/flight_recorder/decision/{decision_id}")
+async def fr_get_decision(decision_id: str,
+                          x_axiom_tenant: Optional[str] = Header(None)):
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    rec = fetch_decision(tenant_id, decision_id)
+    if not rec:
+        raise HTTPException(404, f"Decision not found: {decision_id}")
+    return rec
+
+
+@app.post("/flight_recorder/replay/{decision_id}")
+async def fr_replay(decision_id: str,
+                    x_axiom_tenant: Optional[str] = Header(None)):
+    """Re-evaluate a logged decision against the current loaded policy."""
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    classifier = _classifier if "_classifier" in dir() else None
+    return replay_decision(tenant_id, decision_id, current_classifier=classifier)
+
+
+@app.get("/flight_recorder/export")
+async def fr_export(
+    fmt: str = "json",
+    verdict: Optional[str] = None,
+    intent_class: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = 10000,
+    x_axiom_tenant: Optional[str] = Header(None),
+):
+    """Export decisions as JSON lines, CSV, Splunk HEC, or Datadog Logs."""
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    content, content_type = export_decisions(
+        tenant_id, fmt,
+        verdict=verdict,
+        intent_class=intent_class,
+        since=since,
+        until=until,
+        limit=limit,
+    )
+    from fastapi.responses import Response
+    return Response(content=content, media_type=content_type)
+
+
+class _AlertConfigBody(BaseModel):
+    webhook_url: Optional[str] = None
+    slack_webhook_url: Optional[str] = None
+    email_to: Optional[str] = None
+    email_from: Optional[str] = None
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    alert_on_verdicts: list[str] = ["block"]
+    alert_on_intents: list[str] = []
+
+
+@app.put("/flight_recorder/alerts")
+async def fr_set_alerts(body: _AlertConfigBody,
+                        x_axiom_tenant: Optional[str] = Header(None)):
+    """Configure outbound alert destinations (webhook / email / Slack)."""
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    cfg = AlertConfig(**body.dict())
+    set_alert_config(tenant_id, cfg)
+    return {"status": "ok", "tenant_id": tenant_id}
+
+
+@app.get("/flight_recorder/alerts")
+async def fr_get_alerts(x_axiom_tenant: Optional[str] = Header(None)):
+    if not FLIGHT_RECORDER_AVAILABLE:
+        raise HTTPException(503, "Flight Recorder not available")
+    tenant_id = x_axiom_tenant or "default"
+    cfg = get_alert_config(tenant_id)
+    d = cfg.__dict__.copy()
+    d.pop("smtp_password", None)  # never echo back credentials
+    return {"tenant_id": tenant_id, "alert_config": d}
+
+
+# ════════════════════════════════════════════════════════════
+# DATA POLICY ENDPOINTS
+# ════════════════════════════════════════════════════════════
+
+class _AgentRuleBody(BaseModel):
+    agent_id: str
+    allowed_data_classes: list[str] = []
+    blocked_data_classes: list[str] = []
+    allowed_actions: list[str] = []
+    blocked_actions: list[str] = []
+
+
+@app.put("/data_policy/rule")
+async def dp_save_rule(body: _AgentRuleBody,
+                       x_axiom_tenant: Optional[str] = Header(None)):
+    """Create or replace an agent access rule."""
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    rule = AgentAccessRule(
+        rule_id=str(uuid.uuid4()),
+        agent_id=body.agent_id,
+        allowed_data_classes=body.allowed_data_classes,
+        blocked_data_classes=body.blocked_data_classes,
+        allowed_actions=body.allowed_actions,
+        blocked_actions=body.blocked_actions,
+    )
+    saved = save_agent_rule(tenant_id, rule)
+    return saved.to_dict()
+
+
+@app.get("/data_policy/rules")
+async def dp_list_rules(x_axiom_tenant: Optional[str] = Header(None)):
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    rules = list_agent_rules(tenant_id)
+    return {"rules": [r.to_dict() for r in rules]}
+
+
+@app.get("/data_policy/rule/{agent_id}")
+async def dp_get_rule(agent_id: str,
+                      x_axiom_tenant: Optional[str] = Header(None)):
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    rule = get_agent_rule(tenant_id, agent_id)
+    if not rule:
+        raise HTTPException(404, f"No rule for agent: {agent_id}")
+    return rule.to_dict()
+
+
+@app.delete("/data_policy/rule/{agent_id}")
+async def dp_delete_rule(agent_id: str,
+                         x_axiom_tenant: Optional[str] = Header(None)):
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    deleted = delete_agent_rule(tenant_id, agent_id)
+    return {"deleted": deleted, "agent_id": agent_id}
+
+
+@app.post("/data_policy/check")
+async def dp_check(
+    agent_id: str,
+    action: str,
+    data_class: str,
+    x_axiom_tenant: Optional[str] = Header(None),
+):
+    """Check whether an agent is allowed to perform action on a data class."""
+    if not DATA_POLICY_AVAILABLE:
+        raise HTTPException(503, "Data Policy not available")
+    tenant_id = x_axiom_tenant or "default"
+    verdict = _dp_is_allowed(tenant_id, agent_id, action, data_class)
+    return {
+        "allowed": verdict.allowed,
+        "agent_id": verdict.agent_id,
+        "action": verdict.action,
+        "data_class": verdict.data_class,
+        "reason": verdict.reason,
+    }
+
+
+# ════════════════════════════════════════════════════════════
+# RIGHT-TO-ERASURE ENDPOINT
+# ════════════════════════════════════════════════════════════
+
+@app.delete("/data_gate/erasure")
+async def data_gate_erasure(
+    subject_id: str,
+    x_axiom_tenant: Optional[str] = Header(None),
+):
+    """Erase all decision records containing subject_id.
+
+    Returns a signed deletion certificate.  Operates on the structured
+    decision log only — model weight erasure requires retraining.
+    """
+    if not ERASURE_AVAILABLE:
+        raise HTTPException(503, "Erasure not available")
+    tenant_id = x_axiom_tenant or "default"
+    cert = erase_subject_data(tenant_id, subject_id)
+    return cert
+
+
+
+# ════════════════════════════════════════════════════════════
+# PHONE GATE / BYOD  (ORVL-019)
+# ════════════════════════════════════════════════════════════
+#
+# Exposes the AXIOM Sovereign Phone Architecture (ASPA) pipeline as REST
+# endpoints so BYOD clients (Android app, Nano test client) can call the
+# constitutional coprocessor without bundling the full Python stack.
+#
+# BYOD Nano env vars:
+#   NANO_BASE_URL   OpenAI-compatible local endpoint (default: http://localhost:11434/v1)
+#   NANO_MODEL      model name (default: qwen2.5:0.5b)
+#
+# If NANO_BASE_URL / NANO_MODEL are set on the Hetzner server they wire the
+# cloud-side Nano stub; for real BYOD the client runs NanoSLM locally and
+# only calls /phone/outbound + /phone/inbound for the coprocessor gates.
+
+_phone_singleton = None
+
+
+def _get_phone():
+    global _phone_singleton
+    if _phone_singleton is None:
+        try:
+            from axiom_sovereign_phone import SovereignPhone
+            _phone_singleton = SovereignPhone()
+        except Exception as exc:
+            raise HTTPException(503, f"SovereignPhone not available: {exc}")
+    return _phone_singleton
+
+
+class PhoneOutboundRequest(BaseModel):
+    text:       str
+    session_id: Optional[str]  = None
+    trajectory: Optional[list] = None
+
+
+class PhoneInboundRequest(BaseModel):
+    text:                str
+    session_id:          Optional[str]  = None
+    trajectory:          Optional[list] = None
+    redacted_categories: Optional[list] = None
+
+
+@app.post("/phone/outbound")
+async def phone_outbound(req: PhoneOutboundRequest):
+    """Outbound constitutional gate.
+
+    Classifies intent, redacts PII, and either blocks (HARM/DECEIVE) or
+    returns a signed OutboundDecision with the redacted text ready for
+    cloud transmission.  If the server has NANO_BASE_URL configured and
+    the query is a simple INFORM, also returns a local nano_answer so
+    the BYOD client can respond without a cloud round-trip.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.outbound_gate(
+        req.text, trajectory=req.trajectory, session_id=req.session_id
+    )
+    d = asdict(result)
+    d["blocked"] = "level" in d and d.get("level") is not None
+
+    # Local Nano answer for benign INFORM queries
+    if not d["blocked"] and d.get("intent_class") in ("INFORM", "CLARIFY"):
+        nano_answer = phone.neural.answer_locally(req.text)
+        if nano_answer:
+            d["nano_answer"]      = nano_answer
+            d["answered_locally"] = True
+    return d
+
+
+@app.post("/phone/inbound")
+async def phone_inbound(req: PhoneInboundRequest):
+    """Inbound constitutional gate.
+
+    Checks every cloud response for MANIPULATE/DECEIVE intent, monotonic
+    trajectory violations, and PII injection before the BYOD client displays
+    it to the user.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.inbound_gate(
+        req.text,
+        trajectory=req.trajectory,
+        redacted_categories=req.redacted_categories or [],
+        session_id=req.session_id,
+    )
+    d = asdict(result)
+    d["blocked"] = "level" in d and d.get("level") is not None
+    return d
+
+
+@app.get("/phone/status")
+async def phone_status():
+    """ASPA pipeline status — device fingerprint, ANF call count, Nano readiness."""
+    phone = _get_phone()
+    s = phone.status()
+    # Prefer env over SovereignPhone defaults for display
+    s["nano_base_url"] = os.environ.get("NANO_BASE_URL", s.get("nano_base_url", ""))
+    s["nano_model"]    = os.environ.get("NANO_MODEL",    s.get("nano_model", ""))
+    return s
+
+
+@app.post("/phone/call_trajectory")
+async def phone_call_trajectory(
+    session_id: str,
+    utterance:  str,
+    timestamp_s: float = 0.0,
+):
+    """Hello Operator — feed one call utterance and get a trajectory verdict.
+
+    Call repeatedly as the call develops. The coprocessor accumulates
+    session blocks and escalates L1 → L2 → L3 per ORVL-019 §4.
+    Returns the OutboundDecision or SovereignAlert for this utterance.
+    """
+    phone = _get_phone()
+    from dataclasses import asdict
+    result = phone.coprocessor.outbound_gate(
+        utterance, session_id=session_id
+    )
+    d = asdict(result)
+    d["blocked"]      = "level" in d and d.get("level") is not None
+    d["timestamp_s"]  = timestamp_s
+    d["session_id"]   = session_id
+    return d
 
 
 # ── Entry point ───────────────────────────────────────────────

@@ -61,6 +61,211 @@ Content-Type: application/json
 (Measured server-side, excluding network round-trip. Add 30 – 100 ms
 for global users connecting to the US region.)
 
+---
+
+## Data Gate
+
+All Data Gate endpoints require `Authorization: Bearer axfw_...` plus
+`X-Axiom-Tenant: <tenant_id>`.
+
+### `PUT /data_policy/rule`
+
+Create or replace the access rule for an agent.
+
+```http
+PUT /data_policy/rule
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+Content-Type: application/json
+
+{
+  "agent_id": "callguard",
+  "blocked_data_classes": ["PAN", "CVV", "SSN", "GDPR-9"],
+  "allowed_actions": ["read", "summarise"],
+  "blocked_actions": ["store", "forward", "log"]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `agent_id` | string | Identifies the agent this rule applies to. |
+| `blocked_data_classes` | string[] | Data class codes to deny (prefix-matched: `"GDPR-9"` blocks all `GDPR-9-*` sub-classes). |
+| `allowed_data_classes` | string[] | If non-empty, only these classes are allowed. Empty = allow all (subject to blocked list). |
+| `blocked_actions` | string[] | Actions to deny (case-insensitive: `"store"`, `"forward"`, `"log"`, etc.). |
+| `allowed_actions` | string[] | If non-empty, only these actions are allowed. |
+
+**Response `200 OK`:** the saved rule with `rule_id` and `created_at`.
+
+---
+
+### `POST /data_policy/check`
+
+Ask whether an agent is allowed to perform an action on a data class.
+
+```http
+POST /data_policy/check?agent_id=callguard&action=store&data_class=PAN
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+```
+
+**Response:**
+```json
+{
+  "allowed": false,
+  "agent_id": "callguard",
+  "action": "store",
+  "data_class": "PAN",
+  "reason": "blocked_data_class"
+}
+```
+
+`reason` values: `rule_allow` · `blocked_data_class` · `blocked_action` · `data_class_not_in_allowlist` · `action_not_in_allowlist` · `no_rule_sensitive_default_deny` · `no_rule_default_allow`
+
+---
+
+### `DELETE /data_gate/erasure`
+
+Right-to-erasure for a data subject. Deletes all decision records that
+contain the subject identifier and returns a signed deletion certificate.
+
+```http
+DELETE /data_gate/erasure?subject_id=user%40example.com
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+```
+
+**Response:**
+```json
+{
+  "cert_id": "uuid",
+  "tenant_id": "acme",
+  "subject_id_hash": "sha256(subject_id)",
+  "records_erased": 3,
+  "erased_at": "2026-06-04T12:00:00.000000",
+  "scope": "decision_log_only",
+  "limitation": "Latent encodings in model weights are outside scope...",
+  "signature": "hmac-sha256:..."
+}
+```
+
+The `signature` is HMAC-SHA256 over the certificate payload using `AXIOM_MASTER_KEY`. Present the certificate to a regulator as proof of erasure. The `scope` and `limitation` fields are required disclosures per GDPR Article 17(3)(e).
+
+---
+
+## Flight Recorder
+
+### `POST /flight_recorder/search`
+
+Search the decision log.
+
+```http
+POST /flight_recorder/search
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+Content-Type: application/json
+
+{
+  "verdict": "block",
+  "intent_class": "HARM",
+  "since": "2026-06-01T00:00:00",
+  "until": "2026-06-04T23:59:59",
+  "limit": 100,
+  "offset": 0
+}
+```
+
+All fields are optional. Returns `{"decisions": [...], "limit": N, "offset": N}`.
+Input/output text is **not included** in list results — fetch the individual record for full content.
+
+---
+
+### `GET /flight_recorder/decision/{decision_id}`
+
+Retrieve a full decision record including `input_text` and `output_text`.
+
+```http
+GET /flight_recorder/decision/d3f4a1b2-...
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+```
+
+---
+
+### `POST /flight_recorder/replay/{decision_id}`
+
+Re-evaluate a historical decision against the **current** loaded policy
+and return a delta report.
+
+```http
+POST /flight_recorder/replay/d3f4a1b2-...
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+```
+
+**Response:**
+```json
+{
+  "decision_id": "d3f4a1b2-...",
+  "original_verdict": "allow",
+  "original_intent_class": "INFORM",
+  "original_confidence": 0.72,
+  "original_timestamp": "2026-05-01T...",
+  "replay_verdict": "block",
+  "replay_intent_class": "HARM",
+  "replay_confidence": 0.94,
+  "policy_delta": true
+}
+```
+
+`policy_delta: true` means the current policy would have decided differently. Use this to detect regressions when tightening rules.
+
+---
+
+### `GET /flight_recorder/export`
+
+Export decisions in bulk for compliance or SIEM ingestion.
+
+```http
+GET /flight_recorder/export?fmt=csv&verdict=block&since=2026-06-01
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+```
+
+| `fmt` | Content-Type | Description |
+|---|---|---|
+| `json` | `application/x-ndjson` | One JSON object per line |
+| `csv` | `text/csv` | CSV with header row |
+| `splunk` | `application/x-ndjson` | Splunk HEC format: `{"time": "...", "event": {...}}` |
+| `datadog` | `application/json` | Datadog Logs JSON array |
+
+Additional query params: `verdict`, `intent_class`, `since`, `until`, `limit` (max 10 000 per request).
+
+---
+
+### `PUT /flight_recorder/alerts`
+
+Configure outbound alert destinations.
+
+```http
+PUT /flight_recorder/alerts
+Authorization: Bearer axfw_...
+X-Axiom-Tenant: acme
+Content-Type: application/json
+
+{
+  "webhook_url": "https://your-server.example/axiom-hook",
+  "slack_webhook_url": "https://hooks.slack.com/services/T.../B.../...",
+  "email_to": "secops@example.com",
+  "email_from": "axiom@orivael.dev",
+  "alert_on_verdicts": ["block"],
+  "alert_on_intents": ["HARM", "DECEIVE"]
+}
+```
+
+Alerts fire synchronously on `record_decision()` when the verdict/intent filters match. `smtp_password` is accepted on write but never returned on read.
+
+---
+
 ## `POST /signup`
 
 Browser-only — used by the dashboard. Not part of the public API.
@@ -72,6 +277,69 @@ Per-IP rate-limited: 5 attempts per hour. Exceeding returns 429 with a
 
 Browser-only — session-cookie auth for the dashboard. Not part of the
 public API.
+
+## `POST /research/run`
+
+Run the 9-agent constitutional research pipeline against a question.
+Safety and Ethics agents can HALT the pipeline early if critical risks
+are detected. All per-step results are HMAC-signed.
+
+Uses the same NIM > Anthropic backend as the guard API — configure
+`NIM_API_KEY` / `NVIDIA_API_KEY` for NIM or `ANTHROPIC_API_KEY` for
+Anthropic. `NIM_MODEL` controls the model when NIM is active.
+
+### Request
+
+```json
+{
+  "question": "Does intermittent fasting reduce inflammation?",
+  "steps": 9,
+  "model": null
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `question` | string | Research question to investigate |
+| `steps` | integer 1–9 | Number of pipeline steps (default 9) |
+| `model` | string \| null | Override model for all agents (optional) |
+
+### Response (`200 OK`)
+
+```json
+{
+  "question": "Does intermittent fasting reduce inflammation?",
+  "steps_completed": 9,
+  "halted": false,
+  "halt_reason": null,
+  "manifests": [...],
+  "context": {
+    "hypothesis": {...},
+    "literature": {...},
+    "simulation": {...},
+    "critique": {...},
+    "safety": {...},
+    "ethics": {...},
+    "data": {...},
+    "experiment": {...},
+    "report": {...}
+  }
+}
+```
+
+If `halted` is `true`, the pipeline stopped early (step 5 Safety or
+step 6 Ethics). `halt_reason` explains why. Steps after the halt are
+absent from `context`.
+
+### Errors
+
+| Code | Meaning |
+|---|---|
+| `400` | Empty question |
+| `500` | Pipeline error (backend unavailable, model error) |
+| `503` | ResearchPipeline not available — check server logs |
+
+---
 
 ## Billing endpoints
 

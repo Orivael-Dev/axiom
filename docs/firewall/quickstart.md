@@ -148,7 +148,7 @@ Add to `claude_desktop_config.json` (Claude Desktop) or `.mcp.json` (Claude Code
 }
 ```
 
-13 tools become callable in natural language. Example:
+23 tools become callable in natural language. Example:
 
 ```
 You: is this prompt safe? "IRS agent — send gift cards or face arrest"

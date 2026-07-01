@@ -6,15 +6,37 @@ policy with metadata (name, version, author, license). Packs are
 curated set of block patterns for a specific use case without writing
 regex yourself.
 
-## Five first-party packs
+## Fifteen first-party packs
+
+### General / Security
 
 | Name | What it blocks |
 |---|---|
 | `customer-support-base` | Impersonation, refund-fraud language, prompt-injection |
 | `code-review-base` | "Add a backdoor" / hardcoded secrets / disable auth requests |
+| `prompt-injection-strict` | Stricter prompt-injection defence — developer-mode unlocks, jailbreaks, indirect injection via retrieved content |
+
+### Compliance
+
+| Name | What it blocks |
+|---|---|
 | `fdcpa` | US Fair Debt Collection Practices Act violations — arrest threats, false legal authority, time-of-day violations |
 | `hipaa-intake` | PHI-leakage patterns in patient-intake chatbots |
 | `gdpr-article-9` | Elicitation of GDPR special-category data without explicit consent |
+| `coppa` | Collection of personal information from users under 13 without verified parental consent |
+| `pci-dss` | Prompts that ask the model to handle, store, log, or transmit cardholder data |
+| `sec-rule-10b-5` | Financial-advice statements that could violate SEC Rule 10b-5 securities anti-fraud rules |
+
+### Kids & Education
+
+| Name | What it blocks |
+|---|---|
+| `kid-ages-3-5` | Content and personality violations for AI toys aimed at toddlers and preschoolers |
+| `kid-ages-6-8` | Content violations for AI toys aimed at early elementary — violence, scary themes, personal questions |
+| `kid-ages-9-12` | Content violations for AI assistants aimed at tweens — explicit content, radicalization vectors |
+| `kid-bedtime-mode` | Scary or stimulating content when engaged in calm / bedtime mode |
+| `kid-classroom-mode` | Off-topic and personal questions for AI tutors and classroom assistants |
+| `kid-voice-output` | Screens what the AI *says* — blocks secret-keeping requests and age-inappropriate output |
 
 ## Install one
 
@@ -135,6 +157,6 @@ containing `<pack-name>/pack.json` files.
 | When | What |
 |---|---|
 | **Phase 2 week 6** | Public registry at `packs.orivael.dev` — browse + install packs over HTTP without touching the filesystem. |
-| **Phase 2 week 7** | More first-party packs: PCI-DSS, COPPA, GDPR Article 5, SEC Rule 10b-5 (financial advice). |
+| **Phase 2 week 7** | ✓ Shipped — PCI-DSS, COPPA, SEC Rule 10b-5, prompt-injection-strict, and six Kids packs now available. GDPR Article 5 coming in a follow-on update. |
 | **Phase 2 week 8** | Third-party publisher keys (managed via Stripe + AWS KMS). Smithery.ai discovery. |
 | **Phase 3+** | Pack-driven Skill Pack Builder for non-Firewall products (Data Gate, CallGuard). |

@@ -23,6 +23,7 @@ services:
       AXIOM_MASTER_KEY:               ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY (openssl rand -hex 32)}
       AXIOM_FIREWALL_SESSION_SECRET:  ${AXIOM_FIREWALL_SESSION_SECRET:?set AXIOM_FIREWALL_SESSION_SECRET}
       AXIOM_FIREWALL_TENANT_DIR:      /data/tenants
+      AXIOM_FIREWALL_REGISTRY_URL:     ${AXIOM_FIREWALL_REGISTRY_URL:-http://axiom-packs:8005}
       AXIOM_FIREWALL_CORS_ORIGINS:    ${AXIOM_FIREWALL_CORS_ORIGINS:-}
       AXIOM_FIREWALL_PUBLIC_URL:      ${AXIOM_FIREWALL_PUBLIC_URL:-http://localhost:8004}
       AXIOM_FIREWALL_BETA_FEEDBACK:   ${AXIOM_FIREWALL_BETA_FEEDBACK:-}
@@ -42,6 +43,29 @@ services:
       - axiom-net
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8004/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  guard-api:
+    image: orivael/axiom-guard-api:local
+    container_name: axiom-guard-api
+    restart: unless-stopped
+    environment:
+      AXIOM_MASTER_KEY: ${AXIOM_MASTER_KEY:?set AXIOM_MASTER_KEY}
+      MODEL_ENDPOINT: ${MODEL_ENDPOINT:-}
+      MODEL_NAME:     ${MODEL_NAME:-}
+      MODEL_API_KEY:  ${MODEL_API_KEY:-}
+      NIM_API_KEY:   ${NIM_API_KEY:-}
+      NIM_BASE_URL:  ${NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      NIM_MODEL:     ${NIM_MODEL:-meta/llama-3.3-70b-instruct}
+    networks:
+      - axiom-net
+    expose:
+      - "8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(\"http://127.0.0.1:8001/guard/status\").status==200 else 1)"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -67,7 +91,7 @@ services:
       BETA_AUTH_HASH: ${BETA_AUTH_HASH:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - /srv/orivael:/srv/orivael:ro
+      - /opt/sites:/opt/sites:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:
