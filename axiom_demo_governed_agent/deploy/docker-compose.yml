@@ -1,0 +1,41 @@
+# Governed-agent live demo — Docker + Caddy (automatic HTTPS).
+#
+#   cd axiom_demo_governed_agent/deploy
+#   cp .env.example .env          # set ANTHROPIC_API_KEY, DEMO_DOMAIN, ACME_EMAIL
+#   docker compose up -d --build
+#
+# Caddy is the only container that binds public ports (80/443); the demo is reachable
+# only on the internal compose network, so nothing bypasses TLS. Caddy fetches and
+# renews a Let's Encrypt certificate for DEMO_DOMAIN automatically.
+services:
+  demo:
+    build:
+      context: ../..
+      dockerfile: axiom_demo_governed_agent/deploy/Dockerfile
+    env_file: .env
+    # AXIOM_MASTER_KEY (optional) strengthens the demo's verdict-signing key.
+    environment:
+      AXIOM_MASTER_KEY: ${AXIOM_MASTER_KEY:-}
+    expose:
+      - "8000"                    # internal only — Caddy fronts it
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      - demo
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DEMO_DOMAIN: ${DEMO_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data          # persists issued certs across restarts
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
