@@ -150,6 +150,8 @@ class InferenceOSResult:
     shaping_transforms:    tuple = ()  # tuple[str, ...] — applied transforms
     # Cognition layer — fused, signed verdict from the four session learners
     cognition:             dict  = field(default_factory=dict)
+    # Layer-1 adaptive routing — "standard" | "economy" (metabolic economy hint)
+    route_tier:            str   = "standard"
 
     def to_dict(self) -> dict:
         return {
@@ -177,6 +179,7 @@ class InferenceOSResult:
             "shaping_tokens_saved":  self.shaping_tokens_saved,
             "shaping_transforms":    list(self.shaping_transforms),
             "cognition":             self.cognition,
+            "route_tier":            self.route_tier,
             "timestamp":       self.timestamp,
             "signature":       self.signature,
         }
@@ -215,6 +218,7 @@ class InferenceOS:
         classifier=None,     # IntentClassifier | None — always built if omitted
         policy=None,         # policy module | None
         cognition=_UNSET,    # CognitionLayer | None — None = disabled; omit = auto
+        router=_UNSET,       # AdaptiveRouter | None — None = disabled; omit = auto
     ) -> None:
         self._retriever_arg   = retriever
         self._backend_arg     = backend
@@ -222,6 +226,7 @@ class InferenceOS:
         self._classifier_arg  = classifier
         self._policy_arg      = policy
         self._cognition_arg   = cognition
+        self._router_arg      = router
         # Lazily initialised
         self._retriever        = None
         self._cosmos_retriever = None   # CosmosLayeredRetriever (wraps _retriever)
@@ -236,6 +241,7 @@ class InferenceOS:
         self._classifier = None
         self._policy     = None
         self._cognition  = None   # CognitionLayer — fused learner verdict (Layers 0/1/4)
+        self._router     = None   # AdaptiveRouter — Layer 1 health + economy routing
         self._ready      = False
 
     # ── initialisation ────────────────────────────────────────────────────────
@@ -256,6 +262,9 @@ class InferenceOS:
         # _UNSET → auto-build (ledger-less, degrades to intent floor); None → disabled.
         self._cognition = (self._build_cognition() if self._cognition_arg is _UNSET
                            else self._cognition_arg)
+        # Adaptive router — Layer 1: fuse ledger health + cognition economy hint.
+        self._router    = (self._build_router() if self._router_arg is _UNSET
+                           else self._router_arg)
         # Domain prefix cache — static system prompts + startup warming
         try:
             from axiom_prefix_cache import DomainPrefixCache, DOMAIN_SEED_QUERIES
@@ -357,6 +366,17 @@ class InferenceOS:
                 calibration_ledger=os.environ.get("AXIOM_CALIBRATION_LEDGER"),
                 metabolic_ledger=os.environ.get("AXIOM_METABOLIC_LEDGER"),
             )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _build_router():
+        """Layer-1 adaptive router — reads the OS's own exoskeleton ledger for backend
+        health (EWMA) and honours the cognition economy hint. Ledger-less installs get
+        a standard, healthy directive, so it never over-fires."""
+        try:
+            from axiom_os_router import AdaptiveRouter
+            return AdaptiveRouter()
         except Exception:
             return None
 
@@ -479,12 +499,38 @@ class InferenceOS:
                 )
             except Exception:
                 delta_state = None
+        # Layer-1 routing levers the adaptive router may adjust below.
+        gen_max_tokens = 512
+        route_tier     = "standard"
         t0 = time.perf_counter()
         try:
             if self._backend is not None:
                 route       = self._backend.name
                 model_used  = self._backend.model
             route_detail: dict = {"route": route, "model": model_used}
+            # Adaptive router: fuse exoskeleton-ledger health (EWMA) + the cognition
+            # economy hint into a directive we act on — health flags a degraded backend
+            # proactively; ECONOMY shrinks the generation token budget.
+            route_status = "ok"
+            if self._router is not None:
+                try:
+                    directive = self._router.decide(
+                        route, request.domain or "",
+                        cognition=cognition, base_max_tokens=gen_max_tokens,
+                    )
+                    gen_max_tokens = directive.max_output_tokens
+                    route_tier     = directive.tier
+                    route_detail.update({
+                        "tier":            directive.tier,
+                        "max_output_tokens": directive.max_output_tokens,
+                        "backend_healthy": directive.backend_healthy,
+                        "prefer_fallback": directive.prefer_fallback,
+                        "route_reason":    directive.reason,
+                    })
+                    if directive.prefer_fallback:
+                        route_status = "degraded"
+                except Exception:
+                    pass
             # LOD 0 token pointer — routing metadata only, not injected into LLM
             if delta_state is not None and self._mr_memory is not None:
                 try:
@@ -493,7 +539,7 @@ class InferenceOS:
                     route_detail["delta_turn"]   = delta_state.turn_count
                 except Exception:
                     pass
-            stages.append(InferenceStageResult.make("route", "ok", _ms(t0), route_detail))
+            stages.append(InferenceStageResult.make("route", route_status, _ms(t0), route_detail))
         except Exception as exc:
             stages.append(InferenceStageResult.make(
                 "route", "degraded", _ms(t0), {"error": str(exc)[:120]}
@@ -662,7 +708,7 @@ class InferenceOS:
                 result = self._backend.generate(
                     system=system_prompt,
                     prompt=user_message,
-                    max_output_tokens=512,
+                    max_output_tokens=gen_max_tokens,   # economy tier shrinks this
                 )
                 output        = result.text
                 input_tokens  = result.input_tokens
@@ -821,6 +867,7 @@ class InferenceOS:
             "shaping_tokens_saved":  shaping_tokens_saved,
             "shaping_transforms":    shaping_transforms,
             "cognition":             cognition,
+            "route_tier":            route_tier,
             "timestamp":       ts,
         }
         sig = _sign(base, KEY_NS)
@@ -875,6 +922,7 @@ class InferenceOS:
             "audit_id":         audit_id,
             "stages":           [s.to_dict() for s in stages],
             "cognition":        cognition or {},
+            "route_tier":       "standard",
             "timestamp":        ts,
         }
         sig = _sign(base, KEY_NS)

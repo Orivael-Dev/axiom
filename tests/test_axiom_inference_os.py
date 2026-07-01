@@ -193,6 +193,42 @@ def test_cognition_can_be_disabled() -> None:
     assert r.verify()
 
 
+# ── Adaptive router wiring (Layer 1 — health + economy) ───────────────────────
+
+def test_router_standard_budget_by_default() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    r   = ios.run(_make_request("What is the capital of France?"))
+    assert r.route_tier == "standard"
+    # default (no cognition economy hint) → full 512-token budget
+    _, kwargs = be.generate.call_args
+    assert kwargs["max_output_tokens"] == 512
+    assert r.verify()
+
+
+def test_economy_hint_shrinks_generation_budget() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      cognition=_StubCognition("REASON_CHEAPLY"))
+    r   = ios.run(_make_request("summarize the contract"))
+    assert r.route_tier == "economy"
+    # the metabolic "reason cheaply" hint actually spends fewer tokens
+    _, kwargs = be.generate.call_args
+    assert kwargs["max_output_tokens"] == 160
+    assert r.verify()
+
+
+def test_router_can_be_disabled() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      router=None, cognition=_StubCognition("REASON_CHEAPLY"))
+    r   = ios.run(_make_request("summarize the contract"))
+    # router off → economy hint is ignored, full budget, standard tier
+    assert r.route_tier == "standard"
+    _, kwargs = be.generate.call_args
+    assert kwargs["max_output_tokens"] == 512
+
+
 # ── Degraded backend ──────────────────────────────────────────────────────────
 
 def test_backend_failure_degrades_gracefully() -> None:
