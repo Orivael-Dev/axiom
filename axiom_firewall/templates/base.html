@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Orivael Governance Console{% endblock %}</title>
+  <title>{% block title %}Orivael Intent Firewall{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
     .model-pill {
@@ -19,20 +19,17 @@
 </head>
 <body>
   <header>
-    <a href="/" class="brand">Orivael Governance Console</a>
+    <a href="/" class="brand">Orivael Intent Firewall</a>
     <nav>
       {% if request.session.get('tenant_id') %}
+        {# Intent Firewall dashboard nav only. The governance-console surfaces
+           (Enterprise, Audit, OS Shield, Sovereign, CMR Agent, Local LLM,
+           Compliance, Studio) live in the separate Orivael Governance Console
+           (osconsole), NOT here. #}
         <a href="/dashboard">Dashboard</a>
-        <a href="/dashboard/enterprise">Enterprise</a>
-        <a href="/dashboard/audit">Audit</a>
-        <a href="/dashboard/os-shield">OS Shield</a>
-        <a href="/dashboard/sovereign">Sovereign</a>
-        <a href="/dashboard/cmr">CMR Agent</a>
-        <a href="/dashboard/local-llm">Local LLM</a>
-        <a href="/dashboard/compliance">Compliance</a>
         <a href="/dashboard/policy">Policy</a>
         <a href="/dashboard/packs">Packs</a>
-        <a href="/dashboard/studio">Studio</a>
+        <a href="/help">Help</a>
         <a href="/billing">Billing</a>
         <a href="/dashboard/account">Account</a>
         {% if current_model and current_model.model != "none" %}
