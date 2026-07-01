@@ -3,24 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Axiom · Intent Firewall{% endblock %}</title>
+  <title>{% block title %}Orivael Governance Console{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .model-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px; padding: 2px 10px;
+      color: rgba(255,255,255,0.70); white-space: nowrap;
+    }
+    .model-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #72f7d4; }
+    nav .nav-section { opacity: 0.45; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
+  </style>
 </head>
 <body>
   <header>
-    <a href="/" class="brand">Axiom · Intent Firewall</a>
+    <a href="/" class="brand">Orivael Governance Console</a>
     <nav>
       {% if request.session.get('tenant_id') %}
         <a href="/dashboard">Dashboard</a>
-        <a href="/dashboard/packs">Packs</a>
+        <a href="/dashboard/enterprise">Enterprise</a>
+        <a href="/dashboard/audit">Audit</a>
+        <a href="/dashboard/os-shield">OS Shield</a>
+        <a href="/dashboard/sovereign">Sovereign</a>
+        <a href="/dashboard/cmr">CMR Agent</a>
+        <a href="/dashboard/local-llm">Local LLM</a>
+        <a href="/dashboard/compliance">Compliance</a>
         <a href="/dashboard/policy">Policy</a>
-        <a href="/help">Help</a>
+        <a href="/dashboard/packs">Packs</a>
+        <a href="/dashboard/studio">Studio</a>
         <a href="/billing">Billing</a>
         <a href="/dashboard/account">Account</a>
+        {% if current_model and current_model.model != "none" %}
+          <span class="model-pill">
+            <span class="dot"></span>
+            {{ current_model.model }} · {{ current_model.backend }}
+          </span>
+        {% endif %}
         <form method="post" action="/logout" class="inline">
           <button type="submit" class="link">Log out</button>
         </form>
       {% else %}
+        <a href="/srd">SRD Results</a>
         <a href="/help">Help</a>
         <a href="/login">Log in</a>
         <a href="/signup" class="cta">Sign up</a>
@@ -33,7 +58,7 @@
   </main>
 
   <footer>
-    <span>© 2026 Axiom · {{ brand_domain }}</span>
+    <span>© 2026 Orivael · {{ brand_domain }}</span>
     <span><a href="/help">Docs</a></span>
     {% if beta_feedback_url %}
       <span class="beta-badge">

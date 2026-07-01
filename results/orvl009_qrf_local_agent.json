@@ -1,0 +1,47 @@
+{
+  "description": "ORVL-009 QRF driven by a local edge model. The real QRF machinery (DOMAIN_BRANCH_COUNTS, QRFEngine._compute_weights, _classify_band, _sign_result, QRFResult) is fed N actual Qwen3-1.7B SRD4 branches: each branch's forecast score = constitutional quality (_score_branch) x consensus alignment, normalized into a calibrated probability distribution with a HIGH/MODERATE/LOW/UNCERTAIN band. The monotonic gate kills the constitutionally-ineligible FastBranch in life-safety domains.",
+  "patent": "ORVL-009 QRF (Quantum Reasoning Forecast)",
+  "script": "axiom_qrf_local_agent.py",
+  "model": {
+    "name": "Qwen3-1.7B SRD4 Q4_K_M",
+    "gguf": "models/axiom-qwen3-1.7b-srd4-Q4_K_M.gguf",
+    "runtime": "llama.cpp (llama-completion)",
+    "device": "Jetson Orin Nano (7.6 GB unified, CUDA 12.6)",
+    "flags": "-ngl 99 -c 2048 --temp 0.5 -n 180 (3x retry on truncated-think branches)"
+  },
+  "domain_branch_counts": {"medical": 8, "financial": 6, "security": 6, "supply_chain": 4, "hr": 4},
+  "probability_bands": {"HIGH": ">=0.50", "MODERATE": ">=0.30", "LOW": ">=0.15", "UNCERTAIN": "<0.15"},
+  "representative_run": {
+    "question": "Should I take aspirin daily?",
+    "domain": "medical",
+    "N": 8,
+    "live": 7,
+    "killed": 1,
+    "forecast": [
+      {"branch": "SkepticBranch",  "score": 0.913, "probability": 0.168},
+      {"branch": "SafetyBranch",   "score": 0.884, "probability": 0.163},
+      {"branch": "CautionBranch",  "score": 0.884, "probability": 0.163},
+      {"branch": "DetailBranch",   "score": 0.827, "probability": 0.152},
+      {"branch": "EvidenceBranch", "score": 0.770, "probability": 0.142},
+      {"branch": "RivalBranch",    "score": 0.635, "probability": 0.117},
+      {"branch": "CreativeBranch", "score": 0.513, "probability": 0.094},
+      {"branch": "FastBranch",     "score": 0.000, "probability": 0.000, "killed": "FastBranch ineligible in life-safety domain"}
+    ],
+    "top_branch": "SkepticBranch",
+    "top_probability": 0.168,
+    "probability_band": "LOW"
+  },
+  "claims": {
+    "claim_1_multi_branch_distribution": "7 live branches normalized to a sorted probability distribution, not a single output",
+    "claim_2_domain_calibrated_pool": "medical -> N=8 from DOMAIN_BRANCH_COUNTS (life-safety gets the most evidence branches)",
+    "claim_3_monotonic_gate": "FastBranch scored 0 and killed (ineligible in life-safety), audited separately",
+    "claim_4_probability_band": "top weight 0.168 -> LOW band: diffuse distribution = calibrated humility on a contested question",
+    "claim_5_hmac_signed_result": "QRFResult HMAC-SHA256 over canonical fields (domain calibration is CANNOT_MUTATE)"
+  },
+  "conclusion": "QRF runs on a real edge model and returns a calibrated forecast rather than a bare assertion. On a genuinely contested life-safety question the eight real branches spread into a diffuse distribution (top branch only 16.8%), which QRF correctly reports as LOW confidence instead of a single false-confident answer. The constitutionally-ineligible FastBranch is gated out before the verdict, and the whole forecast is HMAC-signed.",
+  "caveats": [
+    "Forecast score = _score_branch quality x lexical consensus-agreement proxy; both are heuristics.",
+    "FastBranch ineligibility in life-safety domains mirrors the deterministic demo's Claim 3; it is a policy choice, not learned.",
+    "Exact probabilities vary run-to-run with sampling (temp 0.5); the qualitative outcome (LOW band on a contested medical question, FastBranch killed) is stable."
+  ]
+}

@@ -81,28 +81,32 @@ def test_nim_transport_error_raises(isolated):
 
 
 def test_local_parses_ollama_response_shape(isolated):
+    """LocalNanoBackend uses /api/chat (messages format), not /api/generate."""
     from axiom_event_token.backends import LocalNanoBackend
     b = LocalNanoBackend(model="llama3.2:3b", url="http://orin:11434")
     fake = MagicMock(ok=True)
     fake.json.return_value = {
-        "response":          "hello back",
+        "message":           {"role": "assistant", "content": "hello back"},
         "prompt_eval_count": 18,
         "eval_count":        4,
+        "prompt_eval_duration": 0,
     }
     with patch("axiom_event_token.backends.requests.post",
                return_value=fake) as mp:
         r = b.generate(system="be brief", prompt="say hi",
                        max_output_tokens=50)
+    call_url, = mp.call_args.args
     body = mp.call_args.kwargs["json"]
+    assert call_url.endswith("/api/chat")
     assert body["model"] == "llama3.2:3b"
-    assert "be brief" in body["prompt"]
-    assert "say hi" in body["prompt"]
+    assert body["messages"][0] == {"role": "system", "content": "be brief"}
+    assert body["messages"][1] == {"role": "user",   "content": "say hi"}
     assert body["options"]["num_predict"] == 50
-    assert r.text == "hello back"
+    assert r.text         == "hello back"
     assert r.input_tokens == 18
     assert r.output_tokens == 4
-    assert r.backend == "local"
-    assert r.model == "llama3.2:3b"
+    assert r.backend      == "local"
+    assert r.model        == "llama3.2:3b"
 
 
 def test_local_http_error_raises(isolated):
@@ -515,3 +519,160 @@ def test_per_domain_nim_does_not_leak_into_other_domains(isolated, monkeypatch):
     assert isinstance(fin, NIMBackend)
     assert fin._api_key == "bare-key"
     assert fin.model    == "bare-model"
+
+
+# ─── TRTLLMBackend ──────────────────────────────────────────────────────
+
+
+def test_trtllm_builds_without_api_key(isolated, monkeypatch):
+    """TRTLLMBackend requires no API key — trtllm-serve has no auth on localhost."""
+    monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
+    monkeypatch.delenv("TRTLLM_URL",         raising=False)
+    monkeypatch.delenv("TRTLLM_MODEL",       raising=False)
+    from axiom_event_token.backends import TRTLLMBackend
+    b = TRTLLMBackend()   # must not raise
+    assert b.name == "trtllm"
+
+
+def test_trtllm_reads_env_vars(isolated, monkeypatch):
+    monkeypatch.setenv("TRTLLM_URL",   "http://trt-host:9000/v1")
+    monkeypatch.setenv("TRTLLM_MODEL", "nvidia/llama3-chatqa-1.5-8b")
+    from axiom_event_token.backends import TRTLLMBackend
+    b = TRTLLMBackend()
+    assert b._base_url == "http://trt-host:9000/v1"
+    assert b.model     == "nvidia/llama3-chatqa-1.5-8b"
+
+
+def test_trtllm_explicit_overrides_env(isolated, monkeypatch):
+    monkeypatch.setenv("TRTLLM_URL",   "http://env-host/v1")
+    monkeypatch.setenv("TRTLLM_MODEL", "env-model")
+    from axiom_event_token.backends import TRTLLMBackend
+    b = TRTLLMBackend(base_url="http://explicit/v1", model="explicit-model")
+    assert b._base_url == "http://explicit/v1"
+    assert b.model     == "explicit-model"
+
+
+def test_trtllm_generate_uses_openai_wire_format(isolated):
+    """generate() is inherited from NIMBackend — identical OpenAI-compatible body."""
+    from axiom_event_token.backends import TRTLLMBackend
+    b = TRTLLMBackend(
+        base_url="http://localhost:8000/v1",
+        model="meta/llama-3.1-8b-instruct",
+    )
+    fake_resp = MagicMock(ok=True)
+    fake_resp.json.return_value = {
+        "choices": [{"message": {"content": "TRT answer"}}],
+        "usage":   {"prompt_tokens": 20, "completion_tokens": 10},
+    }
+    with patch("axiom_event_token.backends.requests.post",
+               return_value=fake_resp) as mp:
+        r = b.generate(system="sys", prompt="user prompt", max_output_tokens=128)
+    call_url, = mp.call_args.args
+    body    = mp.call_args.kwargs["json"]
+    headers = mp.call_args.kwargs["headers"]
+    assert call_url.endswith("/chat/completions")
+    assert body["model"]       == "meta/llama-3.1-8b-instruct"
+    assert body["messages"][0] == {"role": "system", "content": "sys"}
+    assert body["messages"][1] == {"role": "user",   "content": "user prompt"}
+    assert r.text          == "TRT answer"
+    assert r.input_tokens  == 20
+    assert r.output_tokens == 10
+    assert r.backend       == "trtllm"
+    assert r.model         == "meta/llama-3.1-8b-instruct"
+
+
+def test_trtllm_generate_batch_returns_n_results(isolated):
+    """generate_batch fires N prompts and returns exactly N BackendResult objects."""
+    from axiom_event_token.backends import TRTLLMBackend, BackendResult
+    b = TRTLLMBackend(base_url="http://localhost:8000/v1", model="m")
+
+    def _fake_generate(*, system, prompt, max_output_tokens, timeout_s=60.0):
+        return BackendResult(
+            text=f"answer-{prompt}", input_tokens=5, output_tokens=3,
+            latency_ms=10, backend="trtllm", model="m",
+        )
+
+    with patch.object(b, "generate", side_effect=_fake_generate):
+        results = b.generate_batch(["p1", "p2", "p3"], system="s",
+                                   max_output_tokens=64)
+
+    assert len(results) == 3
+    assert {r.text for r in results} == {"answer-p1", "answer-p2", "answer-p3"}
+
+
+def test_trtllm_generate_batch_failed_branch_returns_empty(isolated):
+    """BackendError in one branch must not propagate — returns empty BackendResult."""
+    from axiom_event_token.backends import TRTLLMBackend, BackendError, BackendResult
+    b = TRTLLMBackend(base_url="http://localhost:8000/v1", model="m")
+
+    def _fake_generate(*, system, prompt, max_output_tokens, timeout_s=60.0):
+        if prompt == "bad":
+            raise BackendError("network error")
+        return BackendResult(
+            text=f"ok-{prompt}", input_tokens=5, output_tokens=3,
+            latency_ms=10, backend="trtllm", model="m",
+        )
+
+    with patch.object(b, "generate", side_effect=_fake_generate):
+        results = b.generate_batch(["good", "bad", "also-good"], system="s")
+
+    assert len(results) == 3
+    texts = [r.text for r in results]
+    assert ""            in texts
+    assert "ok-good"     in texts
+    assert "ok-also-good" in texts
+
+
+def test_make_backend_recognises_trtllm(isolated, monkeypatch):
+    monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
+    from axiom_event_token.backends import make_backend, TRTLLMBackend
+    b = make_backend(["trtllm"])
+    assert isinstance(b, TRTLLMBackend)
+
+
+def test_make_backend_chains_trtllm_nim(isolated, monkeypatch):
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "test-key")
+    from axiom_event_token.backends import (
+        make_backend, ChainedBackend, TRTLLMBackend, NIMBackend,
+    )
+    b = make_backend(["trtllm", "nim"])
+    assert isinstance(b, ChainedBackend)
+    assert isinstance(b._backends[0], TRTLLMBackend)
+    assert isinstance(b._backends[1], NIMBackend)
+
+
+def test_default_backend_picks_trtllm_when_url_set(isolated, monkeypatch):
+    """TRTLLM_URL auto-detection yields TRTLLMBackend without any API key."""
+    monkeypatch.delenv("AXIOM_BACKEND",        raising=False)
+    monkeypatch.delenv("SUBQ_API_KEY",         raising=False)
+    monkeypatch.delenv("AXIOM_BASE_URL",       raising=False)
+    monkeypatch.delenv("AXIOM_API_KEY",        raising=False)
+    monkeypatch.delenv("AXIOM_MODEL",          raising=False)
+    monkeypatch.delenv("NVIDIA_NIM_API_KEY",   raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY",     raising=False)
+    monkeypatch.setenv("TRTLLM_URL", "http://localhost:8000/v1")
+    from axiom_event_token.backends import default_backend, TRTLLMBackend
+    assert isinstance(default_backend(), TRTLLMBackend)
+
+
+def test_axiom_backend_trtllm_env_selects_trtllm(isolated, monkeypatch):
+    """AXIOM_BACKEND=trtllm must select TRTLLMBackend regardless of other env vars."""
+    monkeypatch.setenv("AXIOM_BACKEND", "trtllm")
+    monkeypatch.delenv("NVIDIA_NIM_API_KEY", raising=False)
+    from axiom_event_token.backends import default_backend, TRTLLMBackend
+    assert isinstance(default_backend(), TRTLLMBackend)
+
+
+def test_default_backend_trtllm_wins_over_nim_when_url_set(isolated, monkeypatch):
+    """TRTLLM_URL auto-detection fires before the NIM-key fallback."""
+    monkeypatch.delenv("AXIOM_BACKEND",      raising=False)
+    monkeypatch.delenv("SUBQ_API_KEY",       raising=False)
+    monkeypatch.delenv("AXIOM_BASE_URL",     raising=False)
+    monkeypatch.delenv("AXIOM_API_KEY",      raising=False)
+    monkeypatch.delenv("AXIOM_MODEL",        raising=False)
+    monkeypatch.delenv("OLLAMA_URL",         raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY",   raising=False)
+    monkeypatch.setenv("TRTLLM_URL",         "http://localhost:8000/v1")
+    monkeypatch.setenv("NVIDIA_NIM_API_KEY", "nvapi-present-but-ignored")
+    from axiom_event_token.backends import default_backend, TRTLLMBackend
+    assert isinstance(default_backend(), TRTLLMBackend)

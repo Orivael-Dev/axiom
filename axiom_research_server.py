@@ -50,6 +50,11 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
 REPO_ROOT  = Path(__file__).resolve().parent
+
+# Environment variables that activate the CVE fast-path:
+#   AXIOM_CVE_DB_PATH    — path to the cve_fts5.db built by CVERetriever
+#   AXIOM_CVE_CACHE_PATH — path for the VerifiedAnswerCache SQLite file
+#                          (defaults to <db_path>.cache.db when unset)
 HTML_PATH  = REPO_ROOT / "web" / "research_console.html"
 LEDGER_HTML_PATH = REPO_ROOT / "web" / "ledger_viewer.html"
 HELP_MD_PATH = REPO_ROOT / "docs" / "research_engine.md"
@@ -103,7 +108,12 @@ class _ServerState:
         self.ledger_path    = None      # Path
         self.backend_label  = "unknown"
         self.pack_origin    = "(unbuilt)"
-        self.retriever      = None      # LocalRetriever
+        self.retriever      = None      # LocalRetriever / DomainRoutedRetriever
+        self.shard_router   = None      # ShardRouter (optional; replaces cve_retriever)
+        self.query_rewriter = None      # QueryRewriter (optional; AXIOM_QUERY_REWRITE=<domain>)
+        self.user_cookie    = None      # UserContextCookie (optional; AXIOM_USER_COOKIE=path)
+        self.gating         = None      # CognitiveGatingPipeline (optional; see axiom_cognitive_gating)
+        self.last_gating_telemetry = {} # dict — what the last gating retrieve() did
         self._qrf_cache     = {}        # domain → QRFEngine
 
     def ensure(self) -> None:
@@ -128,6 +138,91 @@ class _ServerState:
         self.backend_label  = f"{backend.name} · {backend.model}"
         self.pack_origin    = "default-pack (built in tempdir on first request)"
         self.retriever      = default_retriever()
+
+        # Shard router: load from RAG bundle or individual AXIOM_SHARD_* env vars.
+        # Priority: AXIOM_RAG_BUNDLE > per-shard env vars > single AXIOM_CVE_DB_PATH.
+        bundle_path = os.environ.get("AXIOM_RAG_BUNDLE", "").strip()
+        if bundle_path:
+            try:
+                from axiom_shard_router import RAGBundle
+                self.shard_router = RAGBundle.load_router(Path(bundle_path))
+                LOG.info("shard router loaded from bundle: %s", bundle_path)
+            except Exception as exc:
+                LOG.warning("RAG bundle load failed: %s", exc)
+
+        if self.shard_router is None:
+            try:
+                from axiom_shard_router import ShardRouter
+                router = ShardRouter.from_env()
+                if router is not None:
+                    self.shard_router = router
+                    LOG.info("shard router wired from env vars: %d shard(s)",
+                             len(router._shards))
+            except Exception as exc:
+                LOG.warning("shard router from_env failed: %s", exc)
+
+        # Legacy single-CVE fallback: AXIOM_CVE_DB_PATH without shard vars.
+        if self.shard_router is None:
+            cve_db = os.environ.get("AXIOM_CVE_DB_PATH", "").strip()
+            if cve_db:
+                try:
+                    from axiom_cve_retriever import CVERetriever, CachedCVERetriever
+                    from axiom_verified_answer_cache import VerifiedAnswerCache
+                    from axiom_shard_router import ShardRouter, ShardConfig, DEFAULT_SHARD_PATTERNS
+                    cve_cache_path = os.environ.get(
+                        "AXIOM_CVE_CACHE_PATH",
+                        str(Path(cve_db).with_suffix(".cache.db")),
+                    )
+                    retriever = CachedCVERetriever(
+                        CVERetriever(cve_db),
+                        VerifiedAnswerCache(db_path=cve_cache_path),
+                    )
+                    self.shard_router = ShardRouter([
+                        ShardConfig("cve", DEFAULT_SHARD_PATTERNS["cve"], retriever)
+                    ])
+                    LOG.info("CVE shard wired from AXIOM_CVE_DB_PATH: %s", cve_db)
+                except Exception as exc:
+                    LOG.warning("CVE shard skipped: %s", exc)
+
+        # Optional user context cookie: AXIOM_USER_COOKIE=~/.axiom/user.cookie.json
+        try:
+            from axiom_user_cookie import from_env as _cookie_from_env
+            cookie = _cookie_from_env()
+            if cookie is not None:
+                self.user_cookie = cookie
+                LOG.info("user cookie loaded: project=%r style=%r",
+                         cookie.active_project, cookie.style)
+        except Exception as exc:
+            LOG.warning("user cookie load failed: %s", exc)
+
+        # Optional query rewriter: AXIOM_QUERY_REWRITE=legal|obd|medical|1
+        rewrite_domain = os.environ.get("AXIOM_QUERY_REWRITE", "").strip().lower()
+        if rewrite_domain and rewrite_domain not in ("0", "false", "off"):
+            try:
+                from axiom_query_rewriter import QueryRewriter, from_env as _qr_from_env
+                rewriter = _qr_from_env(domain=rewrite_domain)
+                if rewriter is not None:
+                    self.query_rewriter = rewriter
+                    LOG.info("query rewriter enabled for domain: %s", rewrite_domain)
+            except Exception as exc:
+                LOG.warning("query rewriter init failed: %s", exc)
+
+        # Optional cognitive gating pipeline: ties semantic routing + intent
+        # filtering + HyDE + knowledge cookie into one retrieval flow. Active
+        # only when at least one of AXIOM_DOMAIN_STORE / AXIOM_KNOWLEDGE_COOKIE
+        # / AXIOM_HYDE is set; otherwise it stays a no-op and the legacy
+        # shard-router / LocalRetriever path below is used unchanged.
+        try:
+            from axiom_cognitive_gating import CognitiveGatingPipeline
+            gating = CognitiveGatingPipeline.from_env(
+                fallback_retriever=self.retriever)
+            if gating.active:
+                self.gating = gating
+                LOG.info("cognitive gating enabled: layers=%s session=%s",
+                         gating.layers(), gating.session_id)
+        except Exception as exc:
+            LOG.warning("cognitive gating init failed: %s", exc)
+
         LOG.info("research server ready: backend=%s ledger=%s",
                  self.backend_label, ledger_path)
 
@@ -254,12 +349,61 @@ def _short_tldr(text: str, *, max_chars: int = 320) -> str:
 
 
 def _retrieve_sources(query: str, domain: str, *, k: int = 5) -> tuple[list[dict], bool]:
-    """Run the live LocalRetriever. Returns (sources, is_real).
+    """Run the live retriever. Returns (sources, is_real).
 
-    Falls back to a single STUB entry only if the retriever is missing
-    or returns no hits — keeping the UI populated so the user can see
-    what happened.
+    CVE fast-path: when AXIOM_CVE_DB_PATH is set and the query contains a
+    CVE identifier, the CachedCVERetriever is tried first.
+      - Cache hit  → returns in ~0 ms; FTS5 and LLM are bypassed entirely.
+      - Cache miss → FTS5 query (~3 ms); result recorded for future promotion.
+
+    Falls back to a single STUB entry only if no retriever is wired or
+    returns no hits — keeping the UI populated so the user can see what
+    happened.
     """
+    # ── Cognitive gating fast-path (router + intent + HyDE + knowledge) ───
+    # Active only when AXIOM_DOMAIN_STORE / AXIOM_KNOWLEDGE_COOKIE / AXIOM_HYDE
+    # are configured. Records retrieved fragments into the knowledge cookie and
+    # surfaces telemetry on _state for the receipt block.
+    if _state.gating is not None:
+        try:
+            hits, tel = _state.gating.retrieve(query, k=k, domain=domain)
+            _state.last_gating_telemetry = tel.to_dict()
+            if hits:
+                return [h.to_dict() for h in hits], True
+        except Exception as exc:
+            LOG.warning("cognitive gating retrieve raised: %s", exc)
+
+    # ── Shard router fast-path (Tier 3 federated FTS5) ────────────────────
+    if _state.shard_router is not None:
+        # Optional query rewrite pre-pass (AXIOM_QUERY_REWRITE=<domain>).
+        # The rewriter expands vocabulary before FTS5; the rewritten text
+        # is passed to shard_router.query() as the effective query string.
+        effective_query = query
+        if _state.query_rewriter is not None:
+            try:
+                from axiom_query_rewriter import _build_fts5_match, _parse_variants
+                result = _state.query_rewriter._backend.generate(
+                    system=_state.query_rewriter._system_prompt or "",
+                    prompt=query,
+                    max_output_tokens=_state.query_rewriter._max_tokens,
+                    timeout_s=_state.query_rewriter._timeout_s,
+                )
+                variants = _parse_variants(result.text)
+                # Build a natural-language summary of all variants for the
+                # shard router (which re-tokenises internally via _match_for)
+                if variants:
+                    effective_query = query + " " + " ".join(variants)
+            except Exception as exc:
+                LOG.debug("query rewriter skipped: %s", exc)
+        try:
+            hits = _state.shard_router.query(effective_query, k=k)
+        except Exception as exc:
+            LOG.warning("shard_router.query raised: %s", exc)
+            hits = []
+        if hits:
+            return [h.to_dict() for h in hits], True
+
+    # ── general BM25 / DomainRoutedRetriever path ─────────────────────────
     if _state.retriever is None:
         return _fallback_source_stubs(query, domain), False
     try:
@@ -287,6 +431,24 @@ def _fallback_source_stubs(query: str, domain: str) -> list[dict]:
                         f"retriever to populate this column.",
         },
     ]
+
+
+def _to_medical_sources(dicts: list[dict]) -> list[dict]:
+    """Map retriever hits (RetrievedSource.to_dict) → the source shape the
+    MedicalResearchAgent consumes: {name, text, uri, evidence_tier, provider}.
+    Drops the synthetic no-hit stub so the agent doesn't analyse a placeholder."""
+    out: list[dict] = []
+    for s in dicts:
+        if str(s.get("kind", "")).startswith("stub"):
+            continue
+        out.append({
+            "name":          s.get("title") or s.get("uri") or "source",
+            "text":          s.get("snippet") or "",
+            "uri":           s.get("uri") or "",
+            "evidence_tier": s.get("evidence_tier"),
+            "provider":      s.get("provider", "local"),
+        })
+    return out
 
 
 def _qrf_branches(query: str, domain: str, *, workflow_label: str) -> tuple[dict, bool]:
@@ -505,6 +667,127 @@ async def research(req: ResearchRequest):
     return _run_research(req, delegate_name)
 
 
+_GENERAL_SYSTEM = (
+    "You are a rigorous research analyst. Answer the user's QUESTION directly, "
+    "accurately, and concretely, grounded in the SOURCES when they are relevant. "
+    "Lead with the answer itself. If the sources are thin or irrelevant, answer "
+    "from well-established general knowledge and note that. Never invent citations "
+    "or data. Respond with ONLY a valid JSON object, no prose outside it, in exactly "
+    'this shape:\n'
+    '{"answer": "<direct, self-contained answer, 3-8 sentences>", '
+    '"key_points": ["<concrete supporting point>", "..."], '
+    '"open_questions": ["<genuine follow-up question>", "..."]}'
+)
+
+
+def _parse_answer(raw: str) -> tuple[str, List[str], List[str]]:
+    """Parse the synthesis JSON {answer, key_points, open_questions}.
+
+    Falls back to treating `raw` as a prose answer if it isn't JSON."""
+    obj = None
+    if raw:
+        try:
+            obj = json.loads(raw)
+        except (ValueError, TypeError):
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                try:
+                    obj = json.loads(m.group(0))
+                except (ValueError, TypeError):
+                    obj = None
+    if isinstance(obj, dict):
+        answer = str(obj.get("answer") or obj.get("response") or "").strip()
+        kp = [str(x).strip() for x in (obj.get("key_points") or []) if str(x).strip()]
+        oq = [str(x).strip() for x in (obj.get("open_questions") or []) if str(x).strip()]
+        if answer:
+            return answer, kp, oq
+    prose = (raw or "").strip()
+    return prose, _split_into_findings(prose), []
+
+
+def _general_answer(req: "ResearchRequest", workflow_label: str,
+                    sources: list[dict], retrieval_real: bool,
+                    qrf: dict, qrf_real: bool) -> dict:
+    """Real question-answering for the General Research workflow.
+
+    Synthesises a direct answer from the retrieved sources via the backend,
+    instead of routing through the customer_discovery sales delegate (whose
+    pain/urgency/buyer_role JSON is not an answer to the user's question)."""
+    from axiom_event_token.backends import default_backend, domain_context
+
+    real_src = [s for s in sources
+                if not str(s.get("kind", "")).startswith("stub")]
+    src_block = "\n".join(
+        f"- [{s.get('provider', 'local')}] {s.get('title', '(untitled)')}: "
+        f"{(s.get('snippet') or '').strip()[:400]}"
+        for s in real_src[:6]
+    ) or "(no retrieved sources — answer from general knowledge)"
+    prompt = (f"QUESTION:\n{req.query}\n\nSOURCES:\n{src_block}\n\n"
+              "Return the JSON answer now.")
+
+    t0 = time.monotonic()
+    try:
+        bk = default_backend()
+        with domain_context(req.domain):
+            res = bk.generate(system=_GENERAL_SYSTEM, prompt=prompt,
+                              max_output_tokens=800)
+    except Exception as e:
+        LOG.exception("general synthesis failed")
+        raise HTTPException(status_code=502, detail=f"synthesis failed: {e}")
+    wall_ms = int((time.monotonic() - t0) * 1000)
+
+    raw = res.text or ""
+    answer, key_points, open_qs = _parse_answer(raw)
+
+    return {
+        "query":          req.query,
+        "workflow":       req.workflow,
+        "workflowLabel":  workflow_label,
+        "domain":         req.domain,
+        "domainLabel":    _DOMAIN_LABELS.get(req.domain, req.domain),
+        "report": {
+            "tldr":          answer or "(synthesis returned empty output)",
+            "keyFindings":   key_points or ["(no structured key points returned)"],
+            "openQuestions": open_qs or [
+                "What level of depth or specificity do you need next?",
+            ],
+            "raw_output":    raw,
+            "answer":        answer,
+        },
+        "probabilityBand":        qrf["probability_band"],
+        "constitutionalDistance": qrf["constitutional_distance"],
+        "branchHealth":           qrf["branch_health"],
+        "sources":  sources,
+        "branches": qrf["branches"],
+        "receipt": {
+            "token_id":  f"gen-{wall_ms}-{len(answer)}",
+            "workflow":  workflow_label,
+            "backend":   f"{res.backend} · {res.model}",
+            "signed_at": "",
+            "verified":  False,
+            "ledger":    "(direct synthesis — not delegate-ledgered)",
+            "qrf_signature": qrf.get("_qrf_signature", "")[:24] if qrf_real else "",
+        },
+        "cost": {
+            "input_tokens":  int(res.input_tokens),
+            "output_tokens": int(res.output_tokens),
+            "latency_ms":    int(res.latency_ms),
+        },
+        "_meta": {
+            "wall_clock_ms":           wall_ms,
+            "delegate_invoked":        "general_research_synthesis",
+            "sources_are_stubbed":     not retrieval_real,
+            "branches_are_stubbed":    not qrf_real,
+            "synthesis_is_real":       True,
+            "retriever_indexed_files": (_state.retriever.stats().get("indexed_files", 0)
+                                          if _state.retriever else 0),
+            "ledger_write":            "skipped (synthesis path)",
+            "cognitive_gating":        (_state.last_gating_telemetry
+                                          if _state.gating is not None else None),
+        },
+    }
+
+
 def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     """Shared research pipeline used by both /api/research and the
     SSE endpoint. Always synchronous; SSE just emits stage events
@@ -519,6 +802,13 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     qrf, qrf_real = _qrf_branches(req.query, req.domain,
                                    workflow_label=workflow_label)
 
+    # General Research answers the question directly via the backend, grounded in
+    # the retrieved sources — it is NOT a sales delegate. (Previously aliased to
+    # customer_discovery, which returned pain/urgency/buyer_role instead of an answer.)
+    if req.workflow == "general_research":
+        return _general_answer(req, workflow_label, sources, retrieval_real,
+                               qrf, qrf_real)
+
     # Stage 3: synthesize via the exoskeleton delegate. The
     # `domain_context` sets a request-scoped contextvar so any
     # DomainRoutedBackend in the chain dispatches to the per-domain
@@ -526,10 +816,20 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
     # backend — falls through harmlessly.
     from axiom_event_token.backends import domain_context
 
+    # Merge user cookie + promoted hot-knowledge into extra_context.
+    # Both return {} when unwired, so this is a no-op in the default config.
+    user_ctx = _state.user_cookie.to_extra_context() if _state.user_cookie else {}
+    if _state.gating is not None:
+        try:
+            user_ctx = {**user_ctx, **_state.gating.extra_context()}
+        except Exception as exc:
+            LOG.debug("gating extra_context failed: %s", exc)
+
     t0 = time.monotonic()
     try:
         with domain_context(req.domain):
-            token = exo.invoke(delegate_name, req.query)
+            token = exo.invoke(delegate_name, req.query,
+                               extra_context=user_ctx or None)
     except Exception as e:
         LOG.exception("exoskeleton invoke failed")
         raise HTTPException(status_code=502,
@@ -596,6 +896,8 @@ def _run_research(req: "ResearchRequest", delegate_name: str) -> dict:
             "retriever_indexed_files": (_state.retriever.stats().get("indexed_files", 0)
                                           if _state.retriever else 0),
             "ledger_write":            "appended",
+            "cognitive_gating":        (_state.last_gating_telemetry
+                                          if _state.gating is not None else None),
         },
     }
 
@@ -883,6 +1185,24 @@ async def medical_research(req: MedicalResearchRequest):
     _state.ensure()
     from axiom_event_token.backends import default_backend
     ledger = LedgerWriter(default_ledger_path())
+
+    # When the caller supplies no sources, retrieve real medical evidence from
+    # the configured providers (PubMed / ClinicalTrials / openFDA / Wikipedia via
+    # axiom_research_providers) instead of letting the agent stub the question
+    # itself as the only "source". Prefer the medical-specific providers, drop the
+    # generic repo-corpus noise, and cap at 3 — the agent runs LLM calls per source
+    # per layer, so latency scales with source count.
+    sources = req.sources
+    sources_origin = "caller"
+    if not sources:
+        raw_sources, retrieval_real = _retrieve_sources(req.question, "medical", k=6)
+        med = [s for s in _to_medical_sources(raw_sources)
+               if s.get("provider") != "local"]
+        _MED_PRIORITY = {"openfda": 0, "pubmed": 1, "clinicaltrials": 2,
+                         "wikipedia": 3}
+        med.sort(key=lambda s: _MED_PRIORITY.get(s.get("provider", ""), 9))
+        sources = med[:3]
+        sources_origin = "providers" if (retrieval_real and sources) else "none"
     try:
         agent = MedicalResearchAgent.from_default_pack(
             backend=default_backend(),
@@ -891,7 +1211,7 @@ async def medical_research(req: MedicalResearchRequest):
         )
         result = agent.research(
             req.question,
-            sources=req.sources,
+            sources=sources or None,
             profile=req.profile,
         )
     except MedicalAgentError as e:
@@ -913,6 +1233,8 @@ async def medical_research(req: MedicalResearchRequest):
         "manifest_root":         result.manifest_root,
         "requires_human_review": result.requires_human_review,
         "tier_distribution":     dict(result.tier_distribution),
+        "sources_origin":        sources_origin,
+        "sources_used":          sources or [],
     }
 
 

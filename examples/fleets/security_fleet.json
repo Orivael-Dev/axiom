@@ -1,0 +1,43 @@
+{
+  "fleet_id": "security-v1",
+  "version": "1.0",
+  "description": "Security specialist fleet — CVE analyst + code-vulnerability scanner. Both ≤0.5B. Routes by whether the query is about a code snippet (code specialist) or a CVE/advisory (research specialist).",
+
+  "specialists": [
+    {
+      "role": "cve-research",
+      "modality": "text",
+      "domain": "security",
+      "description": "CVE/NVD analyst — CVSS scoring, affected products, patch guidance, MITRE ATT&CK mapping. SmolLM2-360M-Instruct SRD-4 quantized.",
+      "base_model": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "axm_path": "specialists/cve-research/cve-research.axm",
+      "gguf_path": "specialists/cve-research/cve-research.gguf",
+      "intent_classes": ["INFORM", "CLARIFY", "REFUSE"],
+      "domains": ["security", "general"],
+      "bpw": 4.5,
+      "params_m": 360,
+      "fingerprint": null
+    },
+    {
+      "role": "code-scan",
+      "modality": "text",
+      "domain": "security",
+      "description": "Code vulnerability scanner — SAST-style analysis, CWE classification, remediation suggestion. Qwen2.5-Coder-0.5B-Instruct SRD-4 quantized.",
+      "base_model": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "axm_path": "specialists/code-scan/code-scan.axm",
+      "gguf_path": "specialists/code-scan/code-scan.gguf",
+      "intent_classes": ["INFORM", "CLARIFY"],
+      "domains": ["security", "code"],
+      "bpw": 4.5,
+      "params_m": 494,
+      "fingerprint": null
+    }
+  ],
+
+  "routing": {
+    "fallback_role": "cve-research",
+    "image_attachment_role": "cve-research",
+    "harm_block": true,
+    "uncertain_fallback": true
+  }
+}

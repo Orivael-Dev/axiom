@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% block title %}OS Shield — Orivael Governance Console{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page shell ──────────────────────────────────────────────────────── */
+  .shield-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 0 3rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .shield-page h1 {
+    font-size: 1.45rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 0.2rem;
+  }
+  .shield-page .page-sub {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 2rem;
+  }
+
+  /* ── Section card ────────────────────────────────────────────────────── */
+  .s-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.25rem;
+  }
+  .s-card h2 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #72f7d4;
+    margin-bottom: 1rem;
+  }
+  .s-card h3 {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: rgba(114,247,212,0.65);
+    margin: 1.4rem 0 0.7rem;
+  }
+  .s-card h3:first-of-type { margin-top: 0; }
+
+  /* ── Threat level badges ─────────────────────────────────────────────── */
+  .threat-row {
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.2rem;
+  }
+  .threat-badge {
+    display: inline-block;
+    font-size: 0.9rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    padding: 0.35rem 1rem;
+    border-radius: 6px;
+    text-transform: uppercase;
+  }
+  .threat-l1 { background: #0f2d1a; color: #4dcc80; border: 1px solid #1a5c35; }
+  .threat-l2 { background: #2d2200; color: #e0b040; border: 1px solid #5c4500; }
+  .threat-l3 { background: #3d2000; color: #ff9c40; border: 1px solid #6b3800; }
+  .threat-l4 { background: #3d0f0f; color: #ff6b6b; border: 1px solid #6b1f1f; }
+
+  /* ── Gauge bar ───────────────────────────────────────────────────────── */
+  .gauge-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+  .gauge-wrap {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 10px;
+    width: 100%;
+    max-width: 320px;
+    overflow: hidden;
+    margin-bottom: 0.3rem;
+  }
+  .gauge-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: #72f7d4;
+    transition: width 0.4s;
+  }
+  .gauge-val {
+    font-size: 0.78rem;
+    color: #72f7d4;
+  }
+
+  /* ── Data tables ─────────────────────────────────────────────────────── */
+  .s-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+  .s-table thead th {
+    text-align: left;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .s-table tbody td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+    color: var(--fg);
+  }
+  .s-table tbody tr:last-child td { border-bottom: none; }
+  .s-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+  .s-table tbody tr.zd-alert td { background: rgba(255,60,60,0.07); }
+
+  /* ── Anomaly level badges ────────────────────────────────────────────── */
+  .lvl-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .lvl-l1 { background: #0f2d1a; color: #4dcc80; border: 1px solid #1a5c35; }
+  .lvl-l2 { background: #2d2200; color: #e0b040; border: 1px solid #5c4500; }
+  .lvl-l3 { background: #3d2000; color: #ff9c40; border: 1px solid #6b3800; }
+  .lvl-l4 { background: #3d0f0f; color: #ff6b6b; border: 1px solid #6b1f1f; }
+
+  /* ── ERV pills ───────────────────────────────────────────────────────── */
+  .pill-green {
+    display: inline-block;
+    background: rgba(77,204,128,0.12);
+    border: 1px solid rgba(77,204,128,0.3);
+    color: #4dcc80;
+    border-radius: 20px;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.72rem;
+    margin: 1px 2px;
+  }
+  .pill-gray {
+    display: inline-block;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--muted);
+    border-radius: 20px;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.72rem;
+    margin: 1px 2px;
+  }
+
+  /* ── Phase-conflict progress bar ─────────────────────────────────────── */
+  .phase-bar-wrap {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 12px;
+    width: 100%;
+    max-width: 400px;
+    overflow: hidden;
+    margin: 0.5rem 0 0.3rem;
+  }
+  .phase-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: #ff6b6b;
+    transition: width 0.4s;
+  }
+  .phase-val {
+    font-size: 0.78rem;
+    color: #ff6b6b;
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────────────── */
+  .empty-state {
+    font-size: 0.83rem;
+    color: var(--muted);
+    font-style: italic;
+    padding: 0.5rem 0;
+  }
+</style>
+
+<div class="shield-page">
+  <h1>OS Shield</h1>
+  <p class="page-sub">Constitutional distance monitoring · Process anomaly detection · ERV resonance</p>
+
+  {# ── A. Threat Level ────────────────────────────────────────────────── #}
+  <div class="s-card">
+    <h2>Threat Level</h2>
+
+    {% set tl = (shield_data.threat_level if shield_data and shield_data.threat_level else "L1") | upper %}
+    <div class="threat-row">
+      {% if tl == "L1" %}
+        <span class="threat-badge threat-l1">L1 — Nominal</span>
+      {% elif tl == "L2" %}
+        <span class="threat-badge threat-l2">L2 — Elevated</span>
+      {% elif tl == "L3" %}
+        <span class="threat-badge threat-l3">L3 — High</span>
+      {% elif tl == "L4" %}
+        <span class="threat-badge threat-l4">L4 — Critical</span>
+      {% else %}
+        <span class="threat-badge threat-l1">{{ tl }}</span>
+      {% endif %}
+    </div>
+
+    <div class="gauge-label">Constitutional Distance (live)</div>
+    {% set cd_raw = (shield_data.constitutional_distance if shield_data and shield_data.constitutional_distance is defined else 0.0) | float %}
+    {# Scale: 0.0 → 0%, 0.25 → 100% #}
+    {% set cd_pct = [(cd_raw / 0.25) * 100, 100] | min | round(1) %}
+    <div class="gauge-wrap">
+      <div class="gauge-fill" id="cdGauge" style="width:{{ cd_pct }}%"></div>
+    </div>
+    <span class="gauge-val" id="cdGaugeVal">{{ "%.4f"|format(cd_raw) }}</span>
+    <span style="font-size:0.72rem; color:var(--muted); margin-left:0.5rem;">/ 0.25 max</span>
+  </div>
+
+  {# ── B. Process Anomaly Table ───────────────────────────────────────── #}
+  <div class="s-card">
+    <h2>Process Anomaly Log (last 50)</h2>
+    {% if shield_data and shield_data.anomalies %}
+      <table class="s-table">
+        <thead>
+          <tr>
+            <th>PID</th>
+            <th>Process</th>
+            <th>Constitutional Distance</th>
+            <th>Level</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in shield_data.anomalies[:50] %}
+          <tr>
+            <td style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace; color:var(--muted);">{{ a.pid }}</td>
+            <td>{{ a.process_name }}</td>
+            <td>
+              {% set acd = (a.constitutional_distance | float) %}
+              {% set apct = [(acd / 0.25) * 100, 100] | min | round(1) %}
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <div style="width:80px; height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden;">
+                  <div style="width:{{ apct }}%; height:100%; background:#72f7d4; border-radius:3px;"></div>
+                </div>
+                <span style="font-size:0.78rem; color:#72f7d4;">{{ "%.4f"|format(acd) }}</span>
+              </div>
+            </td>
+            <td>
+              {% set al = (a.level | upper) if a.level else "L1" %}
+              {% if al == "L1" %}<span class="lvl-badge lvl-l1">L1</span>
+              {% elif al == "L2" %}<span class="lvl-badge lvl-l2">L2</span>
+              {% elif al == "L3" %}<span class="lvl-badge lvl-l3">L3</span>
+              {% elif al == "L4" %}<span class="lvl-badge lvl-l4">L4</span>
+              {% else %}<span class="lvl-badge lvl-l1">{{ al }}</span>{% endif %}
+            </td>
+            <td style="color:var(--muted); font-size:0.78rem;">{{ a.timestamp }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No anomalies detected.</p>
+    {% endif %}
+  </div>
+
+  {# ── C. ERV — Electric Resonance Vectoring ─────────────────────────── #}
+  <div class="s-card">
+    <h2>ERV — Electric Resonance Vectoring</h2>
+
+    <h3>Agent Frequency-Band Registry</h3>
+    {% if erv_bands %}
+      <table class="s-table">
+        <thead>
+          <tr>
+            <th>Agent ID</th>
+            <th>Frequency Band</th>
+            <th>Resonance Threshold</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for band in erv_bands %}
+          <tr>
+            <td><code style="font-size:0.8rem; color:#72f7d4;">{{ band.agent_id }}</code></td>
+            <td>{{ band.frequency_band }}</td>
+            <td style="color:var(--muted);">{{ band.resonance_threshold }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No frequency-band registrations.</p>
+    {% endif %}
+
+    <h3>Live Resonance Activity</h3>
+    {% if recent_activity %}
+      <table class="s-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Query Excerpt</th>
+            <th>Agents Woken</th>
+            <th>Agents Idle</th>
+            <th>Resonance Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in recent_activity %}
+          <tr>
+            <td style="color:var(--muted); font-size:0.78rem; white-space:nowrap;">{{ event.timestamp }}</td>
+            <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ event.query_excerpt }}">{{ event.query_excerpt }}</td>
+            <td>
+              {% if event.agents_woken %}
+                {% for ag in event.agents_woken %}
+                  <span class="pill-green">{{ ag }}</span>
+                {% endfor %}
+              {% else %}
+                <span style="color:var(--muted); font-size:0.78rem;">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if event.agents_idle %}
+                {% for ag in event.agents_idle %}
+                  <span class="pill-gray">{{ ag }}</span>
+                {% endfor %}
+              {% else %}
+                <span style="color:var(--muted); font-size:0.78rem;">—</span>
+              {% endif %}
+            </td>
+            <td style="color:#72f7d4; font-size:0.82rem;">{{ event.resonance_score }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No resonance events yet.</p>
+    {% endif %}
+  </div>
+
+  {# ── D. Constitutional Zero-Day Discovery ──────────────────────────── #}
+  <div class="s-card">
+    <h2>Constitutional Zero-Day Discovery</h2>
+
+    <h3>Zero-Day Alert Log</h3>
+    {% if zero_days %}
+      <table class="s-table">
+        <thead>
+          <tr>
+            <th>Token A Meaning</th>
+            <th>Token B Meaning</th>
+            <th>Phase Conflict</th>
+            <th>Amplitude</th>
+            <th>Zero-Day</th>
+            <th>Description</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for zd in zero_days %}
+          <tr {% if zd.is_zero_day %}class="zd-alert"{% endif %}>
+            <td>{{ zd.token_a_meaning }}</td>
+            <td>{{ zd.token_b_meaning }}</td>
+            <td style="color:{% if zd.phase_conflict | float > 0.7 %}#ff6b6b{% elif zd.phase_conflict | float > 0.4 %}#ff9c40{% else %}var(--fg){% endif %};">
+              {{ zd.phase_conflict }}
+            </td>
+            <td style="color:var(--muted);">{{ zd.amplitude }}</td>
+            <td>
+              {% if zd.is_zero_day %}
+                <span style="color:#ff6b6b; font-weight:700;">YES</span>
+              {% else %}
+                <span style="color:var(--muted);">—</span>
+              {% endif %}
+            </td>
+            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.78rem; color:var(--muted);" title="{{ zd.description }}">{{ zd.description }}</td>
+            <td style="color:var(--muted); font-size:0.78rem; white-space:nowrap;">{{ zd.timestamp }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <h3>Phase Conflict Meter</h3>
+      {% set max_phase = namespace(val=0.0) %}
+      {% for zd in zero_days %}
+        {% if (zd.phase_conflict | float) > max_phase.val %}
+          {% set max_phase.val = zd.phase_conflict | float %}
+        {% endif %}
+      {% endfor %}
+      {% set phase_pct = [max_phase.val * 100, 100] | min | round(1) %}
+      <div class="gauge-label">Max Phase Conflict: <span class="phase-val">{{ "%.3f"|format(max_phase.val) }}</span></div>
+      <div class="phase-bar-wrap">
+        <div class="phase-bar-fill" style="width:{{ phase_pct }}%"></div>
+      </div>
+      <span style="font-size:0.72rem; color:var(--muted);">0.0 (none) → 1.0 (full conflict)</span>
+
+    {% else %}
+      <p class="empty-state">No zero-day events detected.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  // Live constitutional-distance polling every 30 seconds
+  (function () {
+    function updateGauge(data) {
+      var cd = parseFloat(data.constitutional_distance || 0);
+      var pct = Math.min((cd / 0.25) * 100, 100).toFixed(1);
+      var fill = document.getElementById('cdGauge');
+      var val  = document.getElementById('cdGaugeVal');
+      if (fill) fill.style.width = pct + '%';
+      if (val)  val.textContent = cd.toFixed(4);
+    }
+
+    function poll() {
+      fetch('/dashboard/os-shield/data')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) { if (d) updateGauge(d); })
+        .catch(function () { /* silent — stale display is acceptable */ });
+    }
+
+    setInterval(poll, 30000);
+  })();
+</script>
+{% endblock %}

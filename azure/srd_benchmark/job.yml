@@ -1,0 +1,47 @@
+# Azure ML command job — SRD benchmark sweep on a Tesla T4 node.
+#   az ml job create -f azure/srd_benchmark/job.yml \
+#       --resource-group <rg> --workspace-name <ws>
+#
+# A100 not in the subscription? T4 is fine for this work — perplexity is computed from
+# the model's logits and is identical on any GPU; the A100 only buys speed and room for
+# bigger models. T4 (16 GB) holds every model you'd quantize here, and is ~7x cheaper.
+#
+# SKU choice (set the name in `compute:` below):
+#   • NC4as_T4_v3   — 1x T4 16 GB, ~$0.53/hr   ← default; sequential sweep, cheapest
+#   • NC64as_T4_v3  — 4x T4 16 GB, ~$4.35/hr   ← run 4 model jobs in parallel (not pooled VRAM)
+# Prereqs: an Azure ML workspace + an NCasT4_v3 compute target + T4 quota (Spot if available).
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+
+display_name: srd-benchmark-sweep
+experiment_name: srd-quant
+description: WikiText-2 perplexity sweep — SRD vs Q4_K_M at matched bpw (T4).
+
+# Repo root is uploaded as the job's code.
+code: ../..
+
+command: >-
+  pip install -q torch transformers datasets accelerate sentencepiece bitsandbytes &&
+  python azure/srd_benchmark/run_sweep.py
+  --models ${{inputs.models}}
+  --out ${{outputs.results}}
+
+# T4 = 16 GB VRAM, Turing (cc 7.5): fp16 OK, no bf16 tensor ops, no FlashAttention-2
+# (use attn_implementation="sdpa"/"eager"). Keep eval models ≤ ~7B fp16, or quantized
+# up to ~13B. 70B won't fit a single T4 even in 4-bit — shard or skip those.
+inputs:
+  models: "smollm2-135m tinyllama-1.1b mistral-7b"
+
+outputs:
+  results:
+    type: uri_folder
+    mode: rw_mount
+
+environment:
+  # Curated PyTorch+CUDA image; CUDA 12.1 runs on T4. Swap for your registered env if any.
+  image: mcr.microsoft.com/azureml/curated/acpt-pytorch-2.2-cuda12.1:latest
+
+# Point this at your NCasT4_v3 compute target (NC4as_T4_v3 default; NC64as_T4_v3 for 4x).
+compute: azureml:t4-spot
+
+resources:
+  instance_count: 1

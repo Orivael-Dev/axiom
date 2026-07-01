@@ -1204,12 +1204,7 @@ def _get_marketplace():
 
 def _handle_marketplace(args: dict) -> dict:
     """AX OS — signed-agent install + bonded authority lifecycle."""
-    try:
-        from axiom_marketplace import MarketplaceError
-    except (ImportError, ModuleNotFoundError):
-        _out = {"error": "axiom_marketplace is unavailable on this MCP server (requires the platform runtime: event_token/torch). Use the platform marketplace service.", "available": False}
-        _out["hmac_signature"] = _sign(_out)
-        return _out
+    from axiom_marketplace import MarketplaceError
     action = args.get("action")
     valid_actions = ("verify", "sandbox_install", "review", "approve",
                      "revoke", "authority")

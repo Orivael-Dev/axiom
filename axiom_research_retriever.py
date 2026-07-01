@@ -12,6 +12,7 @@ of the system won't notice.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -64,11 +65,13 @@ def _safe_read(path: Path) -> Optional[str]:
 
 @dataclass(frozen=True)
 class IndexedDocument:
-    path:         Path
-    relative:     str          # path relative to the indexer's primary root
-    content:      str
-    token_count:  int
-    token_freq:   dict         # token → frequency in this doc
+    path:          Path
+    relative:      str          # path relative to the indexer's primary root
+    content:       str
+    token_count:   int
+    token_freq:    dict         # token → frequency in this doc
+    intent_type:   str                = "general"
+    vocab_anchors: tuple[str, ...] = ()   # tuple (not list) since frozen=True
 
 
 @dataclass(frozen=True)
@@ -86,6 +89,8 @@ class RetrievedSource:
     # looked up against axiom_medical_safety.EVIDENCE_TIER_REGISTRY by
     # URI host. None for local-corpus hits with no public domain.
     evidence_tier:   Optional[int] = None
+    intent_type:     str                = "general"
+    vocab_anchors:   tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         d = {
@@ -98,6 +103,10 @@ class RetrievedSource:
         }
         if self.evidence_tier is not None:
             d["evidence_tier"] = self.evidence_tier
+        if self.intent_type != "general":
+            d["intent_type"] = self.intent_type
+        if self.vocab_anchors:
+            d["vocab_anchors"] = list(self.vocab_anchors)
         return d
 
 
@@ -168,9 +177,23 @@ class LocalRetriever:
                     rel = str(path.relative_to(self.primary_root))
                 except ValueError:
                     rel = str(path)
+
+                # Load intent typing + vocab anchors from sidecar if present
+                intent_type = "general"
+                vocab_anchors: tuple[str, ...] = ()
+                meta_path = path.with_name(path.stem + ".meta.json")
+                if meta_path.exists():
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                        intent_type = meta.get("intent_type", "general")
+                        vocab_anchors = tuple(meta.get("vocab_anchors", []))
+                    except (json.JSONDecodeError, OSError):
+                        pass
+
                 self._docs.append(IndexedDocument(
                     path=path, relative=rel, content=content,
                     token_count=len(tokens), token_freq=freq,
+                    intent_type=intent_type, vocab_anchors=vocab_anchors,
                 ))
                 files_seen += 1
 
@@ -190,6 +213,77 @@ class LocalRetriever:
         for t, n_with_t in df.items():
             self._idf[t] = math.log((n - n_with_t + 0.5) / (n_with_t + 0.5) + 1.0)
         self._built = True
+
+    def add_documents(self, paths: List[Path]) -> int:
+        """Append new documents to the live index without a full rebuild.
+
+        New documents are searchable immediately. Terms that are already
+        in the corpus keep their existing IDF values (slightly stale but
+        within ~10% for small deltas). Terms that are brand-new to the
+        corpus — e.g. a freshly-added part number — receive the maximum
+        IDF value (log(N) for a term appearing in exactly one document)
+        so they score highly when queried. Call `merge_delta()` offline
+        (e.g. nightly) to recompute exact IDF values for all terms.
+
+        Returns the count of documents successfully added.
+        """
+        if not self._built:
+            self.build()
+
+        new_docs: List[IndexedDocument] = []
+        for p in paths:
+            try:
+                if p.stat().st_size > _MAX_BYTES:
+                    continue
+            except OSError:
+                continue
+            content = _safe_read(p)
+            if content is None:
+                continue
+            tokens = _tokenize(content)
+            if not tokens:
+                continue
+            freq: dict[str, int] = {}
+            for t in tokens:
+                freq[t] = freq.get(t, 0) + 1
+            try:
+                rel = str(p.relative_to(self.primary_root))
+            except ValueError:
+                rel = str(p)
+            new_docs.append(IndexedDocument(
+                path=p, relative=rel, content=content,
+                token_count=len(tokens), token_freq=freq,
+            ))
+
+        if not new_docs:
+            return 0
+
+        self._docs.extend(new_docs)
+        n = len(self._docs)
+
+        # Incremental avg_len update
+        self._avg_len = sum(d.token_count for d in self._docs) / n
+
+        # New terms get max-IDF (df=1 in corpus of n).  Existing terms
+        # keep their stale IDF — the error is O(delta/n) which is small.
+        for doc in new_docs:
+            for term in doc.token_freq:
+                if term not in self._idf:
+                    self._idf[term] = math.log((n - 1 + 0.5) / (1 + 0.5) + 1.0)
+
+        return len(new_docs)
+
+    def merge_delta(self) -> None:
+        """Full IDF rebuild to correct stale values introduced by add_documents().
+
+        Call offline (e.g. nightly) when an exact IDF recomputation is
+        desirable. Not required for correct retrieval — only for optimal
+        IDF weighting of terms introduced since the last full build.
+        After merge, all IDF values are exact.
+        """
+        self._built = False
+        self._idf.clear()
+        self.build()
 
     def _iter_files(self, root: Path):
         if root.is_file():
@@ -216,6 +310,7 @@ class LocalRetriever:
         *,
         k: int = 5,
         domain: Optional[str] = None,
+        intent_filter: Optional[str] = None,
     ) -> List[RetrievedSource]:
         # `domain` is accepted (and ignored) on the plain retriever so
         # the call site in axiom_research_server can pass it
@@ -229,8 +324,13 @@ class LocalRetriever:
         q_terms = _tokenize(query)
         if not q_terms:
             return []
+        docs = (
+            [d for d in self._docs if d.intent_type == intent_filter]
+            if intent_filter
+            else self._docs
+        )
         scored: list[tuple[float, IndexedDocument, str]] = []
-        for d in self._docs:
+        for d in docs:
             score = self._score(d, q_terms)
             if score <= 0:
                 continue
@@ -247,6 +347,8 @@ class LocalRetriever:
                 kind=self._kind_for(doc),
                 score=norm,
                 snippet=snippet,
+                intent_type=doc.intent_type,
+                vocab_anchors=doc.vocab_anchors,
             ))
         return out
 

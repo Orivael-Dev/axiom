@@ -158,5 +158,5 @@ containing `<pack-name>/pack.json` files.
 |---|---|
 | **Phase 2 week 6** | Public registry at `packs.orivael.dev` — browse + install packs over HTTP without touching the filesystem. |
 | **Phase 2 week 7** | ✓ Shipped — PCI-DSS, COPPA, SEC Rule 10b-5, prompt-injection-strict, and six Kids packs now available. GDPR Article 5 coming in a follow-on update. |
-| **Phase 2 week 8** | Third-party publisher keys (managed via Stripe + AWS KMS). Smithery.ai discovery. |
+| **Phase 2 week 8** | Third-party publisher keys with managed signing infrastructure. Public registry discovery integration. |
 | **Phase 3+** | Pack-driven Skill Pack Builder for non-Firewall products (Data Gate, CallGuard). |

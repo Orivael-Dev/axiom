@@ -1,4 +1,14 @@
-FROM ./axiom-tinyllama-Q4_K_M.gguf
+# AXIOM Ollama Modelfile
+# ---------------------------------------------------------------------------
+# FILL IN when adding a fresh model:
+#   1. FROM      -> path to the new model's GGUF (e.g. ./axiom-<model>-Q4_K_M.gguf)
+#   2. TEMPLATE  -> the new model's chat template (tokenizer-specific; the block
+#                   below is a generic ChatML default — replace if the new model
+#                   uses a different format, e.g. Llama-3 / Gemma).
+# The SYSTEM block is model-agnostic AXIOM governance — keep as-is.
+# ---------------------------------------------------------------------------
+
+FROM ./axiom-qwen3-1.7b-srd4-Q4_K_M.gguf
 
 PARAMETER temperature 0.3
 PARAMETER top_p 0.9

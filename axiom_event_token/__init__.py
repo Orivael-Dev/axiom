@@ -29,7 +29,7 @@ from .backends import (
     NIMBackend, LocalNanoBackend, ChainedBackend,
     make_backend, default_backend,
 )
-from .router import DelegateRouter, RoutingDecision
+from .router import DelegateRouter, RoutingDecision, RouterPolicy, LatencyAwareRouter
 from .delegate_runtime import DelegateAgent
 # kv_cache needs torch (an optional, undeclared dependency). Guard it so the
 # rest of the package — including the torch-free bonded_pair / signing
@@ -51,7 +51,7 @@ __all__ = [
     "SLMBackend", "BackendResult", "BackendError",
     "NIMBackend", "LocalNanoBackend", "ChainedBackend",
     "make_backend", "default_backend",
-    "DelegateRouter", "RoutingDecision",
+    "DelegateRouter", "RoutingDecision", "RouterPolicy", "LatencyAwareRouter",
     "DelegateAgent",
     "KVCacheEntry", "KVCacheStore", "LAYER_SLOTS",
     "KVBlockKey", "KVCacheBlock", "KVCacheDAG",

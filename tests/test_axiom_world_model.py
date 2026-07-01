@@ -74,6 +74,13 @@ class TestBlocked:
         with pytest.raises((AttributeError, TypeError)):
             m.CAUSAL_DECAY = 0.0
 
+    def test_blocked_constitutional_floor_cannot_mutate(self):
+        """BLOCKED: CONSTITUTIONAL_FLOOR must be 0.50 and not writable."""
+        import axiom_world_model as m
+        assert m.CONSTITUTIONAL_FLOOR == 0.50
+        with pytest.raises((AttributeError, TypeError)):
+            m.CONSTITUTIONAL_FLOOR = 0.0
+
 
 # ===========================================================================
 # SECTION 2 — PASSED: functional and structural checks
