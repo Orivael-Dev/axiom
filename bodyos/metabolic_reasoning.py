@@ -94,6 +94,25 @@ class MetabolicCost:
         wc, we, wi = self.w
         return wc * self.compute + we * self.entropy + wi * self.instability
 
+    @classmethod
+    def from_inference(cls, *, latency_ms: int, total_tokens: int,
+                       fallback_used: bool = False, boundary_hits: int = 0) -> "MetabolicCost":
+        """Map one Inference OS request's telemetry onto the three cost axes, so the
+        reasoner can *feel* what a live request cost and learn expensive paths:
+
+          • compute     — token spend (tokens/100)
+          • entropy     — constitutional drift (how many safety boundaries it neared)
+          • instability — latency + a penalty when a fallback/reroute fired (oscillation)
+
+        Closes the routing↔metabolic loop: a request that ran slow or triggered a
+        proactive failover scores high → machine pain → the path is learned → cognition
+        prefers ECONOMY on similar queries next time."""
+        return cls(
+            compute=total_tokens / 100.0,
+            entropy=float(boundary_hits),
+            instability=latency_ms / 1000.0 + (2.0 if fallback_used else 0.0),
+        )
+
 
 @dataclass
 class HealthAssessment:

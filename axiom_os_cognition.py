@@ -77,10 +77,14 @@ class CognitionLayer:
     """
 
     def __init__(self, *, calibration_ledger: Optional[str] = None,
-                 metabolic_ledger: Optional[str] = None, enabled: bool = True) -> None:
+                 metabolic_ledger: Optional[str] = None, enabled: bool = True,
+                 reasoner=None) -> None:
         self.enabled = enabled
         self._calib_ledger = calibration_ledger
         self._metabolic_ledger = metabolic_ledger
+        # An injected InteroceptiveReasoner (shared with the OS feedback loop) — so
+        # assess() here reads the same live-learning instance the OS observe()s into.
+        self._injected_reasoner = reasoner
         self._calib = None
         self._metabolic = None
         self._ready = False
@@ -94,11 +98,14 @@ class CognitionLayer:
             self._calib = CalibrationLoop(ledger_path=self._calib_ledger)
         except Exception:
             self._calib = None
-        try:
-            from bodyos.metabolic_reasoning import InteroceptiveReasoner
-            self._metabolic = InteroceptiveReasoner(ledger_path=self._metabolic_ledger)
-        except Exception:
-            self._metabolic = None
+        if self._injected_reasoner is not None:
+            self._metabolic = self._injected_reasoner      # shared with OS feedback loop
+        else:
+            try:
+                from bodyos.metabolic_reasoning import InteroceptiveReasoner
+                self._metabolic = InteroceptiveReasoner(ledger_path=self._metabolic_ledger)
+            except Exception:
+                self._metabolic = None
         self._ready = True
 
     # ── the one call the pipeline makes ─────────────────────────────────────────

@@ -229,6 +229,41 @@ def test_router_can_be_disabled() -> None:
     assert kwargs["max_output_tokens"] == 512
 
 
+class _VarBackend:
+    """Backend whose reported output_tokens is mutable — to make some requests expensive."""
+    name = "local"
+    model = "llama3.2:3b"
+    def __init__(self):
+        self.output_tokens = 8
+    def generate(self, *, system, prompt, max_output_tokens, timeout_s=60.0):
+        from axiom_event_token.backends import BackendResult
+        return BackendResult(text="ok", input_tokens=12, output_tokens=self.output_tokens,
+                             latency_ms=10, backend=self.name, model=self.model)
+
+
+def test_metabolic_feedback_loop_biases_next_similar_query_to_economy() -> None:
+    # Thread 5 end-to-end through the real pipeline: an expensive request is felt,
+    # learned, and biases the SAME query's next run to the economy tier — no external
+    # ledger, the OS's own shared reasoner closes the loop.
+    be  = _VarBackend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    query = "reconcile every ledger line across all quarters in one pass"
+
+    # warm a cheap baseline on this domain, then run one expensive episode
+    be.output_tokens = 8
+    for _ in range(4):
+        ios.run(_make_request("hi", domain="general"))
+    be.output_tokens = 6000                              # expensive → machine pain
+    r_expensive = ios.run(_make_request(query, domain="general"))
+    assert r_expensive.route_tier == "standard"          # first time it ran full-budget
+
+    # next time the same query arrives it is recognised as a high-cost path
+    be.output_tokens = 8
+    r_next = ios.run(_make_request(query, domain="general"))
+    assert r_next.route_tier == "economy"
+    assert r_next.verify()
+
+
 class _FakeChain:
     """Minimal ChainedBackend-shaped stub — records the deprioritize it receives."""
     name = "chain"

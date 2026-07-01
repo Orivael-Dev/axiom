@@ -242,6 +242,7 @@ class InferenceOS:
         self._policy     = None
         self._cognition  = None   # CognitionLayer — fused learner verdict (Layers 0/1/4)
         self._router     = None   # AdaptiveRouter — Layer 1 health + economy routing
+        self._metabolic_reasoner = None  # shared InteroceptiveReasoner — feedback loop
         self._ready      = False
 
     # ── initialisation ────────────────────────────────────────────────────────
@@ -258,10 +259,15 @@ class InferenceOS:
         self._audit     = (self._build_audit()     if self._audit_arg     is _UNSET
                            else self._audit_arg)
         self._policy    = self._policy_arg or self._build_policy()
+        # Metabolic feedback loop (Layer 1): one shared InteroceptiveReasoner — the
+        # auto-built cognition layer READS it (assess), and the OS WRITES to it
+        # (observe) after each request. That closes the routing↔metabolic loop:
+        # an expensive request now → cheaper reasoning on similar queries later.
+        self._metabolic_reasoner = self._build_metabolic_reasoner()
         # Cognition layer — fuse the four session learners into one signed verdict.
         # _UNSET → auto-build (ledger-less, degrades to intent floor); None → disabled.
-        self._cognition = (self._build_cognition() if self._cognition_arg is _UNSET
-                           else self._cognition_arg)
+        self._cognition = (self._build_cognition(self._metabolic_reasoner)
+                           if self._cognition_arg is _UNSET else self._cognition_arg)
         # Adaptive router — Layer 1: fuse ledger health + cognition economy hint.
         self._router    = (self._build_router() if self._router_arg is _UNSET
                            else self._router_arg)
@@ -354,18 +360,30 @@ class InferenceOS:
             return None
 
     @staticmethod
-    def _build_cognition():
+    def _build_cognition(reasoner=None):
         """Fused learner verdict (rung-3 profile + calibrated guard + metabolic health).
         Ledger-less by default: the guard falls back to its regex/intent floor and the
         metabolic reasoner has no learned signatures, so it never over-fires on a fresh
         install. Point AXIOM_CALIBRATION_LEDGER / AXIOM_METABOLIC_LEDGER at JSONL files
-        to consult everything the OS has learned."""
+        to consult everything the OS has learned. ``reasoner`` shares the OS's live
+        feedback-loop InteroceptiveReasoner so assess() sees what observe() just learned."""
         try:
             from axiom_os_cognition import CognitionLayer
             return CognitionLayer(
                 calibration_ledger=os.environ.get("AXIOM_CALIBRATION_LEDGER"),
                 metabolic_ledger=os.environ.get("AXIOM_METABOLIC_LEDGER"),
+                reasoner=reasoner,
             )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _build_metabolic_reasoner():
+        """The shared interoceptive learner the feedback loop writes to. Ledger-backed
+        if AXIOM_METABOLIC_LEDGER is set, else in-memory for the process lifetime."""
+        try:
+            from bodyos.metabolic_reasoning import InteroceptiveReasoner
+            return InteroceptiveReasoner(ledger_path=os.environ.get("AXIOM_METABOLIC_LEDGER"))
         except Exception:
             return None
 
@@ -823,6 +841,27 @@ class InferenceOS:
             verified=(output_verdict == "allow"),
             domain=request.domain or "",
         )
+
+        # ── Metabolic feedback: feel this request's cost; on pain, learn the path ──
+        # Closes the routing↔metabolic loop. The shared reasoner is the same instance
+        # the cognition layer assess()es, so what we learn here proactively biases the
+        # next similar query toward ECONOMY (fewer tokens) before it runs expensive.
+        if self._metabolic_reasoner is not None:
+            try:
+                from bodyos.metabolic_reasoning import MetabolicCost
+                boundary_hits = sum((cognition.get("boundaries") or {}).values()) if cognition else 0
+                self._metabolic_reasoner.observe(
+                    request.query,
+                    MetabolicCost.from_inference(
+                        latency_ms=_ms(t_total),
+                        total_tokens=input_tokens + output_tokens,
+                        fallback_used=fallback_used,
+                        boundary_hits=int(boundary_hits),
+                    ),
+                    domain=request.domain or "general",
+                )
+            except Exception:
+                pass
 
         # ── Output shaping: strip CoT / politeness post-audit ────────────────
         shaping_tokens_saved = 0

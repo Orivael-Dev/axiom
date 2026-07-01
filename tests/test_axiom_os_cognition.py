@@ -107,6 +107,34 @@ class TestMetabolicRouting:
         assert v["action"] != BLOCK
 
 
+class TestFeedbackLoop:
+
+    def test_shared_reasoner_learns_then_enrich_prefers_economy(self):
+        # Thread 5 closed loop: the OS observe()s cost into a reasoner; cognition
+        # assess()es the SAME instance. Teach an expensive path, then confirm enrich()
+        # on that query flips to a metabolic economy action (never a hard BLOCK).
+        from bodyos.metabolic_reasoning import InteroceptiveReasoner, MetabolicCost
+        reasoner = InteroceptiveReasoner()
+        cog = CognitionLayer(reasoner=reasoner)
+        query = "run the full quarterly variance reconciliation across every ledger"
+
+        # before learning: nothing fires
+        assert cog.enrich(query)["action"] == PROCEED
+
+        # warm a cheap homeostatic baseline, then feel one expensive episode
+        cheap = MetabolicCost.from_inference(latency_ms=120, total_tokens=180)
+        for _ in range(4):
+            reasoner.observe("hi there", cheap, domain="general")
+        pricey = MetabolicCost.from_inference(latency_ms=8000, total_tokens=4000,
+                                              fallback_used=True)
+        reasoner.observe(query, pricey, domain="general")
+
+        # after learning: the same instance now biases this query toward economy
+        after = cog.enrich(query)
+        assert after["action"] in {REASON_CHEAPLY, REFUSE_FOR_HEALTH}
+        assert after["action"] != BLOCK
+
+
 def test_module_cli_smoke(capsys):
     from axiom_os_cognition import _main
     assert _main(["what is 2 + 2?"]) == 0
