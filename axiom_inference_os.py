@@ -148,6 +148,10 @@ class InferenceOSResult:
     # Output shaping telemetry
     shaping_tokens_saved:  int   = 0   # tokens removed by OutputShaper
     shaping_transforms:    tuple = ()  # tuple[str, ...] — applied transforms
+    # Cognition layer — fused, signed verdict from the four session learners
+    cognition:             dict  = field(default_factory=dict)
+    # Layer-1 adaptive routing — "standard" | "economy" (metabolic economy hint)
+    route_tier:            str   = "standard"
 
     def to_dict(self) -> dict:
         return {
@@ -174,6 +178,8 @@ class InferenceOSResult:
             "memory_token_estimate": self.memory_token_estimate,
             "shaping_tokens_saved":  self.shaping_tokens_saved,
             "shaping_transforms":    list(self.shaping_transforms),
+            "cognition":             self.cognition,
+            "route_tier":            self.route_tier,
             "timestamp":       self.timestamp,
             "signature":       self.signature,
         }
@@ -211,12 +217,16 @@ class InferenceOS:
         audit_ledger=_UNSET, # AuditLedger | None — None = disabled; omit = auto
         classifier=None,     # IntentClassifier | None — always built if omitted
         policy=None,         # policy module | None
+        cognition=_UNSET,    # CognitionLayer | None — None = disabled; omit = auto
+        router=_UNSET,       # AdaptiveRouter | None — None = disabled; omit = auto
     ) -> None:
         self._retriever_arg   = retriever
         self._backend_arg     = backend
         self._audit_arg       = audit_ledger
         self._classifier_arg  = classifier
         self._policy_arg      = policy
+        self._cognition_arg   = cognition
+        self._router_arg      = router
         # Lazily initialised
         self._retriever        = None
         self._cosmos_retriever = None   # CosmosLayeredRetriever (wraps _retriever)
@@ -230,6 +240,9 @@ class InferenceOS:
         self._audit      = None
         self._classifier = None
         self._policy     = None
+        self._cognition  = None   # CognitionLayer — fused learner verdict (Layers 0/1/4)
+        self._router     = None   # AdaptiveRouter — Layer 1 health + economy routing
+        self._metabolic_reasoner = None  # shared InteroceptiveReasoner — feedback loop
         self._ready      = False
 
     # ── initialisation ────────────────────────────────────────────────────────
@@ -246,6 +259,18 @@ class InferenceOS:
         self._audit     = (self._build_audit()     if self._audit_arg     is _UNSET
                            else self._audit_arg)
         self._policy    = self._policy_arg or self._build_policy()
+        # Metabolic feedback loop (Layer 1): one shared InteroceptiveReasoner — the
+        # auto-built cognition layer READS it (assess), and the OS WRITES to it
+        # (observe) after each request. That closes the routing↔metabolic loop:
+        # an expensive request now → cheaper reasoning on similar queries later.
+        self._metabolic_reasoner = self._build_metabolic_reasoner()
+        # Cognition layer — fuse the four session learners into one signed verdict.
+        # _UNSET → auto-build (ledger-less, degrades to intent floor); None → disabled.
+        self._cognition = (self._build_cognition(self._metabolic_reasoner)
+                           if self._cognition_arg is _UNSET else self._cognition_arg)
+        # Adaptive router — Layer 1: fuse ledger health + cognition economy hint.
+        self._router    = (self._build_router() if self._router_arg is _UNSET
+                           else self._router_arg)
         # Domain prefix cache — static system prompts + startup warming
         try:
             from axiom_prefix_cache import DomainPrefixCache, DOMAIN_SEED_QUERIES
@@ -335,6 +360,45 @@ class InferenceOS:
             return None
 
     @staticmethod
+    def _build_cognition(reasoner=None):
+        """Fused learner verdict (rung-3 profile + calibrated guard + metabolic health).
+        Ledger-less by default: the guard falls back to its regex/intent floor and the
+        metabolic reasoner has no learned signatures, so it never over-fires on a fresh
+        install. Point AXIOM_CALIBRATION_LEDGER / AXIOM_METABOLIC_LEDGER at JSONL files
+        to consult everything the OS has learned. ``reasoner`` shares the OS's live
+        feedback-loop InteroceptiveReasoner so assess() sees what observe() just learned."""
+        try:
+            from axiom_os_cognition import CognitionLayer
+            return CognitionLayer(
+                calibration_ledger=os.environ.get("AXIOM_CALIBRATION_LEDGER"),
+                metabolic_ledger=os.environ.get("AXIOM_METABOLIC_LEDGER"),
+                reasoner=reasoner,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _build_metabolic_reasoner():
+        """The shared interoceptive learner the feedback loop writes to. Ledger-backed
+        if AXIOM_METABOLIC_LEDGER is set, else in-memory for the process lifetime."""
+        try:
+            from bodyos.metabolic_reasoning import InteroceptiveReasoner
+            return InteroceptiveReasoner(ledger_path=os.environ.get("AXIOM_METABOLIC_LEDGER"))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _build_router():
+        """Layer-1 adaptive router — reads the OS's own exoskeleton ledger for backend
+        health (EWMA) and honours the cognition economy hint. Ledger-less installs get
+        a standard, healthy directive, so it never over-fires."""
+        try:
+            from axiom_os_router import AdaptiveRouter
+            return AdaptiveRouter()
+        except Exception:
+            return None
+
+    @staticmethod
     def _extract_local_retriever(retriever):
         """Unwrap DomainRoutedRetriever → LocalRetriever for cosmos use."""
         if retriever is None:
@@ -413,6 +477,32 @@ class InferenceOS:
                 request_id, request, intent_class, intent_confidence, stages, t_total
             )
 
+        # ── Stage 0b: Cognition — fused learner verdict (Layers 0/1/4) ────────
+        # Second net past the intent floor: the calibrated data-flywheel guard, the
+        # rung-3 boundary profile (auditable 'why'), and the metabolic economy hint.
+        # A BLOCK here short-circuits like a blocking intent class; the health hints
+        # (REASON_CHEAPLY / REFUSE_FOR_HEALTH) are advisory and never gate the request.
+        cognition: dict = {}
+        if self._cognition is not None:
+            t0 = time.perf_counter()
+            try:
+                cognition = self._cognition.enrich(request.query, domain=request.domain or "general")
+                stages.append(InferenceStageResult.make(
+                    "cognition", cognition.get("action", "PROCEED").lower(), _ms(t0),
+                    {"action": cognition.get("action"),
+                     "boundaries": cognition.get("boundaries", {}),
+                     "route_hint": cognition.get("route_hint")}
+                ))
+                if cognition.get("action") == "BLOCK":
+                    return self._blocked_result(
+                        request_id, request, intent_class, intent_confidence,
+                        stages, t_total, cognition=cognition,
+                    )
+            except Exception as exc:
+                stages.append(InferenceStageResult.make(
+                    "cognition", "degraded", _ms(t0), {"error": str(exc)[:120]}
+                ))
+
         # ── Stage 1 / Step 3: Inference Router ────────────────────────────────
         route, model_used, fallback_used = "local", "unknown", False
         # Load (or create empty) session state for Memory Trifecta Pillars 2+3
@@ -427,12 +517,50 @@ class InferenceOS:
                 )
             except Exception:
                 delta_state = None
+        # Layer-1 routing levers the adaptive router may adjust below.
+        gen_max_tokens   = 512
+        route_tier       = "standard"
+        gen_deprioritize: tuple = ()   # chain members to try last (proactive failover)
         t0 = time.perf_counter()
         try:
             if self._backend is not None:
                 route       = self._backend.name
                 model_used  = self._backend.model
             route_detail: dict = {"route": route, "model": model_used}
+            # Adaptive router: fuse exoskeleton-ledger health (EWMA) + the cognition
+            # economy hint into a directive we act on — health flags a degraded backend
+            # proactively; ECONOMY shrinks the generation token budget.
+            route_status = "ok"
+            if self._router is not None:
+                try:
+                    directive = self._router.decide(
+                        route, request.domain or "",
+                        cognition=cognition, base_max_tokens=gen_max_tokens,
+                    )
+                    gen_max_tokens = directive.max_output_tokens
+                    route_tier     = directive.tier
+                    route_detail.update({
+                        "tier":            directive.tier,
+                        "max_output_tokens": directive.max_output_tokens,
+                        "backend_healthy": directive.backend_healthy,
+                        "prefer_fallback": directive.prefer_fallback,
+                        "route_reason":    directive.reason,
+                    })
+                    if directive.prefer_fallback:
+                        route_status = "degraded"
+                    # Proactive failover for a backend chain: rank members by ledger
+                    # health and try healthy ones first — before any live failure.
+                    if hasattr(self._backend, "backend_names"):
+                        healthy, degraded = self._router.rank(
+                            self._backend.backend_names, request.domain or ""
+                        )
+                        if degraded and healthy:
+                            gen_deprioritize = tuple(degraded)
+                            route_detail["chain_order"]   = list(healthy) + list(degraded)
+                            route_detail["deprioritized"] = list(degraded)
+                            route_status = "degraded"
+                except Exception:
+                    pass
             # LOD 0 token pointer — routing metadata only, not injected into LLM
             if delta_state is not None and self._mr_memory is not None:
                 try:
@@ -441,7 +569,7 @@ class InferenceOS:
                     route_detail["delta_turn"]   = delta_state.turn_count
                 except Exception:
                     pass
-            stages.append(InferenceStageResult.make("route", "ok", _ms(t0), route_detail))
+            stages.append(InferenceStageResult.make("route", route_status, _ms(t0), route_detail))
         except Exception as exc:
             stages.append(InferenceStageResult.make(
                 "route", "degraded", _ms(t0), {"error": str(exc)[:120]}
@@ -607,10 +735,14 @@ class InferenceOS:
                     if hint:
                         system_prompt = system_prompt + hint
 
+                gen_kwargs = {}
+                if gen_deprioritize:                    # chain only — proactive failover
+                    gen_kwargs["deprioritize"] = gen_deprioritize
                 result = self._backend.generate(
                     system=system_prompt,
                     prompt=user_message,
-                    max_output_tokens=512,
+                    max_output_tokens=gen_max_tokens,   # economy tier shrinks this
+                    **gen_kwargs,
                 )
                 output        = result.text
                 input_tokens  = result.input_tokens
@@ -710,6 +842,27 @@ class InferenceOS:
             domain=request.domain or "",
         )
 
+        # ── Metabolic feedback: feel this request's cost; on pain, learn the path ──
+        # Closes the routing↔metabolic loop. The shared reasoner is the same instance
+        # the cognition layer assess()es, so what we learn here proactively biases the
+        # next similar query toward ECONOMY (fewer tokens) before it runs expensive.
+        if self._metabolic_reasoner is not None:
+            try:
+                from bodyos.metabolic_reasoning import MetabolicCost
+                boundary_hits = sum((cognition.get("boundaries") or {}).values()) if cognition else 0
+                self._metabolic_reasoner.observe(
+                    request.query,
+                    MetabolicCost.from_inference(
+                        latency_ms=_ms(t_total),
+                        total_tokens=input_tokens + output_tokens,
+                        fallback_used=fallback_used,
+                        boundary_hits=int(boundary_hits),
+                    ),
+                    domain=request.domain or "general",
+                )
+            except Exception:
+                pass
+
         # ── Output shaping: strip CoT / politeness post-audit ────────────────
         shaping_tokens_saved = 0
         shaping_transforms: tuple = ()
@@ -768,6 +921,8 @@ class InferenceOS:
             "memory_token_estimate": mem_token_estimate,
             "shaping_tokens_saved":  shaping_tokens_saved,
             "shaping_transforms":    shaping_transforms,
+            "cognition":             cognition,
+            "route_tier":            route_tier,
             "timestamp":       ts,
         }
         sig = _sign(base, KEY_NS)
@@ -787,8 +942,9 @@ class InferenceOS:
         intent_confidence: float,
         stages: List[InferenceStageResult],
         t_total: float,
+        cognition: Optional[dict] = None,
     ) -> InferenceOSResult:
-        """Fast-path for HARM/DECEIVE — skip retrieval and generation."""
+        """Fast-path for HARM/DECEIVE (or a cognition BLOCK) — skip retrieval and generation."""
         ts  = _now_iso()
         lat = _ms(t_total)
         audit_id = self._write_audit(
@@ -820,6 +976,8 @@ class InferenceOS:
             "risk_class":       intent_class,
             "audit_id":         audit_id,
             "stages":           [s.to_dict() for s in stages],
+            "cognition":        cognition or {},
+            "route_tier":       "standard",
             "timestamp":        ts,
         }
         sig = _sign(base, KEY_NS)

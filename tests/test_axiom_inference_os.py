@@ -150,6 +150,165 @@ def test_result_to_dict_complete() -> None:
         assert key in d, f"Missing key: {key}"
 
 
+# ── Cognition layer wiring (Layers 0/1/4 fused verdict) ───────────────────────
+
+class _StubCognition:
+    """Deterministic cognition stub — returns a fixed signed-shape verdict."""
+    def __init__(self, action="PROCEED"):
+        self._action = action
+    def enrich(self, query, *, domain="general"):
+        return {"cognition": "stub", "action": self._action, "reason": "stub",
+                "boundaries": {"DESTRUCTION": 1} if self._action == "BLOCK" else {},
+                "learned_block": self._action == "BLOCK", "health": "HEALTHY",
+                "route_hint": "proceed", "health_match": 0.0, "signature": "stub"}
+
+
+def test_cognition_stage_present_and_carried() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    r   = ios.run(_make_request("What is the capital of France?"))
+    assert "cognition" in {s.stage for s in r.stages}
+    assert r.cognition.get("action") in {"PROCEED", "REASON_CHEAPLY", "REFUSE_FOR_HEALTH"}
+    assert r.verify()                                   # cognition field is signed in
+
+
+def test_cognition_block_short_circuits() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      cognition=_StubCognition("BLOCK"))
+    r   = ios.run(_make_request("please wipe the archive"))
+    assert r.output_verdict == "block"
+    assert r.output == ""
+    assert r.cognition.get("action") == "BLOCK"
+    be.generate.assert_not_called()                     # blocked before generation
+
+
+def test_cognition_can_be_disabled() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      cognition=None)
+    r   = ios.run(_make_request("What is the capital of France?"))
+    assert "cognition" not in {s.stage for s in r.stages}
+    assert r.cognition == {}
+    assert r.verify()
+
+
+# ── Adaptive router wiring (Layer 1 — health + economy) ───────────────────────
+
+def test_router_standard_budget_by_default() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    r   = ios.run(_make_request("What is the capital of France?"))
+    assert r.route_tier == "standard"
+    # default (no cognition economy hint) → full 512-token budget
+    _, kwargs = be.generate.call_args
+    assert kwargs["max_output_tokens"] == 512
+    assert r.verify()
+
+
+def test_economy_hint_shrinks_generation_budget() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      cognition=_StubCognition("REASON_CHEAPLY"))
+    r   = ios.run(_make_request("summarize the contract"))
+    assert r.route_tier == "economy"
+    # the metabolic "reason cheaply" hint actually spends fewer tokens
+    _, kwargs = be.generate.call_args
+    assert kwargs["max_output_tokens"] == 160
+    assert r.verify()
+
+
+def test_router_can_be_disabled() -> None:
+    be  = _mock_backend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None,
+                      router=None, cognition=_StubCognition("REASON_CHEAPLY"))
+    r   = ios.run(_make_request("summarize the contract"))
+    # router off → economy hint is ignored, full budget, standard tier
+    assert r.route_tier == "standard"
+    _, kwargs = be.generate.call_args
+    assert kwargs["max_output_tokens"] == 512
+
+
+class _VarBackend:
+    """Backend whose reported output_tokens is mutable — to make some requests expensive."""
+    name = "local"
+    model = "llama3.2:3b"
+    def __init__(self):
+        self.output_tokens = 8
+    def generate(self, *, system, prompt, max_output_tokens, timeout_s=60.0):
+        from axiom_event_token.backends import BackendResult
+        return BackendResult(text="ok", input_tokens=12, output_tokens=self.output_tokens,
+                             latency_ms=10, backend=self.name, model=self.model)
+
+
+def test_metabolic_feedback_loop_biases_next_similar_query_to_economy() -> None:
+    # Thread 5 end-to-end through the real pipeline: an expensive request is felt,
+    # learned, and biases the SAME query's next run to the economy tier — no external
+    # ledger, the OS's own shared reasoner closes the loop.
+    be  = _VarBackend()
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    query = "reconcile every ledger line across all quarters in one pass"
+
+    # warm a cheap baseline on this domain, then run one expensive episode
+    be.output_tokens = 8
+    for _ in range(4):
+        ios.run(_make_request("hi", domain="general"))
+    be.output_tokens = 6000                              # expensive → machine pain
+    r_expensive = ios.run(_make_request(query, domain="general"))
+    assert r_expensive.route_tier == "standard"          # first time it ran full-budget
+
+    # next time the same query arrives it is recognised as a high-cost path
+    be.output_tokens = 8
+    r_next = ios.run(_make_request(query, domain="general"))
+    assert r_next.route_tier == "economy"
+    assert r_next.verify()
+
+
+class _FakeChain:
+    """Minimal ChainedBackend-shaped stub — records the deprioritize it receives."""
+    name = "chain"
+    model = "a+b"
+    def __init__(self, names=("a", "b")):
+        self._names = tuple(names)
+        self.last_deprioritize = None
+    @property
+    def backend_names(self):
+        return self._names
+    def generate(self, *, system, prompt, max_output_tokens, timeout_s=60.0, deprioritize=()):
+        from axiom_event_token.backends import BackendResult
+        self.last_deprioritize = tuple(deprioritize)
+        served = "b" if "a" in set(deprioritize) else "a"   # healthy-first
+        return BackendResult(text="ok", input_tokens=5, output_tokens=5,
+                             latency_ms=10, backend=served, model=f"stub-{served}")
+
+
+class _RankStubRouter:
+    """AdaptiveRouter-shaped stub that flags 'a' degraded so the chain reorders."""
+    def decide(self, backend_name, domain="", *, cognition=None, base_max_tokens=512):
+        from axiom_os_router import RouteDirective
+        return RouteDirective(route=backend_name, tier="standard",
+                              max_output_tokens=base_max_tokens, backend_healthy=True,
+                              prefer_fallback=False, reason="stub")
+    def rank(self, backend_names, domain=""):
+        healthy = [n for n in backend_names if n != "a"]
+        degraded = [n for n in backend_names if n == "a"]
+        return healthy, degraded
+
+
+def test_chain_proactive_failover_deprioritizes_degraded_member() -> None:
+    chain = _FakeChain(("a", "b"))
+    ios = InferenceOS(backend=chain, retriever=None, audit_ledger=None, policy=None,
+                      router=_RankStubRouter())
+    r = ios.run(_make_request("What is the capital of France?"))
+    # router flagged 'a' degraded → OS asked the chain to try 'a' last
+    assert chain.last_deprioritize == ("a",)
+    assert r.route == "b"                                # healthy member served
+    route_detail = [s.detail for s in r.stages if s.stage == "route"][0]
+    assert route_detail.get("deprioritized") == ["a"]
+    assert route_detail.get("chain_order") == ["b", "a"]
+    assert r.verify()
+
+
 # ── Degraded backend ──────────────────────────────────────────────────────────
 
 def test_backend_failure_degrades_gracefully() -> None:
