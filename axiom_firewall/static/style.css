@@ -152,6 +152,13 @@ pre {
   color: var(--fg);
   font-size: 0.88rem;
 }
+/* each tool name deep-links to its dedicated anchor on /help/mcp-tools */
+.tool-col a.tool-link { text-decoration: none; }
+.tool-col a.tool-link code {
+  color: var(--accent);
+  border-bottom: 1px dotted var(--border);
+}
+.tool-col a.tool-link:hover code { border-bottom-color: var(--accent); }
 .mcp .actions {
   display: flex;
   gap: 1.5rem;

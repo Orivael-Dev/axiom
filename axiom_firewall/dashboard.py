@@ -928,12 +928,19 @@ _HELP_HTML_TEMPLATE = """<!doctype html>
     }}
     .help-topbar a {{ color: inherit; text-decoration: none; }}
     .help-topbar a:hover {{ text-decoration: underline; }}
+    .help-brand {{ display: flex; gap: 10px; align-items: center; }}
+    .help-brand .b {{ font-weight: 700; }}
+    .help-brand .sep {{ opacity: 0.35; }}
     .help-doc-nav {{ display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; opacity: 0.85; }}
     .help-doc-nav a {{ padding: 2px 0; }}
     .help-doc-nav a.current {{ font-weight: 700; opacity: 1; }}
     .help-wrap h1 {{ font-size: 32px; margin: 0 0 18px; letter-spacing: -0.02em; }}
     .help-wrap h2 {{ font-size: 20px; margin: 36px 0 12px; }}
     .help-wrap h3 {{ font-size: 16px; margin: 26px 0 10px; }}
+    .help-wrap h4 {{ font-size: 15px; margin: 22px 0 6px; font-family: ui-monospace,
+      Menlo, Consolas, monospace; color: var(--accent, #72f7d4);
+      scroll-margin-top: 20px; }}
+    .help-wrap h4 code {{ background: transparent; padding: 0; color: inherit; }}
     .help-wrap p, .help-wrap li {{ line-height: 1.65; }}
     .help-wrap code {{ font-family: ui-monospace, Menlo, Consolas, monospace;
       font-size: 0.9em; background: rgba(255,255,255,0.06); padding: 1px 6px;
@@ -954,7 +961,12 @@ _HELP_HTML_TEMPLATE = """<!doctype html>
 <body>
   <div class="help-wrap">
     <div class="help-topbar">
-      <a href="/dashboard">← Dashboard</a>
+      <span class="help-brand">
+        <a class="b" href="/">Orivael Firewall</a>
+        <span class="sep">·</span><a href="/help">Docs</a>
+        <span class="sep">·</span><a href="/dashboard">Dashboard</a>
+        <span class="sep">·</span><a href="/signup">Sign up</a>
+      </span>
       <nav class="help-doc-nav" aria-label="Firewall docs">{nav}</nav>
     </div>
     {body}

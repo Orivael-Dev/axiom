@@ -27,48 +27,109 @@ without spinning up a worker, without leaving the file you're editing.
 
 ## The 23 tools
 
+Every tool has a stable anchor, so you can deep-link any one of them (e.g. [`/help/mcp-tools#axiom_guard_check`](#axiom_guard_check)).
+
+**Jump to a tool:** [`axiom_guard_check`](#axiom_guard_check) · [`axiom_lint`](#axiom_lint) · [`axiom_trace`](#axiom_trace) · [`axiom_qrf`](#axiom_qrf) · [`axiom_status`](#axiom_status) · [`axiom_validate`](#axiom_validate) · [`axiom_intent_gate_check`](#axiom_intent_gate_check) · [`axiom_cmaa_route`](#axiom_cmaa_route) · [`axiom_cmaa_fleet`](#axiom_cmaa_fleet) · [`axiom_shield`](#axiom_shield) · [`axiom_phone_gate`](#axiom_phone_gate) · [`axiom_axm`](#axiom_axm) · [`axiom_cpi`](#axiom_cpi) · [`axiom_memory`](#axiom_memory) · [`axiom_workspace`](#axiom_workspace) · [`axiom_ledger`](#axiom_ledger) · [`axiom_marketplace`](#axiom_marketplace) · [`axiom_mkb`](#axiom_mkb) · [`axiom_cas`](#axiom_cas) · [`axiom_crl`](#axiom_crl) · [`axiom_immune`](#axiom_immune) · [`axiom_fusion`](#axiom_fusion) · [`axiom_research`](#axiom_research)
+
 ### Core (5)
 
-| Tool | Description |
-|---|---|
-| `axiom_guard_check` | Check input against the constitutional boundary. Returns verdict + constitutional distance + signed manifest. |
-| `axiom_lint` | Lint an `.axiom` spec file for authorship-time issues. Returns health score + per-issue list. |
-| `axiom_trace` | Run the full 3-phase constitutional reasoning trace (preflight / mid_chain / final_synthesis) with magnitude + monotonicity gates. |
-| `axiom_qrf` | Quantum-style reasoning forecast: N parallel branches with constitutional probability per outcome. |
-| `axiom_status` | Get AXIOM stack status (version, guard runtime state, test count, patent count, training corpus size). |
+#### `axiom_guard_check`
+
+Check input against the constitutional boundary. Returns verdict + constitutional distance + a signed manifest — the core input gate.
+
+#### `axiom_lint`
+
+Lint an `.axiom` spec file for authorship-time issues. Returns a health score + per-issue list.
+
+#### `axiom_trace`
+
+Run the full 3-phase constitutional reasoning trace (`preflight` / `mid_chain` / `final_synthesis`) with magnitude + monotonicity gates.
+
+#### `axiom_qrf`
+
+Quantum-style reasoning forecast: N parallel branches with a constitutional probability per outcome.
+
+#### `axiom_status`
+
+Get AXIOM stack status — version, guard runtime state, test count, patent count, training-corpus size.
 
 ### Patent emulators (8)
 
-| Tool | Patent | Description |
-|---|---|---|
-| `axiom_validate` | ORVL-001 | `.axiom` language validator with optional strict mode. |
-| `axiom_intent_gate_check` | ORVL-016 | Classify text + optional trajectory through the intent gate. Returns intent_class (INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN), confidence, signals, signature. |
-| `axiom_cmaa_route` | ORVL-017 | Route a constitutional packet through the multi-agent orchestrator. HARM / DECEIVE refused before reaching the orchestrator; bonded-pair revocations short-circuit authority without rotating keys. |
-| `axiom_cmaa_fleet` | ORVL-017 | Inspect fleet trust levels, suspended containers, review queue depth. |
-| `axiom_shield` | ORVL-013 | Drive the OS Shield daemon — constitutional ransomware defence that stops attackers at the enumeration stage. Actions: `status`, `tick`, `restore`. |
-| `axiom_phone_gate` | ORVL-019 | Run text through the Sovereign Phone constitutional coprocessor for BYOD and edge deployments. `out` gates outbound queries (PII redaction + intent pre-check); `in` gates inbound cloud responses (manipulation + privacy screening); `trajectory` scores a single utterance through the Hello Operator call-trajectory detector. |
-| `axiom_axm` | ORVL-023 | Operate an `.AXM` container — successor-to-GGUF format treating models as living execution graphs with signed skill delegates and proof ledgers. Actions: `inspect`, `verify`, `route`. |
-| `axiom_cpi` | ORVL-022 | Drive the Constitutional Physical Intelligence agent — toddler-reflex / supervisor / curriculum / examiner stack for robotics, prosthetics, vehicles. Actions: `stability`, `classify`, `simulate`, `pickup`, `status`. |
+#### `axiom_validate`
+
+**ORVL-001** — `.axiom` language validator with an optional strict mode.
+
+#### `axiom_intent_gate_check`
+
+**ORVL-016** — Classify text (+ optional trajectory) through the intent gate. Returns `intent_class` (INFORM / CLARIFY / REFUSE / HARM / DECEIVE / UNCERTAIN), confidence, signals, and a signature.
+
+#### `axiom_cmaa_route`
+
+**ORVL-017** — Route a constitutional packet through the multi-agent orchestrator. HARM / DECEIVE are refused before reaching the orchestrator; bonded-pair revocations short-circuit authority without rotating keys.
+
+#### `axiom_cmaa_fleet`
+
+**ORVL-017** — Inspect fleet trust levels, suspended containers, and review-queue depth.
+
+#### `axiom_shield`
+
+**ORVL-013** — Drive the OS Shield daemon — constitutional ransomware defence that stops attackers at the enumeration stage. Actions: `status`, `tick`, `restore`.
+
+#### `axiom_phone_gate`
+
+**ORVL-019** — Run text through the Sovereign Phone constitutional coprocessor for BYOD and edge deployments. `out` gates outbound queries (PII redaction + intent pre-check); `in` gates inbound cloud responses (manipulation + privacy screening); `trajectory` scores a single utterance through the Hello Operator call-trajectory detector.
+
+#### `axiom_axm`
+
+**ORVL-023** — Operate an `.AXM` container — the successor-to-GGUF format that treats models as living execution graphs with signed skill delegates and proof ledgers. Actions: `inspect`, `verify`, `route`.
+
+#### `axiom_cpi`
+
+**ORVL-022** — Drive the Constitutional Physical Intelligence agent — toddler-reflex / supervisor / curriculum / examiner stack for robotics, prosthetics, and vehicles. Actions: `stability`, `classify`, `simulate`, `pickup`, `status`.
 
 ### AX OS building blocks (9)
 
-| Tool | Description |
-|---|---|
-| `axiom_memory` | Constitutional memory (ORVL-015) — local-first recall over signed, compressed memory packets. Actions: `remember`, `recall`, `stats`. |
-| `axiom_workspace` | Assemble an adaptive workspace from a goal — intent-gated pre-flight check, closest memory recall, signed WorkspaceContext. |
-| `axiom_ledger` | Append-only signed audit log. Actions: `log` (record governance event), `list` (query with filters), `verify` (re-verify all rows). |
-| `axiom_marketplace` | Signed-agent marketplace with live-revocable bonded authority. Actions: `verify`, `sandbox_install`, `review`, `approve`, `revoke`, `authority`. |
-| `axiom_mkb` | Modular Constitutional Knowledge Blocks (ORVL-004) — parse `.axiom` specs into typed HMAC-signed blocks. Actions: `register`, `find`, `list`. |
-| `axiom_cas` | Constitutional Adversarial Sandbox (ORVL-008) — blue-team detectors over attack payloads; fix proposals for weak regions. Actions: `defend`, `report`. |
-| `axiom_crl` | Constitutional Reinforcement Learning reward (ORVL-011) — governance scores → signed scalar reward. Actions: `compute`, `score`. |
-| `axiom_immune` | Constitutional Immune System (ORVL-012) — antibody detectors over a payload: guard-pattern, manifold-distance, HMAC violation, CANNOT_MUTATE, semantic similarity. |
-| `axiom_fusion` | Fuse an EventToken's modality layers (text / audio / video / physics / governance) into a signed FusedIntent — each layer votes intent signals weighted by confidence. |
+#### `axiom_memory`
 
-### Research Pipeline (1)
+**ORVL-015** — Constitutional memory — local-first recall over signed, compressed memory packets. Actions: `remember`, `recall`, `stats`.
 
-| Tool | Description |
-|---|---|
-| `axiom_research` | 9-agent constitutional research pipeline: hypothesis → literature → simulation → critic → safety → ethics → data → experiment → report. Safety and Ethics agents can HALT early if critical risks are detected. Returns per-step signed manifests. Uses the active NIM or Anthropic backend. |
+#### `axiom_workspace`
+
+Assemble an adaptive workspace from a goal — intent-gated pre-flight check, closest-memory recall, and a signed `WorkspaceContext`.
+
+#### `axiom_ledger`
+
+Append-only signed audit log. Actions: `log` (record a governance event), `list` (query with filters), `verify` (re-verify all rows).
+
+#### `axiom_marketplace`
+
+Signed-agent marketplace with live-revocable bonded authority. Actions: `verify`, `sandbox_install`, `review`, `approve`, `revoke`, `authority`.
+
+#### `axiom_mkb`
+
+**ORVL-004** — Modular Constitutional Knowledge Blocks — parse `.axiom` specs into typed, HMAC-signed blocks. Actions: `register`, `find`, `list`.
+
+#### `axiom_cas`
+
+**ORVL-008** — Constitutional Adversarial Sandbox — blue-team detectors over attack payloads, with fix proposals for weak regions. Actions: `defend`, `report`.
+
+#### `axiom_crl`
+
+**ORVL-011** — Constitutional Reinforcement Learning reward — governance scores → a signed scalar reward. Actions: `compute`, `score`.
+
+#### `axiom_immune`
+
+**ORVL-012** — Constitutional Immune System — antibody detectors over a payload: guard-pattern, manifold-distance, HMAC violation, CANNOT_MUTATE, and semantic similarity.
+
+#### `axiom_fusion`
+
+**ORVL-025** — Fuse an EventToken's modality layers (text / audio / video / physics / governance) into a signed `FusedIntent` — each layer votes intent signals weighted by confidence.
+
+### Research pipeline (1)
+
+#### `axiom_research`
+
+9-agent constitutional research pipeline: hypothesis → literature → simulation → critic → safety → ethics → data → experiment → report. Safety and Ethics agents can HALT early on critical risk. Returns per-step signed manifests; uses the active NIM or Anthropic backend.
 
 ## Install
 

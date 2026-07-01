@@ -194,12 +194,37 @@ def test_help_blocks_path_traversal(isolated):
     assert r.status_code in (400, 404)
 
 
-def test_help_topbar_links_back_to_dashboard(isolated):
+def test_help_topbar_has_public_nav(isolated):
+    """The help topbar must give an anonymous launch visitor a way home and
+    to sign up — not just a login-gated Dashboard link. Regression guard for
+    the 'help nav is missing' launch report."""
     client = _client()
     r = client.get("/help/quickstart")
     assert r.status_code == 200
-    assert 'href="/dashboard"' in r.text
-    assert "← Dashboard" in r.text
+    assert 'href="/"' in r.text          # Home / brand
+    assert 'href="/help"' in r.text      # Docs index
+    assert 'href="/dashboard"' in r.text # Dashboard
+    assert 'href="/signup"' in r.text    # Sign up CTA
+
+
+def test_help_mcp_tools_has_per_tool_anchors(isolated):
+    """Every tool must be deep-linkable — the 23 tools used to sit in tables
+    that emit no anchors, so /help/mcp-tools#<tool> 404'd in-page."""
+    client = _client()
+    r = client.get("/help/mcp-tools")
+    assert r.status_code == 200
+    for tool in ("axiom_guard_check", "axiom_cmaa_route", "axiom_research", "axiom_immune"):
+        assert f'id="{tool}"' in r.text, f"no anchor for {tool}"
+    assert "Jump to a tool" in r.text     # the in-page nav index
+
+
+def test_landing_deep_links_each_tool(isolated):
+    """Each tool name on the landing page links to its dedicated anchor."""
+    client = _client()
+    r = client.get("/")
+    assert r.status_code == 200
+    assert 'href="/help/mcp-tools#axiom_guard_check"' in r.text
+    assert 'href="/help/mcp-tools#axiom_phone_gate"' in r.text
 
 
 def test_dashboard_nav_links_to_help(isolated):
