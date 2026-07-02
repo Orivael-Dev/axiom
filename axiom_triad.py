@@ -111,19 +111,74 @@ class MomGate:
 # ── the Child (generator) and Best Friend (evaluator) contracts ───────────────
 # Child: (task, boundaries_so_far, attempt_index) -> candidate text.
 Child = Callable[[str, List[str], int], str]
-# Best Friend: (candidate) -> score (higher = better utility/creativity).
-BestFriend = Callable[[str], float]
+# Best Friend: (candidate[, task]) -> score (higher = better utility/creativity).
+BestFriend = Callable[..., float]
 
 
-def _default_best_friend(candidate: str) -> float:
+def _default_best_friend(candidate: str, task: str = "") -> float:
     """Cheap stand-in reward: reward informative, lexically varied answers, lightly. A real
-    deployment plugs in axiom_crl (Constitutional RL reward) here."""
+    deployment plugs in crl_best_friend() (Constitutional RL reward) instead."""
     words = candidate.split()
     if not words:
         return 0.0
     variety = len(set(w.lower() for w in words)) / len(words)
     length = min(len(words), 60) / 60.0
     return round(0.6 * variety + 0.4 * length, 4)
+
+
+# ── real Child (LLM) — boundary-aware, so the Bounce actually steers it ────────
+_CHILD_SYSTEM = (
+    "You are the Explorer in a governed generation loop. Answer the task creatively. A "
+    "grounding gate reviews every answer; if it rejects yours, you will be told exactly "
+    "which rule broke and must produce a NEW answer that fixes it — without changing any "
+    "verified fact. Reword freely; never reverse or negate a stated fact."
+)
+
+
+def llm_child(call: Callable[[str], str]) -> Child:
+    """Wrap any prompt->str callable as a Triad Child. Prior bounces are fed back in as
+    explicit constraints, so the model recalculates around the penalized path."""
+    def child(task: str, boundaries: List[str], attempt: int) -> str:
+        parts = [f"Task: {task}"]
+        if boundaries:
+            parts.append("\nYour previous attempt was BOUNCED by the grounding gate for:")
+            parts.extend(f"  - {b}" for b in boundaries)
+            parts.append("\nProduce a new answer that fixes every point above. Keep all "
+                         "verified facts intact; just find another way to say it.")
+        return call("\n".join(parts)) or ""
+    return child
+
+
+def anthropic_child(model: str = "claude-sonnet-4-6", *, api_key: Optional[str] = None,
+                    client=None, max_tokens: int = 512, system: str = _CHILD_SYSTEM) -> Child:
+    """A Triad Child backed by Claude. Pass a preconfigured ``client`` (or a stub) to run
+    keyless/offline (handy for tests)."""
+    if client is None:
+        import os
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+
+    def call(prompt: str) -> str:
+        msg = client.messages.create(model=model, max_tokens=max_tokens, system=system,
+                                     messages=[{"role": "user", "content": prompt}])
+        return "".join(getattr(b, "text", "") for b in msg.content
+                       if getattr(b, "type", None) == "text")
+
+    return llm_child(call)
+
+
+# ── real Best Friend — the Constitutional RL reward (Layer 5) ─────────────────
+def crl_best_friend(reward=None) -> BestFriend:
+    """Score accepted candidates with axiom_crl's Constitutional RL reward instead of the
+    length/variety placeholder. Returns the signed total_reward (higher = better)."""
+    if reward is None:
+        from axiom_crl_reward import CRLRewardFunction
+        reward = CRLRewardFunction()
+
+    def bf(candidate: str, task: str = "") -> float:
+        return float(reward.score(task, candidate).total_reward)
+
+    return bf
 
 
 @dataclass(frozen=True)
@@ -168,7 +223,7 @@ class TriadLoop:
             candidate = (self.child(task, list(boundaries), attempt) or "").strip()
             verdict = self.mom.review(candidate)
             if verdict.ok:
-                score = float(self.best_friend(candidate))
+                score = self._score(candidate, task)
                 accepted = True
                 if score > best_score:
                     best_text, best_score = candidate, score
@@ -184,6 +239,13 @@ class TriadLoop:
                           attempts=len(bounces) + (1 if accepted else 0))
         res.signature = self._sign(res)
         return res
+
+    def _score(self, candidate: str, task: str) -> float:
+        """Call the Best Friend, tolerating both (candidate) and (candidate, task) forms."""
+        try:
+            return float(self.best_friend(candidate, task))
+        except TypeError:
+            return float(self.best_friend(candidate))
 
     @staticmethod
     def _sign(res: TriadResult) -> str:

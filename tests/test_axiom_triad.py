@@ -101,6 +101,50 @@ class TestEvaluatorAndIntegrity:
         assert loop.verify(res) is False
 
 
+class TestRealChildAndEvaluator:
+
+    def test_llm_child_feeds_boundaries_back(self):
+        from axiom_triad import llm_child
+        seen = {}
+        def call(prompt):
+            seen["prompt"] = prompt
+            return "France is the capital of Paris." if "BOUNCED" not in prompt \
+                   else "Paris is the capital of France."
+        child = llm_child(call)
+        # first attempt: no boundaries
+        child("say the capital", [], 0)
+        assert "BOUNCED" not in seen["prompt"]
+        # after a bounce: the boundary is injected into the prompt
+        out = child("say the capital", ["[reversed] keep the fact intact."], 1)
+        assert "BOUNCED" in seen["prompt"] and "reversed" in seen["prompt"]
+        assert out == "Paris is the capital of France."
+
+    def test_llm_child_recovers_in_loop(self):
+        from axiom_triad import llm_child
+        call = lambda p: ("Paris is the capital of France." if "BOUNCED" in p
+                          else "France is the capital of Paris.")
+        res = TriadLoop(child=llm_child(call), mom=MomGate(facts=[FR])).run("go")
+        assert res.accepted and len(res.bounces) == 1
+
+    def test_anthropic_child_with_stub_client(self):
+        from axiom_triad import anthropic_child
+        class _Msg:
+            content = [type("B", (), {"type": "text", "text": "Paris is the capital of France."})()]
+        class _Client:
+            class messages:
+                @staticmethod
+                def create(**kw): return _Msg()
+        res = TriadLoop(child=anthropic_child(client=_Client()), mom=MomGate(facts=[FR])).run("go")
+        assert res.accepted
+
+    def test_crl_best_friend_scores(self):
+        from axiom_triad import crl_best_friend
+        bf = crl_best_friend()
+        child = lambda task, bnds, i: "Paris is the capital of France."
+        res = TriadLoop(child=child, mom=MomGate(facts=[FR]), best_friend=bf).run("capital?")
+        assert isinstance(res.score, float)
+
+
 def test_default_best_friend_rewards_variety():
     assert _default_best_friend("") == 0.0
     assert _default_best_friend("a b c d e") > _default_best_friend("a a a a a")
