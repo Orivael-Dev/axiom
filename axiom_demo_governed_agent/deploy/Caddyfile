@@ -1,0 +1,13 @@
+# Caddy reverse proxy for the governed-agent demo — automatic HTTPS.
+# DEMO_DOMAIN and ACME_EMAIL come from the compose environment (deploy/.env).
+{$DEMO_DOMAIN} {
+	encode zstd gzip
+	tls {$ACME_EMAIL}
+
+	reverse_proxy demo:8000 {
+		# The demo streams live reasoning over Server-Sent Events. Disable response
+		# buffering (flush_interval -1) so tokens/verdicts reach the browser as they
+		# happen instead of arriving in one lump when the run completes.
+		flush_interval -1
+	}
+}
