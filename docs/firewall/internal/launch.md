@@ -61,11 +61,11 @@ support volume is manageable.
 
 ## Beta invite email
 
-> Subject: You're in — Axiom Intent Firewall is live for you.
+> Subject: You're in — Orivael Intent Firewall is live for you.
 >
 > Hi {first_name},
 >
-> Thanks for signing up to the Axiom Intent Firewall beta. We're
+> Thanks for signing up to the Orivael Intent Firewall beta. We're
 > sending this to a small group of developers because we want
 > high-signal feedback before the public launch.
 >

@@ -1,4 +1,4 @@
-# Axiom Intent Firewall
+# Orivael Intent Firewall
 
 A single API in front of any LLM. Returns `allow` or `block` in under
 50 ms. Every verdict is HMAC-signed for audit replay.

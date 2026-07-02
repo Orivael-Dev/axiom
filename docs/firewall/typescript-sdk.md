@@ -1,6 +1,6 @@
 # TypeScript SDK
 
-Official TypeScript client for Axiom Intent Firewall.
+Official TypeScript client for Orivael Intent Firewall.
 
 ```bash
 npm install @axiom/firewall
