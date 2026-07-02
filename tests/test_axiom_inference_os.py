@@ -24,6 +24,14 @@ from axiom_inference_os import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_exo_ledger(tmp_path, monkeypatch):
+    """Point the exoskeleton ledger at a per-test temp file so InferenceOS.run() never
+    writes to the shared ~/.axiom ledger — otherwise these tests' verified/unverified
+    entries would pollute RouterPolicy health for other suites in the same run."""
+    monkeypatch.setenv("AXIOM_EXOSKELETON_LEDGER", str(tmp_path / "exo.jsonl"))
+
+
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 def _make_request(query: str = "What is hantavirus?", domain: str | None = None,
@@ -148,6 +156,83 @@ def test_result_to_dict_complete() -> None:
     for key in ("request_id", "query", "intent_class", "route", "model_used",
                 "output", "output_verdict", "audit_id", "stages", "signature"):
         assert key in d, f"Missing key: {key}"
+
+
+# ── Layer-4 fact integrity (FactGuard in governance) ──────────────────────────
+
+def test_grounded_fact_violation_blocks_output() -> None:
+    from axiom_fact_preserve import Fact
+    be  = _mock_backend(text="France is the capital of Paris.")   # reversed the fact
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    req = InferenceRequest(query="What is the capital of France?", session_id="s",
+                           tenant_id="t", domain="general",
+                           grounded_facts=(Fact("France", "has capital", "Paris"),))
+    r = ios.run(req)
+    assert r.output_verdict == "block"
+    assert r.output == ""
+    gov = [s.detail for s in r.stages if s.stage == "governance"][0]
+    assert gov.get("fact_violations")
+
+
+def _bouncing_backend(drafts):
+    """A backend that returns drafts[1] once it sees the bounce feedback, else drafts[0]."""
+    from axiom_event_token.backends import BackendResult
+    be = MagicMock(); be.name = "local"; be.model = "llama3.2:3b"
+    def gen(*, system, prompt, max_output_tokens, **kw):
+        i = 1 if "grounding gate rejected" in prompt else 0
+        return BackendResult(text=drafts[min(i, len(drafts) - 1)], input_tokens=10,
+                             output_tokens=8, latency_ms=10, backend="local", model="llama3.2:3b")
+    be.generate.side_effect = gen
+    return be
+
+
+def test_triad_bounce_recovers_and_allows() -> None:
+    from axiom_fact_preserve import Fact
+    be  = _bouncing_backend(["The capital of France is Berlin.",   # bounced
+                             "Paris is the capital of France."])    # recovered
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    r = ios.run(InferenceRequest(query="capital?", session_id="s", tenant_id="t",
+                                 domain="general",
+                                 grounded_facts=(Fact("France", "has capital", "Paris"),),
+                                 max_bounces=2))
+    assert r.output_verdict == "allow"
+    assert r.output == "Paris is the capital of France."
+    assert r.bounces == 1
+    assert r.verify()
+
+
+def test_triad_bounce_exhausted_still_blocks() -> None:
+    from axiom_fact_preserve import Fact
+    be  = _bouncing_backend(["The capital of France is Berlin."])   # never recovers
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    r = ios.run(InferenceRequest(query="capital?", session_id="s", tenant_id="t",
+                                 domain="general",
+                                 grounded_facts=(Fact("France", "has capital", "Paris"),),
+                                 max_bounces=2))
+    assert r.output_verdict == "block"          # governance still catches it after bounces
+    assert r.bounces == 2
+
+
+def test_no_bounces_when_max_bounces_zero() -> None:
+    from axiom_fact_preserve import Fact
+    be  = _mock_backend(text="The capital of France is Berlin.")
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    r = ios.run(InferenceRequest(query="capital?", session_id="s", tenant_id="t",
+                                 domain="general",
+                                 grounded_facts=(Fact("France", "has capital", "Paris"),)))
+    assert r.bounces == 0 and r.output_verdict == "block"   # single-shot, governance blocks
+
+
+def test_grounded_fact_preserved_passes() -> None:
+    from axiom_fact_preserve import Fact
+    be  = _mock_backend(text="Paris is the capital of France.")   # correct
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    req = InferenceRequest(query="capital of France?", session_id="s", tenant_id="t",
+                           domain="general",
+                           grounded_facts=(Fact("France", "has capital", "Paris"),))
+    r = ios.run(req)
+    assert r.output_verdict == "allow"
+    assert r.output == "Paris is the capital of France."
 
 
 # ── Cognition layer wiring (Layers 0/1/4 fused verdict) ───────────────────────

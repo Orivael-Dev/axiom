@@ -88,6 +88,14 @@ class InferenceRequest:
     domain:           Optional[str] = None   # "healthcare" | "legal" | "finance" | …
     use_retrieval:    bool = True
     max_context_chars: int = _MAX_CONTEXT_CHARS
+    # Layer-4 fact integrity: verified facts the answer must preserve (e.g. from
+    # retrieval). If the generated output reverses/negates/mutates one, governance blocks
+    # it — the Mom logic gate applied to grounded knowledge. Tuple of axiom_fact_preserve.Fact.
+    grounded_facts:   tuple = ()
+    # Triad "Bounce" self-correction: >0 lets generation re-attempt when the Mom gate
+    # (grounded_facts) rejects a draft — the boundary is reflected back into the prompt and
+    # the model recalculates, instead of the pipeline simply blocking. 0 = single-shot.
+    max_bounces:      int   = 0
 
 
 @dataclass(frozen=True)
@@ -152,6 +160,8 @@ class InferenceOSResult:
     cognition:             dict  = field(default_factory=dict)
     # Layer-1 adaptive routing — "standard" | "economy" (metabolic economy hint)
     route_tier:            str   = "standard"
+    # Triad Bounce — how many times generation was re-attempted after a Mom-gate rejection
+    bounces:               int   = 0
 
     def to_dict(self) -> dict:
         return {
@@ -180,6 +190,7 @@ class InferenceOSResult:
             "shaping_transforms":    list(self.shaping_transforms),
             "cognition":             self.cognition,
             "route_tier":            self.route_tier,
+            "bounces":               self.bounces,
             "timestamp":       self.timestamp,
             "signature":       self.signature,
         }
@@ -693,8 +704,9 @@ class InferenceOS:
             except Exception:
                 mem_view = None
 
-        # ── Stage 3 / Step 5: Generation ──────────────────────────────────────
+        # ── Stage 3 / Step 5: Generation (with optional Triad "Bounce") ───────
         output, input_tokens, output_tokens = "", 0, 0
+        gen_bounces = 0
         t0 = time.perf_counter()
         if self._backend is not None:
             try:
@@ -738,31 +750,52 @@ class InferenceOS:
                 gen_kwargs = {}
                 if gen_deprioritize:                    # chain only — proactive failover
                     gen_kwargs["deprioritize"] = gen_deprioritize
-                result = self._backend.generate(
-                    system=system_prompt,
-                    prompt=user_message,
-                    max_output_tokens=gen_max_tokens,   # economy tier shrinks this
-                    **gen_kwargs,
-                )
-                output        = result.text
-                input_tokens  = result.input_tokens
-                output_tokens = result.output_tokens
-                route         = result.backend
-                model_used    = result.model
+
+                # Triad Bounce: generate → Mom logic gate (Layer 4) → on a fact violation,
+                # reflect the boundary back into the prompt and let the model recalculate,
+                # instead of the pipeline simply blocking. Single-shot when max_bounces=0.
+                _bounce = bool(request.max_bounces and request.grounded_facts)
+                _boundaries: list = []
+                result = None
+                for _attempt in range(request.max_bounces + 1):
+                    umsg = user_message
+                    if _boundaries:
+                        umsg = (f"{user_message}\n\n[The grounding gate rejected your "
+                                f"previous answer for: {'; '.join(_boundaries)}. Answer "
+                                f"again, keeping every verified fact exactly intact.]")
+                    result = self._backend.generate(
+                        system=system_prompt, prompt=umsg,
+                        max_output_tokens=gen_max_tokens, **gen_kwargs,
+                    )
+                    output         = result.text
+                    input_tokens  += result.input_tokens     # accumulate real cost of bounces
+                    output_tokens += result.output_tokens
+                    route          = result.backend
+                    model_used     = result.model
+                    if not _bounce or _attempt >= request.max_bounces:
+                        break
+                    from axiom_fact_preserve import FactGuard
+                    rep = FactGuard(list(request.grounded_facts)).check_output(output)
+                    if rep.ok:
+                        break
+                    gen_bounces += 1
+                    _boundaries = [f"{v.kind} ({v.reason})" for v in rep.violations]
                 prefix_warm   = (
                     self._prefix_cache.detect_cache_hit(result.prefill_ms, input_tokens)
                     if self._prefix_cache is not None else False
                 )
+                gen_detail = {
+                    "backend":       result.backend,
+                    "model":         result.model,
+                    "input_tokens":  input_tokens,
+                    "output_tokens": output_tokens,
+                    "prefill_ms":    result.prefill_ms,
+                    "prefix_warm":   prefix_warm,
+                }
+                if gen_bounces:
+                    gen_detail["bounces"] = gen_bounces
                 stages.append(InferenceStageResult.make(
-                    "generation", "ok", _ms(t0),
-                    {
-                        "backend":       result.backend,
-                        "model":         result.model,
-                        "input_tokens":  input_tokens,
-                        "output_tokens": output_tokens,
-                        "prefill_ms":    result.prefill_ms,
-                        "prefix_warm":   prefix_warm,
-                    }
+                    "generation", "ok", _ms(t0), gen_detail
                 ))
             except Exception as exc:
                 fallback_used = True
@@ -797,9 +830,25 @@ class InferenceOS:
                             output         = ""
                     except Exception:
                         pass
+                # Layer-4 fact integrity (the Mom logic gate): if the request carries
+                # grounded facts, block an answer that reverses/negates/mutates one.
+                fact_violations: list = []
+                if output and request.grounded_facts:
+                    try:
+                        from axiom_fact_preserve import FactGuard
+                        rep = FactGuard(list(request.grounded_facts)).check_output(output)
+                        if not rep.ok:
+                            fact_violations = [{"entity": v.fact.entity, "kind": v.kind}
+                                               for v in rep.violations]
+                            output_verdict = "block"
+                            output         = ""
+                    except Exception:
+                        pass
+                gov_detail = {"risk_class": risk_class, "verdict": output_verdict}
+                if fact_violations:
+                    gov_detail["fact_violations"] = fact_violations
                 stages.append(InferenceStageResult.make(
-                    "governance", output_verdict, _ms(t0),
-                    {"risk_class": risk_class, "verdict": output_verdict}
+                    "governance", output_verdict, _ms(t0), gov_detail
                 ))
             except Exception as exc:
                 stages.append(InferenceStageResult.make(
@@ -923,6 +972,7 @@ class InferenceOS:
             "shaping_transforms":    shaping_transforms,
             "cognition":             cognition,
             "route_tier":            route_tier,
+            "bounces":               gen_bounces,
             "timestamp":       ts,
         }
         sig = _sign(base, KEY_NS)
@@ -978,6 +1028,7 @@ class InferenceOS:
             "stages":           [s.to_dict() for s in stages],
             "cognition":        cognition or {},
             "route_tier":       "standard",
+            "bounces":          0,
             "timestamp":        ts,
         }
         sig = _sign(base, KEY_NS)
