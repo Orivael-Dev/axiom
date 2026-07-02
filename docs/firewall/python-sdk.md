@@ -1,6 +1,6 @@
 # Python SDK
 
-Official Python client for Axiom Intent Firewall.
+Official Python client for Orivael Intent Firewall.
 
 ```bash
 pip install axiom-firewall

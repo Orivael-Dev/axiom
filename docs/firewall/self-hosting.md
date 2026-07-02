@@ -1,6 +1,6 @@
 # Self-hosting
 
-The Axiom Intent Firewall runs as a single FastAPI app. You can host
+The Orivael Intent Firewall runs as a single FastAPI app. You can host
 it anywhere you can run Python 3.11+ or a Docker container.
 
 This guide is the short version. For the prod-grade AWS deploy, see

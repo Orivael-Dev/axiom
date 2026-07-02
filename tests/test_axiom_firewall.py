@@ -408,7 +408,7 @@ def test_fresh_signup_shows_welcome_banner(isolated_tenants):
     assert r.status_code == 303
     r = client.get("/dashboard")
     assert r.status_code == 200
-    assert "Welcome to the Axiom Intent Firewall beta" in r.text
+    assert "Welcome to the Orivael Intent Firewall beta" in r.text
     # Three numbered steps
     assert "Create an API key" in r.text
     assert "axfw_" in r.text       # mentioned in the steps
@@ -428,7 +428,7 @@ def test_welcome_banner_hidden_after_key_created(isolated_tenants):
                 follow_redirects=True)
     r = client.get("/dashboard")
     assert r.status_code == 200
-    assert "Welcome to the Axiom Intent Firewall beta" not in r.text
+    assert "Welcome to the Orivael Intent Firewall beta" not in r.text
 
 
 def test_beta_footer_link_renders_when_env_set(
