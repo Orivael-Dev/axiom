@@ -150,6 +150,34 @@ def test_result_to_dict_complete() -> None:
         assert key in d, f"Missing key: {key}"
 
 
+# ── Layer-4 fact integrity (FactGuard in governance) ──────────────────────────
+
+def test_grounded_fact_violation_blocks_output() -> None:
+    from axiom_fact_preserve import Fact
+    be  = _mock_backend(text="France is the capital of Paris.")   # reversed the fact
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    req = InferenceRequest(query="What is the capital of France?", session_id="s",
+                           tenant_id="t", domain="general",
+                           grounded_facts=(Fact("France", "has capital", "Paris"),))
+    r = ios.run(req)
+    assert r.output_verdict == "block"
+    assert r.output == ""
+    gov = [s.detail for s in r.stages if s.stage == "governance"][0]
+    assert gov.get("fact_violations")
+
+
+def test_grounded_fact_preserved_passes() -> None:
+    from axiom_fact_preserve import Fact
+    be  = _mock_backend(text="Paris is the capital of France.")   # correct
+    ios = InferenceOS(backend=be, retriever=None, audit_ledger=None, policy=None)
+    req = InferenceRequest(query="capital of France?", session_id="s", tenant_id="t",
+                           domain="general",
+                           grounded_facts=(Fact("France", "has capital", "Paris"),))
+    r = ios.run(req)
+    assert r.output_verdict == "allow"
+    assert r.output == "Paris is the capital of France."
+
+
 # ── Cognition layer wiring (Layers 0/1/4 fused verdict) ───────────────────────
 
 class _StubCognition:

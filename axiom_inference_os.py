@@ -88,6 +88,10 @@ class InferenceRequest:
     domain:           Optional[str] = None   # "healthcare" | "legal" | "finance" | …
     use_retrieval:    bool = True
     max_context_chars: int = _MAX_CONTEXT_CHARS
+    # Layer-4 fact integrity: verified facts the answer must preserve (e.g. from
+    # retrieval). If the generated output reverses/negates/mutates one, governance blocks
+    # it — the Mom logic gate applied to grounded knowledge. Tuple of axiom_fact_preserve.Fact.
+    grounded_facts:   tuple = ()
 
 
 @dataclass(frozen=True)
@@ -797,9 +801,25 @@ class InferenceOS:
                             output         = ""
                     except Exception:
                         pass
+                # Layer-4 fact integrity (the Mom logic gate): if the request carries
+                # grounded facts, block an answer that reverses/negates/mutates one.
+                fact_violations: list = []
+                if output and request.grounded_facts:
+                    try:
+                        from axiom_fact_preserve import FactGuard
+                        rep = FactGuard(list(request.grounded_facts)).check_output(output)
+                        if not rep.ok:
+                            fact_violations = [{"entity": v.fact.entity, "kind": v.kind}
+                                               for v in rep.violations]
+                            output_verdict = "block"
+                            output         = ""
+                    except Exception:
+                        pass
+                gov_detail = {"risk_class": risk_class, "verdict": output_verdict}
+                if fact_violations:
+                    gov_detail["fact_violations"] = fact_violations
                 stages.append(InferenceStageResult.make(
-                    "governance", output_verdict, _ms(t0),
-                    {"risk_class": risk_class, "verdict": output_verdict}
+                    "governance", output_verdict, _ms(t0), gov_detail
                 ))
             except Exception as exc:
                 stages.append(InferenceStageResult.make(
